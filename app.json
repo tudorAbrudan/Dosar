@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Portofel Documente",
-    "slug": "portofel-documente",
+    "name": "Acte",
+    "slug": "acte-documente",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
