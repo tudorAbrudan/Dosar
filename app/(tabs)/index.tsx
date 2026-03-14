@@ -41,6 +41,15 @@ const DOC_ICON: Record<DocumentType, IoniconName> = {
   factura: 'receipt',
   bon_combustibil: 'flame',
   card: 'card',
+  garantie: 'ribbon-outline',
+  medicament: 'medkit-outline',
+  pad: 'home-outline',
+  stingator_incendiu: 'flame-outline',
+  abonament: 'repeat-outline',
+  index_utilitati: 'speedometer-outline',
+  vaccin_animal: 'fitness-outline',
+  deparazitare: 'bug-outline',
+  vizita_vet: 'paw-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };
@@ -60,6 +69,15 @@ const DOC_ICON_BG: Record<DocumentType, string> = {
   factura: '#FFF3E0',
   bon_combustibil: '#FFF3E0',
   card: '#F3E5F5',
+  garantie: '#E8F5E9',
+  medicament: '#FCE4EC',
+  pad: '#E3F2FD',
+  stingator_incendiu: '#FCE4EC',
+  abonament: '#F3E5F5',
+  index_utilitati: '#E0F2F1',
+  vaccin_animal: '#E8F5E9',
+  deparazitare: '#FFF8E1',
+  vizita_vet: '#E8EAF6',
   altul: '#F5F5F5',
   custom: '#F5F5F5',
 };
@@ -79,6 +97,15 @@ const DOC_ICON_COLOR: Record<DocumentType, string> = {
   factura: '#BF360C',
   bon_combustibil: '#E65100',
   card: '#7B1FA2',
+  garantie: '#2E7D32',
+  medicament: '#C62828',
+  pad: '#1565C0',
+  stingator_incendiu: '#BF360C',
+  abonament: '#7B1FA2',
+  index_utilitati: '#00695C',
+  vaccin_animal: '#388E3C',
+  deparazitare: '#F57F17',
+  vizita_vet: '#283593',
   altul: '#757575',
   custom: '#757575',
 };
@@ -112,7 +139,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   const { documents, loading, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards } = useEntities();
+  const { persons, properties, vehicles, cards, animals } = useEntities();
 
   useFocusEffect(
     useCallback(() => {
@@ -138,6 +165,7 @@ export default function HomeScreen() {
       const c = cards.find(c => c.id === doc.card_id);
       return c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
     }
+    if (doc.animal_id) return animals.find(a => a.id === doc.animal_id)?.name ?? null;
     return null;
   }
 

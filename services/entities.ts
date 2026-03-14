@@ -1,5 +1,5 @@
 import { db, generateId } from './db';
-import type { Person, Property, Vehicle, Card } from '@/types';
+import type { Person, Property, Vehicle, Card, Animal } from '@/types';
 
 export async function getPersons(): Promise<Person[]> {
   const rows = await db.getAllAsync<{ id: string; name: string; created_at: string }>(
@@ -103,4 +103,26 @@ export async function deleteVehicle(id: string): Promise<void> {
 
 export async function deleteCard(id: string): Promise<void> {
   await db.runAsync('DELETE FROM cards WHERE id = ?', [id]);
+}
+
+export async function getAnimals(): Promise<Animal[]> {
+  const rows = await db.getAllAsync<{ id: string; name: string; species: string; created_at: string }>(
+    'SELECT id, name, species, created_at FROM animals ORDER BY created_at DESC'
+  );
+  return rows.map((r) => ({ id: r.id, name: r.name, species: r.species, createdAt: r.created_at }));
+}
+
+export async function createAnimal(name: string, species: string): Promise<Animal> {
+  const id = generateId();
+  const created_at = new Date().toISOString();
+  await db.runAsync('INSERT INTO animals (id, name, species, created_at) VALUES (?, ?, ?, ?)', [id, name, species, created_at]);
+  return { id, name, species, createdAt: created_at };
+}
+
+export async function updateAnimal(id: string, name: string, species: string): Promise<void> {
+  await db.runAsync('UPDATE animals SET name = ?, species = ? WHERE id = ?', [name, species, id]);
+}
+
+export async function deleteAnimal(id: string): Promise<void> {
+  await db.runAsync('DELETE FROM animals WHERE id = ?', [id]);
 }

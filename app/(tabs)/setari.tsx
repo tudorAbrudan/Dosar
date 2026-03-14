@@ -193,10 +193,16 @@ export default function SetariScreen() {
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
 
+  // ── Concediu ─────────────────────────────────────────────────────────────────
+  const [concediuTotal, setConcediuTotal] = useState(21);
+  const [concediuUtilizate, setConcediuUtilizate] = useState(0);
+
   useEffect(() => {
     settings.getNotificationDays().then(setNotifDays);
     settings.getPushEnabled().then(setPushEnabled);
     settings.getAppLockEnabled().then(setAppLockEnabled);
+    settings.getConcediuTotal().then(setConcediuTotal);
+    settings.getConcediuUtilizate().then(setConcediuUtilizate);
   }, []);
 
   // ── App lock ─────────────────────────────────────────────────────────────────
@@ -250,6 +256,26 @@ export default function SetariScreen() {
     settings.setPushEnabled(v);
     scheduleExpirationReminders().catch(() => {});
   };
+
+  // ── Concediu ─────────────────────────────────────────────────────────────────
+  const handleConcediuTotal = (v: string) => {
+    const n = parseInt(v, 10);
+    if (!isNaN(n) && n >= 0) {
+      setConcediuTotal(n);
+      settings.setConcediuTotal(n);
+    }
+  };
+
+  const handleConcediuUtilizate = (v: string) => {
+    const n = parseInt(v, 10);
+    if (!isNaN(n) && n >= 0) {
+      setConcediuUtilizate(n);
+      settings.setConcediuUtilizate(n);
+    }
+  };
+
+  const concediuRamasite = concediuTotal - concediuUtilizate;
+  const concediuColor = concediuRamasite <= 0 ? '#E53935' : concediuRamasite < 5 ? '#F57C00' : '#2E7D32';
 
   // ── Backup ───────────────────────────────────────────────────────────────────
   const handleExportBackup = async () => {
@@ -422,6 +448,57 @@ export default function SetariScreen() {
             <Ionicons name="cloud-download-outline" size={18} color="#9EB567" style={styles.btnIcon} />
             <RNText style={[styles.btnOutlineText, { color: '#9EB567' }]}>Importă din fișier JSON</RNText>
           </Pressable>
+        </RNView>
+
+        {/* ── Concediu ── */}
+        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>CONCEDIU</RNText>
+        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
+          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
+            <RNView style={styles.rowLeft}>
+              <RNView style={[styles.rowIcon, { backgroundColor: '#E8F5E9' }]}>
+                <Ionicons name="calendar-outline" size={18} color="#2E7D32" />
+              </RNView>
+              <RNText style={[styles.rowLabel, { color: C.text }]}>Total zile/an</RNText>
+            </RNView>
+            <TextInput
+              style={[styles.inputSmall, { color: C.text, borderColor: C.border, backgroundColor: C.background }]}
+              value={String(concediuTotal)}
+              onChangeText={handleConcediuTotal}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+          </RNView>
+          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
+            <RNView style={styles.rowLeft}>
+              <RNView style={[styles.rowIcon, { backgroundColor: '#FFF3E0' }]}>
+                <Ionicons name="checkmark-done-outline" size={18} color="#E65100" />
+              </RNView>
+              <RNText style={[styles.rowLabel, { color: C.text }]}>Zile utilizate</RNText>
+            </RNView>
+            <TextInput
+              style={[styles.inputSmall, { color: C.text, borderColor: C.border, backgroundColor: C.background }]}
+              value={String(concediuUtilizate)}
+              onChangeText={handleConcediuUtilizate}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+          </RNView>
+          <RNView style={styles.rowLast}>
+            <RNView style={styles.rowLeft}>
+              <RNView style={[styles.rowIcon, { backgroundColor: '#E3F2FD' }]}>
+                <Ionicons name="hourglass-outline" size={18} color="#1565C0" />
+              </RNView>
+              <RNView style={styles.rowLabelWrap}>
+                <RNText style={[styles.rowLabel, { color: C.text }]}>Zile rămase</RNText>
+                <RNText style={[styles.rowSub, { color: C.textSecondary }]}>
+                  {concediuUtilizate} utilizate din {concediuTotal}
+                </RNText>
+              </RNView>
+            </RNView>
+            <RNText style={[styles.concediuBadge, { color: concediuColor, borderColor: concediuColor }]}>
+              {concediuRamasite}
+            </RNText>
+          </RNView>
         </RNView>
 
         {/* ── Securitate ── */}
@@ -773,6 +850,17 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 7,
     paddingVertical: 3,
+  },
+
+  concediuBadge: {
+    fontSize: 18,
+    fontWeight: '700',
+    borderWidth: 1.5,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 44,
+    textAlign: 'center',
   },
 
   inputSmall: {

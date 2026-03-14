@@ -13,6 +13,15 @@ export type DocumentType =
   | 'factura'
   | 'bon_combustibil'
   | 'card'
+  | 'garantie'
+  | 'medicament'
+  | 'pad'
+  | 'stingator_incendiu'
+  | 'abonament'
+  | 'index_utilitati'
+  | 'vaccin_animal'
+  | 'deparazitare'
+  | 'vizita_vet'
   | 'altul'
   | 'custom';
 
@@ -48,6 +57,13 @@ export interface Card {
   createdAt: string;
 }
 
+export interface Animal {
+  id: string;
+  name: string;
+  species: string;
+  createdAt: string;
+}
+
 export interface DocumentPage {
   id: string;
   document_id: string;
@@ -70,10 +86,11 @@ export interface Document {
   property_id?: string;
   vehicle_id?: string;
   card_id?: string;
+  animal_id?: string;
   created_at: string;
 }
 
-export type EntityType = 'person' | 'property' | 'vehicle' | 'card';
+export type EntityType = 'person' | 'property' | 'vehicle' | 'card' | 'animal';
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   buletin: 'Buletin',
@@ -90,6 +107,15 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   factura: 'Factură',
   bon_combustibil: 'Bon combustibil',
   card: 'Card',
+  garantie: 'Garanție produs',
+  medicament: 'Medicament',
+  pad: 'PAD Asigurare Locuință',
+  stingator_incendiu: 'Stingător incendiu',
+  abonament: 'Abonament recurent',
+  index_utilitati: 'Index utilități',
+  vaccin_animal: 'Vaccin animal',
+  deparazitare: 'Deparazitare',
+  vizita_vet: 'Vizită veterinar',
   altul: 'Altele',
   custom: 'Tip personalizat',
 };

@@ -39,6 +39,7 @@ const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
   { key: 'property', label: 'Proprietate' },
   { key: 'vehicle', label: 'Vehicul' },
   { key: 'card', label: 'Card' },
+  { key: 'animal', label: 'Animal' },
 ];
 
 async function applyDocumentScan(uri: string): Promise<string> {
@@ -59,9 +60,10 @@ export default function AddDocumentScreen() {
     property_id?: string;
     vehicle_id?: string;
     card_id?: string;
+    animal_id?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards } = useEntities();
+  const { persons, properties, vehicles, cards, animals } = useEntities();
   const { customTypes } = useCustomTypes();
 
   const [type, setType] = useState<DocumentType>('buletin');
@@ -81,12 +83,14 @@ export default function AddDocumentScreen() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
 
   const personId = params.person_id;
   const propertyId = params.property_id;
   const vehicleId = params.vehicle_id;
   const cardId = params.card_id;
-  const hasParamLink = !!(personId || propertyId || vehicleId || cardId);
+  const animalId = params.animal_id;
+  const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId);
 
   async function runOcrOnImage(localPath: string) {
     setOcrLoading(true);
@@ -294,6 +298,7 @@ export default function AddDocumentScreen() {
         property_id: propertyId ?? selectedPropertyId ?? undefined,
         vehicle_id: vehicleId ?? selectedVehicleId ?? undefined,
         card_id: cardId ?? selectedCardId ?? undefined,
+        animal_id: animalId ?? selectedAnimalId ?? undefined,
         metadata: {
           ...metadata,
           ...(type === 'bon_combustibil' ? { is_full_tank: fullTank ? '1' : '0' } : {}),
@@ -345,6 +350,7 @@ export default function AddDocumentScreen() {
     (propertyId && properties.find(p => p.id === propertyId)?.name) ||
     (vehicleId && vehicles.find(v => v.id === vehicleId)?.name) ||
     (cardId && cards.find(c => c.id === cardId)?.nickname) ||
+    (animalId && animals.find(a => a.id === animalId)?.name) ||
     null;
 
   // Current entity list for picker
@@ -355,7 +361,9 @@ export default function AddDocumentScreen() {
         ? properties.map(p => ({ id: p.id, label: p.name }))
         : pickerCategory === 'vehicle'
           ? vehicles.map(v => ({ id: v.id, label: v.name }))
-          : cards.map(c => ({ id: c.id, label: c.nickname }));
+          : pickerCategory === 'animal'
+            ? animals.map(a => ({ id: a.id, label: a.name }))
+            : cards.map(c => ({ id: c.id, label: c.nickname }));
 
   const selectedIdForCategory =
     pickerCategory === 'person'
@@ -364,12 +372,15 @@ export default function AddDocumentScreen() {
         ? selectedPropertyId
         : pickerCategory === 'vehicle'
           ? selectedVehicleId
-          : selectedCardId;
+          : pickerCategory === 'animal'
+            ? selectedAnimalId
+            : selectedCardId;
 
   function setSelectedForCategory(id: string | null) {
     if (pickerCategory === 'person') setSelectedPersonId(id);
     else if (pickerCategory === 'property') setSelectedPropertyId(id);
     else if (pickerCategory === 'vehicle') setSelectedVehicleId(id);
+    else if (pickerCategory === 'animal') setSelectedAnimalId(id);
     else setSelectedCardId(id);
   }
 
@@ -377,7 +388,8 @@ export default function AddDocumentScreen() {
     selectedPersonId ||
     selectedPropertyId ||
     selectedVehicleId ||
-    selectedCardId
+    selectedCardId ||
+    selectedAnimalId
   );
 
   return (

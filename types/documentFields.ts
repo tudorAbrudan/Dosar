@@ -70,4 +70,47 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'last4', label: 'Ultimele 4 cifre', placeholder: '1234', keyboardType: 'numeric', ocrKey: 'last4' },
     { key: 'bank', label: 'Bancă', placeholder: 'BRD, BCR, ING...' },
   ],
+  garantie: [
+    { key: 'product_name', label: 'Produs', placeholder: 'iPhone 15, Mașină de spălat...' },
+    { key: 'brand', label: 'Marcă', placeholder: 'Apple, Samsung...' },
+    { key: 'store', label: 'Magazin', placeholder: 'eMAG, Altex...' },
+    { key: 'warranty_years', label: 'Ani garanție', placeholder: '2', keyboardType: 'numeric' },
+  ],
+  medicament: [
+    { key: 'medication_name', label: 'Medicament', placeholder: 'Paracetamol 500mg' },
+    { key: 'dosage', label: 'Dozaj', placeholder: '1 comprimat/zi' },
+    { key: 'quantity', label: 'Cantitate', placeholder: '20 comprimate' },
+  ],
+  pad: [
+    { key: 'insurer', label: 'Asigurator', placeholder: 'Allianz, Groupama...' },
+    { key: 'policy_number', label: 'Nr. poliță', placeholder: 'RO/...' },
+  ],
+  stingator_incendiu: [
+    { key: 'location', label: 'Locație', placeholder: 'Mașină, Bucătărie...' },
+    { key: 'extinguisher_type', label: 'Tip', placeholder: 'Pulbere, CO2...' },
+  ],
+  abonament: [
+    { key: 'service_name', label: 'Serviciu', placeholder: 'Netflix, Spotify, Chirie...' },
+    { key: 'amount', label: 'Sumă (RON)', placeholder: '55.00', keyboardType: 'decimal-pad' },
+    { key: 'recurrence', label: 'Frecvență', placeholder: 'lunar / anual' },
+  ],
+  index_utilitati: [
+    { key: 'apa_rece', label: 'Apă rece (mc)', placeholder: '123.45', keyboardType: 'decimal-pad' },
+    { key: 'apa_calda', label: 'Apă caldă (mc)', placeholder: '45.67', keyboardType: 'decimal-pad' },
+    { key: 'gaz', label: 'Gaz (mc)', placeholder: '234.56', keyboardType: 'decimal-pad' },
+    { key: 'curent', label: 'Curent (kWh)', placeholder: '1234', keyboardType: 'numeric' },
+    { key: 'luna_an', label: 'Lună/An', placeholder: '03/2026' },
+  ],
+  vaccin_animal: [
+    { key: 'vaccine_name', label: 'Vaccin', placeholder: 'Antirabic, Hexavalent...' },
+    { key: 'vet_name', label: 'Veterinar', placeholder: 'Dr. Ionescu' },
+  ],
+  deparazitare: [
+    { key: 'product_name', label: 'Produs', placeholder: 'Advocate, Frontline...' },
+    { key: 'deparazitare_type', label: 'Tip', placeholder: 'Intern, Extern, Ambele' },
+  ],
+  vizita_vet: [
+    { key: 'reason', label: 'Motiv', placeholder: 'Control anual, Boală...' },
+    { key: 'vet_name', label: 'Veterinar', placeholder: 'Dr. Ionescu' },
+  ],
 };

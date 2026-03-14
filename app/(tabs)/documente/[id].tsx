@@ -18,6 +18,7 @@ import {
   removeDocumentPage,
 } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
+import { addExpiryCalendarEvent, isCalendarAvailable } from '@/services/calendar';
 import { extractText } from '@/services/ocr';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { Document as DocType, DocumentType } from '@/types';
@@ -274,6 +275,24 @@ export default function DocumentDetailScreen() {
       setDoc(updated);
       scheduleExpirationReminders().catch(() => {});
       setEditVisible(false);
+
+      const finalExpiry = editExpiryDate.trim();
+      if (finalExpiry && isCalendarAvailable()) {
+        Alert.alert(
+          'Adaugă în calendar?',
+          `Vrei să adaugi un reminder în calendar pentru expirarea pe ${finalExpiry}?`,
+          [
+            { text: 'Nu', style: 'cancel' },
+            {
+              text: 'Adaugă',
+              onPress: async () => {
+                const calId = await addExpiryCalendarEvent({ docType: editType, expiryDate: finalExpiry, entityName: undefined });
+                if (!calId) Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
+              },
+            },
+          ]
+        );
+      }
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
     } finally {
@@ -553,6 +572,11 @@ export default function DocumentDetailScreen() {
         {doc.type === 'casco' && (
           <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
             <Text style={styles.asigaBtnText}>🛡 CASCO ieftine → asigra.ro</Text>
+          </Pressable>
+        )}
+        {doc.type === 'pad' && (
+          <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
+            <Text style={styles.asigaBtnText}>🏠 PAD ieftină → asigra.ro</Text>
           </Pressable>
         )}
         <Pressable style={styles.deleteBtn} onPress={handleDelete}>

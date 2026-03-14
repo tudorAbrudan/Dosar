@@ -11,18 +11,20 @@ const ENTITY_TYPES: { key: EntityType; label: string }[] = [
   { key: 'property', label: 'Proprietate' },
   { key: 'vehicle', label: 'Vehicul' },
   { key: 'card', label: 'Card' },
+  { key: 'animal', label: 'Animal' },
 ];
 
 export default function AddEntityScreen() {
   const params = useLocalSearchParams<{ type?: string }>();
   const [chosenType, setChosenType] = useState<EntityType | null>((params.type as EntityType) || null);
   const type = chosenType || 'person';
-  const { createPerson, createProperty, createVehicle, createCard, refresh } = useEntities();
+  const { createPerson, createProperty, createVehicle, createCard, createAnimal, refresh } = useEntities();
 
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
   const [last4, setLast4] = useState('');
   const [expiry, setExpiry] = useState('');
+  const [species, setSpecies] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit() {
@@ -43,6 +45,7 @@ export default function AddEntityScreen() {
       if (type === 'person') await createPerson(name.trim());
       else if (type === 'property') await createProperty(name.trim());
       else if (type === 'vehicle') await createVehicle(name.trim());
+      else if (type === 'animal') await createAnimal(name.trim(), species.trim() || 'câine');
       else await createCard(nickname.trim(), last4.trim() || '****', expiry.trim() || undefined);
       await refresh();
       router.back();
@@ -54,6 +57,7 @@ export default function AddEntityScreen() {
   }
 
   const isCard = type === 'card';
+  const isAnimal = type === 'animal';
 
   if (!chosenType) {
     return (
@@ -94,12 +98,25 @@ export default function AddEntityScreen() {
             <Text style={styles.label}>Nume</Text>
             <ThemedTextInput
             style={styles.input}
-            placeholder={type === 'person' ? 'Nume persoană' : type === 'vehicle' ? 'Mașină (ex. Dacia Logan)' : 'Proprietate (ex. Apartament X)'}
+            placeholder={type === 'person' ? 'Nume persoană' : type === 'vehicle' ? 'Mașină (ex. Dacia Logan)' : type === 'animal' ? 'Nume animal (ex. Rex)' : 'Proprietate (ex. Apartament X)'}
             placeholderTextColor="#999"
             value={name}
             onChangeText={setName}
             editable={!loading}
           />
+          </>
+        )}
+        {isAnimal && (
+          <>
+            <Text style={styles.label}>Specie (opțional)</Text>
+            <ThemedTextInput
+              style={styles.input}
+              placeholder="câine, pisică, papagal..."
+              placeholderTextColor="#999"
+              value={species}
+              onChangeText={setSpecies}
+              editable={!loading}
+            />
           </>
         )}
         {isCard && (

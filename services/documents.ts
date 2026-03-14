@@ -12,6 +12,7 @@ export interface CreateDocumentInput {
   property_id?: string;
   vehicle_id?: string;
   card_id?: string;
+  animal_id?: string;
   metadata?: Record<string, string>;
 }
 
@@ -27,6 +28,7 @@ type Row = {
   property_id: string | null;
   vehicle_id: string | null;
   card_id: string | null;
+  animal_id: string | null;
   metadata: string | null;
   created_at: string;
 };
@@ -54,6 +56,7 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
     property_id: r.property_id ?? undefined,
     vehicle_id: r.vehicle_id ?? undefined,
     card_id: r.card_id ?? undefined,
+    animal_id: r.animal_id ?? undefined,
     created_at: r.created_at,
   };
 }
@@ -102,7 +105,7 @@ export async function getDocumentById(id: string): Promise<Document | null> {
 }
 
 export async function getDocumentsByEntity(
-  kind: 'person_id' | 'property_id' | 'vehicle_id' | 'card_id',
+  kind: 'person_id' | 'property_id' | 'vehicle_id' | 'card_id' | 'animal_id',
   id: string
 ): Promise<Document[]> {
   const rows = await db.getAllAsync<Row>(
@@ -116,8 +119,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   const id = generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, metadata, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.type,
@@ -130,6 +133,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
       input.property_id ?? null,
       input.vehicle_id ?? null,
       input.card_id ?? null,
+      input.animal_id ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
       created_at,
     ]
@@ -147,6 +151,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     property_id: input.property_id,
     vehicle_id: input.vehicle_id,
     card_id: input.card_id,
+    animal_id: input.animal_id,
     created_at,
   };
 }
@@ -162,12 +167,13 @@ export interface UpdateDocumentInput {
   expiry_date?: string;
   note?: string;
   file_path?: string;
+  animal_id?: string;
   metadata?: Record<string, string>;
 }
 
 export async function updateDocument(id: string, input: UpdateDocumentInput): Promise<void> {
   await db.runAsync(
-    'UPDATE documents SET type=?, custom_type_id=?, issue_date=?, expiry_date=?, note=?, file_path=?, metadata=? WHERE id=?',
+    'UPDATE documents SET type=?, custom_type_id=?, issue_date=?, expiry_date=?, note=?, file_path=?, animal_id=?, metadata=? WHERE id=?',
     [
       input.type,
       input.custom_type_id ?? null,
@@ -175,6 +181,7 @@ export async function updateDocument(id: string, input: UpdateDocumentInput): Pr
       input.expiry_date ?? null,
       input.note ?? null,
       input.file_path ?? null,
+      input.animal_id ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
       id,
     ]

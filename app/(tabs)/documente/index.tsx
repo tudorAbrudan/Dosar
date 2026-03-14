@@ -53,6 +53,15 @@ const DOC_ICON: Record<DocumentType, IoniconName> = {
   factura: 'receipt',
   bon_combustibil: 'flame',
   card: 'card',
+  garantie: 'ribbon-outline',
+  medicament: 'medkit-outline',
+  pad: 'home-outline',
+  stingator_incendiu: 'flame-outline',
+  abonament: 'repeat-outline',
+  index_utilitati: 'speedometer-outline',
+  vaccin_animal: 'fitness-outline',
+  deparazitare: 'bug-outline',
+  vizita_vet: 'paw-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };
@@ -72,6 +81,15 @@ const DOC_ICON_BG: Record<DocumentType, string> = {
   factura: '#FFF3E0',
   bon_combustibil: '#FFF3E0',
   card: '#F3E5F5',
+  garantie: '#E8F5E9',
+  medicament: '#FCE4EC',
+  pad: '#E3F2FD',
+  stingator_incendiu: '#FCE4EC',
+  abonament: '#F3E5F5',
+  index_utilitati: '#E0F2F1',
+  vaccin_animal: '#E8F5E9',
+  deparazitare: '#FFF8E1',
+  vizita_vet: '#E8EAF6',
   altul: '#F5F5F5',
   custom: '#F5F5F5',
 };
@@ -91,6 +109,15 @@ const DOC_ICON_COLOR: Record<DocumentType, string> = {
   factura: '#BF360C',
   bon_combustibil: '#E65100',
   card: '#7B1FA2',
+  garantie: '#2E7D32',
+  medicament: '#C62828',
+  pad: '#1565C0',
+  stingator_incendiu: '#BF360C',
+  abonament: '#7B1FA2',
+  index_utilitati: '#00695C',
+  vaccin_animal: '#388E3C',
+  deparazitare: '#F57F17',
+  vizita_vet: '#283593',
   altul: '#757575',
   custom: '#757575',
 };
@@ -102,6 +129,7 @@ const ENTITY_ICON: Record<string, IoniconName> = {
   vehicle_id: 'car-outline',
   property_id: 'home-outline',
   card_id: 'card-outline',
+  animal_id: 'paw-outline',
 };
 
 // ─── Pure logic helpers ───────────────────────────────────────────────────────
@@ -373,7 +401,7 @@ export default function DocumenteListScreen() {
   const insets = useSafeAreaInsets();
 
   const { documents, loading, error, refresh, deleteDocument } = useDocuments();
-  const { persons, properties, vehicles, cards } = useEntities();
+  const { persons, properties, vehicles, cards, animals } = useEntities();
   const { customTypes } = useCustomTypes();
 
   const [filterType, setFilterType] = useState<DocumentType | 'toate'>('toate');
@@ -395,12 +423,14 @@ export default function DocumenteListScreen() {
     () => new Map(cards.map(c => [c.id, c.nickname || c.last4 || c.id])),
     [cards]
   );
+  const animalMap = useMemo(() => new Map(animals.map(a => [a.id, a.name])), [animals]);
 
   function getEntityName(doc: Document): string | null {
     if (doc.person_id) return personMap.get(doc.person_id) ?? null;
     if (doc.vehicle_id) return vehicleMap.get(doc.vehicle_id) ?? null;
     if (doc.property_id) return propertyMap.get(doc.property_id) ?? null;
     if (doc.card_id) return cardMap.get(doc.card_id) ?? null;
+    if (doc.animal_id) return animalMap.get(doc.animal_id) ?? null;
     return null;
   }
 
@@ -409,6 +439,7 @@ export default function DocumenteListScreen() {
     if (doc.vehicle_id) return 'vehicle_id';
     if (doc.property_id) return 'property_id';
     if (doc.card_id) return 'card_id';
+    if (doc.animal_id) return 'animal_id';
     return null;
   }
 
@@ -422,8 +453,9 @@ export default function DocumenteListScreen() {
     cards.forEach(c =>
       list.push({ kind: 'card_id', id: c.id, label: c.nickname || c.last4 || c.id })
     );
+    animals.forEach(a => list.push({ kind: 'animal_id', id: a.id, label: a.name }));
     return list;
-  }, [persons, properties, vehicles, cards]);
+  }, [persons, properties, vehicles, cards, animals]);
 
   // ── Filtering ────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -481,7 +513,7 @@ export default function DocumenteListScreen() {
         onLongPress={() => handleDelete(doc)}
       />
     ),
-    [scheme, personMap, vehicleMap, propertyMap, cardMap, customTypes]
+    [scheme, personMap, vehicleMap, propertyMap, cardMap, animalMap, customTypes]
   );
 
   const keyExtractor = useCallback((doc: Document) => doc.id, []);

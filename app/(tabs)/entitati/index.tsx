@@ -16,9 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useEntities } from '@/hooks/useEntities';
-import type { EntityType, Person, Property, Vehicle, Card } from '@/types';
+import type { EntityType, Person, Property, Vehicle, Card, Animal } from '@/types';
 
-type AnyEntity = Person | Property | Vehicle | Card;
+type AnyEntity = Person | Property | Vehicle | Card | Animal;
 type EntityTab = EntityType | 'all';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 type TypedEntity = { item: AnyEntity; entityType: EntityType };
@@ -29,6 +29,7 @@ const TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
   { key: 'property', label: 'Proprietăți', icon: 'home-outline' },
   { key: 'vehicle', label: 'Vehicule', icon: 'car-outline' },
   { key: 'card', label: 'Carduri', icon: 'card-outline' },
+  { key: 'animal', label: 'Animale', icon: 'paw-outline' },
 ];
 
 const ENTITY_ICON: Record<EntityType, IoniconName> = {
@@ -36,6 +37,7 @@ const ENTITY_ICON: Record<EntityType, IoniconName> = {
   property: 'home',
   vehicle: 'car',
   card: 'card',
+  animal: 'paw',
 };
 
 const ENTITY_ICON_BG: Record<EntityType, string> = {
@@ -43,6 +45,7 @@ const ENTITY_ICON_BG: Record<EntityType, string> = {
   property: '#E8F5E9',
   vehicle: '#FFF3E0',
   card: '#F3E5F5',
+  animal: '#FFF3E0',
 };
 
 const ENTITY_ICON_COLOR: Record<EntityType, string> = {
@@ -50,6 +53,7 @@ const ENTITY_ICON_COLOR: Record<EntityType, string> = {
   property: '#2E7D32',
   vehicle: '#E65100',
   card: '#7B1FA2',
+  animal: '#E65100',
 };
 
 export default function EntitatiListScreen() {
@@ -64,6 +68,7 @@ export default function EntitatiListScreen() {
     properties,
     vehicles,
     cards,
+    animals,
     loading,
     error,
     refresh,
@@ -71,6 +76,7 @@ export default function EntitatiListScreen() {
     deleteProperty,
     deleteVehicle,
     deleteCard,
+    deleteAnimal,
   } = useEntities();
 
   useFocusEffect(
@@ -85,8 +91,9 @@ export default function EntitatiListScreen() {
       ...properties.map(e => ({ item: e as AnyEntity, entityType: 'property' as EntityType })),
       ...vehicles.map(e => ({ item: e as AnyEntity, entityType: 'vehicle' as EntityType })),
       ...cards.map(e => ({ item: e as AnyEntity, entityType: 'card' as EntityType })),
+      ...animals.map(e => ({ item: e as AnyEntity, entityType: 'animal' as EntityType })),
     ],
-    [persons, properties, vehicles, cards]
+    [persons, properties, vehicles, cards, animals]
   );
 
   const rawTyped: TypedEntity[] = useMemo(
@@ -117,6 +124,7 @@ export default function EntitatiListScreen() {
             if (entityType === 'person') await deletePerson(id);
             else if (entityType === 'property') await deleteProperty(id);
             else if (entityType === 'vehicle') await deleteVehicle(id);
+            else if (entityType === 'animal') await deleteAnimal(id);
             else await deleteCard(id);
             refresh();
           } catch (e) {
@@ -136,6 +144,7 @@ export default function EntitatiListScreen() {
   const getSubtitle = (item: AnyEntity, entityType: EntityType): string | null => {
     if (entityType === 'card' && 'last4' in item && item.last4) return `•••• ${item.last4}`;
     if (entityType === 'vehicle' && 'type' in item && item.type) return item.type as string;
+    if (entityType === 'animal' && 'species' in item && item.species) return item.species as string;
     return null;
   };
 
@@ -149,7 +158,9 @@ export default function EntitatiListScreen() {
           ? 'proprietăți'
           : tab === 'vehicle'
             ? 'vehicule'
-            : 'carduri'
+            : tab === 'animal'
+              ? 'animale'
+              : 'carduri'
   }`;
 
   const emptyIconName: IoniconName =

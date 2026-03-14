@@ -29,17 +29,17 @@ export default function EntityDetailScreen() {
   const insets = useSafeAreaInsets();
 
   const {
-    persons, properties, vehicles, cards,
+    persons, properties, vehicles, cards, animals,
     refresh: refreshEntities,
-    deletePerson, deleteProperty, deleteVehicle, deleteCard,
-    updatePerson, updateProperty, updateVehicle, updateCard,
+    deletePerson, deleteProperty, deleteVehicle, deleteCard, deleteAnimal,
+    updatePerson, updateProperty, updateVehicle, updateCard, updateAnimal,
   } = useEntities();
   const { getDocumentsByEntity } = useDocuments();
 
   const [documents, setDocuments] = useState<DocType[]>([]);
   const [loading, setLoading] = useState(true);
   const [entityName, setEntityName] = useState('');
-  const [entityKind, setEntityKind] = useState<'person_id' | 'property_id' | 'vehicle_id' | 'card_id'>('person_id');
+  const [entityKind, setEntityKind] = useState<'person_id' | 'property_id' | 'vehicle_id' | 'card_id' | 'animal_id'>('person_id');
 
   const [editVisible, setEditVisible] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -47,6 +47,7 @@ export default function EntityDetailScreen() {
   const [editNickname, setEditNickname] = useState('');
   const [editLast4, setEditLast4] = useState('');
   const [editExpiry, setEditExpiry] = useState('');
+  const [editSpecies, setEditSpecies] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -54,11 +55,13 @@ export default function EntityDetailScreen() {
     const property = properties.find(p => p.id === id);
     const vehicle = vehicles.find(v => v.id === id);
     const card = cards.find(c => c.id === id);
+    const animal = animals.find(a => a.id === id);
     if (person) { setEntityName(person.name); setEntityKind('person_id'); }
     else if (property) { setEntityName(property.name); setEntityKind('property_id'); }
     else if (vehicle) { setEntityName(vehicle.name); setEntityKind('vehicle_id'); }
     else if (card) { setEntityName(card.nickname || 'Card'); setEntityKind('card_id'); }
-  }, [id, persons, properties, vehicles, cards]);
+    else if (animal) { setEntityName(animal.name); setEntityKind('animal_id'); }
+  }, [id, persons, properties, vehicles, cards, animals]);
 
   async function loadDocs(kind: typeof entityKind, entityId: string) {
     if (!entityId) return;
@@ -95,6 +98,7 @@ export default function EntityDetailScreen() {
             if (entityKind === 'person_id') await deletePerson(id!);
             else if (entityKind === 'property_id') await deleteProperty(id!);
             else if (entityKind === 'vehicle_id') await deleteVehicle(id!);
+            else if (entityKind === 'animal_id') await deleteAnimal(id!);
             else await deleteCard(id!);
             router.back();
           } catch (e) {
@@ -111,6 +115,10 @@ export default function EntityDetailScreen() {
       setEditNickname(card?.nickname ?? '');
       setEditLast4(card?.last4 ?? '');
       setEditExpiry(card?.expiry ?? '');
+    } else if (entityKind === 'animal_id') {
+      const animal = animals.find(a => a.id === id);
+      setEditName(animal?.name ?? '');
+      setEditSpecies(animal?.species ?? '');
     } else {
       setEditName(entityName);
     }
@@ -128,6 +136,7 @@ export default function EntityDetailScreen() {
       if (entityKind === 'person_id') await updatePerson(id!, editName.trim());
       else if (entityKind === 'property_id') await updateProperty(id!, editName.trim());
       else if (entityKind === 'vehicle_id') await updateVehicle(id!, editName.trim());
+      else if (entityKind === 'animal_id') await updateAnimal(id!, editName.trim(), editSpecies.trim() || 'câine');
       else await updateCard(id!, editNickname.trim(), editLast4.trim() || '****', editExpiry.trim() || undefined);
       await refreshEntities();
       setEditVisible(false);
@@ -140,6 +149,7 @@ export default function EntityDetailScreen() {
 
   const isVehicle = entityKind === 'vehicle_id';
   const isCard = entityKind === 'card_id';
+  const isAnimal = entityKind === 'animal_id';
 
   return (
     <RNView style={[styles.container, { backgroundColor: C.background }]}>
@@ -256,6 +266,19 @@ export default function EntityDetailScreen() {
                   placeholder="Nume"
                   value={editName}
                   onChangeText={setEditName}
+                  editable={!editLoading}
+                />
+              </>
+            )}
+
+            {isAnimal && (
+              <>
+                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Specie</RNText>
+                <ThemedTextInput
+                  style={styles.modalInput}
+                  placeholder="câine, pisică, papagal..."
+                  value={editSpecies}
+                  onChangeText={setEditSpecies}
                   editable={!editLoading}
                 />
               </>

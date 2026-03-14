@@ -60,6 +60,13 @@ db.execSync(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS animals (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    species TEXT NOT NULL DEFAULT 'câine',
+    created_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS custom_document_types (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -95,6 +102,13 @@ try {
 // Migrare: adaugă metadata dacă nu există
 try {
   db.execSync('ALTER TABLE documents ADD COLUMN metadata TEXT');
+} catch {
+  // coloana există deja
+}
+
+// Migrare: adaugă animal_id dacă nu există
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN animal_id TEXT');
 } catch {
   // coloana există deja
 }
