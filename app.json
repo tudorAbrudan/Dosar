@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Acte",
+    "name": "Portofel Acte",
     "slug": "acte-documente",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
@@ -14,7 +14,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tudor.documente"
+      "bundleIdentifier": "com.tudor.documente",
+      "buildNumber": "2",
+      "deploymentTarget": "15.5",
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
+        "NSCalendarsFullAccessUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
+        "NSRemindersUsageDescription": "Aplicația poate adăuga remindere pentru expirarea documentelor."
+      }
     },
     "android": {
       "adaptiveIcon": {

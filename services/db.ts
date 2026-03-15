@@ -57,6 +57,10 @@ db.execSync(`
     property_id TEXT,
     vehicle_id TEXT,
     card_id TEXT,
+    animal_id TEXT,
+    custom_type_id TEXT,
+    metadata TEXT,
+    auto_delete TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -90,6 +94,13 @@ db.execSync(`
     last_service_date TEXT,
     updated_at TEXT NOT NULL
   );
+
+  CREATE INDEX IF NOT EXISTS idx_docs_expiry ON documents(expiry_date);
+  CREATE INDEX IF NOT EXISTS idx_docs_person ON documents(person_id);
+  CREATE INDEX IF NOT EXISTS idx_docs_vehicle ON documents(vehicle_id);
+  CREATE INDEX IF NOT EXISTS idx_docs_property ON documents(property_id);
+  CREATE INDEX IF NOT EXISTS idx_pages_doc ON document_pages(document_id);
+  CREATE INDEX IF NOT EXISTS idx_fuel_vehicle ON fuel_records(vehicle_id, date DESC);
 `);
 
 // Migrare: adaugă custom_type_id dacă nu există
@@ -111,4 +122,18 @@ try {
   db.execSync('ALTER TABLE documents ADD COLUMN animal_id TEXT');
 } catch {
   // coloana există deja
+}
+
+// Migrare: adaugă auto_delete dacă nu există
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN auto_delete TEXT');
+} catch {
+  // coloana există deja
+}
+
+// Index pe animal_id — creat după migrare pentru a garanta că există coloana
+try {
+  db.execSync('CREATE INDEX IF NOT EXISTS idx_docs_animal ON documents(animal_id)');
+} catch {
+  // indexul există deja sau coloana lipsă (fallback safe)
 }

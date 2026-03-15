@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { light as lightColors, dark as darkColors } from '@/theme/colors';
@@ -104,6 +105,8 @@ export default function ChatScreen() {
   const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const router = useRouter();
 
+  const insets = useSafeAreaInsets();
+
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -143,7 +146,7 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}>
       <ScrollView

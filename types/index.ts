@@ -11,17 +11,20 @@ export type DocumentType =
   | 'act_proprietate'
   | 'cadastru'
   | 'factura'
-  | 'bon_combustibil'
+  | 'impozit_proprietate'
+  | 'contract'
   | 'card'
   | 'garantie'
-  | 'medicament'
+  | 'reteta_medicala'
+  | 'analize_medicale'
+  | 'bon_cumparaturi'
   | 'pad'
   | 'stingator_incendiu'
   | 'abonament'
-  | 'index_utilitati'
   | 'vaccin_animal'
   | 'deparazitare'
   | 'vizita_vet'
+  | 'bilet'
   | 'altul'
   | 'custom';
 
@@ -87,10 +90,21 @@ export interface Document {
   vehicle_id?: string;
   card_id?: string;
   animal_id?: string;
+  auto_delete?: string;
   created_at: string;
 }
 
 export type EntityType = 'person' | 'property' | 'vehicle' | 'card' | 'animal';
+
+export const ALL_ENTITY_TYPES: EntityType[] = ['person', 'vehicle', 'property', 'card', 'animal'];
+
+// Lista completă a tipurilor standard (fără 'custom')
+export const STANDARD_DOC_TYPES: DocumentType[] = [
+  'buletin', 'pasaport', 'permis_auto', 'talon', 'carte_auto', 'rca', 'casco', 'itp',
+  'vigneta', 'act_proprietate', 'cadastru', 'factura', 'impozit_proprietate', 'contract',
+  'card', 'garantie', 'reteta_medicala', 'analize_medicale', 'bon_cumparaturi', 'pad',
+  'stingator_incendiu', 'abonament', 'vaccin_animal', 'deparazitare', 'vizita_vet', 'bilet', 'altul',
+];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   buletin: 'Buletin',
@@ -105,19 +119,30 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   act_proprietate: 'Act proprietate',
   cadastru: 'Cadastru',
   factura: 'Factură',
-  bon_combustibil: 'Bon combustibil',
+  impozit_proprietate: 'Impozit proprietate',
+  contract: 'Contract',
   card: 'Card',
   garantie: 'Garanție produs',
-  medicament: 'Medicament',
+  reteta_medicala: 'Rețetă medicală',
+  analize_medicale: 'Analize medicale',
+  bon_cumparaturi: 'Bon cumpărături',
   pad: 'PAD Asigurare Locuință',
   stingator_incendiu: 'Stingător incendiu',
   abonament: 'Abonament recurent',
-  index_utilitati: 'Index utilități',
   vaccin_animal: 'Vaccin animal',
   deparazitare: 'Deparazitare',
   vizita_vet: 'Vizită veterinar',
+  bilet: 'Bilet',
   altul: 'Altele',
   custom: 'Tip personalizat',
+};
+
+export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
+  person: ['buletin', 'pasaport', 'permis_auto', 'card', 'reteta_medicala', 'analize_medicale', 'bon_cumparaturi', 'bilet', 'abonament', 'contract', 'garantie', 'altul', 'custom'],
+  vehicle: ['talon', 'carte_auto', 'rca', 'casco', 'itp', 'vigneta', 'stingator_incendiu', 'contract', 'altul', 'custom'],
+  property: ['act_proprietate', 'cadastru', 'factura', 'impozit_proprietate', 'pad', 'stingator_incendiu', 'abonament', 'contract', 'altul', 'custom'],
+  card: ['factura', 'bon_cumparaturi', 'abonament', 'contract', 'altul', 'custom'],
+  animal: ['vaccin_animal', 'deparazitare', 'vizita_vet', 'altul', 'custom'],
 };
 
 export function getDocumentLabel(

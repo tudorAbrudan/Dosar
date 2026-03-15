@@ -45,6 +45,8 @@ export interface CalendarEventOptions {
   docType: DocumentType;
   expiryDate: string; // AAAA-LL-ZZ
   entityName?: string;
+  documentId?: string;
+  note?: string;
 }
 
 /**
@@ -65,11 +67,17 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
       : `Expiră ${typeLabel}`;
 
     const asigraUrl = ASIGRA_TYPES[opts.docType];
-    const notes = [
-      `${typeLabel} expiră pe ${opts.expiryDate}.`,
+    const deepLink = opts.documentId ? `app:///documente/${opts.documentId}` : null;
+    const noteLines = [
+      `Tip: ${typeLabel}`,
+      opts.entityName ? `Entitate: ${opts.entityName}` : null,
+      `Expiră: ${opts.expiryDate}`,
+      opts.note ? `Notă: ${opts.note}` : null,
       asigraUrl ? `Compară oferte: ${asigraUrl}` : null,
-      'Adăugat automat de Portofel Documente.',
+      deepLink ? `Deschide în Acte: ${deepLink}` : null,
+      'Adăugat de Acte – Documente Personale.',
     ].filter(Boolean).join('\n');
+    const notes = noteLines;
 
     const [year, month, day] = opts.expiryDate.split('-').map(Number);
     const startDate = new Date(year, month - 1, day, 9, 0, 0);
@@ -81,6 +89,7 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
       startDate,
       endDate,
       alarms: [{ relativeOffset: -REMINDER_DAYS_BEFORE * 24 * 60 }],
+      url: opts.documentId ? `app:///documente/${opts.documentId}` : undefined,
       timeZone: 'Europe/Bucharest',
     });
     return eventId ?? null;
@@ -92,4 +101,62 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
 /** Returnează true dacă modulul nativ de calendar e disponibil (build nativ, nu Expo Go) */
 export function isCalendarAvailable(): boolean {
   return CalendarModule !== null;
+}
+
+export interface EventCalendarOptions {
+  title: string;          // ex: "Concert Coldplay"
+  eventDate: string;      // AAAA-LL-ZZ sau ZZ.LL.AAAA
+  venue?: string;         // locație / rută
+  note?: string;
+  documentId?: string;
+}
+
+/**
+ * Adaugă un eveniment în calendar pentru un bilet (concert, zbor, tren etc.).
+ * Reminder: cu 1 zi înainte și cu 2 ore înainte.
+ */
+export async function addEventToCalendar(opts: EventCalendarOptions): Promise<string | null> {
+  if (!CalendarModule) return null;
+
+  try {
+    const calendarId = await getDefaultCalendarId();
+    if (!calendarId) return null;
+
+    // Parsează data: acceptă AAAA-LL-ZZ sau ZZ.LL.AAAA
+    let year: number, month: number, day: number;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(opts.eventDate)) {
+      [year, month, day] = opts.eventDate.split('-').map(Number);
+    } else {
+      const m = opts.eventDate.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{4})$/);
+      if (!m) return null;
+      day = Number(m[1]); month = Number(m[2]); year = Number(m[3]);
+    }
+
+    const startDate = new Date(year, month - 1, day, 10, 0, 0);
+    const endDate = new Date(year, month - 1, day, 12, 0, 0);
+
+    const deepLink = opts.documentId ? `app:///documente/${opts.documentId}` : null;
+    const noteLines = [
+      opts.venue ? `Locație / Rută: ${opts.venue}` : null,
+      opts.note ? `Notă: ${opts.note}` : null,
+      deepLink ? `Deschide în Acte: ${deepLink}` : null,
+      'Adăugat de Acte – Documente Personale.',
+    ].filter(Boolean).join('\n');
+
+    const eventId = await CalendarModule.createEventAsync(calendarId, {
+      title: opts.title,
+      notes: noteLines,
+      startDate,
+      endDate,
+      alarms: [
+        { relativeOffset: -24 * 60 },  // 1 zi înainte
+        { relativeOffset: -2 * 60 },   // 2 ore înainte
+      ],
+      url: opts.documentId ? `app:///documente/${opts.documentId}` : undefined,
+      timeZone: 'Europe/Bucharest',
+    });
+    return eventId ?? null;
+  } catch {
+    return null;
+  }
 }

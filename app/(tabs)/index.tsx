@@ -15,120 +15,145 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { Document, DocumentType } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const EXPIRING_DAYS = 7;
+const EXPIRING_DAYS = 30;
+const RECENT_COUNT = 4;
 
-// ─── Helpers: icons & colors per document type ────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const DOC_ICON: Record<DocumentType, IoniconName> = {
-  buletin: 'id-card',
-  pasaport: 'book',
-  permis_auto: 'car',
-  talon: 'document-text',
-  carte_auto: 'document',
-  rca: 'shield-checkmark',
-  casco: 'shield-half',
-  itp: 'checkmark-circle',
-  vigneta: 'ribbon',
-  act_proprietate: 'home',
-  cadastru: 'map',
-  factura: 'receipt',
-  bon_combustibil: 'flame',
-  card: 'card',
-  garantie: 'ribbon-outline',
-  medicament: 'medkit-outline',
-  pad: 'home-outline',
-  stingator_incendiu: 'flame-outline',
-  abonament: 'repeat-outline',
-  index_utilitati: 'speedometer-outline',
-  vaccin_animal: 'fitness-outline',
-  deparazitare: 'bug-outline',
-  vizita_vet: 'paw-outline',
-  altul: 'document-outline',
-  custom: 'document-outline',
+const DOC_ICON: Partial<Record<DocumentType, IoniconName>> = {
+  buletin: 'id-card', pasaport: 'book', permis_auto: 'car',
+  talon: 'document-text', carte_auto: 'document',
+  rca: 'shield-checkmark', casco: 'shield-half', itp: 'checkmark-circle',
+  vigneta: 'ribbon', act_proprietate: 'home', cadastru: 'map',
+  factura: 'receipt', impozit_proprietate: 'cash-outline', card: 'card',
+  garantie: 'ribbon-outline', reteta_medicala: 'medkit-outline',
+  analize_medicale: 'flask-outline', bon_cumparaturi: 'receipt-outline',
+  pad: 'home-outline', stingator_incendiu: 'flame-outline',
+  abonament: 'repeat-outline', contract: 'document-text-outline',
+  vaccin_animal: 'fitness-outline', deparazitare: 'bug-outline',
+  vizita_vet: 'paw-outline', bilet: 'ticket-outline',
+  altul: 'document-outline', custom: 'document-outline',
 };
 
-const DOC_ICON_BG: Record<DocumentType, string> = {
-  buletin: '#E3F2FD',
-  pasaport: '#E8EAF6',
-  permis_auto: '#FFF3E0',
-  talon: '#E0F2F1',
-  carte_auto: '#E0F2F1',
-  rca: '#FCE4EC',
-  casco: '#FCE4EC',
-  itp: '#F3E5F5',
-  vigneta: '#FFF8E1',
-  act_proprietate: '#E8F5E9',
-  cadastru: '#E8F5E9',
-  factura: '#FFF3E0',
-  bon_combustibil: '#FFF3E0',
-  card: '#F3E5F5',
-  garantie: '#E8F5E9',
-  medicament: '#FCE4EC',
-  pad: '#E3F2FD',
-  stingator_incendiu: '#FCE4EC',
-  abonament: '#F3E5F5',
-  index_utilitati: '#E0F2F1',
-  vaccin_animal: '#E8F5E9',
-  deparazitare: '#FFF8E1',
-  vizita_vet: '#E8EAF6',
-  altul: '#F5F5F5',
-  custom: '#F5F5F5',
+const DOC_ICON_BG: Partial<Record<DocumentType, string>> = {
+  buletin: '#E3F2FD', pasaport: '#E8EAF6', permis_auto: '#FFF3E0',
+  talon: '#E0F2F1', carte_auto: '#E0F2F1', rca: '#FCE4EC', casco: '#FCE4EC',
+  itp: '#F3E5F5', vigneta: '#FFF8E1', act_proprietate: '#E8F5E9',
+  cadastru: '#E8F5E9', factura: '#FFF3E0', impozit_proprietate: '#FFF8E1',
+  card: '#F3E5F5', garantie: '#E8F5E9', reteta_medicala: '#FCE4EC',
+  analize_medicale: '#E3F2FD', bon_cumparaturi: '#FFF8E1', pad: '#E3F2FD',
+  stingator_incendiu: '#FCE4EC', abonament: '#F3E5F5', contract: '#E8EAF6',
+  vaccin_animal: '#E8F5E9', deparazitare: '#FFF8E1', vizita_vet: '#E8EAF6',
+  bilet: '#F3E5F5', altul: '#F5F5F5', custom: '#F5F5F5',
 };
 
-const DOC_ICON_COLOR: Record<DocumentType, string> = {
-  buletin: '#1565C0',
-  pasaport: '#283593',
-  permis_auto: '#E65100',
-  talon: '#00695C',
-  carte_auto: '#00897B',
-  rca: '#C62828',
-  casco: '#AD1457',
-  itp: '#6A1B9A',
-  vigneta: '#F57F17',
-  act_proprietate: '#2E7D32',
-  cadastru: '#388E3C',
-  factura: '#BF360C',
-  bon_combustibil: '#E65100',
-  card: '#7B1FA2',
-  garantie: '#2E7D32',
-  medicament: '#C62828',
-  pad: '#1565C0',
-  stingator_incendiu: '#BF360C',
-  abonament: '#7B1FA2',
-  index_utilitati: '#00695C',
-  vaccin_animal: '#388E3C',
-  deparazitare: '#F57F17',
-  vizita_vet: '#283593',
-  altul: '#757575',
-  custom: '#757575',
+const DOC_ICON_COLOR: Partial<Record<DocumentType, string>> = {
+  buletin: '#1565C0', pasaport: '#283593', permis_auto: '#E65100',
+  talon: '#00695C', carte_auto: '#00897B', rca: '#C62828', casco: '#AD1457',
+  itp: '#6A1B9A', vigneta: '#F57F17', act_proprietate: '#2E7D32',
+  cadastru: '#388E3C', factura: '#BF360C', impozit_proprietate: '#F57F17',
+  card: '#7B1FA2', garantie: '#2E7D32', reteta_medicala: '#C62828',
+  analize_medicale: '#1565C0', bon_cumparaturi: '#F57F17', pad: '#1565C0',
+  stingator_incendiu: '#BF360C', abonament: '#7B1FA2', contract: '#283593',
+  vaccin_animal: '#388E3C', deparazitare: '#F57F17', vizita_vet: '#283593',
+  bilet: '#7B1FA2', altul: '#757575', custom: '#757575',
 };
 
-// ─── Expiry helpers ───────────────────────────────────────────────────────────
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bună dimineața';
+  if (h < 18) return 'Bună ziua';
+  return 'Bună seara';
+}
 
-function getExpiryInfo(doc: Document): {
-  label: string;
-  bg: string;
-  fg: string;
-} | null {
+function daysUntil(dateStr: string): number {
+  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+}
+
+function expiryBadge(doc: Document): { label: string; bg: string; fg: string } | null {
   if (!doc.expiry_date) return null;
-  const exp = new Date(doc.expiry_date).getTime();
-  const now = Date.now();
-  const daysLeft = Math.ceil((exp - now) / (24 * 60 * 60 * 1000));
+  const days = daysUntil(doc.expiry_date);
+  if (days < 0) return { label: 'Expirat', bg: '#E53935', fg: '#fff' };
+  if (days <= 30) return { label: `${days}z`, bg: '#F57C00', fg: '#fff' };
+  return null;
+}
 
-  if (daysLeft < 0) {
-    return { label: 'Expirat', bg: '#E53935', fg: '#fff' };
+// ─── Alert generation ─────────────────────────────────────────────────────────
+
+interface SmartAlert {
+  id: string;
+  message: string;
+  icon: IoniconName;
+  iconBg: string;
+  iconColor: string;
+  action?: () => void;
+  actionLabel?: string;
+}
+
+function buildAlerts(
+  documents: Document[],
+  vehicles: { id: string; name: string }[],
+  persons: { id: string; name: string }[]
+): SmartAlert[] {
+  const alerts: SmartAlert[] = [];
+
+  // Verifică vehicule fără RCA
+  for (const v of vehicles) {
+    const hasRca = documents.some(d => d.vehicle_id === v.id && d.type === 'rca');
+    if (!hasRca) {
+      alerts.push({
+        id: `no-rca-${v.id}`,
+        message: `${v.name} nu are RCA`,
+        icon: 'shield-outline',
+        iconBg: '#FCE4EC',
+        iconColor: '#C62828',
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id } }),
+        actionLabel: 'Adaugă',
+      });
+    }
   }
-  if (daysLeft <= 30) {
-    return { label: `${daysLeft}z`, bg: '#F57C00', fg: '#fff' };
+
+  // Verifică vehicule fără ITP
+  for (const v of vehicles) {
+    const hasItp = documents.some(d => d.vehicle_id === v.id && d.type === 'itp');
+    if (!hasItp) {
+      alerts.push({
+        id: `no-itp-${v.id}`,
+        message: `${v.name} nu are ITP`,
+        icon: 'checkmark-circle-outline',
+        iconBg: '#F3E5F5',
+        iconColor: '#6A1B9A',
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id } }),
+        actionLabel: 'Adaugă',
+      });
+    }
   }
-  return { label: `${daysLeft}z`, bg: '#9EB56722', fg: '#9EB567' };
+
+  // Verifică persoane fără buletin
+  for (const p of persons) {
+    const hasBuletin = documents.some(d => d.person_id === p.id && d.type === 'buletin');
+    if (!hasBuletin) {
+      alerts.push({
+        id: `no-buletin-${p.id}`,
+        message: `${p.name} nu are buletin`,
+        icon: 'id-card-outline',
+        iconBg: '#E3F2FD',
+        iconColor: '#1565C0',
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { person_id: p.id } }),
+        actionLabel: 'Adaugă',
+      });
+    }
+  }
+
+  return alerts.slice(0, 3); // max 3 alerte
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -140,23 +165,53 @@ export default function HomeScreen() {
 
   const { documents, loading, refresh } = useDocuments();
   const { persons, properties, vehicles, cards, animals } = useEntities();
+  const { customTypes } = useCustomTypes();
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { refresh(); }, []));
 
-  // Filter documents expiring within EXPIRING_DAYS
-  const expiring = useMemo(() => {
-    const limit = Date.now() + EXPIRING_DAYS * 24 * 60 * 60 * 1000;
-    return documents.filter(doc => {
-      if (!doc.expiry_date) return false;
-      const exp = new Date(doc.expiry_date).getTime();
-      return exp <= limit;
-    });
+  // ── Stats ────────────────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const limit30 = now + EXPIRING_DAYS * 24 * 60 * 60 * 1000;
+    let expired = 0, expiringSoon = 0;
+    for (const d of documents) {
+      if (!d.expiry_date) continue;
+      const t = new Date(d.expiry_date).getTime();
+      if (t < now) expired++;
+      else if (t <= limit30) expiringSoon++;
+    }
+    return { total: documents.length, expired, expiringSoon };
   }, [documents]);
 
+  // ── Expiring soon (30 days) ───────────────────────────────────────────────────
+  const expiringSoon = useMemo(() => {
+    const now = Date.now();
+    const limit = now + EXPIRING_DAYS * 24 * 60 * 60 * 1000;
+    return documents
+      .filter(d => {
+        if (!d.expiry_date) return false;
+        const t = new Date(d.expiry_date).getTime();
+        return t <= limit;
+      })
+      .sort((a, b) => new Date(a.expiry_date!).getTime() - new Date(b.expiry_date!).getTime())
+      .slice(0, 5);
+  }, [documents]);
+
+  // ── Recent documents ─────────────────────────────────────────────────────────
+  const recentDocs = useMemo(() =>
+    [...documents]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, RECENT_COUNT),
+    [documents]
+  );
+
+  // ── Smart alerts ─────────────────────────────────────────────────────────────
+  const alerts = useMemo(
+    () => buildAlerts(documents, vehicles, persons),
+    [documents, vehicles, persons]
+  );
+
+  // ── Entity helpers ────────────────────────────────────────────────────────────
   function resolveEntityName(doc: Document): string | null {
     if (doc.person_id) return persons.find(p => p.id === doc.person_id)?.name ?? null;
     if (doc.property_id) return properties.find(p => p.id === doc.property_id)?.name ?? null;
@@ -169,167 +224,215 @@ export default function HomeScreen() {
     return null;
   }
 
-  const expiredCount = expiring.filter(d => {
-    if (!d.expiry_date) return false;
-    return new Date(d.expiry_date).getTime() < Date.now();
-  }).length;
+  const totalEntities = persons.length + properties.length + vehicles.length + cards.length + animals.length;
 
-  const subtitleText = expiring.length === 0
-    ? 'Totul e în regulă'
-    : expiredCount > 0
-      ? `${expiredCount} expirate · ${expiring.length - expiredCount} viitoare`
-      : `${expiring.length} expiră curând`;
-
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <RNView style={[styles.container, { backgroundColor: C.background }]}>
-      {/* ── Custom Header ── */}
-      <RNView style={[styles.header, { backgroundColor: C.background, paddingTop: insets.top + 8 }]}>
-        <RNView style={styles.headerLeft}>
+
+      {/* ── Header ── */}
+      <RNView style={[styles.header, { backgroundColor: C.background, paddingTop: insets.top + 10 }]}>
+        <RNView>
+          <RNText style={[styles.greeting, { color: C.textSecondary }]}>{greeting()}</RNText>
           <RNText style={[styles.headerTitle, { color: C.text }]}>Acasă</RNText>
-          <RNText style={[styles.headerSub, { color: C.textSecondary }]}>{subtitleText}</RNText>
         </RNView>
+        <Pressable
+          style={[styles.addBtn, { backgroundColor: '#9EB567' }]}
+          onPress={() => router.push('/(tabs)/documente/add')}
+        >
+          <Ionicons name="add" size={20} color="#fff" />
+          <RNText style={styles.addBtnText}>Document</RNText>
+        </Pressable>
       </RNView>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />
-        }
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Expiring documents section ── */}
-        <RNView style={styles.section}>
-          <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>
-            EXPIRĂ ÎN URMĂTOARELE {EXPIRING_DAYS} ZILE
-          </RNText>
 
-          {expiring.length === 0 && !loading ? (
-            <RNView style={styles.emptyWrap}>
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={64}
-                color={C.textSecondary}
-                style={styles.emptyIcon}
-              />
-              <RNText style={[styles.emptyTitle, { color: C.text }]}>
-                Niciun document care expiră curând
+        {/* ── Stats row ── */}
+        <RNView style={styles.statsRow}>
+          <Pressable
+            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
+            onPress={() => router.push('/(tabs)/documente')}
+          >
+            <RNText style={[styles.statNumber, { color: C.text }]}>{stats.total}</RNText>
+            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Acte</RNText>
+          </Pressable>
+
+          <Pressable
+            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
+            onPress={() => router.push('/(tabs)/expirari')}
+          >
+            <RNText style={[styles.statNumber, { color: stats.expired > 0 ? '#E53935' : C.text }]}>
+              {stats.expired}
+            </RNText>
+            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Expirate</RNText>
+          </Pressable>
+
+          <Pressable
+            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
+            onPress={() => router.push('/(tabs)/expirari')}
+          >
+            <RNText style={[styles.statNumber, { color: stats.expiringSoon > 0 ? '#F57C00' : C.text }]}>
+              {stats.expiringSoon}
+            </RNText>
+            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Expiră{'\n'}în 30 zile</RNText>
+          </Pressable>
+
+          <Pressable
+            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
+            onPress={() => router.push('/(tabs)/entitati')}
+          >
+            <RNText style={[styles.statNumber, { color: C.text }]}>{totalEntities}</RNText>
+            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Entități</RNText>
+          </Pressable>
+        </RNView>
+
+        {/* ── Alerte contextuale ── */}
+        {alerts.length > 0 && (
+          <RNView style={styles.section}>
+            <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>SUGESTII</RNText>
+            {alerts.map(alert => (
+              <RNView
+                key={alert.id}
+                style={[styles.alertCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
+              >
+                <RNView style={[styles.alertIcon, { backgroundColor: alert.iconBg }]}>
+                  <Ionicons name={alert.icon} size={18} color={alert.iconColor} />
+                </RNView>
+                <RNText style={[styles.alertText, { color: C.text }]} numberOfLines={2}>
+                  {alert.message}
+                </RNText>
+                {alert.action && (
+                  <Pressable
+                    style={[styles.alertBtn, { borderColor: '#9EB567' }]}
+                    onPress={alert.action}
+                  >
+                    <RNText style={styles.alertBtnText}>{alert.actionLabel}</RNText>
+                  </Pressable>
+                )}
+              </RNView>
+            ))}
+          </RNView>
+        )}
+
+        {/* ── Expiră curând ── */}
+        {expiringSoon.length > 0 && (
+          <RNView style={styles.section}>
+            <RNView style={styles.sectionHeader}>
+              <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>
+                EXPIRĂ ÎN {EXPIRING_DAYS} ZILE
               </RNText>
-              <RNText style={[styles.emptySub, { color: C.textSecondary }]}>
-                Toate documentele tale sunt valabile.
-              </RNText>
+              <Pressable onPress={() => router.push('/(tabs)/expirari')}>
+                <RNText style={styles.sectionLink}>Vezi toate</RNText>
+              </Pressable>
             </RNView>
-          ) : (
-            expiring.map(doc => {
+            {expiringSoon.map(doc => {
               const entityName = resolveEntityName(doc);
-              const iconBg = DOC_ICON_BG[doc.type] ?? '#F5F5F5';
-              const iconColor = DOC_ICON_COLOR[doc.type] ?? '#757575';
-              const iconName = DOC_ICON[doc.type] ?? 'document-outline';
-              const expiry = getExpiryInfo(doc);
+              const badge = expiryBadge(doc);
               return (
                 <Pressable
                   key={doc.id}
                   style={({ pressed }) => [
-                    styles.card,
+                    styles.docCard,
                     { backgroundColor: C.card, shadowColor: C.cardShadow },
-                    pressed && styles.cardPressed,
+                    pressed && styles.docCardPressed,
                   ]}
                   onPress={() => router.push(`/(tabs)/documente/${doc.id}`)}
-                  android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
                 >
-                  {/* Left icon */}
-                  <RNView style={[styles.iconWrap, { backgroundColor: iconBg }]}>
-                    <Ionicons name={iconName} size={22} color={iconColor} />
+                  <RNView style={[styles.docIcon, { backgroundColor: DOC_ICON_BG[doc.type] ?? '#F5F5F5' }]}>
+                    <Ionicons name={DOC_ICON[doc.type] ?? 'document-outline'} size={20} color={DOC_ICON_COLOR[doc.type] ?? '#757575'} />
                   </RNView>
-
-                  {/* Content */}
-                  <RNView style={styles.cardContent}>
-                    <RNText style={[styles.cardTitle, { color: C.text }]} numberOfLines={1}>
-                      {DOCUMENT_TYPE_LABELS[doc.type]}
+                  <RNView style={styles.docContent}>
+                    <RNText style={[styles.docTitle, { color: C.text }]} numberOfLines={1}>
+                      {getDocumentLabel(doc, customTypes)}
                     </RNText>
                     {entityName && (
-                      <RNText
-                        style={[styles.cardSub, { color: C.textSecondary }]}
-                        numberOfLines={1}
-                      >
+                      <RNText style={[styles.docSub, { color: C.textSecondary }]} numberOfLines={1}>
                         {entityName}
                       </RNText>
                     )}
                   </RNView>
-
-                  {/* Right: badge + chevron */}
-                  <RNView style={styles.cardRight}>
-                    {expiry && (
-                      <RNView style={[styles.badge, { backgroundColor: expiry.bg }]}>
-                        <RNText style={[styles.badgeText, { color: expiry.fg }]}>
-                          {expiry.label}
-                        </RNText>
-                      </RNView>
-                    )}
-                    <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-                  </RNView>
+                  {badge && (
+                    <RNView style={[styles.badge, { backgroundColor: badge.bg }]}>
+                      <RNText style={[styles.badgeText, { color: badge.fg }]}>{badge.label}</RNText>
+                    </RNView>
+                  )}
+                  <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
                 </Pressable>
               );
-            })
-          )}
-        </RNView>
+            })}
+          </RNView>
+        )}
 
-        {/* ── Quick actions section ── */}
-        <RNView style={styles.section}>
-          <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>
-            ACȚIUNI RAPIDE
-          </RNText>
+        {/* ── Adăugate recent ── */}
+        {recentDocs.length > 0 && (
+          <RNView style={styles.section}>
+            <RNView style={styles.sectionHeader}>
+              <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>ADĂUGATE RECENT</RNText>
+              <Pressable onPress={() => router.push('/(tabs)/documente')}>
+                <RNText style={styles.sectionLink}>Toate</RNText>
+              </Pressable>
+            </RNView>
+            {recentDocs.map(doc => {
+              const entityName = resolveEntityName(doc);
+              const badge = expiryBadge(doc);
+              return (
+                <Pressable
+                  key={doc.id}
+                  style={({ pressed }) => [
+                    styles.docCard,
+                    { backgroundColor: C.card, shadowColor: C.cardShadow },
+                    pressed && styles.docCardPressed,
+                  ]}
+                  onPress={() => router.push(`/(tabs)/documente/${doc.id}`)}
+                >
+                  <RNView style={[styles.docIcon, { backgroundColor: DOC_ICON_BG[doc.type] ?? '#F5F5F5' }]}>
+                    <Ionicons name={DOC_ICON[doc.type] ?? 'document-outline'} size={20} color={DOC_ICON_COLOR[doc.type] ?? '#757575'} />
+                  </RNView>
+                  <RNView style={styles.docContent}>
+                    <RNText style={[styles.docTitle, { color: C.text }]} numberOfLines={1}>
+                      {getDocumentLabel(doc, customTypes)}
+                    </RNText>
+                    {entityName && (
+                      <RNText style={[styles.docSub, { color: C.textSecondary }]} numberOfLines={1}>
+                        {entityName}
+                      </RNText>
+                    )}
+                  </RNView>
+                  {badge && (
+                    <RNView style={[styles.badge, { backgroundColor: badge.bg }]}>
+                      <RNText style={[styles.badgeText, { color: badge.fg }]}>{badge.label}</RNText>
+                    </RNView>
+                  )}
+                  <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
+                </Pressable>
+              );
+            })}
+          </RNView>
+        )}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionBtn,
-              pressed && styles.actionBtnPressed,
-            ]}
-            onPress={() => router.push('/(tabs)/documente/add')}
-          >
-            <Ionicons name="document-text-outline" size={20} color="#fff" style={styles.actionIcon} />
-            <RNText style={styles.actionBtnText}>Adaugă document</RNText>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionBtn,
-              pressed && styles.actionBtnPressed,
-            ]}
-            onPress={() => router.push('/(tabs)/entitati/add')}
-          >
-            <Ionicons name="person-add-outline" size={20} color="#fff" style={styles.actionIcon} />
-            <RNText style={styles.actionBtnText}>Adaugă entitate</RNText>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionBtnOutline,
-              { borderColor: C.primary },
-              pressed && styles.actionBtnOutlinePressed,
-            ]}
-            onPress={() => router.push('/(tabs)/entitati/wizard-masina')}
-          >
-            <Ionicons name="car-outline" size={20} color={C.primary} style={styles.actionIcon} />
-            <RNText style={[styles.actionBtnOutlineText, { color: C.primary }]}>
-              Adaugă mașină (wizard)
+        {/* ── Empty state ── */}
+        {documents.length === 0 && !loading && (
+          <RNView style={styles.emptyWrap}>
+            <Ionicons name="documents-outline" size={72} color={C.textSecondary} style={styles.emptyIcon} />
+            <RNText style={[styles.emptyTitle, { color: C.text }]}>Niciun document încă</RNText>
+            <RNText style={[styles.emptySub, { color: C.textSecondary }]}>
+              Adaugă primul tău document apăsând butonul de mai jos.
             </RNText>
-          </Pressable>
+            <Pressable
+              style={styles.emptyBtn}
+              onPress={() => router.push('/(tabs)/documente/add')}
+            >
+              <RNText style={styles.emptyBtnText}>Adaugă document</RNText>
+            </Pressable>
+          </RNView>
+        )}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionBtnOutline,
-              { borderColor: C.primary },
-              pressed && styles.actionBtnOutlinePressed,
-            ]}
-            onPress={() => router.push('/(tabs)/entitati/wizard-proprietate')}
-          >
-            <Ionicons name="home-outline" size={20} color={C.primary} style={styles.actionIcon} />
-            <RNText style={[styles.actionBtnOutlineText, { color: C.primary }]}>
-              Adaugă proprietate (wizard)
-            </RNText>
-          </Pressable>
-        </RNView>
+        <RNView style={styles.bottomPad} />
       </ScrollView>
 
       {/* ── FAB ── */}
@@ -350,152 +453,138 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingBottom: 10,
   },
-  headerLeft: { gap: 2 },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    lineHeight: 34,
-  },
-  headerSub: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
+  greeting: { fontSize: 13, lineHeight: 18, marginBottom: 1 },
+  headerTitle: { fontSize: 28, fontWeight: '700', letterSpacing: -0.5, lineHeight: 34 },
 
-  // Scroll
-  scroll: { flex: 1 },
-  scrollContent: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 96,
-    gap: 24,
-  },
-
-  // Section
-  section: { gap: 8 },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    marginBottom: 4,
-    paddingHorizontal: 2,
-  },
-
-  // Empty state
-  emptyWrap: {
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 8,
-    paddingHorizontal: 32,
-  },
-  emptyIcon: { marginBottom: 16, opacity: 0.4 },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySub: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.8,
-  },
-
-  // Card
-  card: {
+  addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  addBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 100 },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  statCard: {
+    flex: 1,
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
+      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4 },
       android: { elevation: 2 },
     }),
   },
-  cardPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.99 }],
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  statNumber: { fontSize: 22, fontWeight: '700', lineHeight: 28 },
+  statLabel: { fontSize: 11, textAlign: 'center', lineHeight: 14, marginTop: 2 },
+
+  // Section
+  section: { marginBottom: 20 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    flexShrink: 0,
+    marginBottom: 8,
   },
-  cardContent: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  cardSub: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  cardRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginLeft: 8,
-    gap: 4,
-    flexShrink: 0,
-  },
-  badge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  badgeText: {
+  sectionLabel: {
     fontSize: 11,
     fontWeight: '600',
-    lineHeight: 15,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
+  sectionLink: { fontSize: 13, color: '#9EB567', fontWeight: '500' },
 
-  // Action buttons
-  actionBtn: {
+  // Alert cards
+  alertCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#9EB567',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
     borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 10,
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4 },
+      android: { elevation: 2 },
+    }),
   },
-  actionBtnPressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
-  actionIcon: { marginRight: 10 },
-  actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  actionBtnOutline: {
-    flexDirection: 'row',
+  alertIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  alertText: { flex: 1, fontSize: 14, lineHeight: 19 },
+  alertBtn: {
     borderWidth: 1.5,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexShrink: 0,
   },
-  actionBtnOutlinePressed: { opacity: 0.7 },
-  actionBtnOutlineText: { fontSize: 16, fontWeight: '500' },
+  alertBtnText: { color: '#9EB567', fontSize: 13, fontWeight: '600' },
+
+  // Doc cards
+  docCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 10,
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
+      android: { elevation: 2 },
+    }),
+  },
+  docCardPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+  docIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  docContent: { flex: 1 },
+  docTitle: { fontSize: 14, fontWeight: '600', lineHeight: 19 },
+  docSub: { fontSize: 12, lineHeight: 16, marginTop: 1 },
+  badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, flexShrink: 0 },
+  badgeText: { fontSize: 11, fontWeight: '600' },
+
+  // Empty state
+  emptyWrap: { alignItems: 'center', marginTop: 40, paddingHorizontal: 32 },
+  emptyIcon: { marginBottom: 16, opacity: 0.35 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 20, opacity: 0.8, marginBottom: 24 },
+  emptyBtn: {
+    backgroundColor: '#9EB567',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 28,
+  },
+  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  bottomPad: { height: 20 },
 
   // FAB
   fab: {
@@ -509,17 +598,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.22,
-        shadowRadius: 6,
-      },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6 },
       android: { elevation: 6 },
     }),
   },
-  fabPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.96 }],
-  },
+  fabPressed: { opacity: 0.88, transform: [{ scale: 0.96 }] },
 });

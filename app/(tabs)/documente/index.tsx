@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -22,15 +22,9 @@ import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { DocumentType } from '@/types';
 import type { Document } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const DOCUMENT_TYPES: { value: DocumentType | 'toate'; label: string }[] = [
-  { value: 'toate', label: 'Toate' },
-  ...Object.entries(DOCUMENT_TYPE_LABELS)
-    .filter(([value]) => value !== 'custom')
-    .map(([value, label]) => ({ value: value as DocumentType, label })),
-];
 
 const EXPIRING_DAYS = 30;
 
@@ -51,17 +45,20 @@ const DOC_ICON: Record<DocumentType, IoniconName> = {
   act_proprietate: 'home',
   cadastru: 'map',
   factura: 'receipt',
-  bon_combustibil: 'flame',
+  impozit_proprietate: 'cash-outline',
   card: 'card',
   garantie: 'ribbon-outline',
-  medicament: 'medkit-outline',
+  reteta_medicala: 'medkit-outline',
+  analize_medicale: 'flask-outline',
+  bon_cumparaturi: 'receipt-outline',
   pad: 'home-outline',
   stingator_incendiu: 'flame-outline',
   abonament: 'repeat-outline',
-  index_utilitati: 'speedometer-outline',
+  contract: 'document-text-outline',
   vaccin_animal: 'fitness-outline',
   deparazitare: 'bug-outline',
   vizita_vet: 'paw-outline',
+  bilet: 'ticket-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };
@@ -79,17 +76,20 @@ const DOC_ICON_BG: Record<DocumentType, string> = {
   act_proprietate: '#E8F5E9',
   cadastru: '#E8F5E9',
   factura: '#FFF3E0',
-  bon_combustibil: '#FFF3E0',
+  impozit_proprietate: '#FFF8E1',
   card: '#F3E5F5',
   garantie: '#E8F5E9',
-  medicament: '#FCE4EC',
+  reteta_medicala: '#FCE4EC',
+  analize_medicale: '#E3F2FD',
+  bon_cumparaturi: '#FFF8E1',
   pad: '#E3F2FD',
   stingator_incendiu: '#FCE4EC',
   abonament: '#F3E5F5',
-  index_utilitati: '#E0F2F1',
+  contract: '#E8EAF6',
   vaccin_animal: '#E8F5E9',
   deparazitare: '#FFF8E1',
   vizita_vet: '#E8EAF6',
+  bilet: '#F3E5F5',
   altul: '#F5F5F5',
   custom: '#F5F5F5',
 };
@@ -107,17 +107,20 @@ const DOC_ICON_COLOR: Record<DocumentType, string> = {
   act_proprietate: '#2E7D32',
   cadastru: '#388E3C',
   factura: '#BF360C',
-  bon_combustibil: '#E65100',
+  impozit_proprietate: '#F57F17',
   card: '#7B1FA2',
   garantie: '#2E7D32',
-  medicament: '#C62828',
+  reteta_medicala: '#C62828',
+  analize_medicale: '#1565C0',
+  bon_cumparaturi: '#F57F17',
   pad: '#1565C0',
   stingator_incendiu: '#BF360C',
   abonament: '#7B1FA2',
-  index_utilitati: '#00695C',
+  contract: '#283593',
   vaccin_animal: '#388E3C',
   deparazitare: '#F57F17',
   vizita_vet: '#283593',
+  bilet: '#7B1FA2',
   altul: '#757575',
   custom: '#757575',
 };
@@ -403,8 +406,20 @@ export default function DocumenteListScreen() {
   const { documents, loading, error, refresh, deleteDocument } = useDocuments();
   const { persons, properties, vehicles, cards, animals } = useEntities();
   const { customTypes } = useCustomTypes();
+  const { docTypeOptions } = useFilteredDocTypes();
+  const DOCUMENT_TYPES = useMemo(
+    () => [{ value: 'toate' as const, label: 'Toate' }, ...docTypeOptions],
+    [docTypeOptions]
+  );
 
   const [filterType, setFilterType] = useState<DocumentType | 'toate'>('toate');
+
+  useEffect(() => {
+    if (filterType !== 'toate' && !docTypeOptions.some(opt => opt.value === filterType)) {
+      setFilterType('toate');
+    }
+  }, [docTypeOptions, filterType]);
+
   const [filterEntity, setFilterEntity] = useState<{ kind: string; id: string } | null>(null);
   const [onlyExpiring, setOnlyExpiring] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

@@ -1,4 +1,5 @@
 import TextRecognition from '@react-native-ml-kit/text-recognition';
+import type { DocumentType } from '@/types';
 
 export interface OcrResult {
   text: string; // tot textul extras
@@ -165,8 +166,9 @@ function parseMrz(text: string): MrzData {
     const yy = parseInt(yymmdd.slice(0, 2), 10);
     const mm = yymmdd.slice(2, 4);
     const dd = yymmdd.slice(4, 6);
-    // Heuristică: dacă yy > 30 → 1900s, altfel 2000s
-    const year = yy > 30 ? 1900 + yy : 2000 + yy;
+    // Heuristică: dacă yy > 50 → 1900s, altfel 2000s
+    // (buletine emise acum au expiry max 2031–2035, deci yy=31..35 → 2000s)
+    const year = yy > 50 ? 1900 + yy : 2000 + yy;
     return `${year}-${mm}-${dd}`;
   }
 
@@ -303,4 +305,63 @@ export function extractDocumentInfo(text: string): DocumentInfo {
   if (nameLines.length > 0) result.name = nameLines.join(' ');
 
   return result;
+}
+
+/**
+ * Detectează tipul documentului din textul OCR.
+ * Returnează tipul detectat sau null dacă nu e sigur.
+ */
+export function detectDocumentType(text: string): DocumentType | null {
+  const t = text.toLowerCase();
+
+  if (/carte de identitate|buletin de identitate|c\.i\.|identity card/.test(t)) return 'buletin';
+  if (/pa[sş]aport|passport/.test(t)) return 'pasaport';
+  if (/permis de conducere|driving licen[sc]e/.test(t)) return 'permis_auto';
+  if (/asigurare.*obligatorie|r\.c\.a\.|asigurare rca|\brca\b/.test(t)) return 'rca';
+  if (/\bcasco\b/.test(t)) return 'casco';
+  if (/inspec[tț]ie tehnic[aă]|inspec[tț]ie periodic[aă]|\bitp\b/.test(t)) return 'itp';
+  if (/vignet[aă]|rovinieta/.test(t)) return 'vigneta';
+  if (/talon.*[înmatriculare]|certificat de [înmatriculare]/.test(t)) return 'talon';
+  if (/carte.*auto|certificat de înregistrare/.test(t)) return 'carte_auto';
+  if (/act de proprietate|contract de v[âa]nzare[\-\s]cump[aă]rare/.test(t)) return 'act_proprietate';
+  if (/num[aă]r cadastral|extras de carte funciar[aă]/.test(t)) return 'cadastru';
+  if (/asigurare.*dezastre|politi[aă] pad|\bpad\b/.test(t)) return 'pad';
+  if (/factur[aă]|invoice/.test(t)) return 'factura';
+  if (/impozit.*proprietate|tax.*property/.test(t)) return 'impozit_proprietate';
+  if (/contract/.test(t)) return 'contract';
+  if (/garantie|garan[tț]ie|warranty|certificat de garan[tț]ie/.test(t)) return 'garantie';
+  if (/re[tț]et[aă] medical[aă]|re[tț]et[aă]/.test(t)) return 'reteta_medicala';
+  if (/analize|laborator|rezultate.*analize/.test(t)) return 'analize_medicale';
+  if (/bon fiscal|chitant[aă]|receipt/.test(t)) return 'bon_cumparaturi';
+  if (/bilet|ticket|boarding pass/.test(t)) return 'bilet';
+  if (/abonament|subscri/.test(t)) return 'abonament';
+  if (/stingator|extinctor/.test(t)) return 'stingator_incendiu';
+  if (/vaccin|vaccinare/.test(t)) return 'vaccin_animal';
+  if (/deparazitare|antiparazitar/.test(t)) return 'deparazitare';
+  if (/consultat|veterinar|clinica veterinara/.test(t)) return 'vizita_vet';
+
+  return null;
+}
+
+/**
+ * Formatează toate informațiile extrase din OCR ca text pentru câmpul descriere/notă.
+ */
+export function formatOcrSummary(text: string, info: DocumentInfo): string {
+  const parts: string[] = [];
+  if (info.name) parts.push(`Nume: ${info.name}`);
+  if (info.cnp) parts.push(`CNP: ${info.cnp}`);
+  if (info.series) parts.push(`Seria: ${info.series}`);
+  if (info.issue_date) parts.push(`Emis: ${info.issue_date}`);
+  if (info.expiry_date) parts.push(`Expiră: ${info.expiry_date}`);
+  // Fallback: dacă nu avem date structurate, pune text brut filtrat (fără linii MRZ)
+  if (parts.length === 0 && text.trim()) {
+    const clean = text.split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 2 && !/^[A-Z0-9<]{10,}$/.test(l.replace(/\s/g, '')))
+      .join(' ')
+      .trim()
+      .slice(0, 200);
+    if (clean) parts.push(clean);
+  }
+  return parts.join(' | ');
 }

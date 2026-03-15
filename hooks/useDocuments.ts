@@ -11,6 +11,7 @@ export function useDocuments() {
     setLoading(true);
     setError(null);
     try {
+      await docs.applyAutoDelete();
       const data = await docs.getDocuments();
       setList(data);
     } catch (e) {

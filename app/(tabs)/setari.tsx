@@ -22,6 +22,25 @@ import { scheduleExpirationReminders } from '@/services/notifications';
 import { exportBackup, importBackup } from '@/services/backup';
 import { db } from '@/services/db';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
+import { ALL_ENTITY_TYPES, STANDARD_DOC_TYPES, ENTITY_DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '@/types';
+import type { EntityType, DocumentType } from '@/types';
+
+const ENTITY_LABELS: Record<EntityType, string> = {
+  person: 'Persoană',
+  vehicle: 'Vehicul',
+  property: 'Proprietate',
+  card: 'Card',
+  animal: 'Animal',
+};
+
+const ENTITY_ICONS: Record<EntityType, string> = {
+  person: '👤',
+  vehicle: '🚗',
+  property: '🏠',
+  card: '💳',
+  animal: '🐾',
+};
 
 // ─── Constante contact ────────────────────────────────────────────────────────
 // TODO: înlocuiește cu datele reale înainte de publish
@@ -183,6 +202,7 @@ export default function SetariScreen() {
   const insets = useSafeAreaInsets();
 
   const { customTypes, createCustomType, deleteCustomType } = useCustomTypes();
+  const { visibleEntityTypes, visibleDocTypes, updateVisibleEntityTypes, updateVisibleDocTypes } = useVisibilitySettings();
   const [newTypeName, setNewTypeName] = useState('');
   const [notifDays, setNotifDays] = useState(7);
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -193,16 +213,10 @@ export default function SetariScreen() {
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
 
-  // ── Concediu ─────────────────────────────────────────────────────────────────
-  const [concediuTotal, setConcediuTotal] = useState(21);
-  const [concediuUtilizate, setConcediuUtilizate] = useState(0);
-
   useEffect(() => {
     settings.getNotificationDays().then(setNotifDays);
     settings.getPushEnabled().then(setPushEnabled);
     settings.getAppLockEnabled().then(setAppLockEnabled);
-    settings.getConcediuTotal().then(setConcediuTotal);
-    settings.getConcediuUtilizate().then(setConcediuUtilizate);
   }, []);
 
   // ── App lock ─────────────────────────────────────────────────────────────────
@@ -256,26 +270,6 @@ export default function SetariScreen() {
     settings.setPushEnabled(v);
     scheduleExpirationReminders().catch(() => {});
   };
-
-  // ── Concediu ─────────────────────────────────────────────────────────────────
-  const handleConcediuTotal = (v: string) => {
-    const n = parseInt(v, 10);
-    if (!isNaN(n) && n >= 0) {
-      setConcediuTotal(n);
-      settings.setConcediuTotal(n);
-    }
-  };
-
-  const handleConcediuUtilizate = (v: string) => {
-    const n = parseInt(v, 10);
-    if (!isNaN(n) && n >= 0) {
-      setConcediuUtilizate(n);
-      settings.setConcediuUtilizate(n);
-    }
-  };
-
-  const concediuRamasite = concediuTotal - concediuUtilizate;
-  const concediuColor = concediuRamasite <= 0 ? '#E53935' : concediuRamasite < 5 ? '#F57C00' : '#2E7D32';
 
   // ── Backup ───────────────────────────────────────────────────────────────────
   const handleExportBackup = async () => {
@@ -333,6 +327,30 @@ export default function SetariScreen() {
         onPress: () => deleteCustomType(id).catch(() => {}),
       },
     ]);
+  };
+
+  const handleToggleEntityType = (entityType: EntityType) => {
+    const isVisible = visibleEntityTypes.includes(entityType);
+    if (isVisible && visibleEntityTypes.length <= 1) {
+      Alert.alert('Minim unul', 'Trebuie să ai cel puțin un tip de entitate activat.');
+      return;
+    }
+    const next = isVisible
+      ? visibleEntityTypes.filter(e => e !== entityType)
+      : [...visibleEntityTypes, entityType];
+    updateVisibleEntityTypes(next);
+  };
+
+  const handleToggleDocType = (docType: DocumentType) => {
+    const isVisible = visibleDocTypes.includes(docType);
+    if (isVisible && visibleDocTypes.length <= 1) {
+      Alert.alert('Minim unul', 'Trebuie să ai cel puțin un tip de document activat.');
+      return;
+    }
+    const next = isVisible
+      ? visibleDocTypes.filter(d => d !== docType)
+      : [...visibleDocTypes, docType];
+    updateVisibleDocTypes(next);
   };
 
   // ── GDPR ─────────────────────────────────────────────────────────────────────
@@ -450,57 +468,6 @@ export default function SetariScreen() {
           </Pressable>
         </RNView>
 
-        {/* ── Concediu ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>CONCEDIU</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#E8F5E9' }]}>
-                <Ionicons name="calendar-outline" size={18} color="#2E7D32" />
-              </RNView>
-              <RNText style={[styles.rowLabel, { color: C.text }]}>Total zile/an</RNText>
-            </RNView>
-            <TextInput
-              style={[styles.inputSmall, { color: C.text, borderColor: C.border, backgroundColor: C.background }]}
-              value={String(concediuTotal)}
-              onChangeText={handleConcediuTotal}
-              keyboardType="number-pad"
-              maxLength={3}
-            />
-          </RNView>
-          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#FFF3E0' }]}>
-                <Ionicons name="checkmark-done-outline" size={18} color="#E65100" />
-              </RNView>
-              <RNText style={[styles.rowLabel, { color: C.text }]}>Zile utilizate</RNText>
-            </RNView>
-            <TextInput
-              style={[styles.inputSmall, { color: C.text, borderColor: C.border, backgroundColor: C.background }]}
-              value={String(concediuUtilizate)}
-              onChangeText={handleConcediuUtilizate}
-              keyboardType="number-pad"
-              maxLength={3}
-            />
-          </RNView>
-          <RNView style={styles.rowLast}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#E3F2FD' }]}>
-                <Ionicons name="hourglass-outline" size={18} color="#1565C0" />
-              </RNView>
-              <RNView style={styles.rowLabelWrap}>
-                <RNText style={[styles.rowLabel, { color: C.text }]}>Zile rămase</RNText>
-                <RNText style={[styles.rowSub, { color: C.textSecondary }]}>
-                  {concediuUtilizate} utilizate din {concediuTotal}
-                </RNText>
-              </RNView>
-            </RNView>
-            <RNText style={[styles.concediuBadge, { color: concediuColor, borderColor: concediuColor }]}>
-              {concediuRamasite}
-            </RNText>
-          </RNView>
-        </RNView>
-
         {/* ── Securitate ── */}
         <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>SECURITATE</RNText>
         <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
@@ -523,11 +490,79 @@ export default function SetariScreen() {
           </RNView>
         </RNView>
 
-        {/* ── Tipuri personalizate ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>TIPURI PERSONALIZATE</RNText>
+        {/* ── Vizibilitate entități ── */}
+        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>ENTITĂȚI ACTIVE</RNText>
         <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
           <RNText style={[styles.hint, { color: C.textSecondary }]}>
-            Adaugă tipuri proprii care vor apărea în lista de tipuri când adaugi un document.
+            Alege ce tipuri de entități să apară în aplicație. Entitățile dezactivate nu vor apărea în formulare sau liste.
+          </RNText>
+          {ALL_ENTITY_TYPES.map((entityType, idx) => {
+            const isActive = visibleEntityTypes.includes(entityType);
+            const isLast = idx === ALL_ENTITY_TYPES.length - 1;
+            return (
+              <RNView
+                key={entityType}
+                style={[
+                  isLast ? styles.rowLast : styles.row,
+                  { borderBottomColor: C.border },
+                ]}
+              >
+                <RNView style={styles.rowLeft}>
+                  <RNView style={[styles.rowIcon, { backgroundColor: isActive ? '#E8F5E9' : '#F5F5F5' }]}>
+                    <RNText style={{ fontSize: 16 }}>{ENTITY_ICONS[entityType]}</RNText>
+                  </RNView>
+                  <RNText style={[styles.rowLabel, { color: C.text }]}>{ENTITY_LABELS[entityType]}</RNText>
+                </RNView>
+                <Switch
+                  value={isActive}
+                  onValueChange={() => handleToggleEntityType(entityType)}
+                  trackColor={{ false: '#ccc', true: '#9EB567' }}
+                  thumbColor="#fff"
+                />
+              </RNView>
+            );
+          })}
+        </RNView>
+
+        {/* ── Vizibilitate tipuri documente ── */}
+        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>TIPURI DOCUMENTE ACTIVE</RNText>
+        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
+          <RNText style={[styles.hint, { color: C.textSecondary }]}>
+            Alege ce tipuri de documente să apară în formulare. Tipurile dezactivate nu vor apărea la adăugarea documentelor.
+          </RNText>
+          <RNView style={styles.chipRow}>
+            {STANDARD_DOC_TYPES.map(docType => {
+              const isActive = visibleDocTypes.includes(docType);
+              return (
+                <Pressable
+                  key={docType}
+                  style={[
+                    styles.chip,
+                    isActive
+                      ? [styles.chipActive, { borderColor: '#9EB567' }]
+                      : { borderColor: C.border },
+                  ]}
+                  onPress={() => handleToggleDocType(docType)}
+                >
+                  <RNText
+                    style={[
+                      styles.chipText,
+                      { color: isActive ? '#fff' : C.textSecondary },
+                    ]}
+                  >
+                    {DOCUMENT_TYPE_LABELS[docType]}
+                  </RNText>
+                </Pressable>
+              );
+            })}
+          </RNView>
+        </RNView>
+
+        {/* ── Tipuri personalizate de documente ── */}
+        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>TIPURI PERSONALIZATE DE DOCUMENTE</RNText>
+        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
+          <RNText style={[styles.hint, { color: C.textSecondary }]}>
+            Adaugă tipuri proprii de documente (ex: „Asigurare viață", „Dosar medical"). Tipurile de entități (Persoană, Vehicul, Proprietate etc.) sunt fixe și nu pot fi modificate.
           </RNText>
           {customTypes.map((ct, idx) => (
             <RNView
@@ -852,17 +887,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
 
-  concediuBadge: {
-    fontSize: 18,
-    fontWeight: '700',
-    borderWidth: 1.5,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    minWidth: 44,
-    textAlign: 'center',
-  },
-
   inputSmall: {
     borderWidth: 1,
     borderRadius: 8,
@@ -938,6 +962,16 @@ const styles = StyleSheet.create({
   },
   addTypeBtnDisabled: { opacity: 0.35 },
   addTypeBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  chip: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipActive: { backgroundColor: '#9EB567' },
+  chipText: { fontSize: 13, fontWeight: '500' },
 
   bottomPad: { height: 20 },
 

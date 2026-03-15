@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   StyleSheet,
   Pressable,
@@ -7,11 +7,11 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Switch,
-  View as RNView,
-  Text as RNText,
+  Modal,
+  StatusBar,
+  useWindowDimensions,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -22,15 +22,17 @@ import { primary } from '@/theme/colors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { scheduleExpirationReminders } from '@/services/notifications';
-import { addExpiryCalendarEvent, isCalendarAvailable } from '@/services/calendar';
-import { extractText, extractDocumentInfo, extractInvoiceInfo, extractPlateNumber, extractFuelInfo } from '@/services/ocr';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { addExpiryCalendarEvent, addEventToCalendar, isCalendarAvailable } from '@/services/calendar';
+import { extractText, extractDocumentInfo, extractInvoiceInfo, extractPlateNumber, detectDocumentType, formatOcrSummary } from '@/services/ocr';
+import { DOCUMENT_TYPE_LABELS, ENTITY_DOCUMENT_TYPES } from '@/types';
 import type { DocumentType, EntityType } from '@/types';
+import { DatePickerField } from '@/components/DatePickerField';
 import { DOCUMENT_FIELDS } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 
-const STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
+const ALL_STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
   .filter(([value]) => value !== 'custom')
   .map(([value, label]) => ({ value: value as DocumentType, label }));
 
@@ -65,17 +67,23 @@ export default function AddDocumentScreen() {
   const { createDocument, refresh } = useDocuments();
   const { persons, properties, vehicles, cards, animals } = useEntities();
   const { customTypes } = useCustomTypes();
+  const { visibleEntityTypes, visibleDocTypes } = useVisibilitySettings();
 
   const [type, setType] = useState<DocumentType>('buletin');
   const [customTypeId, setCustomTypeId] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, string>>({});
-  const [fullTank, setFullTank] = useState(true);
   const [issueDate, setIssueDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
+  const expiryDateRef = useRef('');
+  const issueDateRef = useRef('');
   const [note, setNote] = useState('');
+  const [autoDelete, setAutoDelete] = useState<string | null>(null);
   const [pages, setPages] = useState<{ uri: string; localPath: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Entity picker state (only used when screen opened without params)
   const [pickerCategory, setPickerCategory] = useState<EntityType>('person');
@@ -84,6 +92,7 @@ export default function AddDocumentScreen() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
+  const [showAllTypes, setShowAllTypes] = useState(false);
 
   const personId = params.person_id;
   const propertyId = params.property_id;
@@ -92,69 +101,81 @@ export default function AddDocumentScreen() {
   const animalId = params.animal_id;
   const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId);
 
+  const linkedEntityType: EntityType | null = personId ? 'person'
+    : propertyId ? 'property'
+    : vehicleId ? 'vehicle'
+    : cardId ? 'card'
+    : animalId ? 'animal'
+    : null;
+
   async function runOcrOnImage(localPath: string) {
     setOcrLoading(true);
     try {
-      // Încearcă OCR pe imaginea curentă
       let { text } = await extractText(localPath);
 
-      // Dacă textul e prea scurt (< 20 caractere), încearcă rotiri succesive
       if (text.trim().length < 20) {
-        const rotations = [90, 180, 270];
-        for (const deg of rotations) {
+        // Încearcă TOATE rotațiile și alege cea cu cel mai mult text
+        const candidates: { deg: number; text: string; uri: string }[] = [];
+        for (const deg of [90, 180, 270]) {
           const rotated = await ImageManipulator.manipulateAsync(localPath, [{ rotate: deg }], {
-            compress: 0.9,
+            compress: 1,
             format: ImageManipulator.SaveFormat.JPEG,
           });
           const result = await extractText(rotated.uri);
-          if (result.text.trim().length > text.trim().length) {
-            text = result.text;
-            // Dacă am găsit orientarea corectă, salvează-o permanent
-            if (result.text.trim().length >= 20) {
-              await FileSystem.copyAsync({ from: rotated.uri, to: localPath });
-              setPages(prev => {
-                const idx = prev.findIndex(p => p.localPath === localPath);
-                if (idx === -1) return prev;
-                const next = [...prev];
-                next[idx] = { ...next[idx], uri: rotated.uri };
-                return next;
-              });
-              break;
-            }
-          }
+          candidates.push({ deg, text: result.text, uri: rotated.uri });
+        }
+        const best = candidates.reduce((a, b) =>
+          a.text.trim().length >= b.text.trim().length ? a : b
+        );
+        if (best.text.trim().length > text.trim().length) {
+          text = best.text;
+          await FileSystem.copyAsync({ from: best.uri, to: localPath });
+          setPages(prev => {
+            const idx = prev.findIndex(p => p.localPath === localPath);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { ...next[idx], uri: best.uri };
+            return next;
+          });
         }
       }
 
       if (!text.trim()) return;
+
+      // Detectează tip document dacă utilizatorul nu a ales manual
+      const detectedType = detectDocumentType(text);
+      if (detectedType && detectedType !== 'altul' && detectedType !== 'custom') {
+        setType(detectedType);
+        setCustomTypeId(null);
+        setMetadata({});
+      }
+
       const info = extractDocumentInfo(text);
 
-      const foundExpiry = info.expiry_date && !expiryDate;
-      if (foundExpiry) setExpiryDate(info.expiry_date!);
-      if (info.issue_date && !issueDate) setIssueDate(info.issue_date);
+      if (info.expiry_date && !expiryDateRef.current) {
+        setExpiryDate(info.expiry_date);
+        expiryDateRef.current = info.expiry_date;
+      }
+      if (info.issue_date && !issueDateRef.current) {
+        setIssueDate(info.issue_date);
+        issueDateRef.current = info.issue_date;
+      }
 
-      // Pre-populare câmpuri metadata specifice tipului din OCR
-      const fields = DOCUMENT_FIELDS[type] ?? [];
+      // Pre-populare câmpuri metadata
+      const fields = DOCUMENT_FIELDS[detectedType ?? type] ?? [];
       const ocrMetadata: Record<string, string> = {};
       for (const field of fields) {
         if (!field.ocrKey) continue;
         const ocrValue = (info as Record<string, string | undefined>)[field.ocrKey];
         if (ocrValue) ocrMetadata[field.key] = ocrValue;
       }
-      // Extrage info specifice tipului
-      if (type === 'factura') {
+      if (['factura'].includes(detectedType ?? type)) {
         const invoiceInfo = extractInvoiceInfo(text);
         if (invoiceInfo.invoice_number) ocrMetadata['invoice_number'] = invoiceInfo.invoice_number;
         if (invoiceInfo.amount) ocrMetadata['amount'] = invoiceInfo.amount;
         if (invoiceInfo.due_date) ocrMetadata['due_date'] = invoiceInfo.due_date;
       }
-      if (type === 'bon_combustibil') {
-        const fuelInfo = extractFuelInfo(text);
-        if (fuelInfo.km) ocrMetadata['km'] = String(fuelInfo.km);
-        if (fuelInfo.liters) ocrMetadata['liters'] = String(fuelInfo.liters);
-        if (fuelInfo.price) ocrMetadata['total_amount'] = String(fuelInfo.price);
-        if (fuelInfo.date && !issueDate) setIssueDate(fuelInfo.date);
-      }
-      if (['rca', 'itp', 'vigneta', 'talon', 'carte_auto'].includes(type)) {
+      if (['rca', 'itp', 'vigneta', 'talon', 'carte_auto'].includes(detectedType ?? type)) {
         const plate = extractPlateNumber(text);
         if (plate) ocrMetadata['plate'] = plate;
       }
@@ -162,20 +183,13 @@ export default function AddDocumentScreen() {
         setMetadata(prev => ({ ...ocrMetadata, ...prev }));
       }
 
-      const found = [
-        info.cnp ? `CNP: ${info.cnp}` : null,
-        info.expiry_date ? `Expiră: ${info.expiry_date}` : null,
-        info.issue_date ? `Emis: ${info.issue_date}` : null,
-        info.series ? `Seria: ${info.series}` : null,
-        info.name ? `Nume: ${info.name}` : null,
-      ].filter(Boolean);
-
-      if (found.length > 0 && !note) {
-        setNote(found.join(' | '));
+      // Completează nota cu sumarul OCR
+      const summary = formatOcrSummary(text, info);
+      if (summary && !note) {
+        setNote(summary);
       }
 
-      // Prompt reminder dacă s-a găsit dată de expirare
-      if (foundExpiry) {
+      if (info.expiry_date && !expiryDate) {
         setTimeout(() => {
           Alert.alert(
             'Dată expirare găsită',
@@ -194,7 +208,7 @@ export default function AddDocumentScreen() {
         }, 500);
       }
     } catch {
-      // OCR opțional — nu bloca userul
+      // OCR opțional
     } finally {
       setOcrLoading(false);
     }
@@ -219,7 +233,7 @@ export default function AddDocumentScreen() {
           const rotated = await ImageManipulator.manipulateAsync(
             finalUri,
             [{ rotate: rotationDegrees }],
-            { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+            { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
           );
           finalUri = rotated.uri;
         }
@@ -248,7 +262,7 @@ export default function AddDocumentScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.9,
+      quality: 1,
       exif: true,
     });
     if (!result.canceled && result.assets[0]) {
@@ -264,7 +278,7 @@ export default function AddDocumentScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.9,
+      quality: 1,
       exif: true,
     });
     if (!result.canceled && result.assets[0]) {
@@ -290,8 +304,8 @@ export default function AddDocumentScreen() {
       const newDoc = await createDocument({
         type,
         custom_type_id: type === 'custom' ? (customTypeId ?? undefined) : undefined,
-        issue_date: issueDate.trim() || undefined,
-        expiry_date: expiryDate.trim() || undefined,
+        issue_date: issueDateRef.current.trim() || undefined,
+        expiry_date: expiryDateRef.current.trim() || undefined,
         note: note.trim() || undefined,
         file_path: pages[0]?.localPath || undefined,
         person_id: personId ?? selectedPersonId ?? undefined,
@@ -299,10 +313,8 @@ export default function AddDocumentScreen() {
         vehicle_id: vehicleId ?? selectedVehicleId ?? undefined,
         card_id: cardId ?? selectedCardId ?? undefined,
         animal_id: animalId ?? selectedAnimalId ?? undefined,
-        metadata: {
-          ...metadata,
-          ...(type === 'bon_combustibil' ? { is_full_tank: fullTank ? '1' : '0' } : {}),
-        },
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        auto_delete: autoDelete ?? undefined,
       });
       const { addDocumentPage } = await import('@/services/documents');
       for (let i = 1; i < pages.length; i++) {
@@ -311,7 +323,7 @@ export default function AddDocumentScreen() {
       await refresh();
       scheduleExpirationReminders().catch(() => {});
 
-      const finalExpiry = expiryDate.trim();
+      const finalExpiry = expiryDateRef.current.trim();
       if (finalExpiry && isCalendarAvailable()) {
         const entityName =
           (personId && persons.find(p => p.id === personId)?.name) ||
@@ -323,13 +335,13 @@ export default function AddDocumentScreen() {
           'Adaugă în calendar?',
           `Vrei să adaugi un reminder în calendar pentru expirarea pe ${finalExpiry}?`,
           [
-            { text: 'Nu', style: 'cancel', onPress: () => router.back() },
+            { text: 'Nu', style: 'cancel', onPress: () => router.replace('/(tabs)/documente') },
             {
               text: 'Adaugă',
               onPress: async () => {
-                const id = await addExpiryCalendarEvent({ docType: type, expiryDate: finalExpiry, entityName });
+                const id = await addExpiryCalendarEvent({ docType: type, expiryDate: finalExpiry, entityName, documentId: newDoc.id, note: note.trim() || undefined });
                 if (!id) Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
-                router.back();
+                router.replace('/(tabs)/documente');
               },
             },
           ]
@@ -337,7 +349,34 @@ export default function AddDocumentScreen() {
         return;
       }
 
-      router.back();
+      // Reminder calendar pentru bilete
+      if (type === 'bilet' && metadata.event_date && isCalendarAvailable()) {
+        const title = [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment';
+        setLoading(false);
+        Alert.alert(
+          'Adaugă în calendar?',
+          `Vrei reminder pentru evenimentul din ${metadata.event_date}?`,
+          [
+            { text: 'Nu', style: 'cancel', onPress: () => router.replace('/(tabs)/documente') },
+            {
+              text: 'Adaugă',
+              onPress: async () => {
+                await addEventToCalendar({
+                  title,
+                  eventDate: metadata.event_date,
+                  venue: metadata.venue,
+                  note: note.trim() || undefined,
+                  documentId: newDoc.id,
+                });
+                router.replace('/(tabs)/documente');
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      router.replace('/(tabs)/documente');
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
     } finally {
@@ -392,7 +431,31 @@ export default function AddDocumentScreen() {
     selectedAnimalId
   );
 
+  const activeEntityType: EntityType | null =
+    linkedEntityType ?? (anyEntitySelected ? pickerCategory : null);
+
+  const visibleStandardTypes = ALL_STANDARD_TYPES.filter(({ value }) =>
+    visibleDocTypes.includes(value)
+  );
+
+  const filteredTypes = showAllTypes || !activeEntityType
+    ? visibleStandardTypes
+    : visibleStandardTypes.filter(({ value }) =>
+        ENTITY_DOCUMENT_TYPES[activeEntityType].includes(value)
+      );
+
+  const hasHiddenTypes = ALL_STANDARD_TYPES.length > visibleStandardTypes.length;
+
   return (
+    <>
+    <Stack.Screen options={{
+      title: 'Adaugă document',
+      headerLeft: () => (
+        <Pressable onPress={() => router.back()} style={{ paddingRight: 16 }}>
+          <Text style={{ color: primary, fontSize: 16 }}>Anulează</Text>
+        </Pressable>
+      ),
+    }} />
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: C.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -400,39 +463,107 @@ export default function AddDocumentScreen() {
       <ScrollView style={[styles.scroll, { backgroundColor: C.background }]} contentContainerStyle={styles.scrollContent}>
         {linkedName && <Text style={styles.linked}>Legat de: {linkedName}</Text>}
 
-        <Text style={styles.label}>Tip document</Text>
-        <View style={styles.typeRow}>
-          {STANDARD_TYPES.map(({ value, label }) => (
-            <Pressable
-              key={value}
-              style={[styles.typeChip, type === value && styles.typeChipActive]}
-              onPress={() => { setType(value); setCustomTypeId(null); setMetadata({}); }}
+        <Text style={[styles.label, styles.sectionLabel]}>Poze / scan</Text>
+        {pages.map((page, idx) => (
+          <View key={idx} style={styles.imageWrap}>
+            <View style={styles.pageHeader}>
+              <Text style={styles.pageLabel}>Pagina {idx + 1}</Text>
+              <Pressable onPress={() => removePage(idx)} style={styles.removeBtn}>
+                <Text style={styles.removeBtnText}>Șterge</Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.preview}
+              contentContainerStyle={styles.previewContent}
+              maximumZoomScale={5}
+              minimumZoomScale={1}
+              centerContent
+              bouncesZoom
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={[styles.typeChipText, type === value && styles.typeChipTextActive]}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-          {customTypes.map(ct => (
-            <Pressable
-              key={ct.id}
-              style={[
-                styles.typeChip,
-                type === 'custom' && customTypeId === ct.id && styles.typeChipActive,
-              ]}
-              onPress={() => { setType('custom'); setCustomTypeId(ct.id); setMetadata({}); }}
-            >
-              <Text
-                style={[
-                  styles.typeChipText,
-                  type === 'custom' && customTypeId === ct.id && styles.typeChipTextActive,
-                ]}
-              >
-                {ct.name}
-              </Text>
-            </Pressable>
-          ))}
+              <Pressable onPress={() => setFullscreenUri(page.uri)}>
+                <Image
+                  source={{ uri: page.uri }}
+                  style={{ width: screenWidth - 48, height: 200 }}
+                  resizeMode="contain"
+                />
+              </Pressable>
+            </ScrollView>
+          </View>
+        ))}
+        <View style={styles.photoRow}>
+          <Pressable style={styles.photoBtn} onPress={takePhoto}>
+            <Text style={styles.photoBtnText}>{pages.length === 0 ? 'Cameră' : '+ Cameră'}</Text>
+          </Pressable>
+          <Pressable style={styles.photoBtn} onPress={pickImage}>
+            <Text style={styles.photoBtnText}>{pages.length === 0 ? 'Galerie' : '+ Galerie'}</Text>
+          </Pressable>
         </View>
+        {ocrLoading && <Text style={styles.ocrHint}>Se analizează documentul...</Text>}
+
+        <Text style={styles.label}>Tip document</Text>
+        <Pressable
+          style={styles.typeToggleRow}
+          onPress={() => setTypePickerVisible(v => !v)}
+        >
+          <Text style={styles.typeToggleCurrent}>
+            {type === 'custom'
+              ? (customTypes.find(c => c.id === customTypeId)?.name ?? 'Tip personalizat')
+              : (DOCUMENT_TYPE_LABELS[type] ?? type)}
+          </Text>
+          <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
+        </Pressable>
+        {typePickerVisible && (
+          <>
+            {activeEntityType && (
+              <Pressable onPress={() => setShowAllTypes(prev => !prev)} style={styles.showAllBtn}>
+                <Text style={styles.showAllBtnText}>
+                  {showAllTypes ? 'Arată recomandate' : 'Arată toate tipurile'}
+                </Text>
+              </Pressable>
+            )}
+            {hasHiddenTypes && !showAllTypes && (
+              <Pressable onPress={() => router.push('/(tabs)/setari')} style={styles.showAllBtn}>
+                <Text style={[styles.showAllBtnText, { color: '#888' }]}>
+                  Alte tipuri (dezactivate) →
+                </Text>
+              </Pressable>
+            )}
+            <View style={styles.typeRow}>
+              {filteredTypes.map(({ value, label }) => (
+                <Pressable
+                  key={value}
+                  style={[styles.typeChip, type === value && styles.typeChipActive]}
+                  onPress={() => { setType(value); setCustomTypeId(null); setMetadata({}); setTypePickerVisible(false); }}
+                >
+                  <Text style={[styles.typeChipText, type === value && styles.typeChipTextActive]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+              {customTypes.map(ct => (
+                <Pressable
+                  key={ct.id}
+                  style={[
+                    styles.typeChip,
+                    type === 'custom' && customTypeId === ct.id && styles.typeChipActive,
+                  ]}
+                  onPress={() => { setType('custom'); setCustomTypeId(ct.id); setMetadata({}); setTypePickerVisible(false); }}
+                >
+                  <Text
+                    style={[
+                      styles.typeChipText,
+                      type === 'custom' && customTypeId === ct.id && styles.typeChipTextActive,
+                    ]}
+                  >
+                    {ct.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
 
         {/* ── Câmpuri specifice tipului de document ── */}
         {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
@@ -450,44 +581,55 @@ export default function AddDocumentScreen() {
           </View>
         ))}
 
-        {/* ── Plin complet (bon combustibil) ── */}
-        {type === 'bon_combustibil' && (
-          <RNView style={[styles.switchRow, { backgroundColor: C.card, borderColor: C.border }]}>
-            <RNView style={styles.switchLabel}>
-              <RNText style={[styles.switchTitle, { color: C.text }]}>Plin complet</RNText>
-              <RNText style={[styles.switchSub, { color: C.textSecondary }]}>
-                {fullTank
-                  ? 'Calculez consumul față de alimentarea anterioară'
-                  : 'Nu calculez consumul (rezervor parțial)'}
-              </RNText>
-            </RNView>
-            <Switch
-              value={fullTank}
-              onValueChange={setFullTank}
-              trackColor={{ false: C.border, true: '#9EB567' }}
-              thumbColor="#fff"
-            />
-          </RNView>
-        )}
-
-        <Text style={styles.label}>Data emisiune (opțional)</Text>
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="AAAA-LL-ZZ"
-          placeholderTextColor="#999"
+        <DatePickerField
+          label="Data emisiune (opțional)"
           value={issueDate}
-          onChangeText={setIssueDate}
-          editable={!loading}
+          onChange={v => { issueDateRef.current = v; setIssueDate(v); }}
+          disabled={loading}
         />
-        <Text style={styles.label}>Data expirare (opțional)</Text>
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="AAAA-LL-ZZ"
-          placeholderTextColor="#999"
+        <DatePickerField
+          label="Data expirare (opțional)"
           value={expiryDate}
-          onChangeText={setExpiryDate}
-          editable={!loading}
+          onChange={v => { expiryDateRef.current = v; setExpiryDate(v); }}
+          disabled={loading}
         />
+        {expiryDate ? (
+          <Pressable
+            style={styles.calendarInlineBtn}
+            onPress={async () => {
+              if (!isCalendarAvailable()) {
+                Alert.alert('Calendar indisponibil', 'Necesită build nativ (expo run:ios).');
+                return;
+              }
+              const id = await addExpiryCalendarEvent({ docType: type, expiryDate, entityName: undefined, note: note.trim() || undefined });
+              if (!id) Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
+              else Alert.alert('Calendar', 'Reminder adăugat în calendar.');
+            }}
+          >
+            <Text style={styles.calendarInlineBtnText}>📅 Adaugă reminder în calendar</Text>
+          </Pressable>
+        ) : null}
+        <Text style={styles.label}>Auto-ștergere (opțional)</Text>
+        <View style={styles.typeRow}>
+          {([
+            { label: 'Niciodată', value: null },
+            { label: '30 zile', value: '30d' },
+            { label: '90 zile', value: '90d' },
+            { label: '180 zile', value: '180d' },
+            { label: '1 an', value: '365d' },
+            ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
+          ] as { label: string; value: string | null }[]).map(opt => (
+            <Pressable
+              key={opt.value ?? 'never'}
+              style={[styles.typeChip, autoDelete === opt.value && styles.typeChipActive]}
+              onPress={() => setAutoDelete(opt.value)}
+            >
+              <Text style={[styles.typeChipText, autoDelete === opt.value && styles.typeChipTextActive]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <Text style={styles.label}>Notă (opțional)</Text>
         <ThemedTextInput
           style={[styles.input, styles.inputMultiline]}
@@ -499,34 +641,6 @@ export default function AddDocumentScreen() {
           editable={!loading}
         />
 
-        <Text style={styles.label}>
-          Pagini / scan (
-          {pages.length === 0
-            ? 'nicio pagină'
-            : `${pages.length} ${pages.length === 1 ? 'pagină' : 'pagini'}`}
-          )
-        </Text>
-        {pages.map((page, idx) => (
-          <View key={idx} style={styles.imageWrap}>
-            <View style={styles.pageHeader}>
-              <Text style={styles.pageLabel}>Pagina {idx + 1}</Text>
-              <Pressable onPress={() => removePage(idx)} style={styles.removeBtn}>
-                <Text style={styles.removeBtnText}>Șterge</Text>
-              </Pressable>
-            </View>
-            <Image source={{ uri: page.uri }} style={styles.preview} resizeMode="contain" />
-          </View>
-        ))}
-        <View style={styles.photoRow}>
-          <Pressable style={styles.photoBtn} onPress={takePhoto}>
-            <Text style={styles.photoBtnText}>{pages.length === 0 ? 'Cameră' : '+ Cameră'}</Text>
-          </Pressable>
-          <Pressable style={styles.photoBtn} onPress={pickImage}>
-            <Text style={styles.photoBtnText}>{pages.length === 0 ? 'Galerie' : '+ Galerie'}</Text>
-          </Pressable>
-        </View>
-        {ocrLoading && <Text style={styles.ocrHint}>Se analizează documentul...</Text>}
-
         {/* Entity picker — doar dacă nu vine din entitate */}
         {!hasParamLink && (
           <>
@@ -537,7 +651,7 @@ export default function AddDocumentScreen() {
 
             {/* Category tabs */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow} contentContainerStyle={styles.categoryRowContent}>
-              {ENTITY_CATEGORIES.map(({ key, label }) => (
+              {ENTITY_CATEGORIES.filter(cat => visibleEntityTypes.includes(cat.key)).map(({ key, label }) => (
                 <Pressable
                   key={key}
                   style={[styles.categoryTab, pickerCategory === key && styles.categoryTabActive]}
@@ -610,6 +724,33 @@ export default function AddDocumentScreen() {
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+    <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.fsOverlay}>
+        <StatusBar hidden />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.fsScrollContent}
+          maximumZoomScale={6}
+          minimumZoomScale={1}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          centerContent
+          bouncesZoom
+        >
+          {fullscreenUri && (
+            <Image
+              source={{ uri: fullscreenUri }}
+              style={{ width: screenWidth, height: screenHeight }}
+              resizeMode="contain"
+            />
+          )}
+        </ScrollView>
+        <Pressable style={styles.fsCloseBtn} onPress={() => setFullscreenUri(null)}>
+          <Text style={styles.fsCloseBtnText}>✕</Text>
+        </Pressable>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -650,7 +791,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   pageLabel: { fontSize: 13, fontWeight: '600', opacity: 0.7 },
-  preview: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#f0f0f0' },
+  preview: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#f0f0f0', overflow: 'hidden' },
+  previewContent: { alignItems: 'center', justifyContent: 'center' },
   removeBtn: { paddingVertical: 4 },
   removeBtnText: { color: '#c00', fontSize: 14 },
   photoRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
@@ -714,4 +856,56 @@ const styles = StyleSheet.create({
   },
   buttonPressed: { opacity: 0.9 },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  calendarInlineBtn: {
+    alignSelf: 'flex-start',
+    marginTop: -12,
+    marginBottom: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#9EB567',
+  },
+  calendarInlineBtnText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  typeToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  typeToggleCurrent: { fontSize: 15, fontWeight: '500', flex: 1 },
+  typeToggleChevron: { fontSize: 13, color: '#9EB567', fontWeight: '500' },
+  showAllBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  showAllBtnText: {
+    color: '#9EB567',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  fsOverlay: { flex: 1, backgroundColor: '#000' },
+  fsScrollContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  fsCloseBtn: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
 });

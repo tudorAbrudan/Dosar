@@ -1,13 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type { EntityType, DocumentType } from '@/types';
+import { ALL_ENTITY_TYPES, STANDARD_DOC_TYPES } from '@/types';
 
 const KEY_NOTIF_DAYS = 'settings_notif_days';
 const KEY_APP_LOCK_ENABLED = 'app_lock_enabled';
 const KEY_APP_LOCK_PIN = 'app_lock_pin';
 const KEY_PUSH_ENABLED = 'settings_push_enabled';
-const KEY_CONCEDIU_TOTAL = 'settings_concediu_total';
-const KEY_CONCEDIU_UTILIZATE = 'settings_concediu_utilizate';
 
 export async function getNotificationDays(): Promise<number> {
   const v = await AsyncStorage.getItem(KEY_NOTIF_DAYS);
@@ -57,24 +57,50 @@ export async function clearAppLockPin(): Promise<void> {
   await SecureStore.deleteItemAsync(KEY_APP_LOCK_PIN);
 }
 
-export async function getConcediuTotal(): Promise<number> {
-  const v = await AsyncStorage.getItem(KEY_CONCEDIU_TOTAL);
-  if (v == null) return 21;
-  const n = parseInt(v, 10);
-  return isNaN(n) ? 21 : Math.max(0, n);
+// ── Vizibilitate entități și tipuri de documente ──────────────────────────────
+
+const KEY_VISIBLE_ENTITY_TYPES = 'settings_visible_entity_types';
+const KEY_VISIBLE_DOC_TYPES = 'settings_visible_doc_types';
+
+export async function getVisibleEntityTypes(): Promise<EntityType[]> {
+  const v = await AsyncStorage.getItem(KEY_VISIBLE_ENTITY_TYPES);
+  if (!v) return [...ALL_ENTITY_TYPES];
+  try {
+    const parsed = JSON.parse(v) as EntityType[];
+    return parsed.length > 0 ? parsed : [...ALL_ENTITY_TYPES];
+  } catch {
+    return [...ALL_ENTITY_TYPES];
+  }
 }
 
-export async function setConcediuTotal(days: number): Promise<void> {
-  await AsyncStorage.setItem(KEY_CONCEDIU_TOTAL, String(Math.max(0, days)));
+export async function setVisibleEntityTypes(types: EntityType[]): Promise<void> {
+  await AsyncStorage.setItem(KEY_VISIBLE_ENTITY_TYPES, JSON.stringify(types));
 }
 
-export async function getConcediuUtilizate(): Promise<number> {
-  const v = await AsyncStorage.getItem(KEY_CONCEDIU_UTILIZATE);
-  if (v == null) return 0;
-  const n = parseInt(v, 10);
-  return isNaN(n) ? 0 : Math.max(0, n);
+export async function getVisibleDocTypes(): Promise<DocumentType[]> {
+  const v = await AsyncStorage.getItem(KEY_VISIBLE_DOC_TYPES);
+  if (!v) return [...STANDARD_DOC_TYPES];
+  try {
+    const parsed = JSON.parse(v) as DocumentType[];
+    return parsed.length > 0 ? parsed : [...STANDARD_DOC_TYPES];
+  } catch {
+    return [...STANDARD_DOC_TYPES];
+  }
 }
 
-export async function setConcediuUtilizate(days: number): Promise<void> {
-  await AsyncStorage.setItem(KEY_CONCEDIU_UTILIZATE, String(Math.max(0, days)));
+export async function setVisibleDocTypes(types: DocumentType[]): Promise<void> {
+  await AsyncStorage.setItem(KEY_VISIBLE_DOC_TYPES, JSON.stringify(types));
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+
+const KEY_ONBOARDING_DONE = 'settings_onboarding_done';
+
+export async function isOnboardingDone(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_ONBOARDING_DONE);
+  return v === 'true';
+}
+
+export async function setOnboardingDone(): Promise<void> {
+  await AsyncStorage.setItem(KEY_ONBOARDING_DONE, 'true');
 }

@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useEntities } from '@/hooks/useEntities';
+import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import type { EntityType, Person, Property, Vehicle, Card, Animal } from '@/types';
 
 type AnyEntity = Person | Property | Vehicle | Card | Animal;
@@ -23,7 +24,7 @@ type EntityTab = EntityType | 'all';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 type TypedEntity = { item: AnyEntity; entityType: EntityType };
 
-const TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
+const ALL_TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
   { key: 'all', label: 'Toate', icon: 'apps-outline' },
   { key: 'person', label: 'Persoane', icon: 'person-outline' },
   { key: 'property', label: 'Proprietăți', icon: 'home-outline' },
@@ -63,6 +64,8 @@ export default function EntitatiListScreen() {
 
   const [tab, setTab] = useState<EntityTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const { visibleEntityTypes } = useVisibilitySettings();
+  const TABS = ALL_TABS.filter(t => t.key === 'all' || visibleEntityTypes.includes(t.key as EntityType));
   const {
     persons,
     properties,

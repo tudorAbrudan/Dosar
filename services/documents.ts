@@ -13,6 +13,7 @@ export interface CreateDocumentInput {
   vehicle_id?: string;
   card_id?: string;
   animal_id?: string;
+  auto_delete?: string;
   metadata?: Record<string, string>;
 }
 
@@ -29,6 +30,7 @@ type Row = {
   vehicle_id: string | null;
   card_id: string | null;
   animal_id: string | null;
+  auto_delete: string | null;
   metadata: string | null;
   created_at: string;
 };
@@ -57,6 +59,7 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
     vehicle_id: r.vehicle_id ?? undefined,
     card_id: r.card_id ?? undefined,
     animal_id: r.animal_id ?? undefined,
+    auto_delete: r.auto_delete ?? undefined,
     created_at: r.created_at,
   };
 }
@@ -90,6 +93,36 @@ export async function getDocumentsExpiringIn(days: number): Promise<Document[]> 
   return rows.map(r => mapRow(r));
 }
 
+export async function applyAutoDelete(): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await db.getAllAsync<Row>(
+    'SELECT * FROM documents WHERE auto_delete IS NOT NULL',
+    []
+  );
+  let deleted = 0;
+  for (const row of rows) {
+    const rule = row.auto_delete;
+    if (!rule) continue;
+    let shouldDelete = false;
+    if (rule === 'expiry') {
+      shouldDelete = !!row.expiry_date && row.expiry_date < today;
+    } else {
+      const match = rule.match(/^(\d+)d$/);
+      if (match) {
+        const days = parseInt(match[1], 10);
+        const deleteAfter = new Date(row.created_at);
+        deleteAfter.setDate(deleteAfter.getDate() + days);
+        shouldDelete = deleteAfter.toISOString().slice(0, 10) <= today;
+      }
+    }
+    if (shouldDelete) {
+      await db.runAsync('DELETE FROM documents WHERE id = ?', [row.id]);
+      deleted++;
+    }
+  }
+  return deleted;
+}
+
 export async function getAllDocumentsWithExpiry(): Promise<Document[]> {
   const rows = await db.getAllAsync<Row>(
     'SELECT * FROM documents WHERE expiry_date IS NOT NULL ORDER BY expiry_date ASC'
@@ -119,8 +152,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   const id = generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, metadata, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, metadata, auto_delete, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.type,
@@ -135,6 +168,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
       input.card_id ?? null,
       input.animal_id ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
+      input.auto_delete ?? null,
       created_at,
     ]
   );
@@ -152,6 +186,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     vehicle_id: input.vehicle_id,
     card_id: input.card_id,
     animal_id: input.animal_id,
+    auto_delete: input.auto_delete,
     created_at,
   };
 }
@@ -168,12 +203,13 @@ export interface UpdateDocumentInput {
   note?: string;
   file_path?: string;
   animal_id?: string;
+  auto_delete?: string;
   metadata?: Record<string, string>;
 }
 
 export async function updateDocument(id: string, input: UpdateDocumentInput): Promise<void> {
   await db.runAsync(
-    'UPDATE documents SET type=?, custom_type_id=?, issue_date=?, expiry_date=?, note=?, file_path=?, animal_id=?, metadata=? WHERE id=?',
+    'UPDATE documents SET type=?, custom_type_id=?, issue_date=?, expiry_date=?, note=?, file_path=?, animal_id=?, metadata=?, auto_delete=? WHERE id=?',
     [
       input.type,
       input.custom_type_id ?? null,
@@ -183,6 +219,7 @@ export async function updateDocument(id: string, input: UpdateDocumentInput): Pr
       input.file_path ?? null,
       input.animal_id ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
+      input.auto_delete ?? null,
       id,
     ]
   );
@@ -215,4 +252,17 @@ export async function reorderDocumentPages(
       documentId,
     ]);
   }
+}
+
+export async function getAllDocumentPages(): Promise<DocumentPage[]> {
+  const rows = await db.getAllAsync<PageRow>(
+    'SELECT * FROM document_pages ORDER BY document_id, page_order ASC'
+  );
+  return rows.map(r => ({
+    id: r.id,
+    document_id: r.document_id,
+    page_order: r.page_order,
+    file_path: r.file_path,
+    created_at: r.created_at,
+  }));
 }

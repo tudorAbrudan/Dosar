@@ -15,6 +15,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
+import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { Document, DocumentType } from '@/types';
 
@@ -35,17 +36,20 @@ const DOC_ICON: Record<DocumentType, IoniconName> = {
   act_proprietate: 'home',
   cadastru: 'map',
   factura: 'receipt',
-  bon_combustibil: 'flame',
+  impozit_proprietate: 'cash-outline',
   card: 'card',
   garantie: 'ribbon-outline',
-  medicament: 'medkit-outline',
+  reteta_medicala: 'medkit-outline',
+  analize_medicale: 'flask-outline',
+  bon_cumparaturi: 'receipt-outline',
   pad: 'home-outline',
   stingator_incendiu: 'flame-outline',
   abonament: 'repeat-outline',
-  index_utilitati: 'speedometer-outline',
+  contract: 'document-text-outline',
   vaccin_animal: 'fitness-outline',
   deparazitare: 'bug-outline',
   vizita_vet: 'paw-outline',
+  bilet: 'ticket-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };
@@ -63,17 +67,20 @@ const DOC_ICON_BG: Record<DocumentType, string> = {
   act_proprietate: '#E8F5E9',
   cadastru: '#E8F5E9',
   factura: '#FFF3E0',
-  bon_combustibil: '#FFF3E0',
+  impozit_proprietate: '#FFF8E1',
   card: '#F3E5F5',
   garantie: '#E8F5E9',
-  medicament: '#FCE4EC',
+  reteta_medicala: '#FCE4EC',
+  analize_medicale: '#E3F2FD',
+  bon_cumparaturi: '#FFF8E1',
   pad: '#E3F2FD',
   stingator_incendiu: '#FCE4EC',
   abonament: '#F3E5F5',
-  index_utilitati: '#E0F2F1',
+  contract: '#E8EAF6',
   vaccin_animal: '#E8F5E9',
   deparazitare: '#FFF8E1',
   vizita_vet: '#E8EAF6',
+  bilet: '#F3E5F5',
   altul: '#F5F5F5',
   custom: '#F5F5F5',
 };
@@ -91,17 +98,20 @@ const DOC_ICON_COLOR: Record<DocumentType, string> = {
   act_proprietate: '#2E7D32',
   cadastru: '#388E3C',
   factura: '#BF360C',
-  bon_combustibil: '#E65100',
+  impozit_proprietate: '#F57F17',
   card: '#7B1FA2',
   garantie: '#2E7D32',
-  medicament: '#C62828',
+  reteta_medicala: '#C62828',
+  analize_medicale: '#1565C0',
+  bon_cumparaturi: '#F57F17',
   pad: '#1565C0',
   stingator_incendiu: '#BF360C',
   abonament: '#7B1FA2',
-  index_utilitati: '#00695C',
+  contract: '#283593',
   vaccin_animal: '#388E3C',
   deparazitare: '#F57F17',
   vizita_vet: '#283593',
+  bilet: '#7B1FA2',
   altul: '#757575',
   custom: '#757575',
 };
@@ -142,6 +152,7 @@ export default function ExpirariScreen() {
 
   const { documents, loading, refresh } = useDocuments();
   const { persons, properties, vehicles, cards, animals } = useEntities();
+  const { visibleDocTypes } = useVisibilitySettings();
 
   useFocusEffect(
     useCallback(() => {
@@ -149,7 +160,7 @@ export default function ExpirariScreen() {
     }, [])
   );
 
-  const withExpiry = documents.filter(d => !!d.expiry_date);
+  const withExpiry = documents.filter(d => !!d.expiry_date && visibleDocTypes.includes(d.type));
   const expired = withExpiry.filter(d => d.expiry_date && isExpired(d.expiry_date));
   const upcoming = withExpiry.filter(d => d.expiry_date && !isExpired(d.expiry_date));
 

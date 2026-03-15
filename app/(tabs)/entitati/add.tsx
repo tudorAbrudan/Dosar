@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { StyleSheet, Pressable, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Pressable, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { primary } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
+import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
+import { extractText, extractCardInfo } from '@/services/ocr';
 import type { EntityType } from '@/types';
 
-const ENTITY_TYPES: { key: EntityType; label: string }[] = [
+const ALL_ENTITY_TYPES: { key: EntityType; label: string }[] = [
   { key: 'person', label: 'Persoană' },
   { key: 'property', label: 'Proprietate' },
   { key: 'vehicle', label: 'Vehicul' },
@@ -19,6 +22,8 @@ export default function AddEntityScreen() {
   const [chosenType, setChosenType] = useState<EntityType | null>((params.type as EntityType) || null);
   const type = chosenType || 'person';
   const { createPerson, createProperty, createVehicle, createCard, createAnimal, refresh } = useEntities();
+  const { visibleEntityTypes } = useVisibilitySettings();
+  const ENTITY_TYPES = ALL_ENTITY_TYPES.filter(t => visibleEntityTypes.includes(t.key));
 
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
@@ -26,6 +31,31 @@ export default function AddEntityScreen() {
   const [expiry, setExpiry] = useState('');
   const [species, setSpecies] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+
+  async function scanCard() {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.9,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setOcrLoading(true);
+    try {
+      const { text } = await extractText(result.assets[0].uri);
+      const info = extractCardInfo(text);
+      if (!info.last4 && !info.expiry) {
+        Alert.alert('OCR card', 'Nu s-au putut extrage date. Completează manual.');
+      } else {
+        if (info.last4) setLast4(info.last4);
+        if (info.expiry) setExpiry(info.expiry);
+      }
+    } catch {
+      Alert.alert('Eroare OCR', 'Nu s-a putut citi cardul. Completează manual.');
+    } finally {
+      setOcrLoading(false);
+    }
+  }
 
   async function handleSubmit() {
     if (type === 'card') {
@@ -63,17 +93,23 @@ export default function AddEntityScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.inner}>
-          <Text style={styles.label}>Wizard rapid</Text>
-          <Pressable
-            style={({ pressed }) => [styles.wizardButton, pressed && styles.buttonPressed]}
-            onPress={() => router.push('/(tabs)/entitati/wizard-masina')}>
-            <Text style={styles.wizardButtonText}>Adaugă mașină (wizard)</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.wizardButton, pressed && styles.buttonPressed]}
-            onPress={() => router.push('/(tabs)/entitati/wizard-proprietate')}>
-            <Text style={styles.wizardButtonText}>Adaugă proprietate (wizard)</Text>
-          </Pressable>
+          {(visibleEntityTypes.includes('vehicle') || visibleEntityTypes.includes('property')) && (
+            <Text style={styles.label}>Wizard rapid</Text>
+          )}
+          {visibleEntityTypes.includes('vehicle') && (
+            <Pressable
+              style={({ pressed }) => [styles.wizardButton, pressed && styles.buttonPressed]}
+              onPress={() => router.push('/(tabs)/entitati/wizard-masina')}>
+              <Text style={styles.wizardButtonText}>Adaugă mașină (wizard)</Text>
+            </Pressable>
+          )}
+          {visibleEntityTypes.includes('property') && (
+            <Pressable
+              style={({ pressed }) => [styles.wizardButton, pressed && styles.buttonPressed]}
+              onPress={() => router.push('/(tabs)/entitati/wizard-proprietate')}>
+              <Text style={styles.wizardButtonText}>Adaugă proprietate (wizard)</Text>
+            </Pressable>
+          )}
 
           <View style={styles.separator} />
           <Text style={styles.label}>Sau adaugă manual</Text>
@@ -121,6 +157,15 @@ export default function AddEntityScreen() {
         )}
         {isCard && (
           <>
+            <Pressable
+              style={({ pressed }) => [styles.scanButton, pressed && styles.buttonPressed]}
+              onPress={scanCard}
+              disabled={ocrLoading || loading}>
+              {ocrLoading
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.scanButtonText}>Scanează cardul (OCR)</Text>
+              }
+            </Pressable>
             <Text style={styles.label}>Nickname (ex. Card personal)</Text>
             <ThemedTextInput
               style={styles.input}
@@ -195,6 +240,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   typeButtonText: { fontSize: 16, fontWeight: '500', color: primary },
+  scanButton: {
+    backgroundColor: '#555',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  scanButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   wizardButton: {
     backgroundColor: primary,
     borderRadius: 12,

@@ -57,14 +57,17 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'invoice_number', label: 'Nr. factură', placeholder: 'FAC001' },
     { key: 'supplier', label: 'Furnizor', placeholder: 'Enel, Digi...' },
     { key: 'amount', label: 'Sumă (RON)', placeholder: '250.00', keyboardType: 'decimal-pad', ocrKey: 'amount' },
-    { key: 'due_date', label: 'Scadentă', placeholder: 'AAAA-LL-ZZ' },
+    { key: 'due_date', label: 'Scadentă', placeholder: 'ZZ.LL.AAAA' },
   ],
-  bon_combustibil: [
-    { key: 'km', label: 'Kilometraj (km)', placeholder: '125430', keyboardType: 'numeric', ocrKey: 'km' },
-    { key: 'liters', label: 'Litri alimentați', placeholder: '45.23', keyboardType: 'decimal-pad', ocrKey: 'liters' },
-    { key: 'price_per_liter', label: 'Preț/litru (RON)', placeholder: '7.45', keyboardType: 'decimal-pad' },
-    { key: 'total_amount', label: 'Total (RON)', placeholder: '335.81', keyboardType: 'decimal-pad', ocrKey: 'price' },
-    { key: 'station', label: 'Stație', placeholder: 'Rompetrol, OMV...' },
+  impozit_proprietate: [
+    { key: 'decision_number', label: 'Nr. decizie impunere', placeholder: 'DI-2026/12345' },
+    { key: 'amount', label: 'Sumă (RON)', placeholder: '1200.00', keyboardType: 'decimal-pad' },
+    { key: 'year', label: 'An fiscal', placeholder: '2026', keyboardType: 'numeric' },
+  ],
+  contract: [
+    { key: 'contract_number', label: 'Nr. contract', placeholder: 'CTR-001' },
+    { key: 'counterpart', label: 'Contraparte', placeholder: 'Firma ABC SRL' },
+    { key: 'value', label: 'Valoare (RON)', placeholder: '5000.00', keyboardType: 'decimal-pad' },
   ],
   card: [
     { key: 'last4', label: 'Ultimele 4 cifre', placeholder: '1234', keyboardType: 'numeric', ocrKey: 'last4' },
@@ -76,10 +79,10 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'store', label: 'Magazin', placeholder: 'eMAG, Altex...' },
     { key: 'warranty_years', label: 'Ani garanție', placeholder: '2', keyboardType: 'numeric' },
   ],
-  medicament: [
-    { key: 'medication_name', label: 'Medicament', placeholder: 'Paracetamol 500mg' },
+  reteta_medicala: [
+    { key: 'medication_name', label: 'Medicament(e)', placeholder: 'Paracetamol 500mg' },
+    { key: 'doctor', label: 'Medic', placeholder: 'Dr. Ionescu' },
     { key: 'dosage', label: 'Dozaj', placeholder: '1 comprimat/zi' },
-    { key: 'quantity', label: 'Cantitate', placeholder: '20 comprimate' },
   ],
   pad: [
     { key: 'insurer', label: 'Asigurator', placeholder: 'Allianz, Groupama...' },
@@ -94,13 +97,6 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'amount', label: 'Sumă (RON)', placeholder: '55.00', keyboardType: 'decimal-pad' },
     { key: 'recurrence', label: 'Frecvență', placeholder: 'lunar / anual' },
   ],
-  index_utilitati: [
-    { key: 'apa_rece', label: 'Apă rece (mc)', placeholder: '123.45', keyboardType: 'decimal-pad' },
-    { key: 'apa_calda', label: 'Apă caldă (mc)', placeholder: '45.67', keyboardType: 'decimal-pad' },
-    { key: 'gaz', label: 'Gaz (mc)', placeholder: '234.56', keyboardType: 'decimal-pad' },
-    { key: 'curent', label: 'Curent (kWh)', placeholder: '1234', keyboardType: 'numeric' },
-    { key: 'luna_an', label: 'Lună/An', placeholder: '03/2026' },
-  ],
   vaccin_animal: [
     { key: 'vaccine_name', label: 'Vaccin', placeholder: 'Antirabic, Hexavalent...' },
     { key: 'vet_name', label: 'Veterinar', placeholder: 'Dr. Ionescu' },
@@ -112,5 +108,19 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
   vizita_vet: [
     { key: 'reason', label: 'Motiv', placeholder: 'Control anual, Boală...' },
     { key: 'vet_name', label: 'Veterinar', placeholder: 'Dr. Ionescu' },
+  ],
+  analize_medicale: [
+    { key: 'lab', label: 'Laborator', placeholder: 'Synevo, MedLife...' },
+    { key: 'doctor', label: 'Medic / Specialitate', placeholder: 'Dr. Ionescu – Cardiologie' },
+  ],
+  bon_cumparaturi: [
+    { key: 'store', label: 'Magazin', placeholder: 'Lidl, eMAG, Altex...' },
+    { key: 'amount', label: 'Sumă (RON)', placeholder: '250.00', keyboardType: 'decimal-pad', ocrKey: 'amount' },
+  ],
+  bilet: [
+    { key: 'categorie', label: 'Categorie', placeholder: 'Concert, Operă, Teatru, Tren, Avion...' },
+    { key: 'venue', label: 'Locație / Rută', placeholder: 'Sala Palatului, Gara de Nord → Cluj...' },
+    { key: 'seat', label: 'Loc / Vagon', placeholder: '12A, Vagon 5 Loc 23...' },
+    { key: 'event_date', label: 'Data evenimentului', placeholder: 'ZZ.LL.AAAA' },
   ],
 };

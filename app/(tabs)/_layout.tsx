@@ -64,7 +64,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="documente"
         options={{
-          title: 'Documente',
+          title: 'Acte',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{ ios: 'doc.fill', android: 'description', web: 'description' }}

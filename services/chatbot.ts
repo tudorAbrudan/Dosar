@@ -1,4 +1,4 @@
-import { getPersons, getProperties, getVehicles, getCards } from './entities';
+import { getPersons, getProperties, getVehicles, getCards, getAnimals } from './entities';
 import { getDocuments } from './documents';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 
@@ -11,11 +11,12 @@ export interface ChatMessage {
 }
 
 async function buildContext(): Promise<string> {
-  const [persons, properties, vehicles, cards, documents] = await Promise.all([
+  const [persons, properties, vehicles, cards, animals, documents] = await Promise.all([
     getPersons(),
     getProperties(),
     getVehicles(),
     getCards(),
+    getAnimals(),
     getDocuments(),
   ]);
 
@@ -26,6 +27,8 @@ async function buildContext(): Promise<string> {
   if (vehicles.length) lines.push(`Vehicule: ${vehicles.map((v) => v.name).join(', ')}`);
   if (cards.length)
     lines.push(`Carduri: ${cards.map((c) => `${c.nickname} (****${c.last4})`).join(', ')}`);
+  if (animals.length)
+    lines.push(`Animale: ${animals.map((a) => `${a.name} (${a.species})`).join(', ')}`);
 
   lines.push('\nDocumente:');
   for (const doc of documents) {
@@ -34,13 +37,27 @@ async function buildContext(): Promise<string> {
       vehicles.find((v) => v.id === doc.vehicle_id)?.name ??
       properties.find((p) => p.id === doc.property_id)?.name ??
       cards.find((c) => c.id === doc.card_id)?.nickname ??
+      animals.find((a) => a.id === doc.animal_id)?.name ??
       null;
-    const label = DOCUMENT_TYPE_LABELS[doc.type];
+    const label = DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type;
     const expiry = doc.expiry_date ? ` | expiră: ${doc.expiry_date}` : '';
     const issued = doc.issue_date ? ` | emis: ${doc.issue_date}` : '';
     const entityStr = entity ? ` (${entity})` : '';
     const note = doc.note ? ` | notă: ${doc.note}` : '';
-    lines.push(`- [ID:${doc.id}] ${label}${entityStr}${issued}${expiry}${note}`);
+
+    // Metadata specifică tipului (nr. înmatriculare, CNP, serie, etc.)
+    let meta = '';
+    if (doc.metadata) {
+      try {
+        const parsed = typeof doc.metadata === 'string' ? JSON.parse(doc.metadata) : doc.metadata;
+        const metaParts = Object.entries(parsed as Record<string, string>)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`);
+        if (metaParts.length) meta = ` | ${metaParts.join(', ')}`;
+      } catch { /* metadata coruptă */ }
+    }
+
+    lines.push(`- [ID:${doc.id}] ${label}${entityStr}${issued}${expiry}${note}${meta}`);
   }
 
   return lines.join('\n');

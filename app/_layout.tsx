@@ -1,16 +1,19 @@
 import { ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Linking } from 'react-native';
 import 'react-native-reanimated';
 
 import AppLockScreen from '@/components/AppLockScreen';
+import OnboardingWizard from '@/components/OnboardingWizard';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AppLightTheme, AppDarkTheme } from '@/constants/Theme';
 import { useAppLock } from '@/hooks/useAppLock';
+import { db } from '@/services/db';
+import * as settings from '@/services/settings';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -42,10 +45,17 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+function parseDeepLink(url: string): string | null {
+  const match = url.match(/documente\/([a-zA-Z0-9\-]+)/);
+  return match?.[1] ?? null;
+}
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const appLock = useAppLock();
+  const router = useRouter();
   const notifListener = useRef<Notifications.EventSubscription | null>(null);
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
     notifListener.current = Notifications.addNotificationResponseReceivedListener(response => {
@@ -55,6 +65,42 @@ function RootLayoutNav() {
       }
     });
     return () => { notifListener.current?.remove(); };
+  }, []);
+
+  // Deep link handler: app:///documente/{id} → deschide documentul
+  useEffect(() => {
+    const handleURL = (url: string) => {
+      const docId = parseDeepLink(url);
+      if (docId) router.push(`/(tabs)/documente/${docId}`);
+    };
+
+    // App pornită din deep link (cold start)
+    Linking.getInitialURL().then(url => { if (url) handleURL(url); });
+
+    // App deja pornită, primește deep link
+    const sub = Linking.addEventListener('url', ({ url }) => handleURL(url));
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    async function checkOnboarding() {
+      const done = await settings.isOnboardingDone();
+      if (done) {
+        setOnboardingDone(true);
+        return;
+      }
+      // Utilizatori existenți care nu au trecut prin onboarding
+      const result = db.getFirstSync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM persons');
+      const hasData = (result?.cnt ?? 0) > 0;
+      if (hasData) {
+        await settings.setOnboardingDone();
+        setOnboardingDone(true);
+      } else {
+        setOnboardingDone(false);
+      }
+    }
+    checkOnboarding();
   }, []);
 
   return (
@@ -69,6 +115,9 @@ function RootLayoutNav() {
           onUnlockBiometric={appLock.unlockWithBiometric}
           onUnlockPin={appLock.unlockWithPin}
         />
+      )}
+      {onboardingDone === false && (
+        <OnboardingWizard onComplete={() => setOnboardingDone(true)} />
       )}
     </ThemeProvider>
   );

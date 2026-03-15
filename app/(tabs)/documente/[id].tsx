@@ -18,22 +18,36 @@ import {
   removeDocumentPage,
 } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
-import { addExpiryCalendarEvent, isCalendarAvailable } from '@/services/calendar';
-import { extractText } from '@/services/ocr';
+import { addExpiryCalendarEvent, addEventToCalendar, isCalendarAvailable } from '@/services/calendar';
+import { extractText, extractDocumentInfo, detectDocumentType, formatOcrSummary } from '@/services/ocr';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { Document as DocType, DocumentType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
+import { DatePickerField } from '@/components/DatePickerField';
 import { DOCUMENT_FIELDS } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 
-const STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
-  .filter(([value]) => value !== 'custom')
-  .map(([value, label]) => ({ value: value as DocumentType, label }));
+
+function autoDeleteLabel(rule: string): string {
+  if (rule === 'expiry') return 'La data expirării';
+  const m = rule.match(/^(\d+)d$/);
+  if (m) {
+    const d = parseInt(m[1], 10);
+    if (d === 30) return '30 de zile';
+    if (d === 90) return '90 de zile';
+    if (d === 180) return '180 de zile';
+    if (d === 365) return '1 an';
+    return `${d} zile`;
+  }
+  return rule;
+}
 
 export default function DocumentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
   const { customTypes } = useCustomTypes();
+  const { docTypeOptions: standardTypes } = useFilteredDocTypes();
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -50,10 +64,12 @@ export default function DocumentDetailScreen() {
   const [editExpiryDate, setEditExpiryDate] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editMetadata, setEditMetadata] = useState<Record<string, string>>({});
+  const [editAutoDelete, setEditAutoDelete] = useState<string | null>(null);
   const [editImageUri, setEditImageUri] = useState<string | null>(null);
   const [editLocalPath, setEditLocalPath] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   useEffect(() => {
@@ -78,6 +94,7 @@ export default function DocumentDetailScreen() {
     const fp = doc.file_path;
     setEditImageUri(fp ? (fp.startsWith('file://') ? fp : `file://${fp}`) : null);
     setEditLocalPath(fp ?? null);
+    setEditAutoDelete(doc.auto_delete ?? null);
     setEditVisible(true);
   };
 
@@ -89,7 +106,7 @@ export default function DocumentDetailScreen() {
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 1,
     });
     if (!result.canceled && result.assets[0]) {
       const uri = result.assets[0].uri;
@@ -119,7 +136,7 @@ export default function DocumentDetailScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 1,
     });
     if (!result.canceled && result.assets[0]) {
       const uri = result.assets[0].uri;
@@ -211,14 +228,44 @@ export default function DocumentDetailScreen() {
           expiry_date: doc.expiry_date,
           note: doc.note,
           file_path: dest,
+          auto_delete: doc.auto_delete,
         });
       } else {
         await addDocumentPage(doc.id, dest);
       }
       const updated = await getDocumentById(doc.id);
       setDoc(updated);
+      // OCR automat pe poza nouă
+      runOcrOnNewPage(dest);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut adăuga pagina');
+    }
+  }
+
+  async function runOcrOnNewPage(localPath: string) {
+    try {
+      const fileUri = localPath.startsWith('file://') ? localPath : `file://${localPath}`;
+      const { text } = await extractText(fileUri);
+      if (!text.trim() || !doc) return;
+
+      const detectedType = detectDocumentType(text);
+      const info = extractDocumentInfo(text);
+      const summary = formatOcrSummary(text, info);
+
+      // Pregătim update-ul: tip detectat, date, notă
+      const updates: Parameters<typeof updateDocument>[1] = {
+        type: (detectedType && detectedType !== 'altul' && detectedType !== 'custom') ? detectedType : doc.type,
+        issue_date: info.issue_date ?? doc.issue_date,
+        expiry_date: info.expiry_date ?? doc.expiry_date,
+        note: (!doc.note && summary) ? summary : doc.note,
+        file_path: doc.file_path,
+        auto_delete: doc.auto_delete,
+      };
+      await updateDocument(doc.id, updates);
+      const updated = await getDocumentById(doc.id);
+      setDoc(updated);
+    } catch {
+      // OCR opțional
     }
   }
 
@@ -234,7 +281,7 @@ export default function DocumentDetailScreen() {
           }
           const result = await ImagePicker.launchCameraAsync({
             mediaTypes: ['images'],
-            quality: 0.8,
+            quality: 1,
           });
           if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
         },
@@ -249,7 +296,7 @@ export default function DocumentDetailScreen() {
           }
           const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
-            quality: 0.8,
+            quality: 1,
           });
           if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
         },
@@ -270,6 +317,7 @@ export default function DocumentDetailScreen() {
         note: editNote.trim() || undefined,
         file_path: editLocalPath ?? undefined,
         metadata: Object.keys(editMetadata).length > 0 ? editMetadata : undefined,
+        auto_delete: editAutoDelete ?? undefined,
       });
       const updated = await getDocumentById(doc.id);
       setDoc(updated);
@@ -286,7 +334,7 @@ export default function DocumentDetailScreen() {
             {
               text: 'Adaugă',
               onPress: async () => {
-                const calId = await addExpiryCalendarEvent({ docType: editType, expiryDate: finalExpiry, entityName: undefined });
+                const calId = await addExpiryCalendarEvent({ docType: editType, expiryDate: finalExpiry, entityName: undefined, documentId: doc.id, note: editNote.trim() || undefined });
                 if (!calId) Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
               },
             },
@@ -513,12 +561,40 @@ export default function DocumentDetailScreen() {
             <>
               <Text style={styles.label}>Data expirare</Text>
               <Text style={styles.value}>{doc.expiry_date}</Text>
+              <Pressable
+                style={styles.calendarBtn}
+                onPress={async () => {
+                  if (!isCalendarAvailable()) {
+                    Alert.alert('Calendar indisponibil', 'Calendarul necesită un build nativ (expo run:ios). Nu funcționează în Expo Go.');
+                    return;
+                  }
+                  const calId = await addExpiryCalendarEvent({
+                    docType: doc.type,
+                    expiryDate: doc.expiry_date!,
+                    entityName: undefined,
+                    documentId: doc.id,
+                    note: doc.note,
+                  });
+                  if (!calId)
+                    Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
+                  else
+                    Alert.alert('Calendar', 'Evenimentul a fost adăugat în calendar.');
+                }}
+              >
+                <Text style={styles.calendarBtnText}>📅 Adaugă reminder în calendar</Text>
+              </Pressable>
             </>
           )}
           {doc.note && (
             <>
               <Text style={styles.label}>Notă</Text>
               <Text style={styles.value}>{doc.note}</Text>
+            </>
+          )}
+          {doc.auto_delete && (
+            <>
+              <Text style={styles.label}>Auto-ștergere</Text>
+              <Text style={styles.value}>{autoDeleteLabel(doc.auto_delete)}</Text>
             </>
           )}
           {(DOCUMENT_FIELDS[doc.type] ?? []).map((field: FieldDef) => {
@@ -531,6 +607,31 @@ export default function DocumentDetailScreen() {
               </View>
             );
           })}
+          {doc.type === 'bilet' && doc.metadata?.event_date && (
+            <Pressable
+              style={styles.calendarBtn}
+              onPress={async () => {
+                if (!isCalendarAvailable()) {
+                  Alert.alert('Calendar indisponibil', 'Calendarul necesită un build nativ (expo run:ios).');
+                  return;
+                }
+                const title = [doc.metadata?.categorie, doc.metadata?.venue].filter(Boolean).join(' – ') || 'Eveniment';
+                const calId = await addEventToCalendar({
+                  title,
+                  eventDate: doc.metadata!.event_date,
+                  venue: doc.metadata?.venue,
+                  note: doc.note,
+                  documentId: doc.id,
+                });
+                if (!calId)
+                  Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
+                else
+                  Alert.alert('Calendar', 'Reminder adăugat! Vei fi notificat cu 1 zi și 2 ore înainte.');
+              }}
+            >
+              <Text style={styles.calendarBtnText}>📅 Reminder eveniment în calendar</Text>
+            </Pressable>
+          )}
         </View>
 
         <Pressable style={styles.editBtn} onPress={openEditModal}>
@@ -550,7 +651,7 @@ export default function DocumentDetailScreen() {
         </Pressable>
         <Pressable style={styles.shareBtnSecondary} onPress={handleShare}>
           <Text style={styles.shareBtnTextSecondary}>
-            Partajează imaginea (Email, WhatsApp, etc.)
+            Distribuie imaginea (Email, WhatsApp, etc.)
           </Text>
         </Pressable>
         <Pressable
@@ -617,85 +718,6 @@ export default function DocumentDetailScreen() {
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.overlayTitle}>Editează document</Text>
 
-              <Text style={styles.fieldLabel}>Tip document</Text>
-              <View style={styles.typeRow}>
-                {STANDARD_TYPES.map(({ value, label }) => (
-                  <Pressable
-                    key={value}
-                    style={[styles.typeChip, editType === value && styles.typeChipActive]}
-                    onPress={() => { setEditType(value); setEditCustomTypeId(null); }}
-                  >
-                    <Text
-                      style={[styles.typeChipText, editType === value && styles.typeChipTextActive]}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
-                ))}
-                {customTypes.map(ct => (
-                  <Pressable
-                    key={ct.id}
-                    style={[
-                      styles.typeChip,
-                      editType === 'custom' && editCustomTypeId === ct.id && styles.typeChipActive,
-                    ]}
-                    onPress={() => { setEditType('custom'); setEditCustomTypeId(ct.id); }}
-                  >
-                    <Text
-                      style={[
-                        styles.typeChipText,
-                        editType === 'custom' && editCustomTypeId === ct.id && styles.typeChipTextActive,
-                      ]}
-                    >
-                      {ct.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <Text style={styles.fieldLabel}>Data emisiune (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="AAAA-LL-ZZ"
-                value={editIssueDate}
-                onChangeText={setEditIssueDate}
-                editable={!saving}
-              />
-
-              <Text style={styles.fieldLabel}>Data expirare (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="AAAA-LL-ZZ"
-                value={editExpiryDate}
-                onChangeText={setEditExpiryDate}
-                editable={!saving}
-              />
-
-              <Text style={styles.fieldLabel}>Notă (opțional)</Text>
-              <ThemedTextInput
-                style={[styles.input, styles.inputMultiline]}
-                placeholder="Notă"
-                value={editNote}
-                onChangeText={setEditNote}
-                multiline
-                editable={!saving}
-              />
-
-              {/* Câmpuri specifice tipului */}
-              {(DOCUMENT_FIELDS[editType] ?? []).map((field: FieldDef) => (
-                <View key={field.key}>
-                  <Text style={styles.fieldLabel}>{field.label}</Text>
-                  <ThemedTextInput
-                    style={styles.input}
-                    placeholder={field.placeholder ?? ''}
-                    value={editMetadata[field.key] ?? ''}
-                    onChangeText={v => setEditMetadata(prev => ({ ...prev, [field.key]: v }))}
-                    keyboardType={field.keyboardType ?? 'default'}
-                    editable={!saving}
-                  />
-                </View>
-              ))}
-
               <Text style={styles.fieldLabel}>Poză / scan (opțional)</Text>
               {editImageUri ? (
                 <View style={styles.editImageWrap}>
@@ -723,6 +745,115 @@ export default function DocumentDetailScreen() {
                   <Text style={styles.overlayBtnOutlineText}>Alege poză</Text>
                 </Pressable>
               )}
+
+              <Text style={styles.fieldLabel}>Tip document</Text>
+              <Pressable
+                style={styles.typeToggleRow}
+                onPress={() => setTypePickerVisible(v => !v)}
+              >
+                <Text style={styles.typeToggleCurrent}>
+                  {editType === 'custom'
+                    ? (customTypes.find(c => c.id === editCustomTypeId)?.name ?? 'Tip personalizat')
+                    : (DOCUMENT_TYPE_LABELS[editType] ?? editType)}
+                </Text>
+                <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
+              </Pressable>
+              {typePickerVisible && (
+                <View style={styles.typeRow}>
+                  {standardTypes.map(({ value, label }) => (
+                    <Pressable
+                      key={value}
+                      style={[styles.typeChip, editType === value && styles.typeChipActive]}
+                      onPress={() => { setEditType(value); setEditCustomTypeId(null); setTypePickerVisible(false); }}
+                    >
+                      <Text
+                        style={[styles.typeChipText, editType === value && styles.typeChipTextActive]}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                  {customTypes.map(ct => (
+                    <Pressable
+                      key={ct.id}
+                      style={[
+                        styles.typeChip,
+                        editType === 'custom' && editCustomTypeId === ct.id && styles.typeChipActive,
+                      ]}
+                      onPress={() => { setEditType('custom'); setEditCustomTypeId(ct.id); setTypePickerVisible(false); }}
+                    >
+                      <Text
+                        style={[
+                          styles.typeChipText,
+                          editType === 'custom' && editCustomTypeId === ct.id && styles.typeChipTextActive,
+                        ]}
+                      >
+                        {ct.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              <DatePickerField
+                label="Data emisiune (opțional)"
+                value={editIssueDate}
+                onChange={setEditIssueDate}
+                disabled={saving}
+              />
+              <DatePickerField
+                label="Data expirare (opțional)"
+                value={editExpiryDate}
+                onChange={setEditExpiryDate}
+                disabled={saving}
+              />
+
+              <Text style={styles.fieldLabel}>Auto-ștergere (opțional)</Text>
+              <View style={styles.typeRow}>
+                {([
+                  { label: 'Niciodată', value: null },
+                  { label: '30 zile', value: '30d' },
+                  { label: '90 zile', value: '90d' },
+                  { label: '180 zile', value: '180d' },
+                  { label: '1 an', value: '365d' },
+                  ...(editExpiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
+                ] as { label: string; value: string | null }[]).map(opt => (
+                  <Pressable
+                    key={opt.value ?? 'never'}
+                    style={[styles.typeChip, editAutoDelete === opt.value && styles.typeChipActive]}
+                    onPress={() => setEditAutoDelete(opt.value)}
+                  >
+                    <Text style={[styles.typeChipText, editAutoDelete === opt.value && styles.typeChipTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.fieldLabel}>Notă (opțional)</Text>
+              <ThemedTextInput
+                style={[styles.input, styles.inputMultiline]}
+                placeholder="Notă"
+                value={editNote}
+                onChangeText={setEditNote}
+                multiline
+                editable={!saving}
+              />
+
+              {/* Câmpuri specifice tipului */}
+              {(DOCUMENT_FIELDS[editType] ?? []).map((field: FieldDef) => (
+                <View key={field.key}>
+                  <Text style={styles.fieldLabel}>{field.label}</Text>
+                  <ThemedTextInput
+                    style={styles.input}
+                    placeholder={field.placeholder ?? ''}
+                    value={editMetadata[field.key] ?? ''}
+                    onChangeText={v => setEditMetadata(prev => ({ ...prev, [field.key]: v }))}
+                    keyboardType={field.keyboardType ?? 'default'}
+                    editable={!saving}
+                  />
+                </View>
+              ))}
 
               <View style={styles.overlayBtns}>
                 <Pressable
@@ -838,6 +969,42 @@ const styles = StyleSheet.create({
   meta: { marginBottom: 24 },
   label: { fontSize: 12, opacity: 0.7, marginTop: 12, marginBottom: 2 },
   value: { fontSize: 16 },
+  calendarBtn: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#9EB567',
+    alignSelf: 'flex-start',
+  },
+  calendarBtnText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  typeToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  typeToggleCurrent: {
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
+  },
+  typeToggleChevron: {
+    fontSize: 13,
+    color: '#9EB567',
+    fontWeight: '500',
+  },
   editBtn: {
     borderWidth: 1,
     borderColor: primary,
