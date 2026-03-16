@@ -246,30 +246,42 @@ export default function DocumentDetailScreen() {
     }
   }
 
+  // Încearcă să găsească orientarea corectă a imaginii via OCR.
+  // Dacă textul inițial e prea scurt, testează 90°/270°/180° și salvează versiunea cea mai bună.
+  // Returnează textul extras și dacă imaginea a fost rotită.
+  async function ocrWithAutoRotate(storedPath: string): Promise<{ text: string; rotated: boolean }> {
+    const fileUri = storedPath.startsWith('file://') ? storedPath : `file://${storedPath}`;
+    let { text } = await extractText(fileUri);
+
+    if (text.trim().length >= 30) return { text, rotated: false };
+
+    let bestText = text;
+    let bestUri = fileUri;
+
+    for (const deg of [90, 270, 180]) {
+      const r = await ImageManipulator.manipulateAsync(
+        fileUri, [{ rotate: deg }], { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      const { text: rotText } = await extractText(r.uri);
+      if (rotText.trim().length > bestText.trim().length) {
+        bestText = rotText;
+        bestUri = r.uri;
+      }
+      if (bestText.trim().length >= 30) break;
+    }
+
+    const wasRotated = bestUri !== fileUri;
+    if (wasRotated) {
+      const destPath = storedPath.startsWith('file://') ? storedPath.slice(7) : storedPath;
+      await FileSystem.copyAsync({ from: bestUri, to: destPath });
+    }
+
+    return { text: bestText, rotated: wasRotated };
+  }
+
   async function runOcrOnNewPage(localPath: string, currentDoc: DocType) {
     try {
-      const fileUri = localPath.startsWith('file://') ? localPath : `file://${localPath}`;
-
-      // Auto-rotație: dacă OCR găsește puțin text, încearcă alte orientări
-      let { text } = await extractText(fileUri);
-      let savedPath = localPath;
-
-      if (text.trim().length < 30) {
-        for (const deg of [90, 270, 180]) {
-          const rotated = await ImageManipulator.manipulateAsync(
-            fileUri, [{ rotate: deg }], { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-          );
-          const { text: rotText } = await extractText(rotated.uri);
-          if (rotText.trim().length > text.trim().length) {
-            text = rotText;
-            // Suprascrie fișierul cu versiunea rotită
-            const destPath = localPath.startsWith('file://') ? localPath.slice(7) : localPath;
-            await FileSystem.copyAsync({ from: rotated.uri, to: destPath });
-            savedPath = destPath;
-          }
-          if (text.trim().length >= 30) break;
-        }
-      }
+      const { text, rotated } = await ocrWithAutoRotate(localPath);
 
       if (!text.trim()) return;
 
@@ -277,19 +289,18 @@ export default function DocumentDetailScreen() {
       const info = extractDocumentInfo(text);
       const summary = formatOcrSummary(text, info);
 
-      // Folosim currentDoc (actualizat), nu doc din closure (stale)
       const updates: Parameters<typeof updateDocument>[1] = {
         type: (detectedType && detectedType !== 'altul' && detectedType !== 'custom') ? detectedType : currentDoc.type,
         issue_date: info.issue_date ?? currentDoc.issue_date,
         expiry_date: info.expiry_date ?? currentDoc.expiry_date,
         note: (!currentDoc.note && summary) ? summary : currentDoc.note,
-        file_path: savedPath,
+        file_path: currentDoc.file_path,
         auto_delete: currentDoc.auto_delete,
       };
       await updateDocument(currentDoc.id, updates);
       const updated = await getDocumentById(currentDoc.id);
       setDoc(updated);
-      setRotatedUris({});
+      if (rotated) setRotatedUris({});
     } catch {
       // OCR opțional
     }
@@ -381,15 +392,17 @@ export default function DocumentDetailScreen() {
     }
     setOcrLoading(true);
     try {
-      // Scanează TOATE paginile și combină textul
+      // Scanează TOATE paginile, auto-rotează dacă e nevoie, combină textul
       const texts: string[] = [];
+      let anyRotated = false;
       for (const page of allPages) {
-        const uri = page.file_path.startsWith('file://') ? page.file_path : `file://${page.file_path}`;
         try {
-          const { text } = await extractText(uri);
+          const { text, rotated } = await ocrWithAutoRotate(page.file_path);
           if (text.trim()) texts.push(text);
+          if (rotated) anyRotated = true;
         } catch { /* pagina nu a putut fi scanată */ }
       }
+      if (anyRotated) setRotatedUris({});
 
       const combinedText = texts.join('\n');
       if (!combinedText.trim()) {
