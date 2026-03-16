@@ -235,34 +235,34 @@ export default function DocumentDetailScreen() {
       }
       const updated = await getDocumentById(doc.id);
       setDoc(updated);
-      // OCR automat pe poza nouă
-      runOcrOnNewPage(dest);
+      // Pasăm documentul actualizat la OCR ca să nu folosim closure-ul stale
+      if (updated) runOcrOnNewPage(dest, updated);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut adăuga pagina');
     }
   }
 
-  async function runOcrOnNewPage(localPath: string) {
+  async function runOcrOnNewPage(localPath: string, currentDoc: DocType) {
     try {
       const fileUri = localPath.startsWith('file://') ? localPath : `file://${localPath}`;
       const { text } = await extractText(fileUri);
-      if (!text.trim() || !doc) return;
+      if (!text.trim()) return;
 
       const detectedType = detectDocumentType(text);
       const info = extractDocumentInfo(text);
       const summary = formatOcrSummary(text, info);
 
-      // Pregătim update-ul: tip detectat, date, notă
+      // Folosim currentDoc (actualizat), nu doc din closure (stale)
       const updates: Parameters<typeof updateDocument>[1] = {
-        type: (detectedType && detectedType !== 'altul' && detectedType !== 'custom') ? detectedType : doc.type,
-        issue_date: info.issue_date ?? doc.issue_date,
-        expiry_date: info.expiry_date ?? doc.expiry_date,
-        note: (!doc.note && summary) ? summary : doc.note,
-        file_path: doc.file_path,
-        auto_delete: doc.auto_delete,
+        type: (detectedType && detectedType !== 'altul' && detectedType !== 'custom') ? detectedType : currentDoc.type,
+        issue_date: info.issue_date ?? currentDoc.issue_date,
+        expiry_date: info.expiry_date ?? currentDoc.expiry_date,
+        note: (!currentDoc.note && summary) ? summary : currentDoc.note,
+        file_path: currentDoc.file_path,
+        auto_delete: currentDoc.auto_delete,
       };
-      await updateDocument(doc.id, updates);
-      const updated = await getDocumentById(doc.id);
+      await updateDocument(currentDoc.id, updates);
+      const updated = await getDocumentById(currentDoc.id);
       setDoc(updated);
     } catch {
       // OCR opțional
@@ -397,32 +397,50 @@ export default function DocumentDetailScreen() {
     ]);
   };
 
-  const handleShare = async () => {
-    if (!doc) return;
-    const fileUri = doc.file_path?.startsWith('file://')
-      ? doc.file_path
-      : doc.file_path
-        ? `file://${doc.file_path}`
-        : null;
+  const shareImageAtIndex = async (pageIndex: number) => {
+    const page = allPages[pageIndex];
+    if (!page) return;
+    const fileUri = page.file_path.startsWith('file://')
+      ? page.file_path
+      : `file://${page.file_path}`;
     try {
-      if (fileUri) {
-        const available = await Sharing.isAvailableAsync();
-        if (!available) {
-          await Share.share({ message: shareMessage(doc), title: getDocumentLabel(doc, customTypes) });
-          return;
-        }
+      const available = await Sharing.isAvailableAsync();
+      if (available) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'image/jpeg',
-          dialogTitle: `Partajează: ${getDocumentLabel(doc, customTypes)}`,
+          dialogTitle: `Distribuie: ${getDocumentLabel(doc!, customTypes)}`,
         });
       } else {
-        await Share.share({ message: shareMessage(doc), title: getDocumentLabel(doc, customTypes) });
+        await Share.share({ message: shareMessage(doc!), title: getDocumentLabel(doc!, customTypes) });
       }
     } catch (e) {
-      if ((e as Error)?.message?.includes('cancel') || (e as Error)?.message === 'User cancelled')
-        return;
-      Alert.alert('Eroare', (e as Error)?.message ?? 'Nu s-a putut partaja');
+      if ((e as Error)?.message?.includes('cancel') || (e as Error)?.message === 'User cancelled') return;
+      Alert.alert('Eroare', (e as Error)?.message ?? 'Nu s-a putut distribui');
     }
+  };
+
+  const handleShare = async () => {
+    if (!doc) return;
+    if (allPages.length === 0) {
+      await Share.share({ message: shareMessage(doc), title: getDocumentLabel(doc, customTypes) });
+      return;
+    }
+    if (allPages.length === 1) {
+      await shareImageAtIndex(0);
+      return;
+    }
+    // Mai multe pagini — alege care să o distribui
+    Alert.alert(
+      'Distribuie imagine',
+      'Alege pagina:',
+      [
+        ...allPages.map((_, idx) => ({
+          text: `Pagina ${idx + 1}`,
+          onPress: () => shareImageAtIndex(idx),
+        })),
+        { text: 'Anulare', style: 'cancel' as const },
+      ]
+    );
   };
 
   function shareMessage(d: DocType): string {
@@ -450,8 +468,11 @@ export default function DocumentDetailScreen() {
             `<img src="data:image/jpeg;base64,${base64}" alt="Pagina" style="page-break-after:always;" />`
           );
         } catch {
-          /* ignoră eroarea la citire */
+          // imaginea nu a putut fi citită — continuăm cu restul paginilor
         }
+      }
+      if (imgTags.length === 0 && allPages.length > 0) {
+        Alert.alert('Atenție', 'Imaginile nu au putut fi incluse în PDF. Va conține doar textul documentului.');
       }
       const lines: string[] = [`<p><strong>${getDocumentLabel(doc, customTypes)}</strong></p>`];
       if (doc.issue_date) lines.push(`<p>Emis: ${doc.issue_date}</p>`);
