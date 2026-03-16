@@ -595,12 +595,16 @@ export default function DocumentDetailScreen() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #fff; color: #1e2318; }
 
-  /* Pagini cu imagini — fără height fix, doar max-height pe imagine */
+  /* Pagini cu imagini — exact o pagina A4 (297 - 12*2 = 273mm) */
   .img-page {
+    width: 186mm;
+    height: 273mm;
     page-break-after: always;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    text-align: center;
+    break-after: page;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .img-page img {
     max-width: 186mm;
@@ -608,7 +612,6 @@ export default function DocumentDetailScreen() {
     width: auto;
     height: auto;
     display: block;
-    margin: 0 auto;
   }
 
   /* Pagina de meta */
