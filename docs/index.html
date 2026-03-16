@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portofel Acte – Documentele tale, mereu la îndemână</title>
+  <meta name="description" content="Aplicație mobilă pentru gestionarea documentelor personale: acte, mașini, proprietăți, carduri. Totul pe telefon, privat, fără cloud." />
+  <style>
+    :root {
+      --primary: #9EB567;
+      --primary-dark: #7a9248;
+      --primary-light: #c4d89a;
+      --bg: #f8faf4;
+      --text: #1e2318;
+      --text-muted: #6b7560;
+      --card-bg: #ffffff;
+      --border: #e2ebd4;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+      --shadow-lg: 0 16px 56px rgba(0,0,0,0.18);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 40px;
+      background: rgba(248,250,244,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      transition: box-shadow .3s;
+    }
+    nav.scrolled { box-shadow: var(--shadow); }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; font-size: 1.1rem;
+      color: var(--text); text-decoration: none;
+    }
+    .nav-logo-icon {
+      width: 32px; height: 32px; background: var(--primary);
+      border-radius: 9px; display: flex; align-items: center;
+      justify-content: center; font-size: 17px;
+    }
+    .nav-cta {
+      background: var(--primary); color: #fff;
+      padding: 10px 22px; border-radius: 100px;
+      font-weight: 600; font-size: .9rem; text-decoration: none;
+      transition: background .2s, transform .2s;
+    }
+    .nav-cta:hover { background: var(--primary-dark); transform: translateY(-1px); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 110px 40px 70px;
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 70% 60% at 65% 35%, rgba(158,181,103,0.2) 0%, transparent 65%),
+        radial-gradient(ellipse 40% 40% at 15% 75%, rgba(158,181,103,0.1) 0%, transparent 60%);
+    }
+    .hero-inner {
+      position: relative; z-index: 1;
+      display: flex; align-items: center; gap: 80px;
+      max-width: 1100px; width: 100%;
+    }
+    .hero-text { flex: 1; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(158,181,103,0.13);
+      border: 1px solid rgba(158,181,103,0.35);
+      color: var(--primary-dark);
+      padding: 6px 14px; border-radius: 100px;
+      font-size: .8rem; font-weight: 600; margin-bottom: 24px;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      background: var(--primary); border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:.4; transform:scale(1.4); }
+    }
+    h1 {
+      font-size: clamp(2.2rem, 4.5vw, 3.5rem);
+      font-weight: 800; line-height: 1.12;
+      margin-bottom: 20px; letter-spacing: -.03em;
+    }
+    h1 span { color: var(--primary); }
+    .hero-sub {
+      font-size: 1.1rem; color: var(--text-muted);
+      max-width: 460px; margin-bottom: 36px; line-height: 1.75;
+    }
+    .hero-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn-primary {
+      background: var(--primary); color: #fff;
+      padding: 14px 28px; border-radius: 100px;
+      font-weight: 700; font-size: 1rem; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+      box-shadow: 0 4px 18px rgba(158,181,103,0.45);
+      transition: background .2s, transform .2s, box-shadow .2s;
+    }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 26px rgba(158,181,103,0.5); }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      padding: 14px 28px; border-radius: 100px;
+      font-weight: 600; font-size: 1rem; text-decoration: none;
+      border: 2px solid var(--border);
+      display: inline-flex; align-items: center; gap: 8px;
+      transition: border-color .2s, transform .2s;
+    }
+    .btn-ghost:hover { border-color: var(--primary); transform: translateY(-2px); }
+
+    /* ── HERO PHONE ── */
+    .hero-phone { flex-shrink: 0; }
+    .iphone {
+      width: 240px;
+      background: #0d1009;
+      border-radius: 44px;
+      border: 7px solid #1e2518;
+      box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.06) inset;
+      overflow: hidden;
+      transform: perspective(900px) rotateY(-7deg) rotateX(3deg);
+    }
+    .iphone img {
+      width: 100%; display: block;
+    }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      display: flex; justify-content: center;
+      background: var(--primary);
+      margin: 0 40px;
+      border-radius: 20px;
+      padding: 28px 40px;
+      flex-wrap: wrap; gap: 0;
+    }
+    .stat {
+      flex: 1; min-width: 110px;
+      text-align: center; padding: 8px 16px; color: #fff;
+    }
+    .stat + .stat { border-left: 1px solid rgba(255,255,255,.22); }
+    .stat-num { font-size: 2rem; font-weight: 800; line-height: 1; }
+    .stat-lbl { font-size: .8rem; opacity: .8; margin-top: 4px; }
+
+    /* ── GENERIC SECTION ── */
+    section { padding: 100px 40px; }
+    .section-head {
+      text-align: center;
+      max-width: 620px; margin: 0 auto 60px;
+    }
+    .tag {
+      display: inline-block;
+      background: rgba(158,181,103,0.12); color: var(--primary-dark);
+      font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .09em;
+      padding: 5px 14px; border-radius: 100px; margin-bottom: 14px;
+    }
+    h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+      font-weight: 800; letter-spacing: -.02em; margin-bottom: 14px;
+    }
+    .desc { color: var(--text-muted); font-size: 1rem; line-height: 1.75; }
+
+    /* ── SCREENSHOTS SECTION ── */
+    .screenshots-section {
+      background: #0d1009;
+      padding: 100px 40px;
+    }
+    .screenshots-section .tag { background: rgba(158,181,103,0.18); color: var(--primary-light); }
+    .screenshots-section h2 { color: #fff; }
+    .screenshots-section .desc { color: rgba(255,255,255,.5); }
+    .phones-row {
+      display: flex; gap: 28px;
+      justify-content: center; align-items: flex-end;
+      flex-wrap: wrap; max-width: 900px; margin: 0 auto;
+    }
+    .phone-showcase {
+      display: flex; flex-direction: column; align-items: center; gap: 20px;
+      flex: 1; min-width: 180px; max-width: 240px;
+    }
+    .phone-showcase:nth-child(2) .iphone-showcase { transform: scale(1.06) translateY(-10px); }
+    .iphone-showcase {
+      width: 100%;
+      background: #0d1009;
+      border-radius: 40px;
+      border: 6px solid #1e2518;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+      overflow: hidden;
+      transition: transform .3s;
+    }
+    .iphone-showcase:hover { transform: translateY(-6px) scale(1.02) !important; }
+    .iphone-showcase img { width: 100%; display: block; }
+    .phone-caption {
+      text-align: center;
+      color: rgba(255,255,255,.6);
+      font-size: .85rem; line-height: 1.4;
+    }
+    .phone-caption strong { color: #fff; display: block; font-size: .95rem; margin-bottom: 3px; }
+
+    /* ── FEATURES GRID ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px; max-width: 1100px; margin: 0 auto;
+    }
+    .feat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+      transition: transform .3s, box-shadow .3s;
+    }
+    .feat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+    .feat-icon {
+      width: 48px; height: 48px; border-radius: 13px;
+      background: rgba(158,181,103,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 16px;
+    }
+    .feat-title { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .feat-desc { color: var(--text-muted); font-size: .9rem; line-height: 1.6; }
+
+    /* ── PRIVACY BLOCK ── */
+    .privacy-block {
+      background: var(--text); color: #fff;
+      border-radius: 24px; margin: 0 40px;
+      padding: 80px 60px;
+      display: flex; gap: 80px; align-items: center;
+    }
+    .privacy-block h2 { color: #fff; }
+    .privacy-block .desc { color: rgba(255,255,255,.55); }
+    .privacy-left { flex: 1; }
+    .privacy-pillars {
+      flex: 1; display: grid;
+      grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    .pillar {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 14px; padding: 20px;
+    }
+    .pillar-ico { font-size: 22px; margin-bottom: 10px; }
+    .pillar-ttl { font-size: .88rem; font-weight: 700; color: var(--primary-light); margin-bottom: 6px; }
+    .pillar-dsc { font-size: .8rem; color: rgba(255,255,255,.45); line-height: 1.5; }
+
+    /* ── DOC CHIPS ── */
+    .chips-section { background: var(--card-bg); }
+    .chips-wrap {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      max-width: 880px; margin: 0 auto; justify-content: center;
+    }
+    .chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+      padding: 7px 15px; border-radius: 100px;
+      font-size: .85rem; font-weight: 500;
+      transition: background .2s, border-color .2s, transform .15s;
+      cursor: default;
+    }
+    .chip:hover { background: rgba(158,181,103,0.1); border-color: var(--primary); transform: scale(1.04); }
+    .chip.hl { background: rgba(158,181,103,0.12); border-color: rgba(158,181,103,0.38); color: var(--primary-dark); }
+
+    /* ── STEPS ── */
+    .steps-row {
+      display: flex; gap: 16px;
+      max-width: 860px; margin: 0 auto;
+      flex-wrap: wrap; justify-content: center;
+    }
+    .step { flex: 1; min-width: 190px; max-width: 240px; text-align: center; padding: 16px; }
+    .step-num {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--primary); color: #fff;
+      font-size: 1.2rem; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+      box-shadow: 0 4px 16px rgba(158,181,103,0.4);
+    }
+    .step-ttl { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .step-dsc { color: var(--text-muted); font-size: .88rem; line-height: 1.6; }
+    .step-sep { display: flex; align-items: center; padding-top: 26px; color: var(--border); font-size: 1.4rem; }
+
+    /* ── CTA ── */
+    .cta-wrap {
+      padding: 80px 40px;
+    }
+    .cta-box {
+      text-align: center;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border-radius: 24px; padding: 80px 40px; color: #fff;
+      max-width: 1020px; margin: 0 auto;
+    }
+    .cta-box h2 { color: #fff; margin-bottom: 14px; }
+    .cta-box p { opacity: .85; font-size: 1.05rem; margin-bottom: 36px; }
+    .store-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .store-btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,.15); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.3); color: #fff;
+      padding: 13px 24px; border-radius: 14px;
+      font-weight: 600; text-decoration: none;
+      transition: background .2s, transform .2s;
+    }
+    .store-btn:hover { background: rgba(255,255,255,.25); transform: translateY(-2px); }
+    .store-btn-ico { font-size: 24px; }
+    .store-btn-sub { font-size: .7rem; opacity: .75; display: block; }
+    .store-btn-name { font-size: 1rem; font-weight: 700; }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center; padding: 32px 40px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted); font-size: .84rem;
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+
+    /* ── SCROLL ANIMATIONS ── */
+    .reveal {
+      opacity: 0; transform: translateY(30px);
+      transition: opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1);
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .d1 { transition-delay: .08s; }
+    .d2 { transition-delay: .16s; }
+    .d3 { transition-delay: .24s; }
+    .d4 { transition-delay: .32s; }
+    .d5 { transition-delay: .40s; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 860px) {
+      nav { padding: 14px 20px; }
+      .hero { padding: 90px 20px 50px; }
+      .hero-inner { flex-direction: column; gap: 48px; align-items: flex-start; }
+      .hero-phone { align-self: center; }
+      .iphone { transform: none; }
+      .stats-bar { margin: 0 20px; padding: 20px 16px; }
+      .stat + .stat { border-left: none; border-top: 1px solid rgba(255,255,255,.2); }
+      section { padding: 70px 20px; }
+      .screenshots-section { padding: 70px 20px; }
+      .privacy-block { flex-direction: column; gap: 40px; margin: 0 20px; padding: 50px 30px; }
+      .cta-wrap { padding: 60px 20px; }
+      .step-sep { display: none; }
+    }
+    @media (max-width: 560px) {
+      .privacy-pillars { grid-template-columns: 1fr; }
+      .phone-showcase:nth-child(2) .iphone-showcase { transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <a href="#" class="nav-logo">
+    <span class="nav-logo-icon">📂</span>
+    Portofel Acte
+  </a>
+  <a href="#download" class="nav-cta">Descarcă</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        100% privat · fără cloud · fără cont
+      </div>
+      <h1>Documentele tale,<br/><span>mereu la îndemână</span></h1>
+      <p class="hero-sub">
+        Acte, mașini, proprietăți, carduri — organizate într-o singură aplicație.
+        Notificări înainte de expirare. Totul pe telefonul tău, protejat cu Face ID.
+      </p>
+      <div class="hero-btns">
+        <a href="#download" class="btn-primary">🍎 App Store</a>
+        <a href="#screenshots" class="btn-ghost">→ Vezi app-ul</a>
+      </div>
+    </div>
+    <div class="hero-phone">
+      <div class="iphone">
+        <img src="screen_home.jpeg" alt="Home dashboard Portofel Acte" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats-bar reveal">
+  <div class="stat"><div class="stat-num">27+</div><div class="stat-lbl">tipuri de documente</div></div>
+  <div class="stat"><div class="stat-num">5</div><div class="stat-lbl">categorii de entități</div></div>
+  <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">date trimise în cloud</div></div>
+  <div class="stat"><div class="stat-num">100%</div><div class="stat-lbl">privat pe device</div></div>
+</div>
+
+<!-- SCREENSHOTS -->
+<section class="screenshots-section" id="screenshots">
+  <div class="section-head reveal">
+    <span class="tag">Galerie</span>
+    <h2>Simplu. Curat. Rapid.</h2>
+    <p class="desc">Design dark, optimizat pentru iOS. Navighezi ușor prin toate documentele tale.</p>
+  </div>
+  <div class="phones-row">
+    <div class="phone-showcase reveal d1">
+      <div class="iphone-showcase">
+        <img src="screen_home.jpeg" alt="Dashboard acasă" />
+      </div>
+      <div class="phone-caption">
+        <strong>Dashboard</strong>
+        Sugestii inteligente și documente recente
+      </div>
+    </div>
+    <div class="phone-showcase reveal d2">
+      <div class="iphone-showcase">
+        <img src="screen_calendar.jpeg" alt="Reminder în calendar" />
+      </div>
+      <div class="phone-caption">
+        <strong>Reminder calendar</strong>
+        Un tap și expirarea e în calendarul tău
+      </div>
+    </div>
+    <div class="phone-showcase reveal d3">
+      <div class="iphone-showcase">
+        <img src="screen_settings.jpeg" alt="Setări și backup" />
+      </div>
+      <div class="phone-caption">
+        <strong>Setări & Backup</strong>
+        Export JSON în iCloud, tracker concediu
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="section-head reveal">
+    <span class="tag">Funcționalități</span>
+    <h2>Tot ce ai nevoie,<br/>nimic în plus</h2>
+    <p class="desc">Gestionează toate documentele importante din viața de zi cu zi.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feat-card reveal d1">
+      <div class="feat-icon">🔐</div>
+      <div class="feat-title">App Lock – Face ID / PIN</div>
+      <div class="feat-desc">Documentele sunt protejate cu Face ID, Touch ID sau PIN. Nimeni altcineva nu le poate accesa.</div>
+    </div>
+    <div class="feat-card reveal d2">
+      <div class="feat-icon">⏰</div>
+      <div class="feat-title">Notificări de expirare</div>
+      <div class="feat-desc">Alerte locale configurabile — primești notificarea cu X zile înainte să expire orice document.</div>
+    </div>
+    <div class="feat-card reveal d3">
+      <div class="feat-icon">🗂️</div>
+      <div class="feat-title">Organizat pe entități</div>
+      <div class="feat-desc">Persoane, Vehicule, Proprietăți, Carduri, Animale — fiecare cu documentele lor specifice.</div>
+    </div>
+    <div class="feat-card reveal d4">
+      <div class="feat-icon">☁️</div>
+      <div class="feat-title">Backup iCloud / Google Drive</div>
+      <div class="feat-desc">Export complet (JSON + fișiere) în iCloud Drive. Restaurezi totul la schimbarea telefonului.</div>
+    </div>
+    <div class="feat-card reveal d5">
+      <div class="feat-icon">📅</div>
+      <div class="feat-title">Remindere în Calendar</div>
+      <div class="feat-desc">Un singur tap adaugă expirarea documentului direct în calendarul iOS.</div>
+    </div>
+    <div class="feat-card reveal d1">
+      <div class="feat-icon">🔍</div>
+      <div class="feat-title">OCR on-device</div>
+      <div class="feat-desc">Fotografiezi un document și app-ul extrage automat textul. Totul pe device, fără cloud.</div>
+    </div>
+    <div class="feat-card reveal d2">
+      <div class="feat-icon">🚗</div>
+      <div class="feat-title">Tracker auto complet</div>
+      <div class="feat-desc">RCA, ITP, CASCO, Vignetă, Talon, Carte auto — toate la un loc, cu alerte înainte de expirare.</div>
+    </div>
+    <div class="feat-card reveal d3">
+      <div class="feat-icon">🏖️</div>
+      <div class="feat-title">Tracker concediu</div>
+      <div class="feat-desc">Urmărești zilele de concediu disponibile, utilizate și rămase — direct din Setări.</div>
+    </div>
+    <div class="feat-card reveal d4">
+      <div class="feat-icon">🐾</div>
+      <div class="feat-title">Documente animale</div>
+      <div class="feat-desc">Vaccin, deparazitare, vizite vet — organizate per animal, cu notificări de reînnoire.</div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section style="background: var(--card-bg);">
+  <div class="section-head reveal">
+    <span class="tag">Cum funcționează</span>
+    <h2>3 pași simpli</h2>
+    <p class="desc">De la instalare la documente organizate — în câteva minute.</p>
+  </div>
+  <div class="steps-row">
+    <div class="step reveal d1">
+      <div class="step-num">1</div>
+      <div class="step-ttl">Adaugi entitățile</div>
+      <div class="step-dsc">Creezi profiluri pentru tine, familie, mașini, proprietăți sau animale.</div>
+    </div>
+    <div class="step-sep reveal">→</div>
+    <div class="step reveal d2">
+      <div class="step-num">2</div>
+      <div class="step-ttl">Atașezi documentele</div>
+      <div class="step-dsc">Fotografiezi sau încarci fișierul, completezi data expirării.</div>
+    </div>
+    <div class="step-sep reveal">→</div>
+    <div class="step reveal d3">
+      <div class="step-num">3</div>
+      <div class="step-ttl">Primești alerte</div>
+      <div class="step-dsc">App-ul te notifică automat când un document este pe cale să expire.</div>
+    </div>
+  </div>
+</section>
+
+<!-- PRIVACY -->
+<div style="padding: 0 0 80px;">
+  <div class="privacy-block reveal">
+    <div class="privacy-left">
+      <span class="tag" style="background: rgba(158,181,103,0.18); color: var(--primary-light);">Privacy by design</span>
+      <h2>Datele tale rămân<br/>ale tale</h2>
+      <p class="desc">Nu există conturi, nu există servere, nu există abonamente.<br/>Documentele stau pe telefonul tău.</p>
+    </div>
+    <div class="privacy-pillars">
+      <div class="pillar reveal d1">
+        <div class="pillar-ico">📵</div>
+        <div class="pillar-ttl">Fără internet obligatoriu</div>
+        <div class="pillar-dsc">App-ul funcționează 100% offline. Nicio cerere de rețea fără acordul tău.</div>
+      </div>
+      <div class="pillar reveal d2">
+        <div class="pillar-ico">🚫</div>
+        <div class="pillar-ttl">Fără cont, fără login</div>
+        <div class="pillar-dsc">Nu îți cerem email, telefon sau parolă. Zero înregistrare.</div>
+      </div>
+      <div class="pillar reveal d3">
+        <div class="pillar-ico">🗄️</div>
+        <div class="pillar-ttl">SQLite local</div>
+        <div class="pillar-dsc">Toate datele sunt în baza de date locală a telefonului tău.</div>
+      </div>
+      <div class="pillar reveal d4">
+        <div class="pillar-ico">📦</div>
+        <div class="pillar-ttl">Export & ștergere</div>
+        <div class="pillar-dsc">Exporti tot sau ștergi toate datele cu un singur tap.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DOC TYPES -->
+<section class="chips-section">
+  <div class="section-head reveal">
+    <span class="tag">Acoperire completă</span>
+    <h2>27+ tipuri de documente</h2>
+    <p class="desc">Suport nativ pentru toate documentele importante din viața de zi cu zi.</p>
+  </div>
+  <div class="chips-wrap">
+    <span class="chip hl reveal">🪪 Buletin</span>
+    <span class="chip hl reveal">✈️ Pașaport</span>
+    <span class="chip hl reveal">🚗 Permis auto</span>
+    <span class="chip hl reveal">📋 Talon</span>
+    <span class="chip hl reveal">🛡️ RCA</span>
+    <span class="chip hl reveal">🛡️ CASCO</span>
+    <span class="chip hl reveal">🔧 ITP</span>
+    <span class="chip hl reveal">🛣️ Vignetă</span>
+    <span class="chip reveal">🏠 Act proprietate</span>
+    <span class="chip reveal">📐 Cadastru</span>
+    <span class="chip reveal">🧾 Factură</span>
+    <span class="chip reveal">🏛️ Impozit proprietate</span>
+    <span class="chip reveal">🔥 PAD Asigurare</span>
+    <span class="chip reveal">🧯 Stingător</span>
+    <span class="chip reveal">💳 Card bancar</span>
+    <span class="chip reveal">📄 Contract</span>
+    <span class="chip reveal">🎟️ Garanție produs</span>
+    <span class="chip reveal">💊 Rețetă medicală</span>
+    <span class="chip reveal">🩺 Analize medicale</span>
+    <span class="chip reveal">🧾 Bon cumpărături</span>
+    <span class="chip reveal">🔄 Abonament</span>
+    <span class="chip reveal">💉 Vaccin animal</span>
+    <span class="chip reveal">🐛 Deparazitare</span>
+    <span class="chip reveal">🐾 Vizită vet</span>
+    <span class="chip reveal">🎫 Bilet</span>
+    <span class="chip reveal">📝 Carte auto</span>
+    <span class="chip reveal">⭐ Tip personalizat</span>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-wrap" id="download">
+  <div class="cta-box reveal">
+    <h2>Gata să te organizezi?</h2>
+    <p>Descarcă Portofel Acte gratuit și pune capăt haosului cu documentele.</p>
+    <div class="store-btns">
+      <a href="#" class="store-btn">
+        <span class="store-btn-ico">🍎</span>
+        <div>
+          <span class="store-btn-sub">Descarcă din</span>
+          <span class="store-btn-name">App Store</span>
+        </div>
+      </a>
+      <a href="#" class="store-btn" style="opacity:.55; pointer-events:none;">
+        <span class="store-btn-ico">🤖</span>
+        <div>
+          <span class="store-btn-sub">În curând pe</span>
+          <span class="store-btn-name">Google Play</span>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <p>© 2025 Portofel Acte · Gestionarea documentelor personale</p>
+  <p style="margin-top:8px; font-size:.78rem;">
+    Construit în România · <a href="https://github.com">GitHub</a>
+  </p>
+</footer>
+
+<script>
+  // Scroll reveal
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+  // Nav shadow
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', scrollY > 20);
+  }, { passive: true });
+</script>
+</body>
+</html>
