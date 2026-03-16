@@ -461,11 +461,17 @@ export default function DocumentDetailScreen() {
           ? page.file_path
           : `file://${page.file_path}`;
         try {
-          const base64 = await FileSystem.readAsStringAsync(fileUri, {
+          // Comprimă imaginea la max 1400px și calitate 75% — reduce dimensiunea de ~10x
+          const compressed = await ImageManipulator.manipulateAsync(
+            fileUri,
+            [{ resize: { width: 1400 } }],
+            { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
           imgTags.push(
-            `<img src="data:image/jpeg;base64,${base64}" alt="Pagina" style="page-break-after:always;" />`
+            `<div class="img-page"><img src="data:image/jpeg;base64,${base64}" /></div>`
           );
         } catch {
           // imaginea nu a putut fi citită — continuăm cu restul paginilor
@@ -481,11 +487,28 @@ export default function DocumentDetailScreen() {
       const html = `
         <!DOCTYPE html>
         <html><head><meta charset="utf-8"><style>
-          body { font-family: sans-serif; padding: 20px; }
-          img { max-width: 100%; height: auto; margin-bottom: 20px; }
+          @page { margin: 10mm; size: A4 portrait; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: sans-serif; }
+          .img-page {
+            width: 100%;
+            height: 277mm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            page-break-after: always;
+            page-break-inside: avoid;
+          }
+          .img-page img {
+            max-width: 100%;
+            max-height: 277mm;
+            object-fit: contain;
+          }
+          .meta { padding: 16px; }
+          .meta p { margin: 4px 0; font-size: 13px; line-height: 1.5; }
         </style></head><body>
-          ${imgTags.join('')}
-          ${lines.join('')}
+          ${imgTags.join('\n')}
+          ${lines.length > 0 ? `<div class="meta">${lines.join('')}</div>` : ''}
         </body></html>
       `;
       const { uri } = await Print.printToFileAsync({ html });
