@@ -184,16 +184,22 @@
     .screenshots-section .tag { background: rgba(158,181,103,0.18); color: var(--primary-light); }
     .screenshots-section h2 { color: #fff; }
     .screenshots-section .desc { color: rgba(255,255,255,.5); }
+    .phones-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px 24px;
+      max-width: 860px; margin: 0 auto;
+    }
     .phones-row {
       display: flex; gap: 28px;
       justify-content: center; align-items: flex-end;
       flex-wrap: wrap; max-width: 900px; margin: 0 auto;
     }
     .phone-showcase {
-      display: flex; flex-direction: column; align-items: center; gap: 20px;
-      flex: 1; min-width: 180px; max-width: 240px;
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
     }
-    .phone-showcase:nth-child(2) .iphone-showcase { transform: scale(1.06) translateY(-10px); }
+    .phone-showcase:nth-child(2) .iphone-showcase,
+    .phone-showcase:nth-child(5) .iphone-showcase { transform: scale(1.05) translateY(-8px); }
     .iphone-showcase {
       width: 100%;
       background: #0d1009;
@@ -356,7 +362,9 @@
     }
     @media (max-width: 560px) {
       .privacy-pillars { grid-template-columns: 1fr; }
-      .phone-showcase:nth-child(2) .iphone-showcase { transform: none; }
+      .phones-grid { grid-template-columns: repeat(2, 1fr); gap: 20px 14px; }
+      .phone-showcase:nth-child(2) .iphone-showcase,
+      .phone-showcase:nth-child(5) .iphone-showcase { transform: none; }
     }
   </style>
 </head>
@@ -391,7 +399,7 @@
     </div>
     <div class="hero-phone">
       <div class="iphone">
-        <img src="screen_home.jpeg" alt="Home dashboard Portofel Acte" />
+        <img src="screen_home_light.jpeg" alt="Home dashboard Portofel Acte" />
       </div>
     </div>
   </div>
@@ -412,10 +420,10 @@
     <h2>Simplu. Curat. Rapid.</h2>
     <p class="desc">Design dark, optimizat pentru iOS. Navighezi ușor prin toate documentele tale.</p>
   </div>
-  <div class="phones-row">
+  <div class="phones-grid">
     <div class="phone-showcase reveal d1">
       <div class="iphone-showcase">
-        <img src="screen_home.jpeg" alt="Dashboard acasă" />
+        <img src="screen_home_light.jpeg" alt="Dashboard acasă" />
       </div>
       <div class="phone-caption">
         <strong>Dashboard</strong>
@@ -424,20 +432,47 @@
     </div>
     <div class="phone-showcase reveal d2">
       <div class="iphone-showcase">
-        <img src="screen_calendar.jpeg" alt="Reminder în calendar" />
+        <img src="screen_ocr.jpeg" alt="OCR dată expirare" />
       </div>
       <div class="phone-caption">
-        <strong>Reminder calendar</strong>
-        Un tap și expirarea e în calendarul tău
+        <strong>OCR automat</strong>
+        Detectează data expirării din poză
       </div>
     </div>
     <div class="phone-showcase reveal d3">
       <div class="iphone-showcase">
-        <img src="screen_settings.jpeg" alt="Setări și backup" />
+        <img src="screen_entities.jpeg" alt="Lista entităților" />
       </div>
       <div class="phone-caption">
-        <strong>Setări & Backup</strong>
-        Export JSON în iCloud, tracker concediu
+        <strong>Entități</strong>
+        Persoane, mașini, proprietăți — cu căutare
+      </div>
+    </div>
+    <div class="phone-showcase reveal d4">
+      <div class="iphone-showcase">
+        <img src="screen_add_wizard.jpeg" alt="Wizard adaugă" />
+      </div>
+      <div class="phone-caption">
+        <strong>Wizard rapid</strong>
+        Adaugi o mașină sau proprietate în câțiva pași
+      </div>
+    </div>
+    <div class="phone-showcase reveal d5">
+      <div class="iphone-showcase">
+        <img src="screen_settings_security.jpeg" alt="Setări securitate backup" />
+      </div>
+      <div class="phone-caption">
+        <strong>Backup & Securitate</strong>
+        Export JSON în iCloud, Face ID / PIN
+      </div>
+    </div>
+    <div class="phone-showcase reveal d3">
+      <div class="iphone-showcase">
+        <img src="screen_settings_entities.jpeg" alt="Setări entități active" />
+      </div>
+      <div class="phone-caption">
+        <strong>Personalizare</strong>
+        Activezi doar ce folosești tu
       </div>
     </div>
   </div>
