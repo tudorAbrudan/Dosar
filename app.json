@@ -2,7 +2,7 @@
   "expo": {
     "name": "Portofel Acte",
     "slug": "acte-documente",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
@@ -14,8 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tudor.documente",
-      "buildNumber": "2",
+      "bundleIdentifier": "com.ax.documente",
+      "buildNumber": "3",
       "deploymentTarget": "15.5",
       "infoPlist": {
         "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
@@ -29,7 +29,7 @@
         "backgroundColor": "#ffffff"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.tudor.documente"
+      "package": "com.ax.documente"
     },
     "web": {
       "bundler": "metro",

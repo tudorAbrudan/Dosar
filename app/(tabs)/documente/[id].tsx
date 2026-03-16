@@ -591,45 +591,30 @@ export default function DocumentDetailScreen() {
 
       const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
-  @page { size: A4 portrait; margin: 12mm 12mm 20mm 12mm; }
+  @page { size: A4 portrait; margin: 12mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #fff; color: #1e2318; }
 
-  /* Footer fix pe fiecare pagină */
-  .footer {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    height: 10mm;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 2mm;
-    font-size: 8px; color: #bbb;
-    border-top: 0.5px solid #e8eee0;
-    background: #fff;
-  }
-  .footer-brand { color: #9EB567; font-weight: 700; letter-spacing: 0.03em; }
-
-  /* Pagini cu imagini */
+  /* Pagini cu imagini — fără height fix, doar max-height pe imagine */
   .img-page {
-    width: 186mm;
-    height: 253mm; /* 297 - 12top - 20bottom - 12buffer */
-    display: flex;
-    align-items: center;
-    justify-content: center;
     page-break-after: always;
     page-break-inside: avoid;
+    break-inside: avoid;
+    text-align: center;
   }
   .img-page img {
     max-width: 186mm;
-    max-height: 253mm;
+    max-height: 273mm;
     width: auto;
     height: auto;
-    object-fit: contain;
     display: block;
+    margin: 0 auto;
   }
 
   /* Pagina de meta */
-  .meta-page { page-break-inside: avoid; padding-top: 4mm; }
+  .meta-page { page-break-inside: avoid; }
   .meta-header {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: flex-start; justify-content: space-between;
     padding-bottom: 4mm;
     border-bottom: 2px solid #9EB567;
     margin-bottom: 6mm;
@@ -650,19 +635,21 @@ export default function DocumentDetailScreen() {
   .note-box {
     background: #f8faf4; border: 1px solid #e2ebd4;
     border-left: 3px solid #9EB567;
-    border-radius: 0 6px 6px 0; padding: 3mm 4mm;
+    border-radius: 0 6px 6px 0; padding: 3mm 4mm; margin-bottom: 6mm;
   }
   .note-label {
     font-size: 8px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.06em; color: #9EB567; margin-bottom: 1.5mm;
   }
   .note-value { font-size: 12px; color: #444; line-height: 1.6; }
+  .meta-footer {
+    margin-top: 8mm; padding-top: 3mm;
+    border-top: 0.5px solid #e2ebd4;
+    display: flex; justify-content: space-between;
+    font-size: 8px; color: #bbb;
+  }
+  .meta-footer-brand { color: #9EB567; font-weight: 700; }
 </style></head><body>
-
-  <div class="footer">
-    <span class="footer-brand">Portofel Acte</span>
-    <span>Generat pe ${generatedDate}</span>
-  </div>
 
   ${imgTags.join('\n')}
 
@@ -676,6 +663,10 @@ export default function DocumentDetailScreen() {
     <div class="meta-doc-type">${docLabel}</div>
     ${metaFields.length > 0 ? `<div class="fields">${metaFields.join('')}</div>` : ''}
     ${doc.note ? `<div class="note-box"><div class="note-label">Notă</div><div class="note-value">${escapeHtml(doc.note)}</div></div>` : ''}
+    <div class="meta-footer">
+      <span class="meta-footer-brand">Portofel Acte</span>
+      <span>tudorabrudan.github.io/Portofel_Documente • Generat pe ${generatedDate}</span>
+    </div>
   </div>
 
 </body></html>`;
