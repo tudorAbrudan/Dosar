@@ -1,5 +1,5 @@
 import { db, generateId } from './db';
-import type { Person, Property, Vehicle, Card, Animal } from '@/types';
+import type { Person, Property, Vehicle, Card, Animal, Company } from '@/types';
 
 export async function getPersons(): Promise<Person[]> {
   const rows = await db.getAllAsync<{ id: string; name: string; created_at: string }>(
@@ -125,4 +125,38 @@ export async function updateAnimal(id: string, name: string, species: string): P
 
 export async function deleteAnimal(id: string): Promise<void> {
   await db.runAsync('DELETE FROM animals WHERE id = ?', [id]);
+}
+
+export async function getCompanies(): Promise<Company[]> {
+  const rows = await db.getAllAsync<{ id: string; name: string; cui: string | null; reg_com: string | null; created_at: string }>(
+    'SELECT id, name, cui, reg_com, created_at FROM companies ORDER BY created_at DESC'
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    cui: r.cui ?? undefined,
+    reg_com: r.reg_com ?? undefined,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function createCompany(name: string, cui?: string, reg_com?: string): Promise<Company> {
+  const id = generateId();
+  const created_at = new Date().toISOString();
+  await db.runAsync(
+    'INSERT INTO companies (id, name, cui, reg_com, created_at) VALUES (?, ?, ?, ?, ?)',
+    [id, name, cui ?? null, reg_com ?? null, created_at]
+  );
+  return { id, name, cui, reg_com, createdAt: created_at };
+}
+
+export async function updateCompany(id: string, name: string, cui?: string, reg_com?: string): Promise<void> {
+  await db.runAsync(
+    'UPDATE companies SET name = ?, cui = ?, reg_com = ? WHERE id = ?',
+    [name, cui ?? null, reg_com ?? null, id]
+  );
+}
+
+export async function deleteCompany(id: string): Promise<void> {
+  await db.runAsync('DELETE FROM companies WHERE id = ?', [id]);
 }

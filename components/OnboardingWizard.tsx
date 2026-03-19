@@ -20,6 +20,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   property: 'Proprietate',
   card: 'Card',
   animal: 'Animal',
+  company: 'Firmă',
 };
 
 const ENTITY_ICONS: Record<EntityType, string> = {
@@ -28,6 +29,7 @@ const ENTITY_ICONS: Record<EntityType, string> = {
   property: '🏠',
   card: '💳',
   animal: '🐾',
+  company: '🏢',
 };
 
 const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
@@ -36,6 +38,7 @@ const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   property: 'Acte proprietate, facturi, PAD',
   card: 'Carduri bancare, abonamente',
   animal: 'Vaccinuri, deparazitare, vizite vet',
+  company: 'Certificat înregistrare, acte constitutive, TVA',
 };
 
 interface Props {

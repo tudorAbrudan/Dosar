@@ -32,6 +32,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   property: 'Proprietate',
   card: 'Card',
   animal: 'Animal',
+  company: 'Firmă',
 };
 
 const ENTITY_ICONS: Record<EntityType, string> = {
@@ -40,6 +41,7 @@ const ENTITY_ICONS: Record<EntityType, string> = {
   property: '🏠',
   card: '💳',
   animal: '🐾',
+  company: '🏢',
 };
 
 // ─── Constante contact ────────────────────────────────────────────────────────

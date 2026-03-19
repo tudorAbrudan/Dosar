@@ -15,13 +15,14 @@ const ALL_ENTITY_TYPES: { key: EntityType; label: string }[] = [
   { key: 'vehicle', label: 'Vehicul' },
   { key: 'card', label: 'Card' },
   { key: 'animal', label: 'Animal' },
+  { key: 'company', label: 'Firmă' },
 ];
 
 export default function AddEntityScreen() {
   const params = useLocalSearchParams<{ type?: string }>();
   const [chosenType, setChosenType] = useState<EntityType | null>((params.type as EntityType) || null);
   const type = chosenType || 'person';
-  const { createPerson, createProperty, createVehicle, createCard, createAnimal, refresh } = useEntities();
+  const { createPerson, createProperty, createVehicle, createCard, createAnimal, createCompany, refresh } = useEntities();
   const { visibleEntityTypes } = useVisibilitySettings();
   const ENTITY_TYPES = ALL_ENTITY_TYPES.filter(t => visibleEntityTypes.includes(t.key));
 
@@ -30,6 +31,8 @@ export default function AddEntityScreen() {
   const [last4, setLast4] = useState('');
   const [expiry, setExpiry] = useState('');
   const [species, setSpecies] = useState('');
+  const [cui, setCui] = useState('');
+  const [regCom, setRegCom] = useState('');
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
 
@@ -76,6 +79,7 @@ export default function AddEntityScreen() {
       else if (type === 'property') await createProperty(name.trim());
       else if (type === 'vehicle') await createVehicle(name.trim());
       else if (type === 'animal') await createAnimal(name.trim(), species.trim() || 'câine');
+      else if (type === 'company') await createCompany(name.trim(), cui.trim() || undefined, regCom.trim() || undefined);
       else await createCard(nickname.trim(), last4.trim() || '****', expiry.trim() || undefined);
       await refresh();
       router.back();
@@ -88,6 +92,7 @@ export default function AddEntityScreen() {
 
   const isCard = type === 'card';
   const isAnimal = type === 'animal';
+  const isCompany = type === 'company';
 
   if (!chosenType) {
     return (
@@ -134,12 +139,34 @@ export default function AddEntityScreen() {
             <Text style={styles.label}>Nume</Text>
             <ThemedTextInput
             style={styles.input}
-            placeholder={type === 'person' ? 'Nume persoană' : type === 'vehicle' ? 'Mașină (ex. Dacia Logan)' : type === 'animal' ? 'Nume animal (ex. Rex)' : 'Proprietate (ex. Apartament X)'}
+            placeholder={type === 'company' ? 'Denumire firmă (ex. ABC SRL)' : type === 'person' ? 'Nume persoană' : type === 'vehicle' ? 'Mașină (ex. Dacia Logan)' : type === 'animal' ? 'Nume animal (ex. Rex)' : 'Proprietate (ex. Apartament X)'}
             placeholderTextColor="#999"
             value={name}
             onChangeText={setName}
             editable={!loading}
           />
+          </>
+        )}
+        {isCompany && (
+          <>
+            <Text style={styles.label}>CUI (opțional)</Text>
+            <ThemedTextInput
+              style={styles.input}
+              placeholder="RO12345678"
+              placeholderTextColor="#999"
+              value={cui}
+              onChangeText={setCui}
+              editable={!loading}
+            />
+            <Text style={styles.label}>Nr. Registru Comerț (opțional)</Text>
+            <ThemedTextInput
+              style={styles.input}
+              placeholder="J40/1234/2020"
+              placeholderTextColor="#999"
+              value={regCom}
+              onChangeText={setRegCom}
+              editable={!loading}
+            />
           </>
         )}
         {isAnimal && (

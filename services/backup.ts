@@ -6,13 +6,14 @@ import * as docs from './documents';
 import { getCustomTypes, createCustomType } from './customTypes';
 
 export async function exportBackup(): Promise<void> {
-  const [persons, properties, vehicles, cards, animals, documents, allPages, customTypes] =
+  const [persons, properties, vehicles, cards, animals, companies, documents, allPages, customTypes] =
     await Promise.all([
       entities.getPersons(),
       entities.getProperties(),
       entities.getVehicles(),
       entities.getCards(),
       entities.getAnimals(),
+      entities.getCompanies(),
       docs.getDocuments(),
       docs.getAllDocumentPages(),
       getCustomTypes(),
@@ -26,6 +27,7 @@ export async function exportBackup(): Promise<void> {
     vehicles,
     cards,
     animals,
+    companies,
     customTypes,
     documents,
     documentPages: allPages,
@@ -71,6 +73,7 @@ export async function importBackup(): Promise<ImportResult> {
   const vehicleMap = new Map<string, string>();
   const cardMap = new Map<string, string>();
   const animalMap = new Map<string, string>();
+  const companyMap = new Map<string, string>();
   const customTypeMap = new Map<string, string>();
 
   for (const p of payload.persons ?? []) {
@@ -123,6 +126,16 @@ export async function importBackup(): Promise<ImportResult> {
     }
   }
 
+  for (const co of payload.companies ?? []) {
+    try {
+      const created = await entities.createCompany(co.name || 'Firmă', co.cui, co.reg_com);
+      if (co.id) companyMap.set(co.id, created.id);
+      imported++;
+    } catch (e) {
+      errors.push(`Firmă "${co.name}": ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
   for (const ct of payload.customTypes ?? []) {
     try {
       const created = await createCustomType(ct.name || 'Tip');
@@ -148,6 +161,7 @@ export async function importBackup(): Promise<ImportResult> {
         vehicle_id: d.vehicle_id ? vehicleMap.get(d.vehicle_id) : undefined,
         card_id: d.card_id ? cardMap.get(d.card_id) : undefined,
         animal_id: d.animal_id ? animalMap.get(d.animal_id) : undefined,
+        company_id: d.company_id ? companyMap.get(d.company_id) : undefined,
       });
       imported++;
     } catch (e) {

@@ -13,6 +13,7 @@ export interface CreateDocumentInput {
   vehicle_id?: string;
   card_id?: string;
   animal_id?: string;
+  company_id?: string;
   auto_delete?: string;
   metadata?: Record<string, string>;
 }
@@ -30,6 +31,7 @@ type Row = {
   vehicle_id: string | null;
   card_id: string | null;
   animal_id: string | null;
+  company_id: string | null;
   auto_delete: string | null;
   metadata: string | null;
   created_at: string;
@@ -59,6 +61,7 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
     vehicle_id: r.vehicle_id ?? undefined,
     card_id: r.card_id ?? undefined,
     animal_id: r.animal_id ?? undefined,
+    company_id: r.company_id ?? undefined,
     auto_delete: r.auto_delete ?? undefined,
     created_at: r.created_at,
   };
@@ -138,7 +141,7 @@ export async function getDocumentById(id: string): Promise<Document | null> {
 }
 
 export async function getDocumentsByEntity(
-  kind: 'person_id' | 'property_id' | 'vehicle_id' | 'card_id' | 'animal_id',
+  kind: 'person_id' | 'property_id' | 'vehicle_id' | 'card_id' | 'animal_id' | 'company_id',
   id: string
 ): Promise<Document[]> {
   const rows = await db.getAllAsync<Row>(
@@ -152,8 +155,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   const id = generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, metadata, auto_delete, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, company_id, metadata, auto_delete, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.type,
@@ -167,6 +170,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
       input.vehicle_id ?? null,
       input.card_id ?? null,
       input.animal_id ?? null,
+      input.company_id ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
       input.auto_delete ?? null,
       created_at,
@@ -186,6 +190,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     vehicle_id: input.vehicle_id,
     card_id: input.card_id,
     animal_id: input.animal_id,
+    company_id: input.company_id,
     auto_delete: input.auto_delete,
     created_at,
   };

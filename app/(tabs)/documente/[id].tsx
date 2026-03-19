@@ -24,6 +24,7 @@ import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { Document as DocType, DocumentType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
+import { useEntities } from '@/hooks/useEntities';
 import { DatePickerField } from '@/components/DatePickerField';
 import { DOCUMENT_FIELDS } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
@@ -48,6 +49,7 @@ export default function DocumentDetailScreen() {
   const { colors } = useTheme();
   const { customTypes } = useCustomTypes();
   const { docTypeOptions: standardTypes } = useFilteredDocTypes();
+  const { companies, persons, properties, vehicles, cards, animals } = useEntities();
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -790,6 +792,24 @@ export default function DocumentDetailScreen() {
         <View style={styles.meta}>
           <Text style={styles.label}>Tip</Text>
           <Text style={styles.value}>{getDocumentLabel(doc, customTypes)}</Text>
+          {(() => {
+            let entityName: string | null = null;
+            if (doc.person_id) entityName = persons.find(p => p.id === doc.person_id)?.name ?? null;
+            else if (doc.property_id) entityName = properties.find(p => p.id === doc.property_id)?.name ?? null;
+            else if (doc.vehicle_id) entityName = vehicles.find(v => v.id === doc.vehicle_id)?.name ?? null;
+            else if (doc.card_id) {
+              const c = cards.find(c => c.id === doc.card_id);
+              entityName = c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
+            } else if (doc.animal_id) entityName = animals.find(a => a.id === doc.animal_id)?.name ?? null;
+            else if (doc.company_id) entityName = companies.find(c => c.id === doc.company_id)?.name ?? null;
+            if (!entityName) return null;
+            return (
+              <>
+                <Text style={styles.label}>Legat de</Text>
+                <Text style={styles.value}>{entityName}</Text>
+              </>
+            );
+          })()}
           {doc.issue_date && (
             <>
               <Text style={styles.label}>Data emisiune</Text>

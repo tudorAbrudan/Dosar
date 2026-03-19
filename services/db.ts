@@ -95,6 +95,14 @@ db.execSync(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS companies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    cui TEXT,
+    reg_com TEXT,
+    created_at TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_docs_expiry ON documents(expiry_date);
   CREATE INDEX IF NOT EXISTS idx_docs_person ON documents(person_id);
   CREATE INDEX IF NOT EXISTS idx_docs_vehicle ON documents(vehicle_id);
@@ -136,4 +144,18 @@ try {
   db.execSync('CREATE INDEX IF NOT EXISTS idx_docs_animal ON documents(animal_id)');
 } catch {
   // indexul există deja sau coloana lipsă (fallback safe)
+}
+
+// Migrare: adaugă company_id dacă nu există
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN company_id TEXT');
+} catch {
+  // coloana există deja
+}
+
+// Index pe company_id
+try {
+  db.execSync('CREATE INDEX IF NOT EXISTS idx_docs_company ON documents(company_id)');
+} catch {
+  // indexul există deja
 }

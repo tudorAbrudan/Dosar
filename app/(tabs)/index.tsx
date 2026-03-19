@@ -164,7 +164,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   const { documents, loading, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards, animals } = useEntities();
+  const { persons, properties, vehicles, cards, animals, companies } = useEntities();
   const { customTypes } = useCustomTypes();
 
   useFocusEffect(useCallback(() => { refresh(); }, []));
@@ -221,10 +221,11 @@ export default function HomeScreen() {
       return c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
     }
     if (doc.animal_id) return animals.find(a => a.id === doc.animal_id)?.name ?? null;
+    if (doc.company_id) return companies.find(c => c.id === doc.company_id)?.name ?? null;
     return null;
   }
 
-  const totalEntities = persons.length + properties.length + vehicles.length + cards.length + animals.length;
+  const totalEntities = persons.length + properties.length + vehicles.length + cards.length + animals.length + companies.length;
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (

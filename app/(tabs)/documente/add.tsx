@@ -42,6 +42,7 @@ const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
   { key: 'vehicle', label: 'Vehicul' },
   { key: 'card', label: 'Card' },
   { key: 'animal', label: 'Animal' },
+  { key: 'company', label: 'Firmă' },
 ];
 
 async function applyDocumentScan(uri: string): Promise<string> {
@@ -63,9 +64,10 @@ export default function AddDocumentScreen() {
     vehicle_id?: string;
     card_id?: string;
     animal_id?: string;
+    company_id?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards, animals } = useEntities();
+  const { persons, properties, vehicles, cards, animals, companies } = useEntities();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes, visibleDocTypes } = useVisibilitySettings();
 
@@ -92,6 +94,7 @@ export default function AddDocumentScreen() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [showAllTypes, setShowAllTypes] = useState(false);
 
   const personId = params.person_id;
@@ -99,13 +102,15 @@ export default function AddDocumentScreen() {
   const vehicleId = params.vehicle_id;
   const cardId = params.card_id;
   const animalId = params.animal_id;
-  const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId);
+  const companyId = params.company_id;
+  const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId || companyId);
 
   const linkedEntityType: EntityType | null = personId ? 'person'
     : propertyId ? 'property'
     : vehicleId ? 'vehicle'
     : cardId ? 'card'
     : animalId ? 'animal'
+    : companyId ? 'company'
     : null;
 
   async function runOcrOnImage(localPath: string) {
@@ -313,6 +318,7 @@ export default function AddDocumentScreen() {
         vehicle_id: vehicleId ?? selectedVehicleId ?? undefined,
         card_id: cardId ?? selectedCardId ?? undefined,
         animal_id: animalId ?? selectedAnimalId ?? undefined,
+        company_id: companyId ?? selectedCompanyId ?? undefined,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         auto_delete: autoDelete ?? undefined,
       });
@@ -390,6 +396,7 @@ export default function AddDocumentScreen() {
     (vehicleId && vehicles.find(v => v.id === vehicleId)?.name) ||
     (cardId && cards.find(c => c.id === cardId)?.nickname) ||
     (animalId && animals.find(a => a.id === animalId)?.name) ||
+    (companyId && companies.find(c => c.id === companyId)?.name) ||
     null;
 
   // Current entity list for picker
@@ -402,7 +409,9 @@ export default function AddDocumentScreen() {
           ? vehicles.map(v => ({ id: v.id, label: v.name }))
           : pickerCategory === 'animal'
             ? animals.map(a => ({ id: a.id, label: a.name }))
-            : cards.map(c => ({ id: c.id, label: c.nickname }));
+            : pickerCategory === 'company'
+              ? companies.map(c => ({ id: c.id, label: c.name }))
+              : cards.map(c => ({ id: c.id, label: c.nickname }));
 
   const selectedIdForCategory =
     pickerCategory === 'person'
@@ -413,13 +422,16 @@ export default function AddDocumentScreen() {
           ? selectedVehicleId
           : pickerCategory === 'animal'
             ? selectedAnimalId
-            : selectedCardId;
+            : pickerCategory === 'company'
+              ? selectedCompanyId
+              : selectedCardId;
 
   function setSelectedForCategory(id: string | null) {
     if (pickerCategory === 'person') setSelectedPersonId(id);
     else if (pickerCategory === 'property') setSelectedPropertyId(id);
     else if (pickerCategory === 'vehicle') setSelectedVehicleId(id);
     else if (pickerCategory === 'animal') setSelectedAnimalId(id);
+    else if (pickerCategory === 'company') setSelectedCompanyId(id);
     else setSelectedCardId(id);
   }
 
@@ -428,6 +440,7 @@ export default function AddDocumentScreen() {
     selectedPropertyId ||
     selectedVehicleId ||
     selectedCardId ||
+    selectedCompanyId ||
     selectedAnimalId
   );
 
