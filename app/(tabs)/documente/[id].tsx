@@ -16,6 +16,7 @@ import {
   updateDocument,
   addDocumentPage,
   removeDocumentPage,
+  setDocumentOcrText,
 } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import { addExpiryCalendarEvent, addEventToCalendar, isCalendarAvailable } from '@/services/calendar';
@@ -300,6 +301,10 @@ export default function DocumentDetailScreen() {
         auto_delete: currentDoc.auto_delete,
       };
       await updateDocument(currentDoc.id, updates);
+      // Append textul OCR al noii pagini la cel existent
+      const existingOcr = currentDoc.ocr_text ?? '';
+      const newOcrText = existingOcr ? `${existingOcr}\n\n---\n\n${text}` : text;
+      await setDocumentOcrText(currentDoc.id, newOcrText);
       const updated = await getDocumentById(currentDoc.id);
       setDoc(updated);
       if (rotated) setRotatedUris({});
@@ -445,6 +450,7 @@ export default function DocumentDetailScreen() {
                     auto_delete: doc!.auto_delete,
                     metadata: doc!.metadata,
                   });
+                  await setDocumentOcrText(doc!.id, combinedText);
                   const updated = await getDocumentById(doc!.id);
                   setDoc(updated);
                   Alert.alert('Salvat', 'Datele OCR au fost aplicate.');
@@ -452,7 +458,13 @@ export default function DocumentDetailScreen() {
               }
             : {
                 text: 'Copiază în notă',
-                onPress: () => { openEditModal(); setEditNote(combinedText.slice(0, 500)); },
+                onPress: async () => {
+                  await setDocumentOcrText(doc!.id, combinedText);
+                  const updated = await getDocumentById(doc!.id);
+                  setDoc(updated);
+                  openEditModal();
+                  setEditNote(combinedText.slice(0, 500));
+                },
               },
         ]
       );
@@ -672,6 +684,20 @@ export default function DocumentDetailScreen() {
     font-size: 8px; color: #bbb;
   }
   .meta-footer-brand { color: #9EB567; font-weight: 700; }
+
+  /* Pagina OCR */
+  .ocr-page {
+    page-break-before: always;
+    padding: 12mm;
+  }
+  .ocr-title { font-size: 18px; font-weight: 700; margin-bottom: 5mm; color: #1e2318; }
+  .ocr-content {
+    font-size: 10.5px; line-height: 1.7; color: #333;
+    white-space: pre-wrap;
+    font-family: 'Courier New', Courier, monospace;
+    background: #f8faf4; border: 1px solid #e2ebd4;
+    border-radius: 6px; padding: 4mm;
+  }
 </style></head><body>
 
   ${imgTags.join('\n')}
@@ -691,6 +717,22 @@ export default function DocumentDetailScreen() {
       <span>tudorabrudan.github.io/Portofel_Documente • Generat pe ${generatedDate}</span>
     </div>
   </div>
+
+  ${doc.ocr_text ? `
+  <div class="ocr-page">
+    <div class="meta-header">
+      <div>
+        <div class="meta-brand">Portofel Acte</div>
+        <div class="meta-brand-sub">Text identificat automat prin OCR</div>
+      </div>
+    </div>
+    <div class="ocr-title">Text extras din document</div>
+    <div class="ocr-content">${escapeHtml(doc.ocr_text)}</div>
+    <div class="meta-footer" style="margin-top:6mm">
+      <span class="meta-footer-brand">Portofel Acte</span>
+      <span>tudorabrudan.github.io/Portofel_Documente • Generat pe ${generatedDate}</span>
+    </div>
+  </div>` : ''}
 
 </body></html>`;
       const { uri } = await Print.printToFileAsync({ html, width: 595, height: 842 }); // A4 in points

@@ -81,6 +81,7 @@ export default function AddDocumentScreen() {
   const [note, setNote] = useState('');
   const [autoDelete, setAutoDelete] = useState<string | null>(null);
   const [pages, setPages] = useState<{ uri: string; localPath: string }[]>([]);
+  const ocrTextsRef = useRef<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
@@ -146,6 +147,9 @@ export default function AddDocumentScreen() {
       }
 
       if (!text.trim()) return;
+
+      // Stochează textul OCR pentru pagina curentă
+      ocrTextsRef.current.set(localPath, text);
 
       // Detectează tip document dacă utilizatorul nu a ales manual
       const detectedType = detectDocumentType(text);
@@ -321,6 +325,7 @@ export default function AddDocumentScreen() {
         company_id: companyId ?? selectedCompanyId ?? undefined,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         auto_delete: autoDelete ?? undefined,
+        ocr_text: pages.map(p => ocrTextsRef.current.get(p.localPath)).filter(Boolean).join('\n\n---\n\n') || undefined,
       });
       const { addDocumentPage } = await import('@/services/documents');
       for (let i = 1; i < pages.length; i++) {

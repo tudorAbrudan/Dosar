@@ -116,27 +116,36 @@ function ConsentModal({ visible, colors, onAccept, onDecline }: ConsentModalProp
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.consentOverlay}>
         <View style={[styles.consentBox, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.consentTitle, { color: colors.text }]}>
-            Asistent AI – Informații despre confidențialitate
-          </Text>
-          <Text style={[styles.consentBody, { color: colors.text }]}>
-            Pentru a răspunde la întrebările tale, asistentul trimite datele din aplicație (nume
-            persoane, tipuri de documente, date de expirare, note) către{' '}
-            <Text style={{ fontWeight: '700' }}>Mistral AI</Text> (mistral.ai), un serviciu extern
-            de inteligență artificială.
-          </Text>
-          <Text style={[styles.consentBody, { color: colors.text }]}>
-            <Text style={{ fontWeight: '700' }}>Ce date sunt trimise:</Text> numele entităților
-            (persoane, vehicule, proprietăți, carduri), tipurile documentelor, datele de expirare și
-            emitere, notele atașate documentelor.
-          </Text>
-          <Text style={[styles.consentBody, { color: colors.text }]}>
-            <Text style={{ fontWeight: '700' }}>Ce NU este trimis:</Text> fotografiile documentelor,
-            numărul CVV, PIN-ul aplicației.
-          </Text>
-          <Text style={[styles.consentNote, { color: colors.textSecondary }]}>
-            Dacă nu dorești să partajezi aceste date cu un serviciu extern, apasă „Nu accept".
-          </Text>
+          <ScrollView
+            style={styles.consentScroll}
+            contentContainerStyle={styles.consentScrollContent}
+            showsVerticalScrollIndicator={true}
+          >
+            <Text style={[styles.consentTitle, { color: colors.text }]}>
+              Asistent AI – Informații despre confidențialitate
+            </Text>
+            <Text style={[styles.consentBody, { color: colors.text }]}>
+              Pentru a răspunde la întrebările tale, asistentul trimite datele din aplicație (nume
+              persoane, tipuri de documente, date de expirare, note) către{' '}
+              <Text style={{ fontWeight: '700' }}>Mistral AI</Text> (mistral.ai), un serviciu extern
+              de inteligență artificială.
+            </Text>
+            <Text style={[styles.consentBody, { color: colors.text }]}>
+              <Text style={{ fontWeight: '700' }}>Ce date sunt trimise:</Text> numele entităților
+              (persoane, vehicule, proprietăți, carduri, animale), tipurile documentelor, datele de
+              expirare și emitere, notele atașate documentelor, date de identificare ale documentelor
+              (serie acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri completate).
+            </Text>
+            <Text style={[styles.consentBody, { color: colors.text }]}>
+              <Text style={{ fontWeight: '700' }}>Ce NU este trimis:</Text> fotografiile documentelor,
+              numărul CVV, PIN-ul aplicației.
+            </Text>
+            <Text style={[styles.consentNote, { color: colors.textSecondary }]}>
+              Datele sunt procesate de Mistral AI conform politicii lor de confidențialitate (mistral.ai).
+              Consimțământul poate fi revocat oricând din Setări.
+              Dacă nu dorești să partajezi aceste date, apasă „Nu accept".
+            </Text>
+          </ScrollView>
           <View style={styles.consentButtons}>
             <Pressable
               style={[styles.consentBtn, styles.consentBtnDecline, { borderColor: colors.border }]}
@@ -372,7 +381,15 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     maxWidth: 420,
+    maxHeight: '85%',
     gap: 12,
+  },
+  consentScroll: {
+    flexShrink: 1,
+  },
+  consentScrollContent: {
+    gap: 12,
+    paddingBottom: 4,
   },
   consentTitle: {
     fontSize: 17,

@@ -20,6 +20,7 @@ import Colors from '@/constants/Colors';
 import * as settings from '@/services/settings';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import { exportBackup, importBackup } from '@/services/backup';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/services/db';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
@@ -61,7 +62,9 @@ Versiunea 1.0 – Martie 2025
 Prin utilizarea aplicației ${APP_NAME}, acceptați acești termeni în totalitate. Dacă nu sunteți de acord, vă rugăm să nu utilizați aplicația.
 
 2. DESCRIEREA SERVICIULUI
-${APP_NAME} este o aplicație mobilă locală pentru gestionarea documentelor personale (acte de identitate, documente auto, proprietăți, carduri bancare, facturi etc.). Aplicația funcționează exclusiv offline – nu există server, nu există cont de utilizator, nu transmitem date pe internet.
+${APP_NAME} este o aplicație mobilă pentru gestionarea documentelor personale (acte de identitate, documente auto, proprietăți, carduri bancare, facturi etc.). Aplicația funcționează local-first – datele sunt stocate exclusiv pe dispozitivul dumneavoastră, fără cont online.
+
+ASISTENT AI OPȚIONAL: Aplicația include un asistent bazat pe inteligență artificială (Mistral AI – mistral.ai). Dacă alegeți să utilizați această funcție și vă dați acordul explicit în prealabil, anumite date (denumiri entități, tipuri documente, date de expirare și emitere, note, date de identificare ale documentelor) sunt transmise către Mistral AI pentru procesare. Utilizarea asistentului AI este complet opțională; restul aplicației funcționează 100% offline.
 
 3. UTILIZARE PERMISĂ
 Aplicația este destinată exclusiv uzului personal și familial. Nu este permisă utilizarea comercială fără acordul scris al dezvoltatorului.
@@ -89,37 +92,46 @@ ${APP_NAME} este dezvoltată și operată de [Numele tău / Firma ta], cu sediul
 Contact: ${CONTACT_EMAIL}
 
 2. CE DATE COLECTĂM ȘI UNDE LE STOCĂM
-${APP_NAME} stochează EXCLUSIV local, pe dispozitivul dumneavoastră:
+${APP_NAME} stochează local, pe dispozitivul dumneavoastră:
 • Imagini și scan-uri ale documentelor personale
 • Date structurate: numere de documente, date de expirare, note personale
 • Informații despre entități (persoane, vehicule, proprietăți, carduri)
 
-NU colectăm, NU transmitem și NU stocăm date pe servere externe. Nu există analiză de trafic, nu există reclame, nu există trackere.
+Nu există server propriu, nu există cont de utilizator, nu există analiză de trafic, nu există reclame, nu există trackere.
 
-3. TEMEIUL JURIDIC
-Procesăm datele în baza consimțământului dumneavoastră explicit (art. 6 alin. 1 lit. a GDPR), dat prin instalarea și utilizarea aplicației.
+3. ASISTENT AI OPȚIONAL – SERVICIU TERȚ
+Dacă alegeți să utilizați funcția de asistent AI, după acordul dumneavoastră explicit, anumite date sunt transmise către Mistral AI (mistral.ai), un serviciu terț de inteligență artificială:
+• Ce se trimite: denumiri entități (persoane, vehicule, proprietăți, carduri, animale), tipuri documente, date de expirare și emitere, note, date de identificare (serie acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri completate)
+• Ce NU se trimite: fotografii ale documentelor, numărul CVV, PIN-ul aplicației
+• Transmiterea are loc EXCLUSIV cu consimțământul explicit acordat anterior
+• Consimțământul poate fi revocat oricând din Setări → Date și confidențialitate
+• Politica de confidențialitate Mistral AI: https://mistral.ai/terms
 
-4. CÂT TIMP PĂSTRĂM DATELE
-Datele rămân pe dispozitivul dumneavoastră atâta timp cât utilizați aplicația. La dezinstalare, toate datele sunt șterse automat de sistemul de operare.
+4. TEMEIUL JURIDIC
+Procesăm datele în baza consimțământului dumneavoastră explicit (art. 6 alin. 1 lit. a GDPR), dat prin instalarea și utilizarea aplicației. Pentru asistentul AI, consimțământul este solicitat separat și explicit.
 
-5. DREPTURILE DUMNEAVOASTRĂ (GDPR)
+5. CÂT TIMP PĂSTRĂM DATELE
+Datele rămân pe dispozitivul dumneavoastră atâta timp cât utilizați aplicația. La dezinstalare, toate datele sunt șterse automat de sistemul de operare. Datele transmise asistentului AI sunt procesate de Mistral AI conform propriei lor politici de retenție.
+
+6. DREPTURILE DUMNEAVOASTRĂ (GDPR)
 Aveți dreptul la:
 • Acces – toate datele sunt vizibile direct în aplicație
 • Rectificare – puteți edita orice dată oricând
 • Ștergere – folosiți funcția „Șterge toate datele" din Setări
 • Portabilitate – exportați datele ca fișier JSON din funcția Backup
+• Retragerea consimțământului AI – Setări → Date și confidențialitate → Revocare consimțământ AI
 • Opoziție – dezinstalați aplicația
 
-6. BACKUP ÎN CLOUD
+7. BACKUP ÎN CLOUD
 Dacă utilizați funcția de export backup, fișierul JSON ajunge în aplicația Files / iCloud Drive / Google Drive conform alegerii dumneavoastră. Politica de confidențialitate a acestor servicii le aparține.
 
-7. SECURITATE
+8. SECURITATE
 Datele sunt protejate prin:
 • Stocare locală (sandbox iOS/Android)
 • Opțional: blocare prin Face ID / Touch ID / PIN
 • Fișierele nu sunt accesibile altor aplicații
 
-8. CONTACT GDPR
+9. CONTACT GDPR
 Pentru exercitarea drepturilor GDPR sau orice întrebare:
 Email: ${CONTACT_EMAIL}
 Site: ${PRIVACY_URL}`;
@@ -214,11 +226,13 @@ export default function SetariScreen() {
   const [appLockPin2, setAppLockPin2] = useState('');
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [aiConsentGiven, setAiConsentGiven] = useState(false);
 
   useEffect(() => {
     settings.getNotificationDays().then(setNotifDays);
     settings.getPushEnabled().then(setPushEnabled);
     settings.getAppLockEnabled().then(setAppLockEnabled);
+    AsyncStorage.getItem('ai_assistant_consent_accepted').then((v) => setAiConsentGiven(v === 'true'));
   }, []);
 
   // ── App lock ─────────────────────────────────────────────────────────────────
@@ -399,6 +413,25 @@ export default function SetariScreen() {
     Linking.openURL(PRIVACY_URL).catch(() => {
       setPrivacyVisible(true);
     });
+  };
+
+  const handleRevokeAiConsent = () => {
+    Alert.alert(
+      'Revocare consimțământ AI',
+      'Ești sigur că vrei să revoci consimțământul pentru asistentul AI? La următoarea accesare vei fi din nou informat și ți se va cere acordul.',
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Revocare',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.removeItem('ai_assistant_consent_accepted');
+            setAiConsentGiven(false);
+            Alert.alert('Revocat', 'Consimțământul pentru asistentul AI a fost revocat.');
+          },
+        },
+      ]
+    );
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -629,10 +662,28 @@ export default function SetariScreen() {
               <RNView style={styles.rowLabelWrap}>
                 <RNText style={[styles.rowLabel, { color: C.text }]}>Stocare date</RNText>
                 <RNText style={[styles.rowSub, { color: C.textSecondary }]}>
-                  100% local pe dispozitiv · fără server
+                  Local pe dispozitiv · fără server propriu
                 </RNText>
               </RNView>
             </RNView>
+          </RNView>
+          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
+            <RNView style={styles.rowLeft}>
+              <RNView style={[styles.rowIcon, { backgroundColor: '#EDE7F6' }]}>
+                <Ionicons name="sparkles-outline" size={18} color="#4527A0" />
+              </RNView>
+              <RNView style={styles.rowLabelWrap}>
+                <RNText style={[styles.rowLabel, { color: C.text }]}>Consimțământ asistent AI</RNText>
+                <RNText style={[styles.rowSub, { color: C.textSecondary }]}>
+                  {aiConsentGiven ? 'Acordat – apasă pentru revocare' : 'Nerevocat / neacordat'}
+                </RNText>
+              </RNView>
+            </RNView>
+            {aiConsentGiven && (
+              <Pressable onPress={handleRevokeAiConsent} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
+              </Pressable>
+            )}
           </RNView>
           <RNView style={styles.rowLast}>
             <RNView style={styles.rowLeft}>
@@ -674,7 +725,7 @@ export default function SetariScreen() {
             iconColor="#F57F17"
             label="Evaluează aplicația"
             sub="Ne ajuți cu o recenzie pe App Store"
-            onPress={() => Linking.openURL('itms-apps://itunes.apple.com/app/idYOUR_APP_ID?action=write-review')}
+            onPress={() => Linking.openURL('itms-apps://itunes.apple.com/app/id6760576986?action=write-review')}
             isLast
             scheme={scheme}
           />

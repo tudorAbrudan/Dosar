@@ -105,6 +105,7 @@ export interface Document {
   animal_id?: string;
   company_id?: string;
   auto_delete?: string;
+  ocr_text?: string;
   created_at: string;
 }
 

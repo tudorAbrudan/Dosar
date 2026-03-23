@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ax.documente",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "deploymentTarget": "16.0",
       "infoPlist": {
         "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
@@ -62,6 +62,14 @@
         "expo-calendar",
         {
           "calendarPermission": "Aplicația are nevoie de acces la calendar pentru a adăuga remindere de expirare documente."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          }
         }
       ]
     ],

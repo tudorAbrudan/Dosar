@@ -15,6 +15,7 @@ export interface CreateDocumentInput {
   animal_id?: string;
   company_id?: string;
   auto_delete?: string;
+  ocr_text?: string;
   metadata?: Record<string, string>;
 }
 
@@ -33,6 +34,7 @@ type Row = {
   animal_id: string | null;
   company_id: string | null;
   auto_delete: string | null;
+  ocr_text: string | null;
   metadata: string | null;
   created_at: string;
 };
@@ -63,6 +65,7 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
     animal_id: r.animal_id ?? undefined,
     company_id: r.company_id ?? undefined,
     auto_delete: r.auto_delete ?? undefined,
+    ocr_text: r.ocr_text ?? undefined,
     created_at: r.created_at,
   };
 }
@@ -155,8 +158,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   const id = generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, company_id, metadata, auto_delete, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO documents (id, type, custom_type_id, issue_date, expiry_date, note, file_path, person_id, property_id, vehicle_id, card_id, animal_id, company_id, metadata, auto_delete, ocr_text, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.type,
@@ -173,6 +176,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
       input.company_id ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
       input.auto_delete ?? null,
+      input.ocr_text ?? null,
       created_at,
     ]
   );
@@ -192,8 +196,13 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     animal_id: input.animal_id,
     company_id: input.company_id,
     auto_delete: input.auto_delete,
+    ocr_text: input.ocr_text,
     created_at,
   };
+}
+
+export async function setDocumentOcrText(id: string, ocrText: string): Promise<void> {
+  await db.runAsync('UPDATE documents SET ocr_text = ? WHERE id = ?', [ocrText, id]);
 }
 
 export async function deleteDocument(id: string): Promise<void> {

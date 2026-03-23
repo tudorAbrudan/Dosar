@@ -159,3 +159,10 @@ try {
 } catch {
   // indexul există deja
 }
+
+// Migrare: adaugă ocr_text dacă nu există
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN ocr_text TEXT');
+} catch {
+  // coloana există deja
+}

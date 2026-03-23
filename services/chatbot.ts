@@ -57,7 +57,12 @@ async function buildContext(): Promise<string> {
       } catch { /* metadata coruptă */ }
     }
 
-    lines.push(`- [ID:${doc.id}] ${label}${entityStr}${issued}${expiry}${note}${meta}`);
+    // Text OCR complet (trunchiat la 800 de caractere pentru context)
+    const ocrText = doc.ocr_text
+      ? ` | OCR: ${doc.ocr_text.slice(0, 800)}${doc.ocr_text.length > 800 ? '…' : ''}`
+      : '';
+
+    lines.push(`- [ID:${doc.id}] ${label}${entityStr}${issued}${expiry}${note}${meta}${ocrText}`);
   }
 
   return lines.join('\n');
