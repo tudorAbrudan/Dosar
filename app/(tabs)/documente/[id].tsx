@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { StyleSheet, ScrollView, Image, Alert, Pressable, ActivityIndicator, Modal, useWindowDimensions, StatusBar, Linking } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
@@ -800,6 +800,17 @@ export default function DocumentDetailScreen() {
 
   return (
     <View style={styles.root}>
+      <Stack.Screen options={{
+        title: doc ? (doc.note?.slice(0, 30) || 'Detaliu document') : 'Detaliu document',
+        headerLeft: () => (
+          <Pressable
+            onPress={() => router.canGoBack() ? router.back() : router.push('/(tabs)/documente')}
+            style={{ paddingRight: 16 }}
+          >
+            <Text style={{ color: primary, fontSize: 16 }}>‹ Înapoi</Text>
+          </Pressable>
+        ),
+      }} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {allPages.map((page, idx) => (
           <View key={page.id + idx} style={styles.imageWrap}>
