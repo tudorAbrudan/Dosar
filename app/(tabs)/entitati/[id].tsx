@@ -473,15 +473,20 @@ const styles = StyleSheet.create({
     borderColor: '#9EB567',
     borderRadius: 12,
     paddingVertical: 13,
-    marginTop: 10,
   },
   secondaryBtnText: { fontSize: 15, fontWeight: '500' },
   btnPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
-  deleteBtn: { alignItems: 'center', paddingVertical: 8 },
+  deleteBtn: {
+    borderWidth: 1,
+    borderColor: '#E53935',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
   linkDocRow: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   linkDocType: { fontSize: 15, fontWeight: '600' },
   linkDocNote: { fontSize: 13, marginTop: 2 },
-  deleteBtnText: { color: '#E53935', fontSize: 14 },
+  deleteBtnText: { color: '#E53935', fontSize: 15, fontWeight: '500' },
 
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },

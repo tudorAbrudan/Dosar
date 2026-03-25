@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Portofel Acte",
-    "slug": "acte-documente",
-    "version": "1.3.0",
+    "name": "Dosar",
+    "slug": "dosar-documente",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
@@ -15,14 +15,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ax.documente",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "deploymentTarget": "16.0",
       "infoPlist": {
         "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
         "NSCalendarsFullAccessUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
         "NSRemindersUsageDescription": "Aplicația poate adăuga remindere pentru expirarea documentelor.",
-        "NSCameraUsageDescription": "Aplicația folosește camera pentru a fotografia documente (buletin, talon, asigurare etc.) și a le salva direct în portofelul tău de acte. Exemplu: fotografiezi polița RCA și o atașezi mașinii tale.",
-        "NSPhotoLibraryUsageDescription": "Aplicația accesează galeria foto pentru a importa imagini ale documentelor tale (buletin, talon, asigurare etc.) și a le salva în portofelul tău de acte. Exemplu: selectezi o fotografie a cărții de identitate pentru a o adăuga profilului tău."
+        "NSCameraUsageDescription": "Aplicația folosește camera pentru a fotografia documente (buletin, talon, asigurare etc.) și a le salva în dosarul tău de documente. Exemplu: fotografiezi polița RCA și o atașezi mașinii tale.",
+        "NSPhotoLibraryUsageDescription": "Aplicația accesează galeria foto pentru a importa imagini ale documentelor tale (buletin, talon, asigurare etc.) și a le salva în dosarul tău de documente. Exemplu: selectezi o fotografie a cărții de identitate pentru a o adăuga profilului tău."
       }
     },
     "android": {
@@ -54,8 +54,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Aplicația accesează galeria foto pentru a importa imagini ale documentelor tale (buletin, talon, asigurare etc.) și a le salva în portofelul tău de acte. Exemplu: selectezi o fotografie a cărții de identitate pentru a o adăuga profilului tău.",
-          "cameraPermission": "Aplicația folosește camera pentru a fotografia documente (buletin, talon, asigurare etc.) și a le salva direct în portofelul tău de acte. Exemplu: fotografiezi polița RCA și o atașezi mașinii tale."
+          "photosPermission": "Aplicația accesează galeria foto pentru a importa imagini ale documentelor tale (buletin, talon, asigurare etc.) și a le salva în dosarul tău de documente. Exemplu: selectezi o fotografie a cărții de identitate pentru a o adăuga profilului tău.",
+          "cameraPermission": "Aplicația folosește camera pentru a fotografia documente (buletin, talon, asigurare etc.) și a le salva în dosarul tău de documente. Exemplu: fotografiezi polița RCA și o atașezi mașinii tale."
         }
       ],
       [

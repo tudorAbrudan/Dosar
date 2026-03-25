@@ -8,7 +8,9 @@ import * as Print from 'expo-print';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Share } from 'react-native';
-import { Text, View, ThemedTextInput } from '@/components/Themed';
+import { Text, View } from '@/components/Themed';
+import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
+import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { primary } from '@/theme/colors';
 import {
   getDocumentById,
@@ -23,13 +25,11 @@ import { scheduleExpirationReminders } from '@/services/notifications';
 import { addExpiryCalendarEvent, addEventToCalendar, isCalendarAvailable } from '@/services/calendar';
 import { extractText, extractDocumentInfo, detectDocumentType, formatOcrSummary } from '@/services/ocr';
 import { extractFieldsForType } from '@/services/ocrExtractors';
-import { toFileUri, toRelativePath } from '@/services/fileUtils';
-import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
-import type { Document as DocType, DocumentType } from '@/types';
+import { toFileUri } from '@/services/fileUtils';
+import { getDocumentLabel } from '@/types';
+import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
-import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useEntities } from '@/hooks/useEntities';
-import { DatePickerField } from '@/components/DatePickerField';
 import { DOCUMENT_FIELDS } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 
@@ -52,7 +52,6 @@ export default function DocumentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
   const { customTypes } = useCustomTypes();
-  const { docTypeOptions: standardTypes } = useFilteredDocTypes();
   const { companies, persons, properties, vehicles, cards, animals } = useEntities();
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,20 +62,7 @@ export default function DocumentDetailScreen() {
   // Rotire imagini (per pagina, cheie = file_path)
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
 
-  // Edit modal state
-  const [editVisible, setEditVisible] = useState(false);
-  const [editType, setEditType] = useState<DocumentType>('buletin');
-  const [editCustomTypeId, setEditCustomTypeId] = useState<string | null>(null);
-  const [editIssueDate, setEditIssueDate] = useState('');
-  const [editExpiryDate, setEditExpiryDate] = useState('');
-  const [editNote, setEditNote] = useState('');
-  const [editMetadata, setEditMetadata] = useState<Record<string, string>>({});
-  const [editAutoDelete, setEditAutoDelete] = useState<string | null>(null);
-  const [editImageUri, setEditImageUri] = useState<string | null>(null);
-  const [editLocalPath, setEditLocalPath] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
-  const [typePickerVisible, setTypePickerVisible] = useState(false);
   const [linkEntityVisible, setLinkEntityVisible] = useState(false);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -91,72 +77,6 @@ export default function DocumentDetailScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const openEditModal = () => {
-    if (!doc) return;
-    setEditType(doc.type);
-    setEditCustomTypeId(doc.custom_type_id ?? null);
-    setEditIssueDate(doc.issue_date ?? '');
-    setEditExpiryDate(doc.expiry_date ?? '');
-    setEditNote(doc.note ?? '');
-    setEditMetadata(doc.metadata ?? {});
-    const fp = doc.file_path;
-    setEditImageUri(fp ? toFileUri(fp) : null);
-    setEditLocalPath(fp ?? null);
-    setEditAutoDelete(doc.auto_delete ?? null);
-    setEditVisible(true);
-  };
-
-  async function takeEditPhoto() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permisiune', 'Este nevoie de acces la cameră.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 1,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      const filename = `doc_${Date.now()}.jpg`;
-      const relativePath = `documents/${filename}`;
-      const dest = `${FileSystem.documentDirectory}${relativePath}`;
-      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, { intermediates: true });
-      await FileSystem.copyAsync({ from: uri, to: dest });
-      setEditImageUri(dest);
-      setEditLocalPath(relativePath);
-    }
-  }
-
-  function handlePickEditPhoto() {
-    Alert.alert('Alege sursă', '', [
-      { text: 'Cameră', onPress: takeEditPhoto },
-      { text: 'Galerie', onPress: pickEditImage },
-      { text: 'Anulare', style: 'cancel' },
-    ]);
-  }
-
-  async function pickEditImage() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permisiune', 'Este nevoie de acces la galerie.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 1,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      const filename = `doc_${Date.now()}.jpg`;
-      const relativePath = `documents/${filename}`;
-      const dest = `${FileSystem.documentDirectory}${relativePath}`;
-      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, { intermediates: true });
-      await FileSystem.copyAsync({ from: uri, to: dest });
-      setEditImageUri(dest);
-      setEditLocalPath(relativePath);
-    }
-  }
 
   const allPages = useMemo(() => {
     if (!doc) return [];
@@ -165,19 +85,25 @@ export default function DocumentDetailScreen() {
     return [...main, ...extra];
   }, [doc]);
 
-  function getDisplayUri(filePath: string): string {
-    return rotatedUris[filePath] ?? toFileUri(filePath);
-  }
+  const photoPages: PhotoPage[] = useMemo(
+    () => allPages.map(p => ({
+      id: p.id,
+      uri: rotatedUris[p.file_path] ?? toFileUri(p.file_path),
+    })),
+    [allPages, rotatedUris]
+  );
 
-  async function handleRotate(filePath: string, degrees: number) {
-    const sourceUri = getDisplayUri(filePath);
+  async function handleRotate(pageId: string, degrees: number) {
+    const page = allPages.find(p => p.id === pageId);
+    if (!page) return;
+    const sourceUri = rotatedUris[page.file_path] ?? toFileUri(page.file_path);
     try {
       const result = await ImageManipulator.manipulateAsync(sourceUri, [{ rotate: degrees }], {
         compress: 0.9,
         format: ImageManipulator.SaveFormat.JPEG,
       });
-      setRotatedUris(prev => ({ ...prev, [filePath]: result.uri }));
-      const absoluteUri = toFileUri(filePath);
+      setRotatedUris(prev => ({ ...prev, [page.file_path]: result.uri }));
+      const absoluteUri = toFileUri(page.file_path);
       const dest = absoluteUri.startsWith('file://') ? absoluteUri.slice(7) : absoluteUri;
       await FileSystem.copyAsync({ from: result.uri, to: dest });
     } catch {
@@ -200,8 +126,10 @@ export default function DocumentDetailScreen() {
     setLinkEntityVisible(false);
   }
 
-  async function handleDeletePage(pageId: string, filePath: string) {
+  async function handleDeletePage(pageId: string) {
     if (!doc) return;
+    const page = allPages.find(p => p.id === pageId);
+    if (!page) return;
     Alert.alert('Șterge pagina', 'Ești sigur că vrei să ștergi această pagină?', [
       { text: 'Anulare', style: 'cancel' },
       {
@@ -224,7 +152,7 @@ export default function DocumentDetailScreen() {
             setDoc(updated);
             setRotatedUris(prev => {
               const next = { ...prev };
-              delete next[filePath];
+              delete next[page.file_path];
               return next;
             });
           } catch (e) {
@@ -369,48 +297,6 @@ export default function DocumentDetailScreen() {
     ]);
   }
 
-  const handleSave = async () => {
-    if (!doc) return;
-    setSaving(true);
-    try {
-      await updateDocument(doc.id, {
-        type: editType,
-        custom_type_id: editType === 'custom' ? (editCustomTypeId ?? undefined) : undefined,
-        issue_date: editIssueDate.trim() || undefined,
-        expiry_date: editExpiryDate.trim() || undefined,
-        note: editNote.trim() || undefined,
-        file_path: editLocalPath ?? undefined,
-        metadata: Object.keys(editMetadata).length > 0 ? editMetadata : undefined,
-        auto_delete: editAutoDelete ?? undefined,
-      });
-      const updated = await getDocumentById(doc.id);
-      setDoc(updated);
-      scheduleExpirationReminders().catch(() => {});
-      setEditVisible(false);
-
-      const finalExpiry = editExpiryDate.trim();
-      if (finalExpiry && isCalendarAvailable()) {
-        Alert.alert(
-          'Adaugă în calendar?',
-          `Vrei să adaugi un reminder în calendar pentru expirarea pe ${finalExpiry}?`,
-          [
-            { text: 'Nu', style: 'cancel' },
-            {
-              text: 'Adaugă',
-              onPress: async () => {
-                const calId = await addExpiryCalendarEvent({ docType: editType, expiryDate: finalExpiry, entityName: undefined, documentId: doc.id, note: editNote.trim() || undefined });
-                if (!calId) Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
-              },
-            },
-          ]
-        );
-      }
-    } catch (e) {
-      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleOcr = async () => {
     if (allPages.length === 0) {
@@ -497,8 +383,7 @@ export default function DocumentDetailScreen() {
                   await setDocumentOcrText(doc!.id, combinedText);
                   const updated = await getDocumentById(doc!.id);
                   setDoc(updated);
-                  openEditModal();
-                  setEditNote(combinedText.slice(0, 500));
+                  router.push(`/(tabs)/documente/edit?id=${doc!.id}`);
                 },
               },
         ]
@@ -736,7 +621,7 @@ export default function DocumentDetailScreen() {
   <div class="meta-page">
     <div class="meta-header">
       <div>
-        <div class="meta-brand">Portofel Acte</div>
+        <div class="meta-brand">Dosar</div>
         <div class="meta-brand-sub">Aplicație de gestionare documente personale</div>
       </div>
     </div>
@@ -744,8 +629,8 @@ export default function DocumentDetailScreen() {
     ${metaFields.length > 0 ? `<div class="fields">${metaFields.join('')}</div>` : ''}
     ${doc.note ? `<div class="note-box"><div class="note-label">Notă</div><div class="note-value">${escapeHtml(doc.note)}</div></div>` : ''}
     <div class="meta-footer">
-      <span class="meta-footer-brand">Portofel Acte</span>
-      <span>tudorabrudan.github.io/Portofel_Documente • Generat pe ${generatedDate}</span>
+      <span class="meta-footer-brand">Dosar</span>
+      <span>tudorabrudan.github.io/Dosar • Generat pe ${generatedDate}</span>
     </div>
   </div>
 
@@ -753,15 +638,15 @@ export default function DocumentDetailScreen() {
   <div class="ocr-page">
     <div class="meta-header">
       <div>
-        <div class="meta-brand">Portofel Acte</div>
+        <div class="meta-brand">Dosar</div>
         <div class="meta-brand-sub">Text identificat automat prin OCR</div>
       </div>
     </div>
     <div class="ocr-title">Text extras din document</div>
     <div class="ocr-content">${escapeHtml(doc.ocr_text)}</div>
     <div class="meta-footer" style="margin-top:6mm">
-      <span class="meta-footer-brand">Portofel Acte</span>
-      <span>tudorabrudan.github.io/Portofel_Documente • Generat pe ${generatedDate}</span>
+      <span class="meta-footer-brand">Dosar</span>
+      <span>tudorabrudan.github.io/Dosar • Generat pe ${generatedDate}</span>
     </div>
   </div>` : ''}
 
@@ -812,67 +697,16 @@ export default function DocumentDetailScreen() {
         ),
       }} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {allPages.map((page, idx) => (
-          <View key={page.id + idx} style={styles.imageWrap}>
-            {allPages.length > 1 && (
-              <Text style={styles.pageLabel}>
-                Pagina {idx + 1} / {allPages.length}
-              </Text>
-            )}
-            <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: getDisplayUri(page.file_path) }}
-                style={styles.image}
-                resizeMode="contain"
-              />
-              <Pressable
-                style={styles.fullscreenBtn}
-                onPress={() => setFullscreenUri(getDisplayUri(page.file_path))}
-              >
-                <Text style={styles.fullscreenBtnText}>⤢</Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.rotateBar}
-              contentContainerStyle={styles.rotateBarContent}
-            >
-              <Pressable style={styles.rotateBtn} onPress={() => handleRotate(page.file_path, -90)}>
-                <Text style={styles.rotateBtnText}>↺ Stânga</Text>
-              </Pressable>
-              <Pressable style={styles.rotateBtn} onPress={() => handleRotate(page.file_path, 90)}>
-                <Text style={styles.rotateBtnText}>Dreapta ↻</Text>
-              </Pressable>
-              <Pressable
-                style={styles.rotateBtn}
-                onPress={() => handleDeletePage(page.id, page.file_path)}
-              >
-                <Text style={[styles.rotateBtnText, { color: '#c00' }]}>Șterge</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-        ))}
-        <Pressable style={styles.addPageBtn} onPress={handleAddPage}>
-          <Text style={styles.addPageBtnText}>
-            {allPages.length === 0 ? '+ Adaugă poză / pagină' : '+ Adaugă pagină'}
-          </Text>
-        </Pressable>
-        {allPages.length > 0 && (
-          <Pressable
-            style={[styles.ocrBtn, ocrLoading && styles.btnDisabled]}
-            onPress={handleOcr}
-            disabled={ocrLoading}
-          >
-            {ocrLoading ? (
-              <ActivityIndicator color={primary} />
-            ) : (
-              <Text style={styles.ocrBtnText}>
-                🔍 Procesare OCR {allPages.length > 1 ? `(${allPages.length} pagini)` : ''}
-              </Text>
-            )}
-          </Pressable>
-        )}
+        <DocumentPhotoSection
+          pages={photoPages}
+          ocrLoading={ocrLoading}
+          ocrText={doc.ocr_text ?? undefined}
+          onAddPage={handleAddPage}
+          onRotate={handleRotate}
+          onDelete={handleDeletePage}
+          onRunOcr={handleOcr}
+          onFullscreen={setFullscreenUri}
+        />
         <View style={styles.meta}>
           <Text style={styles.label}>Tip</Text>
           <Text style={styles.value}>{getDocumentLabel(doc, customTypes)}</Text>
@@ -981,7 +815,7 @@ export default function DocumentDetailScreen() {
           </Pressable>
           <Pressable
             style={[styles.actionItem, { borderRightWidth: 1, borderColor: colors.border }]}
-            onPress={openEditModal}
+            onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
           >
             <Text style={styles.actionItemIcon}>✏️</Text>
             <Text style={[styles.actionItemLabel, { color: primary }]}>Editează</Text>
@@ -1119,177 +953,6 @@ export default function DocumentDetailScreen() {
         </View>
       )}
 
-      {editVisible && (
-        <View style={styles.overlay}>
-          <View style={[styles.overlayBox, { backgroundColor: colors.card }]}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.overlayTitle}>Editează document</Text>
-
-              <Text style={styles.fieldLabel}>Poză / scan (opțional)</Text>
-              {editImageUri ? (
-                <View style={styles.editImageWrap}>
-                  <Image
-                    source={{ uri: editImageUri }}
-                    style={styles.editImagePreview}
-                    resizeMode="contain"
-                  />
-                  <Pressable
-                    onPress={() => {
-                      setEditImageUri(null);
-                      setEditLocalPath(null);
-                    }}
-                    style={styles.removePhotoBtn}
-                  >
-                    <Text style={styles.removePhotoBtnText}>Șterge poza</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <Pressable
-                  style={[styles.overlayBtn, styles.overlayBtnOutline, styles.pickPhotoBtn]}
-                  onPress={handlePickEditPhoto}
-                  disabled={saving}
-                >
-                  <Text style={styles.overlayBtnOutlineText}>Alege poză</Text>
-                </Pressable>
-              )}
-
-              <Text style={styles.fieldLabel}>Tip document</Text>
-              <Pressable
-                style={styles.typeToggleRow}
-                onPress={() => setTypePickerVisible(v => !v)}
-              >
-                <Text style={styles.typeToggleCurrent}>
-                  {editType === 'custom'
-                    ? (customTypes.find(c => c.id === editCustomTypeId)?.name ?? 'Tip personalizat')
-                    : (DOCUMENT_TYPE_LABELS[editType] ?? editType)}
-                </Text>
-                <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
-              </Pressable>
-              {typePickerVisible && (
-                <View style={styles.typeRow}>
-                  {standardTypes.map(({ value, label }) => (
-                    <Pressable
-                      key={value}
-                      style={[styles.typeChip, editType === value && styles.typeChipActive]}
-                      onPress={() => { setEditType(value); setEditCustomTypeId(null); setTypePickerVisible(false); }}
-                    >
-                      <Text
-                        style={[styles.typeChipText, editType === value && styles.typeChipTextActive]}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                  {customTypes.map(ct => (
-                    <Pressable
-                      key={ct.id}
-                      style={[
-                        styles.typeChip,
-                        editType === 'custom' && editCustomTypeId === ct.id && styles.typeChipActive,
-                      ]}
-                      onPress={() => { setEditType('custom'); setEditCustomTypeId(ct.id); setTypePickerVisible(false); }}
-                    >
-                      <Text
-                        style={[
-                          styles.typeChipText,
-                          editType === 'custom' && editCustomTypeId === ct.id && styles.typeChipTextActive,
-                        ]}
-                      >
-                        {ct.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-
-              <DatePickerField
-                label="Data emisiune (opțional)"
-                value={editIssueDate}
-                onChange={setEditIssueDate}
-                disabled={saving}
-              />
-              <DatePickerField
-                label="Data expirare (opțional)"
-                value={editExpiryDate}
-                onChange={setEditExpiryDate}
-                disabled={saving}
-              />
-
-              <Text style={styles.fieldLabel}>Auto-ștergere (opțional)</Text>
-              <View style={styles.typeRow}>
-                {([
-                  { label: 'Niciodată', value: null },
-                  { label: '30 zile', value: '30d' },
-                  { label: '90 zile', value: '90d' },
-                  { label: '180 zile', value: '180d' },
-                  { label: '1 an', value: '365d' },
-                  ...(editExpiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-                ] as { label: string; value: string | null }[]).map(opt => (
-                  <Pressable
-                    key={opt.value ?? 'never'}
-                    style={[styles.typeChip, editAutoDelete === opt.value && styles.typeChipActive]}
-                    onPress={() => setEditAutoDelete(opt.value)}
-                  >
-                    <Text style={[styles.typeChipText, editAutoDelete === opt.value && styles.typeChipTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <Text style={styles.fieldLabel}>Notă (opțional)</Text>
-              <ThemedTextInput
-                style={[styles.input, styles.inputMultiline]}
-                placeholder="Notă"
-                value={editNote}
-                onChangeText={setEditNote}
-                multiline
-                editable={!saving}
-              />
-
-              {/* Câmpuri specifice tipului */}
-              {(DOCUMENT_FIELDS[editType] ?? []).map((field: FieldDef) => (
-                <View key={field.key}>
-                  <Text style={styles.fieldLabel}>{field.label}</Text>
-                  <ThemedTextInput
-                    style={styles.input}
-                    placeholder={field.placeholder ?? ''}
-                    value={editMetadata[field.key] ?? ''}
-                    onChangeText={v => setEditMetadata(prev => ({ ...prev, [field.key]: v }))}
-                    keyboardType={field.keyboardType ?? 'default'}
-                    editable={!saving}
-                  />
-                </View>
-              ))}
-
-              <View style={styles.overlayBtns}>
-                <Pressable
-                  style={[styles.overlayBtn, styles.overlayBtnOutline]}
-                  onPress={() => setEditVisible(false)}
-                  disabled={saving}
-                >
-                  <Text style={styles.overlayBtnOutlineText}>Anulează</Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.overlayBtn,
-                    styles.overlayBtnPrimary,
-                    saving && styles.btnDisabled,
-                  ]}
-                  onPress={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.overlayBtnPrimaryText}>Salvează</Text>
-                  )}
-                </Pressable>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -1385,7 +1048,7 @@ const styles = StyleSheet.create({
   entityGroupLabel: { fontSize: 11, fontWeight: '600', opacity: 0.5, marginTop: 14, marginBottom: 2, textTransform: 'uppercase' },
   entityPickerRow: { paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth },
   entityPickerRowDanger: { paddingVertical: 14, marginTop: 8 },
-  entityPickerDangerText: { color: '#c00', fontSize: 15 },
+  entityPickerDangerText: { color: '#E53935', fontSize: 15 },
   calendarBtn: {
     marginTop: 10,
     paddingVertical: 14,
@@ -1445,18 +1108,17 @@ const styles = StyleSheet.create({
   },
   actionItemIcon: { fontSize: 20 },
   actionItemLabel: { fontSize: 12, fontWeight: '600' },
-  actionItemDanger: { color: '#c00' },
+  actionItemDanger: { color: '#E53935' },
   btnDisabled: { opacity: 0.7 },
   asigraBtn: {
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
     marginBottom: 10,
-    backgroundColor: '#E8F5E9',
     borderWidth: 1,
     borderColor: '#9EB567',
   },
-  asigaBtnText: { color: '#2E7D32', fontSize: 14, fontWeight: '600' },
+  asigaBtnText: { color: primary, fontSize: 14, fontWeight: '600' },
   // Edit overlay
   overlay: {
     position: 'absolute',
