@@ -48,8 +48,8 @@ const ENTITY_ICONS: Record<EntityType, string> = {
 // ─── Constante contact ────────────────────────────────────────────────────────
 // TODO: înlocuiește cu datele reale înainte de publish
 const CONTACT_EMAIL = 'apps.tudor@gmail.com';
-const SUPPORT_URL = 'https://tudorabrudan.github.io/smartkidtimer-legal/documente/support.html';
-const PRIVACY_URL = 'https://tudorabrudan.github.io/smartkidtimer-legal/documente/privacy_ro.html';
+const SUPPORT_URL = 'https://tudorabrudan.github.io/Dosar/docs/support.html';
+const PRIVACY_URL = 'https://tudorabrudan.github.io/Dosar/legal/privacy_ro.html';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 const APP_NAME = Constants.expoConfig?.name ?? 'Documente';
