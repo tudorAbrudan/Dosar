@@ -70,13 +70,14 @@ export default function AddDocumentScreen() {
     card_id?: string;
     animal_id?: string;
     company_id?: string;
+    type?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
   const { persons, properties, vehicles, cards, animals, companies } = useEntities();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes, visibleDocTypes } = useVisibilitySettings();
 
-  const [type, setType] = useState<DocumentType>('buletin');
+  const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'buletin');
   const [customTypeId, setCustomTypeId] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, string>>({});
   const [issueDate, setIssueDate] = useState('');
@@ -121,8 +122,11 @@ export default function AddDocumentScreen() {
         const talon = docs.find(d => d.type === 'talon');
         const itpDate = talon?.metadata?.itp_expiry_date;
         if (itpDate && !expiryDateRef.current) {
-          setExpiryDate(itpDate);
-          expiryDateRef.current = itpDate;
+          // Convertim ZZ.LL.AAAA → AAAA-LL-ZZ pentru DatePickerField
+          const m = itpDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+          const isoDate = m ? `${m[3]}-${m[2]}-${m[1]}` : itpDate;
+          setExpiryDate(isoDate);
+          expiryDateRef.current = isoDate;
         }
       })
       .catch(() => {});
@@ -188,13 +192,20 @@ export default function AddDocumentScreen() {
       const docType = detectedType ?? type;
       const extracted = extractFieldsForType(docType, text);
 
-      if (Object.keys(extracted.metadata).length > 0) {
-        setMetadata(prev => ({ ...extracted.metadata, ...prev }));
+      // Dacă auto-detecția a schimbat tipul, extrage și câmpurile pentru tipul selectat de user
+      // ca să nu rămână câmpuri predefinite goale (ex: VIN la carte_auto)
+      const finalMeta: Record<string, string> = (detectedType && detectedType !== type)
+        ? { ...extractFieldsForType(type, text).metadata, ...extracted.metadata }
+        : extracted.metadata;
+
+      if (Object.keys(finalMeta).length > 0) {
+        setMetadata(prev => ({ ...finalMeta, ...prev }));
       }
       if (extracted.expiry_date) {
         setExpiryDate(extracted.expiry_date);
         expiryDateRef.current = extracted.expiry_date;
-      } else if (info.expiry_date && !expiryDateRef.current) {
+      } else if (info.expiry_date && !expiryDateRef.current && docType !== 'talon' && docType !== 'carte_auto') {
+        // talon și carte_auto nu au dată de expirare proprie — evităm să punem data greșită
         setExpiryDate(info.expiry_date);
         expiryDateRef.current = info.expiry_date;
       }

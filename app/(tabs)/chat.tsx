@@ -99,7 +99,7 @@ function MessageBubble({ message, onIdPress, colors }: MessageBubbleProps) {
         styles.assistantBubble,
         { backgroundColor: colors.surface, borderColor: colors.border },
       ]}>
-      <Text>{nodes}</Text>
+      <Text selectable>{nodes}</Text>
     </View>
   );
 }

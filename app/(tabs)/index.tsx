@@ -105,6 +105,22 @@ function buildAlerts(
 ): SmartAlert[] {
   const alerts: SmartAlert[] = [];
 
+  // Verifică vehicule fără talon
+  for (const v of vehicles) {
+    const hasTalon = documents.some(d => d.vehicle_id === v.id && d.type === 'talon');
+    if (!hasTalon) {
+      alerts.push({
+        id: `no-talon-${v.id}`,
+        message: `${v.name} nu are talon`,
+        icon: 'document-text-outline',
+        iconBg: '#E0F2F1',
+        iconColor: '#00695C',
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id, type: 'talon' } }),
+        actionLabel: 'Adaugă',
+      });
+    }
+  }
+
   // Verifică vehicule fără RCA
   for (const v of vehicles) {
     const hasRca = documents.some(d => d.vehicle_id === v.id && d.type === 'rca');
@@ -115,7 +131,7 @@ function buildAlerts(
         icon: 'shield-outline',
         iconBg: '#FCE4EC',
         iconColor: '#C62828',
-        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id } }),
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id, type: 'rca' } }),
         actionLabel: 'Adaugă',
       });
     }
@@ -131,7 +147,7 @@ function buildAlerts(
         icon: 'checkmark-circle-outline',
         iconBg: '#F3E5F5',
         iconColor: '#6A1B9A',
-        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id } }),
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { vehicle_id: v.id, type: 'itp' } }),
         actionLabel: 'Adaugă',
       });
     }
@@ -147,7 +163,7 @@ function buildAlerts(
         icon: 'id-card-outline',
         iconBg: '#E3F2FD',
         iconColor: '#1565C0',
-        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { person_id: p.id } }),
+        action: () => router.push({ pathname: '/(tabs)/documente/add', params: { person_id: p.id, type: 'buletin' } }),
         actionLabel: 'Adaugă',
       });
     }

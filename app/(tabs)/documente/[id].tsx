@@ -701,6 +701,7 @@ export default function DocumentDetailScreen() {
           pages={photoPages}
           ocrLoading={ocrLoading}
           ocrText={doc.ocr_text ?? undefined}
+          isEditing={false}
           onAddPage={handleAddPage}
           onRotate={handleRotate}
           onDelete={handleDeletePage}

@@ -18,6 +18,7 @@ interface Props {
   pages: PhotoPage[];
   ocrLoading: boolean;
   ocrText?: string;
+  isEditing?: boolean;
   onAddPage: () => void;
   onRotate: (pageId: string, degrees: number) => void;
   onDelete: (pageId: string) => void;
@@ -29,6 +30,7 @@ export function DocumentPhotoSection({
   pages,
   ocrLoading,
   ocrText,
+  isEditing = true,
   onAddPage,
   onRotate,
   onDelete,
@@ -60,56 +62,60 @@ export function DocumentPhotoSection({
               <Text style={styles.fullscreenBtnText}>⤢</Text>
             </Pressable>
           </View>
-          {/* Rotate / delete bar — segmented control */}
-          <View style={styles.rotateBar}>
-            <Pressable
-              style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
-              onPress={() => onRotate(page.id, -90)}
-            >
-              <Text style={styles.rotateBtnText}>↺  Stânga</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
-              onPress={() => onRotate(page.id, 90)}
-            >
-              <Text style={styles.rotateBtnText}>↻  Dreapta</Text>
-            </Pressable>
-            <Pressable
-              style={styles.rotateBtn}
-              onPress={() => onDelete(page.id)}
-            >
-              <Text style={[styles.rotateBtnText, styles.deleteText]}>Șterge</Text>
-            </Pressable>
-          </View>
+          {/* Rotate / delete bar — doar în modul editare */}
+          {isEditing && (
+            <View style={styles.rotateBar}>
+              <Pressable
+                style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
+                onPress={() => onRotate(page.id, -90)}
+              >
+                <Text style={styles.rotateBtnText}>↺  Stânga</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
+                onPress={() => onRotate(page.id, 90)}
+              >
+                <Text style={styles.rotateBtnText}>↻  Dreapta</Text>
+              </Pressable>
+              <Pressable
+                style={styles.rotateBtn}
+                onPress={() => onDelete(page.id)}
+              >
+                <Text style={[styles.rotateBtnText, styles.deleteText]}>Șterge</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       ))}
 
-      {/* Add page + OCR side by side */}
-      <View style={styles.photoActionsRow}>
-        <Pressable style={styles.photoActionBtn} onPress={onAddPage}>
-          <Text style={styles.photoActionBtnText}>
-            {pages.length === 0 ? '+ Adaugă poză' : '+ Pagină nouă'}
-          </Text>
-        </Pressable>
-        {pages.length > 0 && (
-          <Pressable
-            style={[styles.photoActionBtn, ocrLoading && styles.btnDisabled]}
-            onPress={onRunOcr}
-            disabled={ocrLoading}
-          >
-            {ocrLoading ? (
-              <View style={styles.ocrLoadingRow}>
-                <ActivityIndicator size="small" color={primary} />
-                <Text style={styles.ocrLoadingText}> OCR...</Text>
-              </View>
-            ) : (
-              <Text style={styles.photoActionBtnText}>
-                🔍 OCR{pages.length > 1 ? ` (${pages.length})` : ''}
-              </Text>
-            )}
+      {/* Add page + OCR — doar în modul editare */}
+      {isEditing && (
+        <View style={styles.photoActionsRow}>
+          <Pressable style={styles.photoActionBtn} onPress={onAddPage}>
+            <Text style={styles.photoActionBtnText}>
+              {pages.length === 0 ? '+ Adaugă poză' : '+ Pagină nouă'}
+            </Text>
           </Pressable>
-        )}
-      </View>
+          {pages.length > 0 && (
+            <Pressable
+              style={[styles.photoActionBtn, ocrLoading && styles.btnDisabled]}
+              onPress={onRunOcr}
+              disabled={ocrLoading}
+            >
+              {ocrLoading ? (
+                <View style={styles.ocrLoadingRow}>
+                  <ActivityIndicator size="small" color={primary} />
+                  <Text style={styles.ocrLoadingText}> OCR...</Text>
+                </View>
+              ) : (
+                <Text style={styles.photoActionBtnText}>
+                  🔍 OCR{pages.length > 1 ? ` (${pages.length})` : ''}
+                </Text>
+              )}
+            </Pressable>
+          )}
+        </View>
+      )}
 
       {ocrText ? (
         <View style={styles.ocrSection}>

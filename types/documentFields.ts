@@ -47,15 +47,17 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'model',            label: 'Model',                placeholder: 'Golf' },
     { key: 'an_fabricatie',    label: 'An fabricație',        placeholder: '2018', keyboardType: 'numeric' },
     { key: 'combustibil',      label: 'Combustibil',          placeholder: 'Diesel / Benzină / Electric' },
-    { key: 'itp_expiry_date',  label: 'Scadență ITP (ștampilă RAR)',  placeholder: '01/2026' },
+    { key: 'itp_expiry_date',  label: 'Scadență ITP (ștampilă RAR)',  placeholder: '31.01.2026' },
     // ↑ Sursa pentru expiry_date la salvare — ITP-ul expiră, nu talonul.
   ],
 
   carte_auto: [
     // CIV nu expiră niciodată.
-    { key: 'vin',    label: 'Serie șasiu (VIN)',  placeholder: 'WVWZZZ1JZ3W386752' },
-    { key: 'marca',  label: 'Marcă',              placeholder: 'VOLKSWAGEN' },
-    { key: 'model',  label: 'Model',              placeholder: 'Golf' },
+    { key: 'plate',         label: 'Nr. înmatriculare',   placeholder: 'B 123 ABC' },
+    { key: 'vin',           label: 'Serie șasiu (VIN)',   placeholder: 'WVWZZZ1JZ3W386752' },
+    { key: 'marca',         label: 'Marcă',               placeholder: 'VOLKSWAGEN' },
+    { key: 'model',         label: 'Model',               placeholder: 'Golf' },
+    { key: 'an_fabricatie', label: 'An fabricație',       placeholder: '2018', keyboardType: 'numeric' },
   ],
 
   rca: [

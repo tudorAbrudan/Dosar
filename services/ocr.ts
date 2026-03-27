@@ -448,8 +448,8 @@ export function detectDocumentType(text: string): DocumentType | null {
   if (/\bcasco\b/.test(t)) return 'casco';
   if (/inspec[tț]ie tehnic[aă]|inspec[tț]ie periodic[aă]|\bitp\b/.test(t)) return 'itp';
   if (/vignet[aă]|rovinieta/.test(t)) return 'vigneta';
-  if (/\btalon\b|certificat de [îi]nmatriculare/.test(t)) return 'talon';
   if (/carte de identitate a vehiculului|\bciv\b/.test(t)) return 'carte_auto';
+  if (/\btalon\b|certificat de [îi]nmatriculare/.test(t)) return 'talon';
   if (/act de proprietate|contract de v[âa]nzare[\-\s]cump[aă]rare/.test(t)) return 'act_proprietate';
   if (/num[aă]r cadastral|extras de carte funciar[aă]/.test(t)) return 'cadastru';
   if (/asigurare.*dezastre|politi[aă] pad|\bpad\b/.test(t)) return 'pad';

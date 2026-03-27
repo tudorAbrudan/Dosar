@@ -156,10 +156,11 @@ function extractTalonDoc(text: string): ExtractResult {
 
   let itpIso: string | undefined;
   if (itpDate) {
-    meta['itp_expiry_date'] = itpDate;
     const [mm, yyyy] = itpDate.split('/');
     const lastDay = new Date(parseInt(yyyy), parseInt(mm), 0).getDate();
-    itpIso = `${yyyy}-${mm}-${String(lastDay).padStart(2, '0')}`;
+    const dd = String(lastDay).padStart(2, '0');
+    itpIso = `${yyyy}-${mm}-${dd}`;
+    meta['itp_expiry_date'] = `${dd}.${mm}.${yyyy}`; // ZZ.LL.AAAA
   }
 
   return { metadata: meta, expiry_date: itpIso };
@@ -170,6 +171,9 @@ function extractTalonDoc(text: string): ExtractResult {
 function extractCarteAuto(text: string): ExtractResult {
   const meta: Record<string, string> = {};
 
+  const plate = extractPlateNumber(text);
+  if (plate) meta['plate'] = plate;
+
   const vin = text.match(/\b([A-HJ-NPR-Z0-9]{17})\b/);
   if (vin) meta['vin'] = vin[1];
 
@@ -178,6 +182,13 @@ function extractCarteAuto(text: string): ExtractResult {
     const parts = d1[1].trim().split(/\s*\/\s*/);
     meta['marca'] = parts[0].trim();
     if (parts[1]) meta['model'] = parts[1].trim();
+  }
+
+  // B = data primei înmatriculări → an fabricație
+  const bField = text.match(/\bB\s*[:\s]\s*(\d{2}[.\/\-]\d{2}[.\/\-]\d{4})/i);
+  if (bField) {
+    const yr = bField[1].match(/\d{4}/);
+    if (yr) meta['an_fabricatie'] = yr[0];
   }
 
   // CIV nu expiră
