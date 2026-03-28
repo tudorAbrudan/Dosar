@@ -5,7 +5,7 @@
   "scripts": {
     "start": "expo start --clear",
     "android": "expo run:android",
-    "ios": "expo run:ios",
+    "ios": "expo run:ios --device \"iPhone 16\"",
     "web": "expo start --web",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
@@ -21,6 +21,7 @@
     "expo": "~55.0.4",
     "expo-build-properties": "~55.0.10",
     "expo-calendar": "~55.0.9",
+    "expo-clipboard": "~55.0.9",
     "expo-constants": "~55.0.7",
     "expo-document-picker": "~55.0.8",
     "expo-file-system": "~55.0.10",

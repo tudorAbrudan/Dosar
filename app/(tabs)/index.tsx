@@ -12,7 +12,11 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
+import { AppButton } from '@/components/ui/AppButton';
+import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import Colors from '@/constants/Colors';
+import { primary } from '@/theme/colors';
+import { radius, spacing } from '@/theme/layout';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
@@ -253,13 +257,6 @@ export default function HomeScreen() {
           <RNText style={[styles.greeting, { color: C.textSecondary }]}>{greeting()}</RNText>
           <RNText style={[styles.headerTitle, { color: C.text }]}>Acasă</RNText>
         </RNView>
-        <Pressable
-          style={[styles.addBtn, { backgroundColor: '#9EB567' }]}
-          onPress={() => router.push('/(tabs)/documente/add')}
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-          <RNText style={styles.addBtnText}>Document</RNText>
-        </Pressable>
       </RNView>
 
       <ScrollView
@@ -269,44 +266,52 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── Stats row ── */}
-        <RNView style={styles.statsRow}>
-          <Pressable
-            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
-            onPress={() => router.push('/(tabs)/documente')}
-          >
-            <RNText style={[styles.statNumber, { color: C.text }]}>{stats.total}</RNText>
-            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Acte</RNText>
-          </Pressable>
-
-          <Pressable
-            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
-            onPress={() => router.push('/(tabs)/expirari')}
-          >
-            <RNText style={[styles.statNumber, { color: stats.expired > 0 ? '#E53935' : C.text }]}>
-              {stats.expired}
-            </RNText>
-            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Expirate</RNText>
-          </Pressable>
-
-          <Pressable
-            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
-            onPress={() => router.push('/(tabs)/expirari')}
-          >
-            <RNText style={[styles.statNumber, { color: stats.expiringSoon > 0 ? '#F57C00' : C.text }]}>
-              {stats.expiringSoon}
-            </RNText>
-            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Expiră{'\n'}în 30 zile</RNText>
-          </Pressable>
-
-          <Pressable
-            style={[styles.statCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
-            onPress={() => router.push('/(tabs)/entitati')}
-          >
-            <RNText style={[styles.statNumber, { color: C.text }]}>{totalEntities}</RNText>
-            <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Entități</RNText>
-          </Pressable>
-        </RNView>
+        {/* ── Rezumat + acțiuni (card integrat) ── */}
+        <SurfaceCard style={styles.integratedCard}>
+          <RNView style={styles.statsRow}>
+            <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/documente')}>
+              <RNText style={[styles.statNumber, { color: C.text }]}>{stats.total}</RNText>
+              <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Acte</RNText>
+            </Pressable>
+            <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
+            <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/expirari')}>
+              <RNText style={[styles.statNumber, { color: stats.expired > 0 ? '#E53935' : C.text }]}>
+                {stats.expired}
+              </RNText>
+              <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Expirate</RNText>
+            </Pressable>
+            <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
+            <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/expirari')}>
+              <RNText style={[styles.statNumber, { color: stats.expiringSoon > 0 ? '#F57C00' : C.text }]}>
+                {stats.expiringSoon}
+              </RNText>
+              <RNText style={[styles.statLabel, { color: C.textSecondary }]}>30 zile</RNText>
+            </Pressable>
+            <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
+            <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/entitati')}>
+              <RNText style={[styles.statNumber, { color: C.text }]}>{totalEntities}</RNText>
+              <RNText style={[styles.statLabel, { color: C.textSecondary }]}>Entități</RNText>
+            </Pressable>
+          </RNView>
+          <RNView style={[styles.actionsDivider, { backgroundColor: C.border }]} />
+          <RNText style={[styles.actionsLabel, { color: C.textSecondary }]}>Adaugă rapid</RNText>
+          <RNView style={styles.actionRow}>
+            <AppButton
+              title="Entitate"
+              variant="outline"
+              style={styles.actionBtn}
+              icon={<Ionicons name="people-outline" size={18} color={C.primary} />}
+              onPress={() => router.push('/(tabs)/entitati/add')}
+            />
+            <AppButton
+              title="Document"
+              variant="primary"
+              style={styles.actionBtn}
+              icon={<Ionicons name="document-text-outline" size={18} color="#fff" />}
+              onPress={() => router.push('/(tabs)/documente/add')}
+            />
+          </RNView>
+        </SurfaceCard>
 
         {/* ── Alerte contextuale ── */}
         {alerts.length > 0 && (
@@ -325,10 +330,10 @@ export default function HomeScreen() {
                 </RNText>
                 {alert.action && (
                   <Pressable
-                    style={[styles.alertBtn, { borderColor: '#9EB567' }]}
+                    style={[styles.alertBtn, { borderColor: C.primary }]}
                     onPress={alert.action}
                   >
-                    <RNText style={styles.alertBtnText}>{alert.actionLabel}</RNText>
+                    <RNText style={[styles.alertBtnText, { color: C.primary }]}>{alert.actionLabel}</RNText>
                   </Pressable>
                 )}
               </RNView>
@@ -440,27 +445,17 @@ export default function HomeScreen() {
             <RNText style={[styles.emptySub, { color: C.textSecondary }]}>
               Adaugă primul tău document apăsând butonul de mai jos.
             </RNText>
-            <Pressable
+            <AppButton
+              title="Adaugă document"
+              variant="primary"
               style={styles.emptyBtn}
               onPress={() => router.push('/(tabs)/documente/add')}
-            >
-              <RNText style={styles.emptyBtnText}>Adaugă document</RNText>
-            </Pressable>
+            />
           </RNView>
         )}
 
         <RNView style={styles.bottomPad} />
       </ScrollView>
-
-      {/* ── FAB ── */}
-      <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => router.push('/(tabs)/documente/add')}
-        accessibilityLabel="Adaugă document"
-        accessibilityRole="button"
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </Pressable>
     </RNView>
   );
 }
@@ -474,47 +469,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.screen,
     paddingBottom: 10,
   },
   greeting: { fontSize: 13, lineHeight: 18, marginBottom: 1 },
   headerTitle: { fontSize: 28, fontWeight: '700', letterSpacing: -0.5, lineHeight: 34 },
 
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 100 },
+  scrollContent: { paddingHorizontal: spacing.screen, paddingTop: 8, paddingBottom: 32 },
 
-  // Stats
+  integratedCard: {
+    marginBottom: spacing.section,
+    padding: spacing.cardPadding,
+  },
   statsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
+    alignItems: 'stretch',
+    minHeight: 72,
   },
-  statCard: {
+  statCell: {
     flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
     alignItems: 'center',
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
-  statNumber: { fontSize: 22, fontWeight: '700', lineHeight: 28 },
-  statLabel: { fontSize: 11, textAlign: 'center', lineHeight: 14, marginTop: 2 },
+  statDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch' },
+  statNumber: { fontSize: 20, fontWeight: '700', lineHeight: 26 },
+  statLabel: { fontSize: 10, textAlign: 'center', lineHeight: 13, marginTop: 2 },
+  actionsDivider: { height: StyleSheet.hairlineWidth, marginVertical: 12 },
+  actionsLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  actionRow: { flexDirection: 'row', gap: spacing.gap },
+  actionBtn: { flex: 1, minWidth: 0, paddingVertical: 12, paddingHorizontal: 12, minHeight: 46 },
 
-  // Section
-  section: { marginBottom: 20 },
+  section: { marginBottom: spacing.section },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -527,13 +520,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
-  sectionLink: { fontSize: 13, color: '#9EB567', fontWeight: '500' },
+  sectionLink: { fontSize: 13, color: primary, fontWeight: '500' },
 
   // Alert cards
   alertCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: radius.lg,
     padding: 12,
     marginBottom: 8,
     gap: 10,
@@ -553,18 +546,18 @@ const styles = StyleSheet.create({
   alertText: { flex: 1, fontSize: 14, lineHeight: 19 },
   alertBtn: {
     borderWidth: 1.5,
-    borderRadius: 8,
+    borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 5,
     flexShrink: 0,
   },
-  alertBtnText: { color: '#9EB567', fontSize: 13, fontWeight: '600' },
+  alertBtnText: { fontSize: 13, fontWeight: '600' },
 
   // Doc cards
   docCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: radius.lg,
     padding: 12,
     marginBottom: 8,
     gap: 10,
@@ -593,31 +586,7 @@ const styles = StyleSheet.create({
   emptyIcon: { marginBottom: 16, opacity: 0.35 },
   emptyTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
   emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 20, opacity: 0.8, marginBottom: 24 },
-  emptyBtn: {
-    backgroundColor: '#9EB567',
-    borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 28,
-  },
-  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  emptyBtn: { alignSelf: 'center', minWidth: 220, marginTop: 4 },
 
   bottomPad: { height: 20 },
-
-  // FAB
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#9EB567',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6 },
-      android: { elevation: 6 },
-    }),
-  },
-  fabPressed: { opacity: 0.88, transform: [{ scale: 0.96 }] },
 });

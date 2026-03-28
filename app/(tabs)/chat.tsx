@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,6 +29,55 @@ const WELCOME_MESSAGE: ChatMessage = {
 };
 
 const ID_REGEX = /\[ID:([^\]]+)\]/g;
+
+interface SelectTextModalProps {
+  visible: boolean;
+  text: string;
+  colors: typeof lightColors;
+  onClose: () => void;
+}
+
+function SelectTextModal({ visible, text, colors, onClose }: SelectTextModalProps) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopyAll() {
+    await Clipboard.setStringAsync(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.selectModalOverlay} onPress={onClose}>
+        <Pressable
+          style={[styles.selectModalBox, { backgroundColor: colors.surface }]}
+          onPress={(e) => e.stopPropagation()}>
+          <View style={styles.selectModalHeader}>
+            <Text style={[styles.selectModalTitle, { color: colors.text }]}>Selectează text</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={[styles.selectModalClose, { color: colors.textSecondary }]}>✕</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            style={[
+              styles.selectModalInput,
+              { color: colors.text, borderColor: colors.border },
+            ]}
+            value={text}
+            editable={false}
+            multiline
+            selectTextOnFocus
+          />
+          <Pressable
+            style={[styles.selectModalCopyBtn, { backgroundColor: colors.primary }]}
+            onPress={handleCopyAll}>
+            <Text style={styles.selectModalCopyText}>{copied ? 'Copiat!' : 'Copiază tot'}</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -81,6 +131,7 @@ function renderMessageContent(
 
 function MessageBubble({ message, onIdPress, colors }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const [showSelectModal, setShowSelectModal] = useState(false);
 
   if (isUser) {
     return (
@@ -93,14 +144,26 @@ function MessageBubble({ message, onIdPress, colors }: MessageBubbleProps) {
   const nodes = renderMessageContent(message.content, onIdPress, colors.primary, colors.text);
 
   return (
-    <View
-      style={[
-        styles.bubble,
-        styles.assistantBubble,
-        { backgroundColor: colors.surface, borderColor: colors.border },
-      ]}>
-      <Text selectable>{nodes}</Text>
-    </View>
+    <>
+      <Pressable
+        onLongPress={() => setShowSelectModal(true)}
+        delayLongPress={400}>
+        <View
+          style={[
+            styles.bubble,
+            styles.assistantBubble,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+          <Text selectable>{nodes}</Text>
+        </View>
+      </Pressable>
+      <SelectTextModal
+        visible={showSelectModal}
+        text={message.content}
+        colors={colors}
+        onClose={() => setShowSelectModal(false)}
+      />
+    </>
   );
 }
 
@@ -113,7 +176,11 @@ interface ConsentModalProps {
 
 function ConsentModal({ visible, colors, onAccept, onDecline }: ConsentModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onDecline}>
       <View style={styles.consentOverlay}>
         <View style={[styles.consentBox, { backgroundColor: colors.surface }]}>
           <ScrollView
@@ -170,6 +237,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const [consentReady, setConsentReady] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
@@ -178,24 +246,34 @@ export default function ChatScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(AI_CONSENT_KEY).then((value) => {
-      if (value === 'true') {
-        setConsentChecked(true);
-      } else {
+    AsyncStorage.getItem(AI_CONSENT_KEY)
+      .then((value) => {
+        if (value === 'true') {
+          setConsentChecked(true);
+          setShowConsent(false);
+        } else {
+          setShowConsent(true);
+        }
+      })
+      .catch(() => {
+        // Fără catch, ecranul rămânea gol la erori AsyncStorage.
         setShowConsent(true);
-      }
-    });
+      })
+      .finally(() => {
+        setConsentReady(true);
+      });
   }, []);
 
   function handleAccept() {
-    AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
+    AsyncStorage.setItem(AI_CONSENT_KEY, 'true').catch(() => {});
     setShowConsent(false);
     setConsentChecked(true);
   }
 
   function handleDecline() {
     setShowConsent(false);
-    router.back();
+    // Din tab root, router.back() nu schimbă tabul → ecran gol. Du-te la Acasă.
+    router.replace('/(tabs)');
   }
 
   async function handleSend() {
@@ -228,6 +306,19 @@ export default function ChatScreen() {
 
   function handleIdPress(id: string) {
     router.push(`/(tabs)/documente/${id}`);
+  }
+
+  if (!consentReady) {
+    return (
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          { backgroundColor: colors.background, paddingTop: insets.top },
+        ]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   return (
@@ -311,6 +402,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   messageList: {
     flex: 1,
   },
@@ -364,6 +459,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sendButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  // Select text modal
+  selectModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  selectModalBox: {
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    maxWidth: 420,
+    gap: 12,
+  },
+  selectModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  selectModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectModalClose: {
+    fontSize: 16,
+    paddingHorizontal: 4,
+  },
+  selectModalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    lineHeight: 22,
+    maxHeight: 320,
+    textAlignVertical: 'top',
+  },
+  selectModalCopyBtn: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  selectModalCopyText: {
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 15,
