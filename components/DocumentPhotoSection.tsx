@@ -92,18 +92,22 @@ export function DocumentPhotoSection({
             {/* Rotate / delete bar — doar în modul editare */}
             {isEditing && (
               <View style={styles.rotateBar}>
-                <Pressable
-                  style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
-                  onPress={() => onRotate(page.id, -90)}
-                >
-                  <Text style={styles.rotateBtnText}>↺ Stânga</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
-                  onPress={() => onRotate(page.id, 90)}
-                >
-                  <Text style={styles.rotateBtnText}>↻ Dreapta</Text>
-                </Pressable>
+                {!pageIsPdf && (
+                  <>
+                    <Pressable
+                      style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
+                      onPress={() => onRotate(page.id, -90)}
+                    >
+                      <Text style={styles.rotateBtnText}>↺ Rotește</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.rotateBtn, styles.rotateBtnBorderRight]}
+                      onPress={() => onRotate(page.id, 90)}
+                    >
+                      <Text style={styles.rotateBtnText}>↻ Rotește</Text>
+                    </Pressable>
+                  </>
+                )}
                 <Pressable style={styles.rotateBtn} onPress={() => onDelete(page.id)}>
                   <Text style={[styles.rotateBtnText, styles.deleteText]}>Șterge</Text>
                 </Pressable>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -26,6 +26,7 @@ export default function AppLockScreen({
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const autoTriggered = useRef(false);
 
   const handleBiometric = async () => {
     setError('');
@@ -39,6 +40,14 @@ export default function AppLockScreen({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (biometricAvailable && !autoTriggered.current) {
+      autoTriggered.current = true;
+      handleBiometric();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [biometricAvailable]);
 
   const handlePinSubmit = async () => {
     if (!pin.trim()) return;

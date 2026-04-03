@@ -5,6 +5,7 @@ import {
   ScrollView,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Modal,
@@ -178,7 +179,7 @@ export default function AddDocumentScreen() {
     try {
       let { text } = await extractText(localPath);
 
-      if (text.trim().length < 20) {
+      if (text.trim().length < 50) {
         const candidates: { deg: number; text: string; uri: string }[] = [];
         for (const deg of [90, 180, 270]) {
           const rotated = await ImageManipulator.manipulateAsync(localPath, [{ rotate: deg }], {
@@ -593,6 +594,17 @@ export default function AddDocumentScreen() {
     }
   }
 
+  // ── Validare ─────────────────────────────────────────────────────────────
+
+  const hasAnyField =
+    issueDate.trim() !== '' ||
+    expiryDate.trim() !== '' ||
+    note.trim() !== '' ||
+    Object.values(metadata).some(v => v.trim() !== '') ||
+    entityLinks.length > 0;
+
+  const canSave = pages.length > 0 || hasAnyField;
+
   // ── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
@@ -756,20 +768,23 @@ export default function AddDocumentScreen() {
         options={{
           title: 'Adaugă document',
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={{ paddingRight: 16 }}>
-              <Text style={{ color: primary, fontSize: 16 }}>Anulează</Text>
+            <Pressable onPress={() => router.back()} style={{ paddingRight: 8 }}>
+              <Text style={{ color: primary, fontSize: 16 }}>Înapoi</Text>
             </Pressable>
           ),
         }}
       />
-      <KeyboardAvoidingView
-        style={[styles.container, { backgroundColor: C.background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          style={[styles.scroll, { backgroundColor: C.background }]}
-          contentContainerStyle={styles.scrollContent}
+      <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false}>
+        <KeyboardAvoidingView
+          style={[styles.container, { backgroundColor: C.background }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
+          <ScrollView
+            style={[styles.scroll, { backgroundColor: C.background }]}
+            contentContainerStyle={styles.scrollContent}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+          >
           {/* 1. POZE & OCR */}
           <Text style={[styles.label, styles.sectionLabel]}>Poze / scan</Text>
           <DocumentPhotoSection
@@ -1080,14 +1095,19 @@ export default function AddDocumentScreen() {
 
           {/* 8. SALVEAZĂ */}
           <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+              (!canSave || loading) && styles.buttonDisabled,
+            ]}
             onPress={handleSubmit}
-            disabled={loading}
+            disabled={loading || !canSave}
           >
             <Text style={styles.buttonText}>{loading ? 'Se salvează...' : 'Salvează'}</Text>
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Pressable>
 
       <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.fsOverlay}>
@@ -1203,7 +1223,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonPressed: { opacity: 0.9 },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  buttonDisabled: { opacity: 0.4 },
+  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600', textAlign: 'center' },
   calendarInlineBtn: {
     alignSelf: 'flex-start',
     marginTop: -12,

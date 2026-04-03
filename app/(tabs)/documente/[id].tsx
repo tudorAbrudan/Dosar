@@ -33,9 +33,6 @@ import {
   addDocumentPage,
   removeDocumentPage,
   setDocumentOcrText,
-  linkDocumentToEntity,
-  addEntityLinkToDocument,
-  removeEntityLinkFromDocument,
   getDocumentEntityLinks,
 } from '@/services/documents';
 import type { DocumentEntityLink, EntityType } from '@/types';
@@ -90,7 +87,6 @@ export default function DocumentDetailScreen() {
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
 
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
-  const [linkEntityVisible, setLinkEntityVisible] = useState(false);
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -143,43 +139,6 @@ export default function DocumentDetailScreen() {
     } catch {
       Alert.alert('Eroare', 'Nu s-a putut roti imaginea.');
     }
-  }
-
-  async function handleAddEntityLink(link: DocumentEntityLink) {
-    if (!doc) return;
-    await addEntityLinkToDocument(doc.id, link);
-    const updated = await getDocumentEntityLinks(doc.id);
-    setEntityLinks(updated);
-    const updatedDoc = await getDocumentById(doc.id);
-    if (updatedDoc) setDoc(updatedDoc);
-    setLinkEntityVisible(false);
-  }
-
-  async function handleRemoveEntityLink(link: DocumentEntityLink) {
-    if (!doc) return;
-    await removeEntityLinkFromDocument(doc.id, link);
-    const updated = await getDocumentEntityLinks(doc.id);
-    setEntityLinks(updated);
-    const updatedDoc = await getDocumentById(doc.id);
-    if (updatedDoc) setDoc(updatedDoc);
-  }
-
-  // Backward compat: legacy handleLinkEntity (înlocuiește toate linkurile cu unul singur)
-  async function handleLinkEntity(entity: {
-    person_id?: string;
-    property_id?: string;
-    vehicle_id?: string;
-    card_id?: string;
-    animal_id?: string;
-    company_id?: string;
-  }) {
-    if (!doc) return;
-    await linkDocumentToEntity(doc.id, entity);
-    const updated = await getDocumentById(doc.id);
-    if (updated) setDoc(updated);
-    const links = await getDocumentEntityLinks(doc.id);
-    setEntityLinks(links);
-    setLinkEntityVisible(false);
   }
 
   async function handleDeletePage(pageId: string) {
@@ -963,21 +922,8 @@ export default function DocumentDetailScreen() {
                       <Text style={[styles.entityChipText, { color: colors.text }]}>
                         {ENTITY_TYPE_LABELS[link.entityType]} {entityLinkLabel(link)}
                       </Text>
-                      <Pressable
-                        onPress={() => handleRemoveEntityLink(link)}
-                        hitSlop={8}
-                        style={styles.entityChipRemove}
-                      >
-                        <Text style={{ color: '#E53935', fontSize: 14, fontWeight: '700' }}>✕</Text>
-                      </Pressable>
                     </View>
                   ))}
-                  <Pressable
-                    style={[styles.entityAddBtn, { borderColor: primary }]}
-                    onPress={() => setLinkEntityVisible(true)}
-                  >
-                    <Text style={[styles.entityAddBtnText, { color: primary }]}>+ Adaugă</Text>
-                  </Pressable>
                 </View>
               </>
             );
@@ -1142,153 +1088,6 @@ export default function DocumentDetailScreen() {
         </View>
       </Modal>
 
-      {linkEntityVisible && (
-        <View style={styles.overlay}>
-          <View style={[styles.overlayBox, { backgroundColor: colors.card }]}>
-            <Text style={styles.overlayTitle}>Adaugă entitate asociată</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              {persons.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Persoane</Text>
-                  {persons.map(p => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'person' && l.entityId === p.id
-                    );
-                    return (
-                      <Pressable
-                        key={p.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'person', entityId: p.id })
-                        }
-                      >
-                        <Text style={styles.value}>{p.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {vehicles.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Vehicule</Text>
-                  {vehicles.map(v => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'vehicle' && l.entityId === v.id
-                    );
-                    return (
-                      <Pressable
-                        key={v.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'vehicle', entityId: v.id })
-                        }
-                      >
-                        <Text style={styles.value}>{v.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {properties.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Proprietăți</Text>
-                  {properties.map(p => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'property' && l.entityId === p.id
-                    );
-                    return (
-                      <Pressable
-                        key={p.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'property', entityId: p.id })
-                        }
-                      >
-                        <Text style={styles.value}>{p.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {cards.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Carduri</Text>
-                  {cards.map(c => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'card' && l.entityId === c.id
-                    );
-                    return (
-                      <Pressable
-                        key={c.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() => handleAddEntityLink({ entityType: 'card', entityId: c.id })}
-                      >
-                        <Text style={styles.value}>
-                          {c.nickname ?? ''} ····{c.last4}
-                        </Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {animals.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Animale</Text>
-                  {animals.map(a => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'animal' && l.entityId === a.id
-                    );
-                    return (
-                      <Pressable
-                        key={a.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'animal', entityId: a.id })
-                        }
-                      >
-                        <Text style={styles.value}>{a.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {companies.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Firme</Text>
-                  {companies.map(c => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'company' && l.entityId === c.id
-                    );
-                    return (
-                      <Pressable
-                        key={c.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'company', entityId: c.id })
-                        }
-                      >
-                        <Text style={styles.value}>{c.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-            </ScrollView>
-            <Pressable
-              style={[styles.overlayBtn, styles.overlayBtnOutline, { marginTop: 12 }]}
-              onPress={() => setLinkEntityVisible(false)}
-            >
-              <Text style={styles.overlayBtnOutlineText}>Închide</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
     </View>
   );
 }

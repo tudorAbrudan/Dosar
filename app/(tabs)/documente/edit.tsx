@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   StatusBar,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
@@ -16,6 +17,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { primary } from '@/theme/colors';
@@ -28,8 +30,10 @@ import {
   addDocumentPage,
   removeDocumentPage,
   setDocumentOcrText,
-  linkDocumentToEntity,
   getDocumentsByEntity,
+  addEntityLinkToDocument,
+  removeEntityLinkFromDocument,
+  getDocumentEntityLinks,
 } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import { addExpiryCalendarEvent, isCalendarAvailable } from '@/services/calendar';
@@ -43,7 +47,7 @@ import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
-import type { Document as DocType, DocumentType } from '@/types';
+import type { Document as DocType, DocumentType, DocumentEntityLink, EntityType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useEntities } from '@/hooks/useEntities';
@@ -64,6 +68,7 @@ export default function EditDocumentScreen() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [linkEntityVisible, setLinkEntityVisible] = useState(false);
+  const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
 
@@ -109,6 +114,9 @@ export default function EditDocumentScreen() {
       })
       .catch(() => {})
       .finally(() => setLoadingDoc(false));
+    getDocumentEntityLinks(id)
+      .then(links => setEntityLinks(links))
+      .catch(() => {});
   }, [id]);
 
   const allPages = useMemo(() => {
@@ -219,6 +227,35 @@ export default function EditDocumentScreen() {
     }
   }
 
+  async function saveAndAddPdf(uri: string) {
+    if (!doc) return;
+    try {
+      const filename = `doc_${Date.now()}.pdf`;
+      const relativePath = `documents/${filename}`;
+      const dest = `${FileSystem.documentDirectory}${relativePath}`;
+      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
+        intermediates: true,
+      });
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      if (!doc.file_path) {
+        await updateDocument(doc.id, {
+          type: doc.type,
+          issue_date: doc.issue_date,
+          expiry_date: doc.expiry_date,
+          note: doc.note,
+          file_path: relativePath,
+          auto_delete: doc.auto_delete,
+        });
+      } else {
+        await addDocumentPage(doc.id, relativePath);
+      }
+      const updated = await getDocumentById(doc.id);
+      setDoc(updated);
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut adăuga PDF-ul');
+    }
+  }
+
   function handleAddPage() {
     Alert.alert('Adaugă pagină', '', [
       {
@@ -251,6 +288,22 @@ export default function EditDocumentScreen() {
           if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
         },
       },
+      {
+        text: 'Adaugă PDF',
+        onPress: async () => {
+          try {
+            const result = await DocumentPicker.getDocumentAsync({
+              type: 'application/pdf',
+              copyToCacheDirectory: true,
+            });
+            if (!result.canceled && result.assets[0]?.uri) {
+              await saveAndAddPdf(result.assets[0].uri);
+            }
+          } catch (e) {
+            Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta PDF-ul');
+          }
+        },
+      },
       { text: 'Anulare', style: 'cancel' },
     ]);
   }
@@ -262,7 +315,7 @@ export default function EditDocumentScreen() {
   ): Promise<{ text: string; rotated: boolean }> {
     const fileUri = toFileUri(storedPath);
     let { text } = await extractText(fileUri);
-    if (text.trim().length >= 30) return { text, rotated: false };
+    if (text.trim().length >= 50) return { text, rotated: false };
 
     let bestText = text;
     let bestUri = fileUri;
@@ -276,7 +329,7 @@ export default function EditDocumentScreen() {
         bestText = rotText;
         bestUri = r.uri;
       }
-      if (bestText.trim().length >= 30) break;
+      if (bestText.trim().length >= 50) break;
     }
 
     const wasRotated = bestUri !== fileUri;
@@ -429,19 +482,19 @@ export default function EditDocumentScreen() {
 
   // ── Entity ────────────────────────────────────────────────────────────────
 
-  async function handleLinkEntity(entity: {
-    person_id?: string;
-    property_id?: string;
-    vehicle_id?: string;
-    card_id?: string;
-    animal_id?: string;
-    company_id?: string;
-  }) {
+  async function handleAddEntityLink(link: DocumentEntityLink) {
     if (!doc) return;
-    await linkDocumentToEntity(doc.id, entity);
-    const updated = await getDocumentById(doc.id);
-    if (updated) setDoc(updated);
+    await addEntityLinkToDocument(doc.id, link);
+    const updated = await getDocumentEntityLinks(doc.id);
+    setEntityLinks(updated);
     setLinkEntityVisible(false);
+  }
+
+  async function handleRemoveEntityLink(link: DocumentEntityLink) {
+    if (!doc) return;
+    await removeEntityLinkFromDocument(doc.id, link);
+    const updated = await getDocumentEntityLinks(doc.id);
+    setEntityLinks(updated);
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────
@@ -523,22 +576,19 @@ export default function EditDocumentScreen() {
       <Stack.Screen
         options={{
           title: getDocumentLabel(doc, customTypes),
-          headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={{ paddingRight: 16 }}>
-              <Text style={{ color: primary, fontSize: 16 }}>Anulează</Text>
-            </Pressable>
-          ),
         }}
       />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
+      <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false}>
+        <KeyboardAvoidingView
           style={styles.flex}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
           {/* 1. POZE & OCR */}
           <Text style={styles.sectionLabel}>Poze / scan</Text>
           <DocumentPhotoSection
@@ -607,12 +657,67 @@ export default function EditDocumentScreen() {
 
           {/* 3. LEGAT DE ENTITATE */}
           <Text style={styles.label}>Legat de</Text>
-          <Pressable style={styles.entityRow} onPress={() => setLinkEntityVisible(true)}>
-            <Text style={[styles.entityValue, !entityName && styles.entityPlaceholder]}>
-              {entityName ?? 'Nelegat'}
-            </Text>
-            <Text style={styles.entityEditHint}>Schimbă</Text>
-          </Pressable>
+          {(() => {
+            const ENTITY_ICONS: Record<EntityType, string> = {
+              person: '👤',
+              vehicle: '🚗',
+              property: '🏠',
+              card: '💳',
+              animal: '🐾',
+              company: '🏢',
+            };
+            function entityLinkLabel(link: DocumentEntityLink): string {
+              switch (link.entityType) {
+                case 'person':
+                  return persons.find(p => p.id === link.entityId)?.name ?? link.entityId;
+                case 'vehicle':
+                  return vehicles.find(v => v.id === link.entityId)?.name ?? link.entityId;
+                case 'property':
+                  return properties.find(p => p.id === link.entityId)?.name ?? link.entityId;
+                case 'card': {
+                  const c = cards.find(c => c.id === link.entityId);
+                  return c ? `${c.nickname} ····${c.last4}` : link.entityId;
+                }
+                case 'animal':
+                  return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
+                case 'company':
+                  return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
+              }
+            }
+            return (
+              <View style={styles.entityLinksRow}>
+                {entityLinks.length === 0 && (
+                  <Text style={[styles.entityValue, styles.entityPlaceholder]}>Nelegat</Text>
+                )}
+                {entityLinks.map((link, idx) => (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.entityChip,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.entityChipText, { color: colors.text }]}>
+                      {ENTITY_ICONS[link.entityType]} {entityLinkLabel(link)}
+                    </Text>
+                    <Pressable
+                      onPress={() => handleRemoveEntityLink(link)}
+                      hitSlop={8}
+                      style={styles.entityChipRemove}
+                    >
+                      <Text style={{ color: '#E53935', fontSize: 14, fontWeight: '700' }}>✕</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                <Pressable
+                  style={[styles.entityAddBtn, { borderColor: primary }]}
+                  onPress={() => setLinkEntityVisible(true)}
+                >
+                  <Text style={[styles.entityAddBtnText, { color: primary }]}>+ Adaugă</Text>
+                </Pressable>
+              </View>
+            );
+          })()}
 
           {/* 4. CÂMPURI SPECIFICE TIPULUI */}
           {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
@@ -715,8 +820,9 @@ export default function EditDocumentScreen() {
               )}
             </Pressable>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Pressable>
 
       {/* Fullscreen modal */}
       <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
@@ -750,103 +856,144 @@ export default function EditDocumentScreen() {
       {linkEntityVisible && (
         <View style={styles.overlay}>
           <View style={[styles.overlayBox, { backgroundColor: colors.card }]}>
-            <Text style={styles.overlayTitle}>Asociază cu o entitate</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+            <Text style={styles.overlayTitle}>Adaugă entitate asociată</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
               {persons.length > 0 && (
                 <>
                   <Text style={styles.entityGroupLabel}>Persoane</Text>
-                  {persons.map(p => (
-                    <Pressable
-                      key={p.id}
-                      style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                      onPress={() => handleLinkEntity({ person_id: p.id })}
-                    >
-                      <Text style={styles.entityPickerText}>{p.name}</Text>
-                    </Pressable>
-                  ))}
+                  {persons.map(p => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'person' && l.entityId === p.id
+                    );
+                    return (
+                      <Pressable
+                        key={p.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() => handleAddEntityLink({ entityType: 'person', entityId: p.id })}
+                      >
+                        <Text style={styles.entityPickerText}>{p.name}</Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
                 </>
               )}
               {vehicles.length > 0 && (
                 <>
                   <Text style={styles.entityGroupLabel}>Vehicule</Text>
-                  {vehicles.map(v => (
-                    <Pressable
-                      key={v.id}
-                      style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                      onPress={() => handleLinkEntity({ vehicle_id: v.id })}
-                    >
-                      <Text style={styles.entityPickerText}>{v.name}</Text>
-                    </Pressable>
-                  ))}
+                  {vehicles.map(v => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'vehicle' && l.entityId === v.id
+                    );
+                    return (
+                      <Pressable
+                        key={v.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() =>
+                          handleAddEntityLink({ entityType: 'vehicle', entityId: v.id })
+                        }
+                      >
+                        <Text style={styles.entityPickerText}>{v.name}</Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
                 </>
               )}
               {properties.length > 0 && (
                 <>
                   <Text style={styles.entityGroupLabel}>Proprietăți</Text>
-                  {properties.map(p => (
-                    <Pressable
-                      key={p.id}
-                      style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                      onPress={() => handleLinkEntity({ property_id: p.id })}
-                    >
-                      <Text style={styles.entityPickerText}>{p.name}</Text>
-                    </Pressable>
-                  ))}
+                  {properties.map(p => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'property' && l.entityId === p.id
+                    );
+                    return (
+                      <Pressable
+                        key={p.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() =>
+                          handleAddEntityLink({ entityType: 'property', entityId: p.id })
+                        }
+                      >
+                        <Text style={styles.entityPickerText}>{p.name}</Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
                 </>
               )}
               {cards.length > 0 && (
                 <>
                   <Text style={styles.entityGroupLabel}>Carduri</Text>
-                  {cards.map(c => (
-                    <Pressable
-                      key={c.id}
-                      style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                      onPress={() => handleLinkEntity({ card_id: c.id })}
-                    >
-                      <Text style={styles.entityPickerText}>
-                        {c.nickname ?? ''} ····{c.last4}
-                      </Text>
-                    </Pressable>
-                  ))}
+                  {cards.map(c => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'card' && l.entityId === c.id
+                    );
+                    return (
+                      <Pressable
+                        key={c.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() => handleAddEntityLink({ entityType: 'card', entityId: c.id })}
+                      >
+                        <Text style={styles.entityPickerText}>
+                          {c.nickname ?? ''} ····{c.last4}
+                        </Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
                 </>
               )}
               {animals.length > 0 && (
                 <>
                   <Text style={styles.entityGroupLabel}>Animale</Text>
-                  {animals.map(a => (
-                    <Pressable
-                      key={a.id}
-                      style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                      onPress={() => handleLinkEntity({ animal_id: a.id })}
-                    >
-                      <Text style={styles.entityPickerText}>{a.name}</Text>
-                    </Pressable>
-                  ))}
+                  {animals.map(a => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'animal' && l.entityId === a.id
+                    );
+                    return (
+                      <Pressable
+                        key={a.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() =>
+                          handleAddEntityLink({ entityType: 'animal', entityId: a.id })
+                        }
+                      >
+                        <Text style={styles.entityPickerText}>{a.name}</Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
                 </>
               )}
               {companies.length > 0 && (
                 <>
                   <Text style={styles.entityGroupLabel}>Firme</Text>
-                  {companies.map(c => (
-                    <Pressable
-                      key={c.id}
-                      style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                      onPress={() => handleLinkEntity({ company_id: c.id })}
-                    >
-                      <Text style={styles.entityPickerText}>{c.name}</Text>
-                    </Pressable>
-                  ))}
+                  {companies.map(c => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'company' && l.entityId === c.id
+                    );
+                    return (
+                      <Pressable
+                        key={c.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() =>
+                          handleAddEntityLink({ entityType: 'company', entityId: c.id })
+                        }
+                      >
+                        <Text style={styles.entityPickerText}>{c.name}</Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
                 </>
               )}
-              <Pressable style={styles.entityPickerRowDanger} onPress={() => handleLinkEntity({})}>
-                <Text style={styles.entityPickerDangerText}>Elimină legătura</Text>
-              </Pressable>
             </ScrollView>
             <Pressable
               style={[styles.btnOutline, { marginTop: 12 }]}
               onPress={() => setLinkEntityVisible(false)}
             >
-              <Text style={styles.btnOutlineText}>Anulare</Text>
+              <Text style={styles.btnOutlineText}>Închide</Text>
             </Pressable>
           </View>
         </View>
@@ -895,20 +1042,32 @@ const styles = StyleSheet.create({
   },
   typeToggleCurrent: { fontSize: 15, fontWeight: '500', flex: 1 },
   typeToggleChevron: { fontSize: 13, color: primary, fontWeight: '500' },
-  entityRow: {
+  entityLinksRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 20,
   },
+  entityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  entityChipText: { fontSize: 13, fontWeight: '500' },
+  entityChipRemove: { padding: 2 },
+  entityAddBtn: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  entityAddBtnText: { fontSize: 13, fontWeight: '500' },
   entityValue: { fontSize: 15, flex: 1 },
   entityPlaceholder: { opacity: 0.4 },
-  entityEditHint: { fontSize: 13, color: primary, fontWeight: '500' },
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
   btnOutline: {
     flex: 1,
@@ -918,7 +1077,7 @@ const styles = StyleSheet.create({
     borderColor: primary,
     alignItems: 'center',
   },
-  btnOutlineText: { color: primary, fontSize: 16, fontWeight: '500' },
+  btnOutlineText: { color: primary, fontSize: 16, fontWeight: '500', textAlign: 'center' },
   btnPrimary: {
     flex: 1,
     paddingVertical: 15,
@@ -926,7 +1085,7 @@ const styles = StyleSheet.create({
     backgroundColor: primary,
     alignItems: 'center',
   },
-  btnPrimaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  btnPrimaryText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
   btnDisabled: { opacity: 0.5 },
   chipsScroll: { marginBottom: 20 },
   chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },

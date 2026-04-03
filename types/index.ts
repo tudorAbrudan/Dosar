@@ -31,6 +31,11 @@ export type DocumentType =
   | 'act_constitutiv'
   | 'certificat_tva'
   | 'asigurare_profesionala'
+  | 'diploma'
+  | 'foaie_matricola'
+  | 'certificat_absolvire'
+  | 'certificat_curs'
+  | 'adeverinta_studii'
   | 'altul'
   | 'custom';
 
@@ -166,6 +171,11 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'act_constitutiv',
   'certificat_tva',
   'asigurare_profesionala',
+  'diploma',
+  'foaie_matricola',
+  'certificat_absolvire',
+  'certificat_curs',
+  'adeverinta_studii',
   'altul',
 ];
 
@@ -226,6 +236,11 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   act_constitutiv: 'Act constitutiv',
   certificat_tva: 'Certificat TVA',
   asigurare_profesionala: 'Asigurare profesională',
+  diploma: 'Diplomă',
+  foaie_matricola: 'Foaie matricolă',
+  certificat_absolvire: 'Certificat absolvire',
+  certificat_curs: 'Certificat curs',
+  adeverinta_studii: 'Adeverință studii',
   altul: 'Altele',
   custom: 'Tip personalizat',
 };
@@ -238,6 +253,11 @@ export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
     'card',
     'reteta_medicala',
     'analize_medicale',
+    'diploma',
+    'foaie_matricola',
+    'certificat_absolvire',
+    'certificat_curs',
+    'adeverinta_studii',
     'bon_cumparaturi',
     'bon_parcare',
     'bilet',
