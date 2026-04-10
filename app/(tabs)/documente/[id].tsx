@@ -13,6 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
@@ -25,6 +26,7 @@ import { Share } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
+import { BottomActionBar } from '@/components/BottomActionBar';
 import { primary } from '@/theme/colors';
 import {
   getDocumentById,
@@ -73,7 +75,7 @@ function autoDeleteLabel(rule: string): string {
 }
 
 export default function DocumentDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from, entityId } = useLocalSearchParams<{ id: string; from?: string; entityId?: string }>();
   const { colors } = useTheme();
   const { customTypes } = useCustomTypes();
   const { companies, persons, properties, vehicles, cards, animals } = useEntities();
@@ -87,6 +89,7 @@ export default function DocumentDetailScreen() {
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
 
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [fullscreenPdfUri, setFullscreenPdfUri] = useState<string | null>(null);
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -807,6 +810,21 @@ export default function DocumentDetailScreen() {
       .replace(/"/g, '&quot;');
   }
 
+  function handleBack() {
+    if (from === 'home') {
+      // Resetăm stack-ul documente la index, apoi trecem pe home tab.
+      // Ambele navigate sunt batched de React Navigation → fără flash.
+      router.navigate('/(tabs)/documente');
+      router.navigate('/(tabs)');
+    } else if (from === 'entity' && entityId) {
+      // La fel: curățăm stack-ul documente, apoi mergem la entitate.
+      router.navigate('/(tabs)/documente');
+      router.navigate(`/(tabs)/entitati/${entityId}`);
+    } else {
+      router.canGoBack() ? router.back() : router.navigate('/(tabs)/documente');
+    }
+  }
+
   if (loading || !doc) {
     return (
       <View style={styles.center}>
@@ -820,14 +838,19 @@ export default function DocumentDetailScreen() {
       <Stack.Screen
         options={{
           title: doc ? doc.note?.slice(0, 30) || 'Detaliu document' : 'Detaliu document',
+          gestureEnabled: !from || from === 'documente',
           headerLeft: () => (
-            <Pressable
-              onPress={() =>
-                router.canGoBack() ? router.back() : router.push('/(tabs)/documente')
-              }
-              style={{ paddingRight: 16 }}
-            >
+            <Pressable onPress={handleBack} style={{ paddingRight: 16 }}>
               <Text style={{ color: primary, fontSize: 16 }}>‹ Înapoi</Text>
+            </Pressable>
+          ),
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
+              hitSlop={12}
+              style={{ paddingLeft: 8 }}
+            >
+              <Ionicons name="pencil-outline" size={22} color={primary} />
             </Pressable>
           ),
         }}
@@ -851,10 +874,20 @@ export default function DocumentDetailScreen() {
             const pdfUri = toFileUri(pdfPage.file_path);
             return (
               <View key={pdfPage.id} style={styles.pdfContainer}>
-                <Text style={styles.pdfSectionLabel}>
-                  PDF{' '}
-                  {allPages.filter(p => isPdfFile(p.file_path)).length > 1 ? `(${idx + 1})` : ''}
-                </Text>
+                <View style={styles.pdfHeaderRow}>
+                  <Text style={styles.pdfSectionLabel}>
+                    PDF{' '}
+                    {allPages.filter(p => isPdfFile(p.file_path)).length > 1 ? `(${idx + 1})` : ''}
+                  </Text>
+                  {Platform.OS === 'ios' && (
+                    <Pressable
+                      style={styles.pdfFullscreenBtn}
+                      onPress={() => setFullscreenPdfUri(pdfUri)}
+                    >
+                      <Ionicons name="expand-outline" size={18} color={primary} />
+                    </Pressable>
+                  )}
+                </View>
                 {Platform.OS === 'ios' ? (
                   <WebView
                     source={{ uri: pdfUri }}
@@ -945,8 +978,8 @@ export default function DocumentDetailScreen() {
                 ]}
                 onPress={handleCalendar}
               >
-                <Text style={styles.actionItemIcon}>📅</Text>
-                <Text style={[styles.actionItemLabel, { color: primary }]}>
+                <Text style={{ fontSize: 18 }}>📅</Text>
+                <Text style={[styles.calendarBtnLabel, { color: primary }]}>
                   Adaugă reminder în calendar
                 </Text>
               </Pressable>
@@ -996,53 +1029,14 @@ export default function DocumentDetailScreen() {
               ]}
               onPress={handleCalendar}
             >
-              <Text style={styles.actionItemIcon}>📅</Text>
-              <Text style={[styles.actionItemLabel, { color: primary }]}>
+              <Text style={{ fontSize: 18 }}>📅</Text>
+              <Text style={[styles.calendarBtnLabel, { color: primary }]}>
                 Reminder eveniment în calendar
               </Text>
             </Pressable>
           )}
         </View>
 
-        {/* Butoane acțiuni — grid 2×2 compact */}
-        <View
-          style={[styles.actionBar, { borderColor: colors.border, backgroundColor: colors.card }]}
-        >
-          <Pressable
-            style={[
-              styles.actionItem,
-              { borderRightWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
-              pdfLoading && styles.btnDisabled,
-            ]}
-            onPress={handleExportPdf}
-            disabled={pdfLoading}
-          >
-            {pdfLoading ? (
-              <ActivityIndicator color={primary} size="small" />
-            ) : (
-              <Text style={styles.actionItemIcon}>📄</Text>
-            )}
-            <Text style={[styles.actionItemLabel, { color: primary }]}>Distribuie PDF</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionItem, { borderBottomWidth: 1, borderColor: colors.border }]}
-            onPress={handleShare}
-          >
-            <Text style={styles.actionItemIcon}>📤</Text>
-            <Text style={[styles.actionItemLabel, { color: colors.text }]}>Distribuie</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionItem, { borderRightWidth: 1, borderColor: colors.border }]}
-            onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
-          >
-            <Text style={styles.actionItemIcon}>✏️</Text>
-            <Text style={[styles.actionItemLabel, { color: primary }]}>Editează</Text>
-          </Pressable>
-          <Pressable style={styles.actionItem} onPress={handleDelete}>
-            <Text style={styles.actionItemIcon}>🗑️</Text>
-            <Text style={[styles.actionItemLabel, styles.actionItemDanger]}>Șterge</Text>
-          </Pressable>
-        </View>
         {(doc.type === 'rca' || doc.type === 'itp') && (
           <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
             <Text style={styles.asigaBtnText}>🛡 RCA ieftină → asigra.ro</Text>
@@ -1059,6 +1053,48 @@ export default function DocumentDetailScreen() {
           </Pressable>
         )}
       </ScrollView>
+
+      <BottomActionBar
+        actions={[
+          {
+            icon: 'document-text-outline',
+            label: 'PDF',
+            onPress: handleExportPdf,
+            loading: pdfLoading,
+          },
+          {
+            icon: 'share-outline',
+            label: 'Distribuie',
+            onPress: handleShare,
+          },
+          {
+            icon: 'trash-outline',
+            label: 'Șterge',
+            onPress: handleDelete,
+            danger: true,
+          },
+        ]}
+      />
+
+      <Modal visible={!!fullscreenPdfUri} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.fsOverlay}>
+          <StatusBar hidden />
+          {fullscreenPdfUri && (
+            <WebView
+              source={{ uri: fullscreenPdfUri }}
+              style={{ flex: 1 }}
+              originWhitelist={['file://*', '*']}
+              allowFileAccess
+              allowFileAccessFromFileURLs
+              allowUniversalAccessFromFileURLs
+              scrollEnabled
+            />
+          )}
+          <Pressable style={styles.fsCloseBtn} onPress={() => setFullscreenPdfUri(null)}>
+            <Text style={styles.fsCloseBtnText}>✕</Text>
+          </Pressable>
+        </View>
+      </Modal>
 
       <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.fsOverlay}>
@@ -1183,13 +1219,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     opacity: 0.6,
+  },
+  pdfWebView: {
+    height: 350,
+    width: '100%',
+  },
+  pdfHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 4,
   },
-  pdfWebView: {
-    height: 500,
-    width: '100%',
+  pdfFullscreenBtn: {
+    padding: 4,
   },
   pdfOpenBtn: {
     backgroundColor: '#f8faf4',
@@ -1251,6 +1295,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  calendarBtnLabel: { fontSize: 13, fontWeight: '600' },
   typeToggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1272,35 +1317,6 @@ const styles = StyleSheet.create({
     color: primary,
     fontWeight: '500',
   },
-  actionBar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  actionItem: {
-    width: '50%',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  actionItemFull: {
-    width: '100%',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  actionItemIcon: { fontSize: 20 },
-  actionItemLabel: { fontSize: 12, fontWeight: '600' },
-  actionItemDanger: { color: '#E53935' },
-  btnDisabled: { opacity: 0.7 },
   asigraBtn: {
     borderRadius: 12,
     paddingVertical: 12,
