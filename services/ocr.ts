@@ -1,9 +1,14 @@
 import TextRecognition from '@react-native-ml-kit/text-recognition';
+import type { TextBlock } from '@react-native-ml-kit/text-recognition';
 import type { DocumentType } from '@/types';
+import { DOCUMENT_TYPE_LABELS } from '@/types';
+
+export type { TextBlock };
 
 export interface OcrResult {
   text: string; // tot textul extras
   blocks: string[]; // blocuri separate de text
+  rawBlocks: TextBlock[]; // blocuri brute cu bounding boxes și metadate
 }
 
 /**
@@ -16,6 +21,7 @@ export async function extractText(imageUri: string): Promise<OcrResult> {
   return {
     text: result.text,
     blocks,
+    rawBlocks: result.blocks,
   };
 }
 
