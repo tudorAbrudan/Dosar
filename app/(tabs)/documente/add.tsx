@@ -700,7 +700,8 @@ export default function AddDocumentScreen() {
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         auto_delete: autoDelete ?? undefined,
         ocr_text:
-          Array.from(ocrTextsRef.current.values()).filter(Boolean).join('\n\n---\n\n') || undefined,
+          Array.from(ocrStructuredTextsRef.current.values()).filter(Boolean).join('\n\n---\n\n') ||
+          undefined,
       });
       const { addDocumentPage } = await import('@/services/documents');
       for (let i = 1; i < pages.length; i++) {

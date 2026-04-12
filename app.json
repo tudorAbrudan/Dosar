@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dosar",
     "slug": "dosar-documente",
-    "version": "1.14.2",
+    "version": "1.15.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ax.documente",
-      "buildNumber": "19",
+      "buildNumber": "20",
       "deploymentTarget": "16.0",
       "infoPlist": {
         "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
