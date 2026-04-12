@@ -1,7 +1,6 @@
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import type { TextBlock } from '@react-native-ml-kit/text-recognition';
 import type { DocumentType } from '@/types';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
 
 export type { TextBlock };
 
