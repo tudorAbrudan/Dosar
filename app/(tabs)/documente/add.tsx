@@ -38,6 +38,7 @@ import {
   formatOcrSummary,
 } from '@/services/ocr';
 import { extractFieldsForType } from '@/services/ocrExtractors';
+import { reconstructLayout } from '@/services/ocrLayout';
 import { toRelativePath } from '@/services/fileUtils';
 import { getDocumentsByEntity, findDuplicateDocument } from '@/services/documents';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
@@ -107,6 +108,10 @@ export default function AddDocumentScreen() {
 
   const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'buletin');
   const [customTypeId, setCustomTypeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (params.type) setType(params.type as DocumentType);
+  }, [params.type]);
   const [metadata, setMetadata] = useState<Record<string, string>>({});
   const [issueDate, setIssueDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
@@ -116,11 +121,13 @@ export default function AddDocumentScreen() {
   const [autoDelete, setAutoDelete] = useState<string | null>(null);
   const [pages, setPages] = useState<{ uri: string; localPath: string }[]>([]);
   const ocrTextsRef = useRef<Map<string, string>>(new Map());
+  const ocrStructuredTextsRef = useRef<Map<string, string>>(new Map());
   const [liveOcrText, setLiveOcrText] = useState('');
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [aiOcrLoading, setAiOcrLoading] = useState(false);
   const [aiOcrApplied, setAiOcrApplied] = useState(false);
+  const lastAiTextLengthRef = useRef(0);
   const [aiConsentAvailable, setAiConsentAvailable] = useState(false);
   const [duplicateDoc, setDuplicateDoc] = useState<Document | null>(null);
 
@@ -152,6 +159,17 @@ export default function AddDocumentScreen() {
   const animalId = params.animal_id;
   const companyId = params.company_id;
   const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId || companyId);
+
+  useEffect(() => {
+    const links: DocumentEntityLink[] = [];
+    if (params.person_id) links.push({ entityType: 'person', entityId: params.person_id });
+    if (params.property_id) links.push({ entityType: 'property', entityId: params.property_id });
+    if (params.vehicle_id) links.push({ entityType: 'vehicle', entityId: params.vehicle_id });
+    if (params.card_id) links.push({ entityType: 'card', entityId: params.card_id });
+    if (params.animal_id) links.push({ entityType: 'animal', entityId: params.animal_id });
+    if (params.company_id) links.push({ entityType: 'company', entityId: params.company_id });
+    if (links.length > 0) setEntityLinks(links);
+  }, [params.person_id, params.property_id, params.vehicle_id, params.card_id, params.animal_id, params.company_id]);
 
   useEffect(() => {
     if (entityLinks.length === 0) {
@@ -190,23 +208,24 @@ export default function AddDocumentScreen() {
   async function runOcrOnImage(localPath: string, skipLoadingState = false) {
     if (!skipLoadingState) setOcrLoading(true);
     try {
-      let { text } = await extractText(localPath);
+      let { text, rawBlocks } = await extractText(localPath);
 
       if (text.trim().length < 50) {
-        const candidates: { deg: number; text: string; uri: string }[] = [];
+        const candidates: { deg: number; text: string; rawBlocks: typeof rawBlocks; uri: string }[] = [];
         for (const deg of [90, 180, 270]) {
           const rotated = await ImageManipulator.manipulateAsync(localPath, [{ rotate: deg }], {
             compress: 1,
             format: ImageManipulator.SaveFormat.JPEG,
           });
           const result = await extractText(rotated.uri);
-          candidates.push({ deg, text: result.text, uri: rotated.uri });
+          candidates.push({ deg, text: result.text, rawBlocks: result.rawBlocks, uri: rotated.uri });
         }
         const best = candidates.reduce((a, b) =>
           a.text.trim().length >= b.text.trim().length ? a : b
         );
         if (best.text.trim().length > text.trim().length) {
           text = best.text;
+          rawBlocks = best.rawBlocks;
           await FileSystem.copyAsync({ from: best.uri, to: localPath });
           setPages(prev => {
             const idx = prev.findIndex(p => p.localPath === localPath);
@@ -221,7 +240,10 @@ export default function AddDocumentScreen() {
       if (!text.trim()) return;
 
       ocrTextsRef.current.set(localPath, text);
+      const structured = reconstructLayout(rawBlocks);
+      ocrStructuredTextsRef.current.set(localPath, structured || text);
       const combinedText = Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n');
+      const structuredCombined = Array.from(ocrStructuredTextsRef.current.values()).join('\n\n---\n\n');
       setLiveOcrText(combinedText);
 
       const detectedType = detectDocumentType(text);
@@ -276,9 +298,13 @@ export default function AddDocumentScreen() {
         setNote(summary);
       }
 
-      // Apel AI după prima pagină scanată (dacă consent dat, !aiOcrApplied evită duplicate)
-      if (!aiOcrApplied && combinedText.trim().length > 20) {
-        void runAiOcrMapper(combinedText);
+      // Re-declanșează AI ori de câte ori textul combinat crește cu cel puțin 80 de caractere.
+      // Astfel, documentele multi-pagină (ex: talon + ANEXA) primesc o analiză completă
+      // și nu se blochează la textul parțial al primei pagini.
+      const trimmedLen = combinedText.trim().length;
+      if (trimmedLen > 20 && trimmedLen > lastAiTextLengthRef.current + 80) {
+        lastAiTextLengthRef.current = trimmedLen;
+        void runAiOcrMapper(structuredCombined);
       }
 
       // Reminder-ul pentru dată expirare se oferă la Salvează (cu data finală după AI)
@@ -381,6 +407,7 @@ export default function AddDocumentScreen() {
   async function handleManualOcr() {
     if (pages.length === 0) return;
     setAiOcrApplied(false);
+    lastAiTextLengthRef.current = 0;
     setOcrLoading(true);
     try {
       for (const page of pages) {
@@ -388,19 +415,19 @@ export default function AddDocumentScreen() {
           // ML Kit nu suportă PDF — încearcă extracție text
           const text = await extractTextFromPdf(page.localPath);
           const pdfText = text.trim();
-          ocrTextsRef.current.set(
-            page.localPath,
-            pdfText || '[PDF atașat – fișier tip imagine/scan, fără text extras]'
-          );
+          const pdfDisplay = pdfText || '[PDF atașat – fișier tip imagine/scan, fără text extras]';
+          ocrTextsRef.current.set(page.localPath, pdfDisplay);
+          ocrStructuredTextsRef.current.set(page.localPath, pdfDisplay);
         } else {
           await runOcrOnImage(page.localPath, true);
         }
       }
       const combined = Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n');
+      const structuredCombined = Array.from(ocrStructuredTextsRef.current.values()).join('\n\n---\n\n');
       setLiveOcrText(combined);
       // Trimite la AI pentru cross-validare și completare câmpuri (dacă consent dat)
       if (combined.trim().length > 20) {
-        void runAiOcrMapper(combined);
+        void runAiOcrMapper(structuredCombined);
       }
     } finally {
       setOcrLoading(false);
@@ -412,6 +439,7 @@ export default function AddDocumentScreen() {
   function handleDeletePage(pageId: string) {
     setPages(prev => prev.filter(p => p.localPath !== pageId));
     ocrTextsRef.current.delete(pageId);
+    ocrStructuredTextsRef.current.delete(pageId);
     setLiveOcrText(Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n'));
   }
 
@@ -432,6 +460,7 @@ export default function AddDocumentScreen() {
         return next;
       });
       ocrTextsRef.current.delete(pageId);
+      ocrStructuredTextsRef.current.delete(pageId);
       setAiOcrApplied(false);
       runOcrOnImage(page.localPath);
     } catch (e) {
@@ -466,6 +495,7 @@ export default function AddDocumentScreen() {
         // Chiar dacă PDF-ul nu are text (scan), marcăm că există un PDF atașat
         const displayText = pdfText || '[PDF atașat – fișier tip imagine/scan, fără text extras]';
         ocrTextsRef.current.set(dest, displayText);
+        ocrStructuredTextsRef.current.set(dest, displayText);
         setLiveOcrText(Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n'));
         if (pdfText) {
           if (pdfText.length < 100) {
@@ -618,6 +648,16 @@ export default function AddDocumentScreen() {
 
   const canSave = pages.length > 0 || hasAnyField;
 
+  // ── Navigare după salvare ─────────────────────────────────────────────────
+
+  function navigateAfterSave() {
+    if (hasParamLink) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/documente');
+    }
+  }
+
   // ── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
@@ -688,7 +728,7 @@ export default function AddDocumentScreen() {
           'Adaugă în calendar?',
           `Vrei să adaugi un reminder în calendar pentru expirarea pe ${finalExpiry}?`,
           [
-            { text: 'Nu', style: 'cancel', onPress: () => router.replace('/(tabs)/documente') },
+            { text: 'Nu', style: 'cancel', onPress: () => navigateAfterSave() },
             {
               text: 'Adaugă',
               onPress: async () => {
@@ -704,7 +744,7 @@ export default function AddDocumentScreen() {
                     'Eroare',
                     'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.'
                   );
-                router.replace('/(tabs)/documente');
+                navigateAfterSave();
               },
             },
           ]
@@ -720,7 +760,7 @@ export default function AddDocumentScreen() {
           'Adaugă în calendar?',
           `Vrei reminder pentru evenimentul din ${metadata.event_date}?`,
           [
-            { text: 'Nu', style: 'cancel', onPress: () => router.replace('/(tabs)/documente') },
+            { text: 'Nu', style: 'cancel', onPress: () => navigateAfterSave() },
             {
               text: 'Adaugă',
               onPress: async () => {
@@ -731,7 +771,7 @@ export default function AddDocumentScreen() {
                   note: note.trim() || undefined,
                   documentId: newDoc.id,
                 });
-                router.replace('/(tabs)/documente');
+                navigateAfterSave();
               },
             },
           ]
@@ -739,7 +779,7 @@ export default function AddDocumentScreen() {
         return;
       }
 
-      router.replace('/(tabs)/documente');
+      navigateAfterSave();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
     } finally {
