@@ -27,7 +27,7 @@ export interface AiOcrResult {
   expiryDate?: string; // YYYY-MM-DD
   issueDate?: string; // YYYY-MM-DD
   entitySuggestions: AiEntitySuggestion[];
-  aiNotes?: string; // observații suplimentare ale AI
+  structuredNote?: string; // notă structurată pentru câmpul note al documentului
 }
 
 // ─── Entități disponibile (pentru context AI) ─────────────────────────────────
@@ -57,7 +57,7 @@ const DOC_TYPE_LIST = Object.entries(DOCUMENT_TYPE_LABELS)
  */
 function sanitizeOcrText(text: string): string {
   return text
-    .slice(0, 3000)
+    .slice(0, 15000)
     .replace(/"""/g, "'''") // escape triple-quote delimiter
     .replace(/```/g, '~~~') // escape markdown code blocks
     .replace(/<\|/g, '< |') // escape Mistral special tokens
@@ -151,7 +151,7 @@ Returnează EXCLUSIV JSON valid:
   "entitySuggestions": [
     { "entityType": "person|vehicle|property|card|animal|company", "entityId": "<id exact>", "entityName": "<nume>", "confidence": "high|medium|low" }
   ],
-  "aiNotes": "<opțional>"
+  "structuredNote": "<listă completă cu toate informațiile cheie extrase din document, inclusiv cele mapate în alte câmpuri. Datele vor fi citite de un chatbot, nu de utilizator direct — prioritizează date brute utile: numere, date, sume, coduri. Format:\nCâmp: Valoare\nCâmp: Valoare\n...\nMaxim 15 rânduri, concis. null dacă OCR-ul nu conține nimic util.>"
 }
 
 Răspunde DOAR cu JSON, fără text suplimentar.`;
@@ -234,10 +234,10 @@ interface RawAiJson {
     entityName?: string;
     confidence?: string;
   }>;
-  aiNotes?: string;
+  structuredNote?: string;
 }
 
-const AI_NOTES_MAX_LENGTH = 300;
+const AI_NOTES_MAX_LENGTH = 1000;
 
 function parseAiResponse(
   raw: string,
@@ -283,14 +283,14 @@ function parseAiResponse(
     }
   }
 
-  // aiNotes — limităm lungimea și eliminăm caractere de control
-  let aiNotes: string | undefined;
-  if (typeof parsed.aiNotes === 'string' && parsed.aiNotes.trim()) {
-    aiNotes = parsed.aiNotes
+  // structuredNote — limităm lungimea și eliminăm caractere de control
+  let structuredNote: string | undefined;
+  if (typeof parsed.structuredNote === 'string' && parsed.structuredNote.trim()) {
+    structuredNote = parsed.structuredNote
       .replace(/[\x00-\x1F\x7F]/g, ' ')
       .trim()
       .slice(0, AI_NOTES_MAX_LENGTH);
-    if (!aiNotes) aiNotes = undefined;
+    if (!structuredNote) structuredNote = undefined;
   }
 
   return {
@@ -299,7 +299,7 @@ function parseAiResponse(
     issueDate,
     expiryDate,
     entitySuggestions,
-    aiNotes,
+    structuredNote,
   };
 }
 

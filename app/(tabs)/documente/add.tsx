@@ -350,6 +350,11 @@ export default function AddDocumentScreen() {
         setMetadata(prev => ({ ...prev, ...result.fields }));
       }
 
+      // Aplică nota structurată — AI-ul suprascrie mereu (inclusiv fallback-ul local)
+      if (result.structuredNote) {
+        setNote(result.structuredNote);
+      }
+
       // Aplică datele — AI-ul are prioritate față de extracția locală
       const noExpiryTypes: string[] = [
         'carte_auto',
@@ -889,7 +894,10 @@ export default function AddDocumentScreen() {
               ]}
               onPress={() => {
                 setAiOcrApplied(false);
-                void runAiOcrMapper(liveOcrText);
+                const structured = Array.from(ocrStructuredTextsRef.current.values())
+                  .filter(Boolean)
+                  .join('\n\n---\n\n');
+                void runAiOcrMapper(structured || liveOcrText);
               }}
             >
               <Text style={[styles.aiManualBtnText, { color: primary }]}>

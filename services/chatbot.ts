@@ -196,8 +196,8 @@ function collectHistoryMentions(history: ChatMessage[], lastN = 6): Set<string> 
 
 const MAX_DOCS_FULL = 80; // fără filtrare: max 80 doc
 const MAX_DOCS_FILTERED = 40; // cu filtrare: mai mult spațiu per doc
-const OCR_LIMIT_DEFAULT = 300; // caractere OCR pentru doc obișnuit
-const OCR_LIMIT_FILTERED = 800; // doc relevant prin entitate/tip
+const NOTE_LIMIT = 500; // caractere notă AI (date distilate, prioritare)
+const OCR_LIMIT = 1000; // caractere OCR pentru orice document
 const OCR_LIMIT_FULL = 3000; // doc găsit prin căutare text — OCR complet
 
 async function buildContext(
@@ -337,13 +337,8 @@ async function buildContext(
   for (const doc of filteredDocs) {
     // OCR limit per document:
     // - găsit prin căutare text → OCR complet (3000 chars)
-    // - relevant prin entitate/tip → 800 chars
-    // - restul → 300 chars
-    const ocrLimit = ocrMatchedIds.has(doc.id)
-      ? OCR_LIMIT_FULL
-      : isFiltered
-        ? OCR_LIMIT_FILTERED
-        : OCR_LIMIT_DEFAULT;
+    // - restul → 1000 chars
+    const ocrLimit = ocrMatchedIds.has(doc.id) ? OCR_LIMIT_FULL : OCR_LIMIT;
     const entity =
       persons.find(p => p.id === doc.person_id)?.name ??
       vehicles.find(v => v.id === doc.vehicle_id)?.name ??
@@ -355,7 +350,9 @@ async function buildContext(
     const expiry = doc.expiry_date ? ` | expiră: ${doc.expiry_date}` : '';
     const issued = doc.issue_date ? ` | emis: ${doc.issue_date}` : '';
     const entityStr = entity ? ` (${entity})` : '';
-    const note = doc.note ? ` | notă: ${doc.note}` : '';
+    const noteStr = doc.note
+      ? ` | notă: ${doc.note.slice(0, NOTE_LIMIT)}${doc.note.length > NOTE_LIMIT ? '…' : ''}`
+      : '';
 
     let meta = '';
     if (doc.metadata) {
@@ -374,7 +371,7 @@ async function buildContext(
       ? ` | OCR: ${doc.ocr_text.slice(0, ocrLimit)}${doc.ocr_text.length > ocrLimit ? '…' : ''}`
       : '';
 
-    lines.push(`- [DOC:${label}|${doc.id}]${entityStr}${issued}${expiry}${note}${meta}${ocrText}`);
+    lines.push(`- [DOC:${label}|${doc.id}]${entityStr}${issued}${expiry}${noteStr}${meta}${ocrText}`);
   }
 
   // Hartă id → label pentru post-procesare răspuns AI
