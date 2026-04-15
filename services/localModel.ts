@@ -10,12 +10,6 @@
  * - Flag OCR local
  */
 
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Device from 'expo-device';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { initLlama, LlamaContext } from 'llama.rn';
-import type { AiMessage } from './aiProvider';
-
 // ─── Tipuri ───────────────────────────────────────────────────────────────────
 
 export interface LocalModelEntry {
@@ -119,8 +113,3 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
       'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
   },
 ];
-
-// Suppress unused import warnings — these will be used in Tasks 3–5
-export type { AiMessage };
-export { FileSystem, Device, AsyncStorage, initLlama };
-export type { LlamaContext };
