@@ -10,6 +10,8 @@
  * - Flag OCR local
  */
 
+import * as Device from 'expo-device';
+
 // ─── Tipuri ───────────────────────────────────────────────────────────────────
 
 export interface LocalModelEntry {
@@ -113,3 +115,36 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
       'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
   },
 ];
+
+// ─── Compatibilitate ─────────────────────────────────────────────────────────
+
+/** Extrage numărul generației iPhone din modelName (ex: "iPhone 14 Pro" → 14). */
+export function getIphoneGeneration(modelName: string | null): number {
+  if (!modelName) return 0;
+  const match = modelName.match(/iPhone\s+(\d+)/i);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
+ * Verifică dacă un model este compatibil cu device-ul.
+ * ramBytes=null înseamnă că Device.totalMemory nu e disponibil (emulator) → compatibil.
+ */
+export function isModelCompatible(
+  model: LocalModelEntry,
+  ramBytes: number | null,
+  iphoneGen: number
+): boolean {
+  if (ramBytes !== null && ramBytes < model.minRamBytes) return false;
+  if (iphoneGen > 0 && iphoneGen < model.minIphoneGen) return false;
+  return true;
+}
+
+/**
+ * Returnează modelele din catalog compatibile cu device-ul curent.
+ * Modelele incompatibile sunt EXCLUSE complet (nu dezactivate).
+ */
+export function getCompatibleModels(): LocalModelEntry[] {
+  const ramBytes = Device.totalMemory;
+  const iphoneGen = getIphoneGeneration(Device.modelName);
+  return LOCAL_MODEL_CATALOG.filter(m => isModelCompatible(m, ramBytes, iphoneGen));
+}
