@@ -59,7 +59,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
   },
   {
     id: 'gemma4-2b',
-    name: 'Gemma 4 2B IT',
+    name: 'Gemma 4 E2B IT',
     description:
       'Model Google de ultimă generație. Excelent la documente, răspunsuri precise. Recomandat pentru iPhone 13+.',
     sizeBytes: 1500 * 1024 * 1024,
@@ -68,7 +68,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     minIphoneGen: 13,
     qualityStars: 4,
     downloadUrl:
-      'https://huggingface.co/bartowski/gemma-4-2b-it-GGUF/resolve/main/gemma-4-2b-it-Q4_K_M.gguf',
+      'https://huggingface.co/bartowski/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
   },
   {
     id: 'phi3-mini',
@@ -96,7 +96,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
   },
   {
     id: 'gemma4-4b',
-    name: 'Gemma 4 4B IT',
+    name: 'Gemma 4 E4B IT',
     description: 'Versiunea extinsă Gemma 4. Calitate maximă în clasa 4B. Recomandat pentru iPhone 14+.',
     sizeBytes: 2500 * 1024 * 1024,
     sizeLabel: '~2.5GB',
@@ -104,7 +104,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     minIphoneGen: 14,
     qualityStars: 5,
     downloadUrl:
-      'https://huggingface.co/bartowski/gemma-4-4b-it-GGUF/resolve/main/gemma-4-4b-it-Q4_K_M.gguf',
+      'https://huggingface.co/bartowski/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
   },
   {
     id: 'mistral-7b',
