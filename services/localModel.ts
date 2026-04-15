@@ -68,7 +68,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     minIphoneGen: 13,
     qualityStars: 4,
     downloadUrl:
-      'https://huggingface.co/bartowski/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
+      'https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf',
   },
   {
     id: 'phi3-mini',
@@ -104,7 +104,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     minIphoneGen: 14,
     qualityStars: 5,
     downloadUrl:
-      'https://huggingface.co/bartowski/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
+      'https://huggingface.co/bartowski/google_gemma-4-E4B-it-GGUF/resolve/main/google_gemma-4-E4B-it-Q4_K_M.gguf',
   },
   {
     id: 'mistral-7b',
