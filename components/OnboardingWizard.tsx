@@ -26,6 +26,8 @@ import {
 } from '@/types';
 import type { EntityType, DocumentType } from '@/types';
 import * as settings from '@/services/settings';
+import * as aiProvider from '@/services/aiProvider';
+import type { AiProviderType } from '@/services/aiProvider';
 import {
   requestNotificationPermission,
   scheduleExpirationReminders,
@@ -151,7 +153,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
   );
   const [lockEnabled, setLockEnabled] = useState(false);
   const [pinModalVisible, setPinModalVisible] = useState(false);
-  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiProviderChoice, setAiProviderChoice] = useState<AiProviderType>('builtin');
 
   useEffect(() => {
     settings.getPushEnabled().then(setPushEnabled);
@@ -238,7 +240,13 @@ export default function OnboardingWizard({ onComplete }: Props) {
     await settings.setPushEnabled(pushEnabled);
     await settings.setNotificationDays(notifDays);
     await scheduleExpirationReminders();
-    await AsyncStorage.setItem(AI_CONSENT_KEY, aiEnabled ? 'true' : 'false');
+    const aiActive = aiProviderChoice !== 'none';
+    await AsyncStorage.setItem(AI_CONSENT_KEY, aiActive ? 'true' : 'false');
+    await aiProvider.saveAiConfig({
+      type: aiProviderChoice,
+      url: aiProvider.PROVIDER_DEFAULTS[aiProviderChoice]?.url ?? '',
+      model: aiProvider.PROVIDER_DEFAULTS[aiProviderChoice]?.model ?? '',
+    });
     await settings.setOnboardingDone();
     onComplete();
   }
@@ -588,73 +596,80 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
         {step === AI_STEP && (
           <View style={styles.aiBlock}>
-            {/* Toggle principal */}
-            <View
-              style={[
-                styles.aiToggleCard,
-                { backgroundColor: C.card, borderColor: aiEnabled ? C.primary : C.border },
-              ]}
-            >
-              <View style={styles.aiToggleText}>
-                <Text style={[styles.aiToggleLabel, { color: C.text }]}>Activez Asistentul AI</Text>
-                <Text style={[styles.aiToggleSub, { color: C.textSecondary }]}>
-                  Chat cu documentele tale + scanare OCR cu AI + completare automată câmpuri
-                </Text>
-              </View>
-              <Switch
-                value={aiEnabled}
-                onValueChange={setAiEnabled}
-                trackColor={{ false: '#ccc', true: primary }}
-              />
-            </View>
-
-            {/* Ce face AI */}
-            <View style={[styles.aiInfoCard, { backgroundColor: C.card, borderColor: C.border }]}>
-              <Text style={[styles.aiInfoTitle, { color: C.text }]}>
-                Ce poate face Asistentul AI
-              </Text>
-              {[
-                'Răspunde la întrebări despre documentele tale (ex: „Când expiră RCA-ul?")',
-                'Completează automat câmpurile la scanarea unui document (OCR + AI)',
-                'Identifică tipul documentului și entitatea asociată',
-              ].map((line, i) => (
-                <View key={i} style={styles.bulletRow}>
-                  <Text style={[styles.bulletDot, { color: C.primary }]}>•</Text>
-                  <Text style={[styles.bulletText, { color: C.text }]}>{line}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Limite și cheie proprie */}
-            <View style={[styles.aiInfoCard, { backgroundColor: C.card, borderColor: C.border }]}>
-              <Text style={[styles.aiInfoTitle, { color: C.text }]}>Utilizare gratuită</Text>
-              <Text style={[styles.aiLimitText, { color: C.text }]}>
-                Dosar AI include <Text style={{ fontWeight: '700' }}>20 interogări/zi</Text> gratuit
-                (chatbot + scanare OCR). Poți folosi{' '}
-                <Text style={{ fontWeight: '700' }}>nelimitat</Text> cu propria cheie API Mistral
-                (gratuită).
-              </Text>
+            {(
+              [
+                {
+                  type: 'builtin' as AiProviderType,
+                  title: 'Dosar AI (recomandat)',
+                  desc: 'Cloud · 20 interogări/zi gratuit · Pornești imediat, fără configurare',
+                  extra: null,
+                },
+                {
+                  type: 'mistral' as AiProviderType,
+                  title: 'Cheie API proprie',
+                  desc: 'Cloud · Nelimitat · Mistral sau OpenAI · Necesită cont gratuit',
+                  extra: 'mistral',
+                },
+                {
+                  type: 'local' as AiProviderType,
+                  title: 'Model local',
+                  desc: 'Pe device · Privat · Nelimitat · Offline · Download 800MB–4GB din Setări',
+                  extra: null,
+                },
+                {
+                  type: 'none' as AiProviderType,
+                  title: 'Fără AI',
+                  desc: 'Aplicația funcționează complet offline, fără asistent',
+                  extra: null,
+                },
+              ] as Array<{ type: AiProviderType; title: string; desc: string; extra: string | null }>
+            ).map(option => (
               <Pressable
-                onPress={() => Linking.openURL(MISTRAL_CONSOLE_URL)}
-                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: 8 }]}
+                key={option.type}
+                style={[
+                  styles.aiToggleCard,
+                  {
+                    backgroundColor: C.card,
+                    borderColor: aiProviderChoice === option.type ? C.primary : C.border,
+                  },
+                ]}
+                onPress={() => setAiProviderChoice(option.type)}
               >
-                <Text style={[styles.link, { color: C.primary }]}>
-                  Obține cheie gratuită → mistral.ai
-                </Text>
+                <View style={styles.aiToggleText}>
+                  <Text style={[styles.aiToggleLabel, { color: C.text }]}>{option.title}</Text>
+                  <Text style={[styles.aiToggleSub, { color: C.textSecondary }]}>{option.desc}</Text>
+                  {option.extra === 'mistral' && aiProviderChoice === 'mistral' && (
+                    <Pressable
+                      onPress={() => Linking.openURL(MISTRAL_CONSOLE_URL)}
+                      style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: 6 }]}
+                    >
+                      <Text style={[styles.link, { color: C.primary }]}>
+                        Creează cheie gratuită → mistral.ai
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+                <View
+                  style={[
+                    styles.aiRadioDot,
+                    { borderColor: aiProviderChoice === option.type ? C.primary : C.border },
+                  ]}
+                >
+                  {aiProviderChoice === option.type && (
+                    <View style={[styles.aiRadioDotInner, { backgroundColor: C.primary }]} />
+                  )}
+                </View>
               </Pressable>
-              <Text style={[styles.aiKeyHint, { color: C.textSecondary }]}>
-                După ce ai cheia, o adaugi în Setări → Asistent AI și nu mai ai limită.
-              </Text>
-            </View>
+            ))}
 
-            {/* Date trimise */}
-            <Text style={[styles.aiPrivacyNote, { color: C.textSecondary }]}>
-              Când folosești AI-ul (chat sau scanare OCR), textul extras și lista entităților (nume,
-              tipuri) sunt trimise la Mistral AI. Fotografiile, PIN-ul și datele sensibile NU sunt
-              trimise. Cu propria cheie API (gratuită de pe mistral.ai), poți controla exact ce
-              provider procesează datele. Consimțământul poate fi revocat oricând din Setări → Date
-              și confidențialitate.
-            </Text>
+            <Pressable
+              onPress={() => Linking.openURL('https://dosarapp.ro/#asistent-ai')}
+              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: 8 }]}
+            >
+              <Text style={[styles.link, { color: C.primary }]}>
+                Află mai multe despre opțiunile AI →
+              </Text>
+            </Pressable>
           </View>
         )}
 
@@ -682,7 +697,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
             </Text>
             <Text style={[styles.summaryLine, { color: C.text }]}>
               <Text style={styles.summaryKey}>Asistent AI: </Text>
-              {aiEnabled ? 'Activat (20 interogări/zi gratuit)' : 'Dezactivat'}
+              {aiProvider.PROVIDER_DEFAULTS[aiProviderChoice]?.label ?? aiProviderChoice}
             </Text>
           </View>
         )}
@@ -931,6 +946,20 @@ const styles = StyleSheet.create({
   aiLimitText: { fontSize: 14, lineHeight: 20 },
   aiKeyHint: { fontSize: 12, lineHeight: 18, marginTop: 4 },
   aiPrivacyNote: { fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
+  aiRadioDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  aiRadioDotInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
 
   footer: {
     flexDirection: 'column',
