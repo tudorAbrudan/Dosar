@@ -28,6 +28,7 @@ import * as aiProvider from '@/services/aiProvider';
 import type { AiProviderType } from '@/services/aiProvider';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import { exportBackup, importBackup } from '@/services/backup';
+import { checkForUpdateForced } from '@/services/updateCheck';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/services/db';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
@@ -256,6 +257,7 @@ export default function SetariScreen() {
   const [aiApiKey, setAiApiKey] = useState('');
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [aiTestMessage, setAiTestMessage] = useState('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
 
@@ -446,6 +448,29 @@ export default function SetariScreen() {
   };
 
   // ── Onboarding ───────────────────────────────────────────────────────────────
+  const handleCheckForUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const info = await checkForUpdateForced();
+      if (info) {
+        Alert.alert(
+          'Actualizare disponibilă',
+          `Versiunea ${info.version} este disponibilă în App Store.`,
+          [
+            { text: 'Mai târziu', style: 'cancel' },
+            { text: 'Actualizează', onPress: () => Linking.openURL(info.url) },
+          ]
+        );
+      } else {
+        Alert.alert('Ești la zi', `Versiunea instalată (${APP_VERSION}) este cea mai recentă.`);
+      }
+    } catch {
+      Alert.alert('Eroare', 'Nu s-a putut verifica disponibilitatea actualizărilor.');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
   const handleResetOnboarding = () => {
     Alert.alert(
       'Reluare onboarding',
@@ -1002,6 +1027,15 @@ export default function SetariScreen() {
               </RNView>
             </RNView>
           </RNView>
+          <InfoRow
+            icon="cloud-download-outline"
+            iconBg="#E3F2FD"
+            iconColor="#1565C0"
+            label="Verifică actualizări"
+            sub={checkingUpdate ? 'Se verifică...' : `Versiune curentă: ${APP_VERSION}`}
+            onPress={handleCheckForUpdate}
+            scheme={scheme}
+          />
           <InfoRow
             icon="rocket-outline"
             iconBg="#E8F5E9"

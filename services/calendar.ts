@@ -73,7 +73,7 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
       : `Expiră ${typeLabel}`;
 
     const asigraUrl = ASIGRA_TYPES[opts.docType];
-    const deepLink = opts.documentId ? `app:///documente/${opts.documentId}` : null;
+    const deepLink = opts.documentId ? `acte:///documente/${opts.documentId}` : null;
     const noteLines = [
       `Tip: ${typeLabel}`,
       opts.entityName ? `Entitate: ${opts.entityName}` : null,
@@ -81,7 +81,7 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
       opts.note ? `Notă: ${opts.note}` : null,
       asigraUrl ? `Compară oferte: ${asigraUrl}` : null,
       deepLink ? `Deschide în Acte: ${deepLink}` : null,
-      'Adăugat de Acte – Documente Personale.',
+      'Adăugat de Acte – Documente Personale · https://tudorabrudan.github.io/Dosar/',
     ]
       .filter(Boolean)
       .join('\n');
@@ -97,7 +97,7 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
       startDate,
       endDate,
       alarms: [{ relativeOffset: -REMINDER_DAYS_BEFORE * 24 * 60 }],
-      url: opts.documentId ? `app:///documente/${opts.documentId}` : undefined,
+      url: opts.documentId ? `acte:///documente/${opts.documentId}` : undefined,
       timeZone: 'Europe/Bucharest',
     });
     return eventId ?? null;
@@ -145,12 +145,12 @@ export async function addEventToCalendar(opts: EventCalendarOptions): Promise<st
     const startDate = new Date(year, month - 1, day, 10, 0, 0);
     const endDate = new Date(year, month - 1, day, 12, 0, 0);
 
-    const deepLink = opts.documentId ? `app:///documente/${opts.documentId}` : null;
+    const deepLink = opts.documentId ? `acte:///documente/${opts.documentId}` : null;
     const noteLines = [
       opts.venue ? `Locație / Rută: ${opts.venue}` : null,
       opts.note ? `Notă: ${opts.note}` : null,
       deepLink ? `Deschide în Acte: ${deepLink}` : null,
-      'Adăugat de Acte – Documente Personale.',
+      'Adăugat de Acte – Documente Personale · https://tudorabrudan.github.io/Dosar/',
     ]
       .filter(Boolean)
       .join('\n');
@@ -164,7 +164,7 @@ export async function addEventToCalendar(opts: EventCalendarOptions): Promise<st
         { relativeOffset: -24 * 60 }, // 1 zi înainte
         { relativeOffset: -2 * 60 }, // 2 ore înainte
       ],
-      url: opts.documentId ? `app:///documente/${opts.documentId}` : undefined,
+      url: opts.documentId ? `acte:///documente/${opts.documentId}` : undefined,
       timeZone: 'Europe/Bucharest',
     });
     return eventId ?? null;

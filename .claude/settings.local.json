@@ -29,7 +29,12 @@
       "WebFetch(domain:mistral.ai)",
       "WebFetch(domain:legal.mistral.ai)",
       "Bash(gh api:*)",
-      "Bash(python3 -c \"import sys,json; t=json.load\\(sys.stdin\\); [print\\(x[''''path'''']\\) for x in t.get\\(''''tree'''',[]\\) if ''''docs'''' in x[''''path''''] or ''''legal'''' in x[''''path'''']]\")"
+      "Bash(python3 -c \"import sys,json; t=json.load\\(sys.stdin\\); [print\\(x[''''path'''']\\) for x in t.get\\(''''tree'''',[]\\) if ''''docs'''' in x[''''path''''] or ''''legal'''' in x[''''path'''']]\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('resultCount:', d.get\\('resultCount'\\)\\); r=d['results'][0] if d.get\\('results'\\) else {}; print\\('bundleId:', r.get\\('bundleId'\\)\\); print\\('version:', r.get\\('version'\\)\\)\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git commit:*)",
+      "Bash(npx jest:*)"
     ]
   }
 }

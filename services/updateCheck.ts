@@ -134,3 +134,52 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
 export async function dismissUpdate(version: string): Promise<void> {
   await AsyncStorage.setItem(KEY_DISMISSED, version);
 }
+
+/**
+ * Verificare forțată — ignoră cache-ul, face fetch direct la iTunes API.
+ * Returnează UpdateInfo dacă există versiune nouă, null dacă e la zi sau eșuează.
+ * Nu aplică logica de "dismissed" — afișează mereu rezultatul.
+ */
+export async function checkForUpdateForced(): Promise<UpdateInfo | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    let data: {
+      results?: Array<{
+        version: string;
+        trackViewUrl: string;
+        currentVersionReleaseDate: string;
+      }>;
+    };
+    try {
+      const response = await fetch(ITUNES_URL, { signal: controller.signal });
+      if (!response.ok) return null;
+      data = (await response.json()) as typeof data;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const result = data.results?.[0];
+    if (!result?.version || !result?.trackViewUrl) return null;
+
+    const storeVersion = result.version;
+    const storeUrl = result.trackViewUrl;
+    const releaseTs = new Date(result.currentVersionReleaseDate ?? Date.now()).getTime();
+
+    // Actualizează cache-ul
+    const now = Date.now();
+    await AsyncStorage.multiSet([
+      [KEY_LAST_CHECK, String(now)],
+      [KEY_CACHED_VERSION, storeVersion],
+      [KEY_CACHED_URL, storeUrl],
+      [KEY_CACHED_RELEASE, String(releaseTs)],
+    ]);
+
+    if (!isNewer(storeVersion, currentVersion())) return null;
+
+    const mandatory = now - releaseTs > MONTH_MS;
+    return { version: storeVersion, url: storeUrl, mandatory };
+  } catch {
+    return null;
+  }
+}

@@ -71,6 +71,8 @@ function RootLayoutNav() {
       const data = response.notification.request.content.data as Record<string, unknown>;
       if (typeof data?.url === 'string') {
         Linking.openURL(data.url);
+      } else if (typeof data?.documentId === 'string') {
+        router.push(`/(tabs)/documente/${data.documentId}`);
       }
     });
     return () => {
@@ -78,7 +80,7 @@ function RootLayoutNav() {
     };
   }, []);
 
-  // Deep link handler: app:///documente/{id} → deschide documentul
+  // Deep link handler: acte:///documente/{id} → deschide documentul
   useEffect(() => {
     const handleURL = (url: string) => {
       const docId = parseDeepLink(url);

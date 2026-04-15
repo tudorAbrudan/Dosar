@@ -68,7 +68,8 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "16.0"
+            "deploymentTarget": "16.0",
+            "cxxVersion": "c++20"
           }
         }
       ]
