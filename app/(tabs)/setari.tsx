@@ -424,7 +424,11 @@ export default function SetariScreen() {
   };
 
   // ── AI Provider ─────────────────────────────────────────────────────────────
-  const handleAiProviderSelect = (type: AiProviderType) => {
+  const handleAiProviderSelect = async (type: AiProviderType) => {
+    // If switching away from local, release the model context
+    if (aiProviderType === 'local' && type !== 'local') {
+      await localModel.disposeLocalModel().catch(() => {});
+    }
     setAiProviderType(type);
     const defaults = aiProvider.PROVIDER_DEFAULTS[type];
     setAiProviderUrl(defaults.url);
@@ -506,6 +510,7 @@ export default function SetariScreen() {
             setDownloadedModelIds(prev => prev.filter(id => id !== modelId));
             const selected = await localModel.getSelectedModelId();
             if (selected === modelId) {
+              await localModel.disposeLocalModel().catch(() => {});
               setAiProviderType('builtin');
               await aiProvider.saveAiConfig({
                 type: 'builtin',

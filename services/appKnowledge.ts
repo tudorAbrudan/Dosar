@@ -120,6 +120,7 @@ ${buildDocTypesList()}
 - Backup complet în iCloud (iOS) / Google Drive (Android) și restore
 - Blocare cu Face ID / Touch ID / PIN
 - Asistent AI (acesta) pentru căutare și întrebări despre documente
+- Model local AI: utilizatorul poate descărca un model LLM pe device (Setări → Asistent AI → Modele disponibile). Modele disponibile: Llama 3.2 1B, Gemma 4 2B/4B, Phi-3 Mini, Ministral 3B, Mistral 7B. Funcționează offline, privat, nelimitat. Se poate folosi și pentru OCR documente (toggle în setări).
 
 ## Reguli obligatorii
 

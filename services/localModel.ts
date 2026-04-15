@@ -257,12 +257,22 @@ export async function initLocalModel(modelId: string): Promise<void> {
     throw new Error(`Modelul "${modelId}" nu este descărcat. Descarcă-l din Setări → Asistent AI.`);
   }
 
-  _llamaContext = await initLlama({
-    model: path,
-    use_mlock: true,
-    n_ctx: 2048,
-    n_gpu_layers: 99,
-  });
+  // Try GPU first, fall back to CPU if Metal not available
+  try {
+    _llamaContext = await initLlama({
+      model: path,
+      use_mlock: true,
+      n_ctx: 2048,
+      n_gpu_layers: 99,
+    });
+  } catch {
+    _llamaContext = await initLlama({
+      model: path,
+      use_mlock: true,
+      n_ctx: 2048,
+      n_gpu_layers: 0,
+    });
+  }
   _loadedModelId = modelId;
 }
 
