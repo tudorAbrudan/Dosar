@@ -53,8 +53,7 @@ import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
-
-const AI_CONSENT_KEY = 'ai_assistant_consent_accepted';
+import { AI_CONSENT_KEY } from '@/services/aiProvider';
 
 const ALL_STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
   .filter(([value]) => value !== 'custom')

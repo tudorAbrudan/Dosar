@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 // ─── Limită zilnică ────────────────────────────────────────────────────────────
 
 export const DAILY_AI_LIMIT = 20;
+export const AI_CONSENT_KEY = 'ai_assistant_consent_accepted';
 const KEY_DAILY_USAGE_PREFIX = 'ai_daily_usage_';
 
 function todayDateKey(): string {
@@ -183,7 +184,7 @@ export async function sendAiRequest(messages: AiMessage[], maxTokens = 500): Pro
     const used = await getAiUsageToday();
     if (used >= DAILY_AI_LIMIT) {
       throw new Error(
-        `Ai atins limita de ${DAILY_AI_LIMIT} interogări AI/zi cu cheia Dosar AI.\n\nPoți folosi nelimitat dacă îți setezi propria cheie gratuită:\n1. Creează un cont pe mistral.ai\n2. Generează o cheie API\n3. Adaug-o în Setări → Asistent AI`
+        `Ai atins limita de ${DAILY_AI_LIMIT} interogări AI/zi cu cheia Dosar AI.\n\nPoți folosi nelimitat configurând propria cheie API din Setări → Asistent AI.`
       );
     }
   }

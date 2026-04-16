@@ -29,6 +29,7 @@ import { primary } from '@/theme/colors';
 import * as settings from '@/services/settings';
 import * as aiProvider from '@/services/aiProvider';
 import type { AiProviderType } from '@/services/aiProvider';
+import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import { exportBackup, importBackup } from '@/services/backup';
 import { checkForUpdateForced } from '@/services/updateCheck';
@@ -276,7 +277,7 @@ export default function SetariScreen() {
     settings.getNotificationDays().then(setNotifDays);
     settings.getPushEnabled().then(setPushEnabled);
     settings.getAppLockEnabled().then(setAppLockEnabled);
-    AsyncStorage.getItem('ai_assistant_consent_accepted').then(v =>
+    AsyncStorage.getItem(AI_CONSENT_KEY).then(v =>
       setAiConsentGiven(v === 'true')
     );
     aiProvider.getAiConfig().then(cfg => {
@@ -553,11 +554,11 @@ export default function SetariScreen() {
       });
       await aiProvider.saveAiApiKey(aiApiKey);
       if (isRemote && aiModalConsentChecked) {
-        await AsyncStorage.setItem('ai_assistant_consent_accepted', 'true');
+        await AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
         setAiConsentGiven(true);
       } else if (!isRemote) {
         const hadConsent = aiConsentGiven;
-        await AsyncStorage.removeItem('ai_assistant_consent_accepted');
+        await AsyncStorage.removeItem(AI_CONSENT_KEY);
         setAiConsentGiven(false);
         if (hadConsent) {
           Alert.alert('Acord revocat', 'Consimțământul pentru asistentul AI a fost revocat automat deoarece ai ales o opțiune fără conexiune externă.');
@@ -573,19 +574,37 @@ export default function SetariScreen() {
     setAiTestStatus('loading');
     setAiTestMessage('');
     try {
-      // Salvăm temporar config-ul curent pentru test
-      await aiProvider.saveAiConfig({
-        type: aiProviderType,
-        url: aiProviderUrl,
-        model: aiProviderModel,
+      if (aiProviderType !== 'external') {
+        setAiTestStatus('ok');
+        setAiTestMessage('Conexiunea funcționează corect.');
+        return;
+      }
+      const baseUrl = aiProviderUrl.replace(/\/$/, '');
+      const endpoint = `${baseUrl}/chat/completions`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: aiProviderModel,
+          messages: [{ role: 'user', content: 'test' }],
+          max_tokens: 10,
+          temperature: 0.3,
+        }),
       });
-      await aiProvider.saveAiApiKey(aiApiKey);
-      await aiProvider.sendAiRequest([{ role: 'user', content: 'test' }], 10);
-      setAiTestStatus('ok');
-      setAiTestMessage('Conexiune reușită!');
+      if (response.ok) {
+        setAiTestStatus('ok');
+        setAiTestMessage('Conexiunea funcționează corect.');
+      } else {
+        const errText = await response.text().catch(() => '');
+        setAiTestStatus('error');
+        setAiTestMessage(`Eroare (${response.status}): ${errText || 'Răspuns invalid de la server'}`);
+      }
     } catch (e) {
       setAiTestStatus('error');
-      setAiTestMessage(e instanceof Error ? e.message : 'Eroare necunoscută');
+      setAiTestMessage(e instanceof Error ? e.message : 'Eroare de rețea');
     }
   };
 

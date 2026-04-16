@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +30,7 @@ import type { EntityType, DocumentType } from '@/types';
 import * as settings from '@/services/settings';
 import * as aiProvider from '@/services/aiProvider';
 import type { AiProviderType } from '@/services/aiProvider';
+import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import {
   requestNotificationPermission,
   scheduleExpirationReminders,
@@ -48,8 +50,6 @@ const NOTIFICATIONS = 5;
 const BACKUP = 6;
 const AI_STEP = 7;
 const SUMMARY = 8;
-
-const AI_CONSENT_KEY = 'ai_assistant_consent_accepted';
 
 const NOTIF_DAY_OPTIONS = [7, 14, 30] as const;
 
@@ -733,7 +733,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                   }}
                 >
                   {aiConsentChecked && (
-                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>✓</Text>
+                    <Ionicons name="checkmark" size={14} color="#fff" />
                   )}
                 </View>
                 <View style={{ flex: 1 }}>

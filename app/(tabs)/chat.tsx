@@ -40,8 +40,7 @@ import {
   type ChatThread,
   type StoredMessage,
 } from '@/services/chatThreads';
-
-const AI_CONSENT_KEY = 'ai_assistant_consent_accepted';
+import { AI_CONSENT_KEY } from '@/services/aiProvider';
 
 // ─── Mention types ─────────────────────────────────────────────────────────────
 
