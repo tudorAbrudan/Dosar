@@ -254,12 +254,13 @@ export default function SetariScreen() {
 
   // ── AI Provider ─────────────────────────────────────────────────────────────
   const [aiModalVisible, setAiModalVisible] = useState(false);
-  const [aiProviderType, setAiProviderType] = useState<AiProviderType>('mistral');
+  const [aiProviderType, setAiProviderType] = useState<AiProviderType>('none');
   const [aiProviderUrl, setAiProviderUrl] = useState('');
   const [aiProviderModel, setAiProviderModel] = useState('');
   const [aiApiKey, setAiApiKey] = useState('');
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [aiTestMessage, setAiTestMessage] = useState('');
+  const [aiModalConsentChecked, setAiModalConsentChecked] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [compatibleModels, setCompatibleModels] = useState<LocalModelEntry[]>([]);
   const [downloadedModelIds, setDownloadedModelIds] = useState<string[]>([]);
@@ -427,7 +428,6 @@ export default function SetariScreen() {
 
   // ── AI Provider ─────────────────────────────────────────────────────────────
   const handleAiProviderSelect = async (type: AiProviderType) => {
-    // If switching away from local, release the model context
     if (aiProviderType === 'local' && type !== 'local') {
       await localModel.disposeLocalModel().catch(() => {});
     }
@@ -436,7 +436,9 @@ export default function SetariScreen() {
     setAiProviderUrl(defaults.url);
     setAiProviderModel(defaults.model);
     setAiTestStatus('idle');
-    setAiTestMessage('');
+    if (type === 'local' || type === 'none') {
+      setAiModalConsentChecked(false);
+    }
   };
 
   const handleDownloadModel = async (modelId: string) => {
@@ -539,12 +541,24 @@ export default function SetariScreen() {
 
   const handleSaveAiConfig = async () => {
     try {
+      const isRemote = aiProviderType === 'builtin' || aiProviderType === 'external';
+      if (isRemote && !aiModalConsentChecked) {
+        Alert.alert('Acord necesar', 'Bifează acordul de utilizare AI pentru a continua.');
+        return;
+      }
       await aiProvider.saveAiConfig({
         type: aiProviderType,
         url: aiProviderUrl,
         model: aiProviderModel,
       });
       await aiProvider.saveAiApiKey(aiApiKey);
+      if (isRemote && aiModalConsentChecked) {
+        await AsyncStorage.setItem('ai_assistant_consent_accepted', 'true');
+        setAiConsentGiven(true);
+      } else if (!isRemote) {
+        await AsyncStorage.removeItem('ai_assistant_consent_accepted');
+        setAiConsentGiven(false);
+      }
       setAiModalVisible(false);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva configurația');
@@ -659,43 +673,6 @@ export default function SetariScreen() {
     Linking.openURL(PRIVACY_URL).catch(() => {
       setPrivacyVisible(true);
     });
-  };
-
-  const handleToggleAiConsent = () => {
-    if (aiConsentGiven) {
-      Alert.alert(
-        'Revocare consimțământ AI',
-        'Ești sigur că vrei să revoci consimțământul? Asistentul AI (chat și scanare OCR) nu va mai funcționa.',
-        [
-          { text: 'Anulează', style: 'cancel' },
-          {
-            text: 'Revocare',
-            style: 'destructive',
-            onPress: async () => {
-              await AsyncStorage.removeItem('ai_assistant_consent_accepted');
-              setAiConsentGiven(false);
-              Alert.alert('Revocat', 'Consimțământul a fost revocat.');
-            },
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Activează asistentul AI',
-        'Când folosești AI-ul (chat sau scanare OCR), textul extras și lista entităților sunt trimise la Mistral AI. Fotografiile și PIN-ul NU sunt trimise.\n\nAccepți?',
-        [
-          { text: 'Anulează', style: 'cancel' },
-          {
-            text: 'Activează',
-            onPress: async () => {
-              await AsyncStorage.setItem('ai_assistant_consent_accepted', 'true');
-              setAiConsentGiven(true);
-              Alert.alert('Activat', 'Asistentul AI este acum activ.');
-            },
-          },
-        ]
-      );
-    }
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -867,30 +844,14 @@ export default function SetariScreen() {
             iconBg="#EDE7F6"
             iconColor="#4527A0"
             label="Provider AI"
-            sub={aiProvider.PROVIDER_DEFAULTS[aiProviderType].label}
-            onPress={() => setAiModalVisible(true)}
+            sub={aiProvider.PROVIDER_DEFAULTS[aiProviderType].label + (aiConsentGiven && (aiProviderType === 'builtin' || aiProviderType === 'external') ? ' · Acord acordat' : '')}
+            onPress={() => {
+              setAiModalConsentChecked(aiConsentGiven);
+              setAiModalVisible(true);
+            }}
+            isLast
             scheme={scheme}
           />
-          <Pressable style={styles.rowLast} onPress={handleToggleAiConsent}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#EDE7F6' }]}>
-                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#4527A0" />
-              </RNView>
-              <RNView style={styles.rowLabelWrap}>
-                <RNText style={[styles.rowLabel, { color: C.text }]}>
-                  Consimțământ asistent AI
-                </RNText>
-                <RNText
-                  style={[styles.rowSub, { color: aiConsentGiven ? '#4CAF50' : C.textSecondary }]}
-                >
-                  {aiConsentGiven
-                    ? '✓ Acordat – apasă pentru revocare'
-                    : 'Neacordat – apasă pentru activare'}
-                </RNText>
-              </RNView>
-            </RNView>
-            <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-          </Pressable>
         </RNView>
 
         {/* ── Vizibilitate entități ── */}
@@ -1223,7 +1184,7 @@ export default function SetariScreen() {
             {/* Selector AI unificat */}
             <RNView>
               <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Configurare asistent AI</RNText>
-              {(['none', 'builtin', 'mistral', 'openai', 'custom'] as AiProviderType[]).map(type => (
+              {(['none', 'builtin', 'external'] as AiProviderType[]).map(type => (
                 <Pressable
                   key={type}
                   style={[
@@ -1374,99 +1335,98 @@ export default function SetariScreen() {
                   },
                 ]}
               >
-                <RNText
-                  style={[styles.aiInputReadonlyText, { color: C.textSecondary, lineHeight: 20 }]}
-                >
-                  Utilizează serviciul AI inclus în aplicație (Mistral AI). Nu este necesară o cheie
-                  API personală.
+                <RNText style={[styles.aiInputReadonlyText, { color: C.textSecondary, lineHeight: 20 }]}>
+                  Utilizează serviciul AI inclus în aplicație. Nu este necesară o cheie API personală.
                 </RNText>
               </RNView>
             )}
 
-            {/* URL editabil doar pentru custom */}
-            {aiProviderType === 'custom' && (
-              <RNView>
-                <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>URL API</RNText>
-                <TextInput
-                  style={[
-                    styles.aiInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                  ]}
-                  value={aiProviderUrl}
-                  onChangeText={text => {
-                    setAiProviderUrl(text);
-                    setAiTestStatus('idle');
-                  }}
-                  placeholder="https://…"
-                  placeholderTextColor={C.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                />
-              </RNView>
-            )}
-
-            {/* URL readonly pentru mistral/openai */}
-            {(aiProviderType === 'mistral' || aiProviderType === 'openai') && (
-              <RNView>
-                <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>URL API</RNText>
-                <RNView
-                  style={[
-                    styles.aiInput,
-                    styles.aiInputReadonly,
-                    { borderColor: C.border, backgroundColor: C.background },
-                  ]}
-                >
-                  <RNText style={[styles.aiInputReadonlyText, { color: C.textSecondary }]}>
-                    {aiProviderUrl}
-                  </RNText>
+            {/* Câmpuri pentru external */}
+            {aiProviderType === 'external' && (
+              <RNView style={{ gap: 12 }}>
+                <RNView>
+                  <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>URL API</RNText>
+                  <TextInput
+                    style={[styles.aiInput, { color: C.text, borderColor: C.border, backgroundColor: C.card }]}
+                    value={aiProviderUrl}
+                    onChangeText={text => { setAiProviderUrl(text); setAiTestStatus('idle'); }}
+                    placeholder="ex: https://api.mistral.ai/v1"
+                    placeholderTextColor={C.textSecondary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                  />
+                </RNView>
+                <RNView>
+                  <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Cheie API</RNText>
+                  <TextInput
+                    style={[styles.aiInput, { color: C.text, borderColor: C.border, backgroundColor: C.card }]}
+                    value={aiApiKey}
+                    onChangeText={text => { setAiApiKey(text); setAiTestStatus('idle'); }}
+                    placeholder="••••••••••"
+                    placeholderTextColor={C.textSecondary}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </RNView>
+                <RNView>
+                  <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model</RNText>
+                  <TextInput
+                    style={[styles.aiInput, { color: C.text, borderColor: C.border, backgroundColor: C.card }]}
+                    value={aiProviderModel}
+                    onChangeText={text => { setAiProviderModel(text); setAiTestStatus('idle'); }}
+                    placeholder="ex: mistral-small-latest"
+                    placeholderTextColor={C.textSecondary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
                 </RNView>
               </RNView>
             )}
 
-            {/* Cheie API — ascunsă pentru builtin */}
-            {aiProviderType !== 'builtin' && (
-              <RNView>
-                <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Cheie API</RNText>
-                <TextInput
-                  style={[
-                    styles.aiInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                  ]}
-                  value={aiApiKey}
-                  onChangeText={text => {
-                    setAiApiKey(text);
-                    setAiTestStatus('idle');
+            {/* Acord utilizare AI — vizibil doar pentru remote */}
+            {(aiProviderType === 'builtin' || aiProviderType === 'external') && (
+              <Pressable
+                style={[
+                  styles.aiToggleCard,
+                  {
+                    backgroundColor: aiModalConsentChecked ? '#F1F8E9' : C.card,
+                    borderColor: aiModalConsentChecked ? primary : C.border,
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                  },
+                ]}
+                onPress={() => setAiModalConsentChecked(v => !v)}
+              >
+                <RNView
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 4,
+                    borderWidth: 2,
+                    borderColor: aiModalConsentChecked ? primary : C.border,
+                    backgroundColor: aiModalConsentChecked ? primary : 'transparent',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 1,
+                    flexShrink: 0,
                   }}
-                  placeholder="••••••••••"
-                  placeholderTextColor={C.textSecondary}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </RNView>
-            )}
-
-            {/* Model — ascuns pentru builtin */}
-            {aiProviderType !== 'builtin' && (
-              <RNView>
-                <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model</RNText>
-                <TextInput
-                  style={[
-                    styles.aiInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                  ]}
-                  value={aiProviderModel}
-                  onChangeText={text => {
-                    setAiProviderModel(text);
-                    setAiTestStatus('idle');
-                  }}
-                  placeholder="ex: mistral-small-latest"
-                  placeholderTextColor={C.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </RNView>
+                >
+                  {aiModalConsentChecked && (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  )}
+                </RNView>
+                <RNView style={{ flex: 1 }}>
+                  <RNText style={[styles.aiToggleLabel, { color: C.text, fontSize: 14 }]}>
+                    Sunt de acord cu trimiterea datelor la un serviciu AI extern
+                  </RNText>
+                  <RNText style={[styles.aiToggleSub, { color: C.textSecondary }]}>
+                    Textul extras, numele entităților și detaliile documentelor sunt trimise pentru procesare. Fotografiile și PIN-ul NU sunt trimise.
+                  </RNText>
+                </RNView>
+              </Pressable>
             )}
 
             {/* Testare conexiune */}
