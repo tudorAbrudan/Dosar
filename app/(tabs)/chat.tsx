@@ -320,26 +320,24 @@ function ConsentModal({ visible, colors, onAccept, onDecline }: ConsentModalProp
               Asistent AI – Informații despre confidențialitate
             </Text>
             <Text style={[styles.consentBody, { color: colors.text }]}>
-              Pentru a răspunde la întrebările tale, asistentul trimite datele din aplicație (nume
-              persoane, tipuri de documente, date de expirare, note) către{' '}
-              <Text style={{ fontWeight: '700' }}>Mistral AI</Text> (mistral.ai), un serviciu extern
-              de inteligență artificială.
+              Pentru a răspunde la întrebările tale, asistentul trimite date din aplicație
+              către{' '}
+              <Text style={{ fontWeight: '700' }}>serviciul AI configurat</Text> (cloud extern).
             </Text>
             <Text style={[styles.consentBody, { color: colors.text }]}>
               <Text style={{ fontWeight: '700' }}>Ce date sunt trimise:</Text> numele entităților
               (persoane, vehicule, proprietăți, carduri, animale), tipurile documentelor, datele de
-              expirare și emitere, notele atașate documentelor, date de identificare ale
-              documentelor (serie acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri
-              completate).
+              expirare și emitere, notele atașate documentelor, date de identificare ale documentelor
+              (serie acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri completate).
             </Text>
             <Text style={[styles.consentBody, { color: colors.text }]}>
-              <Text style={{ fontWeight: '700' }}>Ce NU este trimis:</Text> fotografiile
-              documentelor, numărul CVV, PIN-ul aplicației.
+              <Text style={{ fontWeight: '700' }}>Ce NU este trimis:</Text> fotografiile documentelor,
+              numărul CVV, PIN-ul aplicației.
             </Text>
             <Text style={[styles.consentNote, { color: colors.textSecondary }]}>
-              Datele sunt procesate de Mistral AI conform politicii lor de confidențialitate
-              (mistral.ai). Consimțământul poate fi revocat oricând din Setări. Dacă nu dorești să
-              partajezi aceste date, apasă „Nu accept".
+              Datele sunt procesate de providerul AI ales conform propriei politici de confidențialitate.
+              Consimțământul poate fi revocat oricând reconfigurând providerul din Setări → Asistent AI.
+              Dacă nu dorești să partajezi aceste date, apasă „Nu accept".
             </Text>
           </ScrollView>
           <View style={styles.consentButtons}>
