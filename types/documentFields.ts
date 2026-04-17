@@ -56,6 +56,9 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'policy_number', label: 'Nr. poliță RCA', placeholder: 'RO/XXXXXXXX/...' },
     { key: 'insurer', label: 'Asigurator', placeholder: 'Allianz, Groupama...' },
     { key: 'plate', label: 'Nr. înmatriculare', placeholder: 'B 123 ABC' },
+    { key: 'prima', label: 'Primă de asigurare (RON)', placeholder: '850.00', keyboardType: 'decimal-pad' },
+    { key: 'valid_from', label: 'Valabil de la', placeholder: '01.04.2024' },
+    { key: 'marca_model', label: 'Marcă / model', placeholder: 'Dacia Logan' },
   ],
 
   itp: [
@@ -72,6 +75,9 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'policy_number', label: 'Nr. poliță CASCO', placeholder: 'XXXXXXXXXX' },
     { key: 'insurer', label: 'Asigurator', placeholder: 'Allianz, Generali...' },
     { key: 'plate', label: 'Nr. înmatriculare', placeholder: 'B 123 ABC' },
+    { key: 'prima', label: 'Primă de asigurare (RON)', placeholder: '2500.00', keyboardType: 'decimal-pad' },
+    { key: 'valid_from', label: 'Valabil de la', placeholder: '01.04.2024' },
+    { key: 'marca_model', label: 'Marcă / model', placeholder: 'Dacia Logan' },
   ],
 
   // ─── PROPRIETATE ─────────────────────────────────────────────────────────
@@ -115,6 +121,8 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'invoice_number', label: 'Nr. factură', placeholder: 'FAC-2024-001234' },
     { key: 'supplier', label: 'Furnizor', placeholder: 'E.ON / Engie / Digi...' },
     { key: 'amount', label: 'Total (RON)', placeholder: '225.06', keyboardType: 'decimal-pad' },
+    { key: 'due_date', label: 'Scadență', placeholder: '15.04.2024' },
+    { key: 'period', label: 'Perioadă facturare', placeholder: '01.03.2024 - 31.03.2024' },
   ],
 
   bon_cumparaturi: [

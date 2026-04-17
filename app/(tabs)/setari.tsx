@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import * as localModel from '@/services/localModel';
 import type { LocalModelEntry } from '@/services/localModel';
+type ModelWithCompat = LocalModelEntry & { incompatibilityReason: string | null };
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   StyleSheet,
@@ -262,13 +263,13 @@ export default function SetariScreen() {
   const [aiTestMessage, setAiTestMessage] = useState('');
   const [aiModalConsentChecked, setAiModalConsentChecked] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [compatibleModels, setCompatibleModels] = useState<LocalModelEntry[]>([]);
+  const [compatibleModels, setCompatibleModels] = useState<ModelWithCompat[]>([]);
   const [downloadedModelIds, setDownloadedModelIds] = useState<string[]>([]);
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadedMb, setDownloadedMb] = useState(0);
   const [downloadTotalMb, setDownloadTotalMb] = useState(0);
-  const [localOcrEnabled, setLocalOcrEnabledState] = useState(false);
+  const [selectedLocalModelId, setSelectedLocalModelId] = useState<string | null>(null);
   const downloadResumableRef = useRef<ReturnType<typeof localModel.createModelDownload> | null>(null);
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
@@ -288,14 +289,14 @@ export default function SetariScreen() {
     });
     // Modele locale
     void (async () => {
-      const models = localModel.getCompatibleModels();
+      const models = localModel.getAllModels();
       setCompatibleModels(models);
       const downloaded: string[] = [];
       for (const m of models) {
         if (await localModel.isModelDownloaded(m.id)) downloaded.push(m.id);
       }
       setDownloadedModelIds(downloaded);
-      localModel.isLocalOcrEnabled().then(setLocalOcrEnabledState);
+      localModel.getSelectedModelId().then(setSelectedLocalModelId);
     })();
   }, []);
 
@@ -473,6 +474,7 @@ export default function SetariScreen() {
               await resumable.downloadAsync();
               setDownloadedModelIds(prev => [...prev, modelId]);
               await localModel.setSelectedModelId(modelId);
+              setSelectedLocalModelId(modelId);
               setAiProviderType('local');
               await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId });
             } catch (e) {
@@ -529,13 +531,11 @@ export default function SetariScreen() {
     );
   };
 
-  const handleLocalOcrToggle = async (value: boolean) => {
-    setLocalOcrEnabledState(value);
-    await localModel.setLocalOcrEnabled(value);
-  };
+
 
   const handleSelectLocalModel = async (modelId: string) => {
     await localModel.setSelectedModelId(modelId);
+    setSelectedLocalModelId(modelId);
     setAiProviderType('local');
     await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId });
   };
@@ -1202,6 +1202,35 @@ export default function SetariScreen() {
             </Pressable>
           </RNView>
 
+          {/* Salvează + Testează — fixate sub header, vizibile fără scroll */}
+          <RNView style={[styles.aiActionBar, { backgroundColor: C.background, borderBottomColor: C.border }]}>
+            <Pressable
+              style={({ pressed }) => [styles.btn, { flex: 1, opacity: pressed ? 0.85 : 1 }]}
+              onPress={handleSaveAiConfig}
+            >
+              <Ionicons name="save-outline" size={18} color="#fff" style={styles.btnIcon} />
+              <RNText style={styles.btnText}>Salvează</RNText>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btnOutline,
+                { flex: 1, borderColor: aiTestStatus === 'error' ? '#C62828' : aiTestStatus === 'ok' ? '#2E7D32' : primary, opacity: pressed || aiTestStatus === 'loading' ? 0.7 : 1 },
+              ]}
+              onPress={handleTestAiConnection}
+              disabled={aiTestStatus === 'loading'}
+            >
+              <Ionicons
+                name={aiTestStatus === 'ok' ? 'checkmark-circle-outline' : aiTestStatus === 'error' ? 'close-circle-outline' : 'wifi-outline'}
+                size={18}
+                color={aiTestStatus === 'ok' ? '#2E7D32' : aiTestStatus === 'error' ? '#C62828' : primary}
+                style={styles.btnIcon}
+              />
+              <RNText style={[styles.btnOutlineText, { color: aiTestStatus === 'ok' ? '#2E7D32' : aiTestStatus === 'error' ? '#C62828' : primary }]}>
+                {aiTestStatus === 'loading' ? 'Se testează…' : aiTestStatus === 'ok' ? 'Conexiune OK' : aiTestStatus === 'error' ? 'Eroare' : 'Testează'}
+              </RNText>
+            </Pressable>
+          </RNView>
+
           <ScrollView
             style={styles.legalScroll}
             contentContainerStyle={[styles.legalContent, { gap: 20 }]}
@@ -1238,17 +1267,18 @@ export default function SetariScreen() {
                   {downloadedModelIds.map(modelId => {
                     const model = compatibleModels.find(m => m.id === modelId);
                     if (!model) return null;
+                    const isSelected = aiProviderType === 'local' && selectedLocalModelId === modelId;
                     return (
                       <Pressable
                         key={modelId}
                         style={[
                           styles.aiRadioRow,
-                          { borderColor: aiProviderType === 'local' ? primary : C.border, backgroundColor: C.card },
+                          { borderColor: isSelected ? primary : C.border, backgroundColor: C.card },
                         ]}
                         onPress={() => handleSelectLocalModel(modelId)}
                       >
-                        <RNView style={[styles.aiRadioDot, { borderColor: aiProviderType === 'local' ? primary : C.border }]}>
-                          {aiProviderType === 'local' && (
+                        <RNView style={[styles.aiRadioDot, { borderColor: isSelected ? primary : C.border }]}>
+                          {isSelected && (
                             <RNView style={[styles.aiRadioDotInner, { backgroundColor: primary }]} />
                           )}
                         </RNView>
@@ -1269,15 +1299,16 @@ export default function SetariScreen() {
             {compatibleModels.length > 0 && (
               <RNView>
                 <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
-                  Modele disponibile pentru telefonul tău
+                  Modele disponibile
                 </RNText>
                 {compatibleModels.map(model => {
                   const isDownloaded = downloadedModelIds.includes(model.id);
                   const isDownloading = downloadingModelId === model.id;
+                  const incompatible = model.incompatibilityReason !== null;
                   return (
                     <RNView
                       key={model.id}
-                      style={[styles.modelCard, { backgroundColor: C.card, borderColor: C.border }]}
+                      style={[styles.modelCard, { backgroundColor: C.card, borderColor: C.border, opacity: incompatible ? 0.6 : 1 }]}
                     >
                       <RNView style={styles.modelCardHeader}>
                         <RNView style={{ flex: 1 }}>
@@ -1291,7 +1322,12 @@ export default function SetariScreen() {
                             <RNText style={[styles.aiLabel, { color: '#e74c3c' }]}>Șterge</RNText>
                           </Pressable>
                         )}
-                        {!isDownloaded && !isDownloading && (
+                        {!isDownloaded && !isDownloading && incompatible && (
+                          <RNView style={[styles.downloadBtn, { backgroundColor: C.border }]}>
+                            <RNText style={[styles.downloadBtnText, { color: C.textSecondary }]}>Incompatibil</RNText>
+                          </RNView>
+                        )}
+                        {!isDownloaded && !isDownloading && !incompatible && (
                           <Pressable
                             onPress={() => handleDownloadModel(model.id)}
                             style={[styles.downloadBtn, { backgroundColor: primary }]}
@@ -1321,29 +1357,17 @@ export default function SetariScreen() {
                           </Pressable>
                         </RNView>
                       )}
+                      {incompatible && (
+                        <RNText style={[styles.aiLabel, { color: '#e67e22', marginTop: 4 }]}>
+                          ⚠ Incompatibil: {model.incompatibilityReason}
+                        </RNText>
+                      )}
                       {isDownloaded && !isDownloading && (
                         <RNText style={[styles.aiLabel, { color: '#27ae60', marginTop: 4 }]}>✓ Instalat</RNText>
                       )}
                     </RNView>
                   );
                 })}
-                {downloadedModelIds.length > 0 && (
-                  <RNView style={[styles.aiToggleCard, { backgroundColor: C.card, borderColor: C.border, marginTop: 8 }]}>
-                    <RNView style={styles.aiToggleText}>
-                      <RNText style={[styles.aiToggleLabel, { color: C.text }]}>
-                        Folosește și pentru OCR documente
-                      </RNText>
-                      <RNText style={[styles.aiToggleSub, { color: C.textSecondary }]}>
-                        Extragerea datelor la scanare se face local, fără cloud
-                      </RNText>
-                    </RNView>
-                    <Switch
-                      value={localOcrEnabled}
-                      onValueChange={handleLocalOcrToggle}
-                      trackColor={{ false: '#ccc', true: primary }}
-                    />
-                  </RNView>
-                )}
               </RNView>
             )}
 
@@ -1458,51 +1482,6 @@ export default function SetariScreen() {
               </Pressable>
             )}
 
-            {/* Testare conexiune */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.btnOutline,
-                { borderColor: primary, opacity: pressed ? 0.8 : 1 },
-              ]}
-              onPress={handleTestAiConnection}
-              disabled={aiTestStatus === 'loading'}
-            >
-              <Ionicons
-                name={
-                  aiTestStatus === 'ok'
-                    ? 'checkmark-circle-outline'
-                    : aiTestStatus === 'error'
-                      ? 'close-circle-outline'
-                      : 'wifi-outline'
-                }
-                size={18}
-                color={
-                  aiTestStatus === 'ok' ? '#2E7D32' : aiTestStatus === 'error' ? '#C62828' : primary
-                }
-                style={styles.btnIcon}
-              />
-              <RNText
-                style={[
-                  styles.btnOutlineText,
-                  {
-                    color:
-                      aiTestStatus === 'ok'
-                        ? '#2E7D32'
-                        : aiTestStatus === 'error'
-                          ? '#C62828'
-                          : primary,
-                  },
-                ]}
-              >
-                {aiTestStatus === 'loading'
-                  ? 'Se testează…'
-                  : aiTestStatus === 'ok'
-                    ? 'Conexiune OK'
-                    : aiTestStatus === 'error'
-                      ? 'Eroare conexiune'
-                      : 'Testează conexiunea'}
-              </RNText>
-            </Pressable>
             {aiTestMessage ? (
               <RNText
                 style={[styles.aiHint, { color: aiTestStatus === 'error' ? '#C62828' : '#2E7D32' }]}
@@ -1510,15 +1489,6 @@ export default function SetariScreen() {
                 {aiTestMessage}
               </RNText>
             ) : null}
-
-            {/* Salvare */}
-            <Pressable
-              style={({ pressed }) => [styles.btn, { opacity: pressed ? 0.85 : 1 }]}
-              onPress={handleSaveAiConfig}
-            >
-              <Ionicons name="save-outline" size={18} color="#fff" style={styles.btnIcon} />
-              <RNText style={styles.btnText}>Salvează</RNText>
-            </Pressable>
           </ScrollView>
         </RNView>
       </Modal>
@@ -1781,6 +1751,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
+  },
+  aiActionBar: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   downloadBtn: {
     paddingHorizontal: 12,

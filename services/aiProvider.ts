@@ -165,7 +165,7 @@ export async function sendAiRequest(messages: AiMessage[], maxTokens = 500): Pro
     );
   }
 
-  // Model local
+  // Model local (llama.rn / GGUF)
   if (config.type === 'local') {
     const { runLocalInference } = await import('./localModel');
     return runLocalInference(messages, maxTokens);

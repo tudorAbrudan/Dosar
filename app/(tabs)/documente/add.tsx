@@ -194,41 +194,42 @@ export default function AddDocumentScreen() {
     try {
       let { text, rawBlocks } = await extractText(localPath);
 
-      if (text.trim().length < 50) {
-        const candidates: {
-          deg: number;
-          text: string;
-          rawBlocks: typeof rawBlocks;
-          uri: string;
-        }[] = [];
-        for (const deg of [90, 180, 270]) {
-          const rotated = await ImageManipulator.manipulateAsync(localPath, [{ rotate: deg }], {
-            compress: 1,
-            format: ImageManipulator.SaveFormat.JPEG,
-          });
-          const result = await extractText(rotated.uri);
-          candidates.push({
-            deg,
-            text: result.text,
-            rawBlocks: result.rawBlocks,
-            uri: rotated.uri,
-          });
-        }
-        const best = candidates.reduce((a, b) =>
-          a.text.trim().length >= b.text.trim().length ? a : b
-        );
-        if (best.text.trim().length > text.trim().length) {
-          text = best.text;
-          rawBlocks = best.rawBlocks;
-          await FileSystem.copyAsync({ from: best.uri, to: localPath });
-          setPages(prev => {
-            const idx = prev.findIndex(p => p.localPath === localPath);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = { ...next[idx], uri: best.uri };
-            return next;
-          });
-        }
+      // Încearcă mereu toate cele 3 rotații și alege orientarea cu cel mai mult text.
+      // Verificarea threshold-ului (< 50 chars) era insuficientă: Vision pe iOS modern
+      // poate extrage ≥50 de caractere chiar și din imagini rotite greșit.
+      const candidates: {
+        deg: number;
+        text: string;
+        rawBlocks: typeof rawBlocks;
+        uri: string;
+      }[] = [];
+      for (const deg of [90, 180, 270]) {
+        const rotated = await ImageManipulator.manipulateAsync(localPath, [{ rotate: deg }], {
+          compress: 1,
+          format: ImageManipulator.SaveFormat.JPEG,
+        });
+        const result = await extractText(rotated.uri);
+        candidates.push({
+          deg,
+          text: result.text,
+          rawBlocks: result.rawBlocks,
+          uri: rotated.uri,
+        });
+      }
+      const best = candidates.reduce((a, b) =>
+        a.text.trim().length >= b.text.trim().length ? a : b
+      );
+      if (best.text.trim().length > text.trim().length) {
+        text = best.text;
+        rawBlocks = best.rawBlocks;
+        await FileSystem.copyAsync({ from: best.uri, to: localPath });
+        setPages(prev => {
+          const idx = prev.findIndex(p => p.localPath === localPath);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], uri: best.uri };
+          return next;
+        });
       }
 
       if (!text.trim()) {

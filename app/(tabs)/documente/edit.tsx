@@ -344,8 +344,9 @@ export default function EditDocumentScreen() {
   ): Promise<{ text: string; rotated: boolean }> {
     const fileUri = toFileUri(storedPath);
     let { text } = await extractText(fileUri);
-    if (text.trim().length >= 50) return { text, rotated: false };
 
+    // Încearcă mereu toate cele 3 rotații — threshold-ul >= 50 era insuficient deoarece
+    // Vision pe iOS modern extrage ≥50 chars chiar și din imagini rotite greșit.
     let bestText = text;
     let bestUri = fileUri;
     for (const deg of [90, 270, 180]) {
@@ -358,14 +359,13 @@ export default function EditDocumentScreen() {
         bestText = rotText;
         bestUri = r.uri;
       }
-      if (bestText.trim().length >= 50) break;
     }
 
     const wasRotated = bestUri !== fileUri;
     if (wasRotated) {
-      const absoluteUri = toFileUri(storedPath);
-      const destPath = absoluteUri.startsWith('file://') ? absoluteUri.slice(7) : absoluteUri;
-      await FileSystem.copyAsync({ from: bestUri, to: destPath });
+      // Folosim fileUri direct (cu file://) — destPath fără prefix arunca excepție
+      // care era prinsă silențios, împiedicând salvarea imaginii și extragerea datelor.
+      await FileSystem.copyAsync({ from: bestUri, to: fileUri });
     }
     return { text: bestText, rotated: wasRotated };
   }

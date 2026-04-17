@@ -228,6 +228,22 @@ const ROMANIAN_INSURERS = [
   'CERTASIG',
 ];
 
+// Prefixe distincte din nr. de poliță → asigurator
+// Permite identificarea asiguratorului chiar când fontul e garbled
+const POLICY_PREFIX_TO_INSURER: Array<[RegExp, string]> = [
+  [/^RO\/?32V/i, 'Groupama'],
+  [/^RO\/?0[17]/i, 'Allianz'],
+  [/^RO\/?AA/i, 'Allianz'],
+  [/^RO\/?GR/i, 'Grawe'],
+  [/^RO\/?UN/i, 'Uniqa'],
+  [/^RO\/?AS/i, 'Asirom'],
+  [/^RO\/?OM/i, 'Omniasig'],
+  [/^RO\/?GN/i, 'Generali'],
+  [/^RO\/?EU/i, 'Euroins'],
+  [/^RO\/?AX/i, 'Axeria'],
+  [/^PAD/i, 'Pool-ul de Asigurare'],
+];
+
 function detectInsurer(text: string): string | undefined {
   const tu = text.toUpperCase();
   for (const ins of ROMANIAN_INSURERS) {
@@ -236,22 +252,82 @@ function detectInsurer(text: string): string | undefined {
   return undefined;
 }
 
+function detectInsurerFromPolicyNumber(policyNumber: string): string | undefined {
+  for (const [pattern, name] of POLICY_PREFIX_TO_INSURER) {
+    if (pattern.test(policyNumber)) return name;
+  }
+  return undefined;
+}
+
 function extractRca(text: string): ExtractResult {
   const meta: Record<string, string> = {};
 
-  const policy = text.match(
-    /(?:poli[tț][aă]|contract|serie[:\s]+nr\.?)\s*[:\s]+([A-Z0-9\-\/]{5,30})/i
-  );
-  if (policy) meta['policy_number'] = policy[1].trim();
+  // Nr. poliță — pattern extins:
+  // 1. "poliță/contract nr. X"
+  // 2. Format românesc standalone: RO/XX/... sau RO32V... (Groupama), fără prefix obligatoriu
+  const policyPatterns = [
+    /(?:poli[tț][aă]|contract|serie[:\s]+nr\.?)\s*[:\s]+([A-Z0-9][A-Z0-9\-\/]{4,35})/i,
+    /\b(RO\/?[A-Z0-9]{2,6}[A-Z0-9\-\/]{3,25})\b/,
+  ];
+  for (const p of policyPatterns) {
+    const m = text.match(p);
+    if (m) {
+      meta['policy_number'] = m[1].trim();
+      break;
+    }
+  }
 
-  const insurer = detectInsurer(text);
-  if (insurer) meta['insurer'] = insurer;
+  // Asigurator — mai întâi din text, fallback din nr. poliță
+  const insurerFromText = detectInsurer(text);
+  if (insurerFromText) {
+    meta['insurer'] = insurerFromText;
+  } else if (meta['policy_number']) {
+    const insurerFromPolicy = detectInsurerFromPolicyNumber(meta['policy_number']);
+    if (insurerFromPolicy) meta['insurer'] = insurerFromPolicy;
+  }
 
+  // Nr. înmatriculare
   const plate = extractPlateNumber(text);
   if (plate) meta['plate'] = plate;
 
+  // Marcă / model vehicul
+  const marcaModelPatterns = [
+    /(?:marc[aă](?:\s*\/\s*model)?|tip\s*vehicul|autoturism)\s*[:\s]+([A-Z][A-Za-zĂÂÎȘȚăâîșț0-9\s\-]{2,30})/i,
+    /(?:marca)\s*[:\s]+([A-Z][A-Za-z\s\-]{2,20})/i,
+  ];
+  for (const p of marcaModelPatterns) {
+    const m = text.match(p);
+    if (m) {
+      meta['marca_model'] = m[1].trim().slice(0, 40);
+      break;
+    }
+  }
+
+  // Prima de asigurare — caută suma totală de plată
+  const primaPatterns = [
+    /prim[aă]\s*(?:de\s*asigurare|total[aă])?\s*[:\s]+(\d+[.,]\d{2})/i,
+    /total\s*(?:de\s*plat[aă])?\s*[:\s]+(\d+[.,]\d{2})\s*(?:RON|ron|lei)/i,
+    /de\s*plat[aă]\s*[:\s]+(\d+[.,]\d{2})/i,
+  ];
+  for (const p of primaPatterns) {
+    const m = text.match(p);
+    if (m) {
+      meta['prima'] = m[1].replace(',', '.');
+      break;
+    }
+  }
+
+  // Date validitate
   const expiry = findDateNear(text, /valabil[ăa]?\s*p[âa]n[ăa]\s*la|data\s*expir|p[âa]n[ăa]\s*la/i);
-  const issue = findDateNear(text, /data\s*emit|data\s*[îi]nchei|[îi]ncepere\s*valabilitate/i);
+  const issue = findDateNear(
+    text,
+    /data\s*emit|data\s*[îi]nchei|[îi]ncepere\s*valabilitate|valabil\s*de\s*la|[îi]ncepere\s*risc/i
+  );
+
+  // valid_from ca string afișabil ZZ.LL.AAAA
+  if (issue) {
+    meta['valid_from'] = issue.replace(/-/g, '.').replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$3.$2.$1');
+  }
 
   return { metadata: meta, expiry_date: expiry, issue_date: issue };
 }
@@ -377,32 +453,120 @@ function extractImpozitProprietate(text: string): ExtractResult {
 
 // ─── FACTURĂ ─────────────────────────────────────────────────────────────────
 
+// Furnizori români cunoscuți de utilități
+const ROMANIAN_UTILITY_SUPPLIERS = [
+  'E.ON Energie',
+  'E.ON',
+  'Engie Romania',
+  'Engie',
+  'Electrica Furnizare',
+  'Electrica',
+  'CEZ Vânzare',
+  'CEZ',
+  'Enel Energie',
+  'Enel',
+  'Digi Communications',
+  'Digi',
+  'RCS&RDS',
+  'RCS & RDS',
+  'Vodafone Romania',
+  'Vodafone',
+  'Orange Romania',
+  'Orange',
+  'Telekom Romania',
+  'Telekom',
+  'UPC Romania',
+  'UPC',
+  'Apă Nova',
+  'Apa Nova',
+  'Apa Canal',
+  'Aquatim',
+  'Distrigaz',
+  'Romgaz',
+  'Transgaz',
+  'Hidroelectrica',
+  'DEER',
+  'Delgaz Grid',
+  'Termoenergetica',
+  'RADET',
+];
+
+function detectUtilitySupplier(text: string): string | undefined {
+  const tu = text.toUpperCase();
+  for (const s of ROMANIAN_UTILITY_SUPPLIERS) {
+    if (tu.includes(s.toUpperCase())) return s;
+  }
+  return undefined;
+}
+
 function extractFactura(text: string): ExtractResult {
   const meta: Record<string, string> = {};
 
+  // Nr. factură — diverse formate românești
   const invNr = text.match(
-    /(?:factur[aă]\s*nr\.?\s*|nr\.?\s*factur[aă]\s*|invoice\s*(?:no\.?|nr\.?)\s*)([A-Z0-9\-\/]+)/i
+    /(?:factur[aă]\s*nr\.?\s*|nr\.?\s*factur[aă]\s*|invoice\s*(?:no\.?|nr\.?)\s*|seria\s+[A-Z]+\s+nr\.?\s*)([A-Z0-9\-\/]+)/i
   );
   if (invNr) meta['invoice_number'] = invNr[1].trim();
 
-  const supplier = text.match(/(?:furnizor|emitent|v[âa]nz[aă]tor)[:\s]+([^\n]{5,60})/i);
-  if (supplier) meta['supplier'] = supplier[1].trim();
+  // Furnizor — mai întâi keyword explicit, apoi detectare din lista de furnizori cunoscuți
+  const supplierKeyword = text.match(
+    /(?:furnizor|emitent|v[âa]nz[aă]tor|operator|prestat)[:\s]+([^\n]{5,80})/i
+  );
+  if (supplierKeyword) {
+    meta['supplier'] = supplierKeyword[1].trim().slice(0, 60);
+  } else {
+    const known = detectUtilitySupplier(text);
+    if (known) meta['supplier'] = known;
+  }
 
-  const amountPatterns = [
-    /total\s*(?:de\s*plat[aă])?\s*[:\s]+(\d+[.,]\d{2})/i,
-    /sum[aă]\s*total[aă]?\s*[:\s]+(\d+[.,]\d{2})/i,
-    /(\d+[.,]\d{2})\s*(?:RON|ron|lei|LEI|EUR)/,
+  // Sumă totală — prioritate: "total de plată" > "sold de plată" > "total facturat" > sumă + monedă
+  // Folosim ULTIMA potrivire pentru "total de plată" (evităm subtotaluri intermediare)
+  const priorityPatterns = [
+    /total\s*de\s*plat[aă]\s*[:\s]+(\d+[.,]\d{2})/gi,
+    /sold\s*(?:de\s*)?plat[aă]\s*[:\s]+(\d+[.,]\d{2})/gi,
+    /total\s*factur(?:at|are)\s*[:\s]+(\d+[.,]\d{2})/gi,
+    /sum[aă]\s*total[aă]?\s*[:\s]+(\d+[.,]\d{2})/gi,
+    /de\s*plat[aă]\s*[:\s]+(\d+[.,]\d{2})/gi,
   ];
-  for (const p of amountPatterns) {
-    const m = text.match(p);
-    if (m) {
-      meta['amount'] = m[1].replace(',', '.');
+  let foundAmount = false;
+  for (const p of priorityPatterns) {
+    const allMatches = [...text.matchAll(p)];
+    if (allMatches.length > 0) {
+      // Luăm ultima potrivire — e mai probabil totalul final
+      const last = allMatches[allMatches.length - 1];
+      meta['amount'] = last[1].replace(',', '.');
+      foundAmount = true;
       break;
     }
   }
+  if (!foundAmount) {
+    // Fallback: prima sumă cu monedă explicită
+    const withCurrency = text.match(/(\d+[.,]\d{2})\s*(?:RON|ron|lei|LEI|EUR)/);
+    if (withCurrency) meta['amount'] = withCurrency[1].replace(',', '.');
+  }
 
-  const issue = findDateNear(text, /data\s*factur[ii]|data\s*emiter/i);
-  const due = findDateNear(text, /scaden[tț][aă]|termen\s*plat[aă]/i);
+  // Scadență
+  const due = findDateNear(
+    text,
+    /scaden[tț][aă]|termen\s*(?:de\s*)?plat[aă]|data\s*limit[aă]/i
+  );
+  if (due) meta['due_date'] = due.replace(/-/g, '.').replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$3.$2.$1');
+
+  // Perioadă de facturare
+  const periodMatch = text.match(
+    /perioad[aă]\s*(?:de\s*)?factur[aă]?[:\s]+([^\n]{10,40})/i
+  );
+  if (periodMatch) {
+    meta['period'] = periodMatch[1].trim();
+  } else {
+    // Fallback: două date de forma DD.MM.YYYY - DD.MM.YYYY pe aceeași linie
+    const rangeLine = text.match(
+      /(\d{2}[.\/-]\d{2}[.\/-]\d{4})\s*[-–]\s*(\d{2}[.\/-]\d{2}[.\/-]\d{4})/
+    );
+    if (rangeLine) meta['period'] = `${rangeLine[1]} - ${rangeLine[2]}`;
+  }
+
+  const issue = findDateNear(text, /data\s*factur[ii]|data\s*emiter|data\s*document/i);
 
   return { metadata: meta, issue_date: issue, expiry_date: due };
 }

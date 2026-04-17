@@ -32,6 +32,8 @@ export interface LocalModelEntry {
   minIphoneGen: number;
   /** Stele calitate 1–5 */
   qualityStars: number;
+  /** Fereastra de context folosită la inițializare (tokeni) */
+  nCtx: number;
   /** URL HuggingFace pentru descărcare fișier GGUF */
   downloadUrl: string;
 }
@@ -46,75 +48,28 @@ export type DownloadProgressCallback = (
 
 export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
   {
-    id: 'llama3-1b',
-    name: 'Llama 3.2 1B IT',
-    description: 'Cel mai mic și mai rapid. Bun pentru întrebări simple și căutări. Ocupă puțin spațiu.',
-    sizeBytes: 800 * 1024 * 1024,
-    sizeLabel: '~800MB',
-    minRamBytes: 4 * 1024 * 1024 * 1024,
-    minIphoneGen: 12,
-    qualityStars: 2,
-    downloadUrl:
-      'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
-  },
-  {
-    id: 'gemma4-2b',
-    name: 'Gemma 4 E2B IT',
-    description:
-      'Model Google de ultimă generație. Excelent la documente, răspunsuri precise. Recomandat pentru iPhone 13+.',
-    sizeBytes: 1500 * 1024 * 1024,
-    sizeLabel: '~1.5GB',
-    minRamBytes: 4 * 1024 * 1024 * 1024,
-    minIphoneGen: 13,
-    qualityStars: 4,
-    downloadUrl:
-      'https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf',
-  },
-  {
-    id: 'phi3-mini',
-    name: 'Phi-3 Mini 3.8B IT',
-    description: 'Model Microsoft, optimizat pentru raționament și extracție date structurate.',
-    sizeBytes: 2300 * 1024 * 1024,
-    sizeLabel: '~2.3GB',
-    minRamBytes: 6 * 1024 * 1024 * 1024,
-    minIphoneGen: 14,
-    qualityStars: 4,
-    downloadUrl:
-      'https://huggingface.co/bartowski/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-Q4_K_M.gguf',
-  },
-  {
     id: 'ministral-3b',
     name: 'Ministral 3B IT',
-    description: 'Model Mistral compact. Bun la urmarea instrucțiunilor și extracție date.',
+    description: 'Model Mistral compact, bun la urmarea instrucțiunilor. Context 8K tokeni. iPhone 14+.',
     sizeBytes: 2000 * 1024 * 1024,
     sizeLabel: '~2GB',
     minRamBytes: 6 * 1024 * 1024 * 1024,
     minIphoneGen: 14,
     qualityStars: 4,
+    nCtx: 8192,
     downloadUrl:
       'https://huggingface.co/bartowski/Ministral-3B-Instruct-GGUF/resolve/main/Ministral-3B-Instruct-Q4_K_M.gguf',
   },
   {
-    id: 'gemma4-4b',
-    name: 'Gemma 4 E4B IT',
-    description: 'Versiunea extinsă Gemma 4. Calitate maximă în clasa 4B. Recomandat pentru iPhone 14+.',
-    sizeBytes: 2500 * 1024 * 1024,
-    sizeLabel: '~2.5GB',
-    minRamBytes: 6 * 1024 * 1024 * 1024,
-    minIphoneGen: 14,
-    qualityStars: 5,
-    downloadUrl:
-      'https://huggingface.co/bartowski/google_gemma-4-E4B-it-GGUF/resolve/main/google_gemma-4-E4B-it-Q4_K_M.gguf',
-  },
-  {
     id: 'mistral-7b',
     name: 'Mistral 7B IT',
-    description: 'Calitate maximă disponibilă local. Necesită iPhone 15 Pro+ și ~4GB spațiu liber.',
+    description: 'Calitate maximă disponibilă local. Context 8K tokeni. Necesită iPhone 15 Pro+ și ~4GB spațiu liber.',
     sizeBytes: 4100 * 1024 * 1024,
     sizeLabel: '~4.1GB',
     minRamBytes: 8 * 1024 * 1024 * 1024,
     minIphoneGen: 15,
     qualityStars: 5,
+    nCtx: 8192,
     downloadUrl:
       'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
   },
@@ -144,8 +99,38 @@ export function isModelCompatible(
 }
 
 /**
+ * Returnează motivul incompatibilității sau null dacă e compatibil.
+ */
+export function getIncompatibilityReason(
+  model: LocalModelEntry,
+  ramBytes: number | null,
+  iphoneGen: number
+): string | null {
+  const reasons: string[] = [];
+  if (ramBytes !== null && ramBytes < model.minRamBytes) {
+    const needGb = Math.round(model.minRamBytes / (1024 * 1024 * 1024));
+    reasons.push(`necesită ${needGb}GB RAM`);
+  }
+  if (iphoneGen > 0 && iphoneGen < model.minIphoneGen) {
+    reasons.push(`necesită iPhone ${model.minIphoneGen}+`);
+  }
+  return reasons.length > 0 ? reasons.join(', ') : null;
+}
+
+/**
+ * Returnează toate modelele din catalog cu flag de compatibilitate.
+ */
+export function getAllModels(): Array<LocalModelEntry & { incompatibilityReason: string | null }> {
+  const ramBytes = Device.totalMemory;
+  const iphoneGen = getIphoneGeneration(Device.modelName);
+  return LOCAL_MODEL_CATALOG.map(m => ({
+    ...m,
+    incompatibilityReason: getIncompatibilityReason(m, ramBytes, iphoneGen),
+  }));
+}
+
+/**
  * Returnează modelele din catalog compatibile cu device-ul curent.
- * Modelele incompatibile sunt EXCLUSE complet (nu dezactivate).
  */
 export function getCompatibleModels(): LocalModelEntry[] {
   const ramBytes = Device.totalMemory;
@@ -156,7 +141,6 @@ export function getCompatibleModels(): LocalModelEntry[] {
 // ─── Persistență ─────────────────────────────────────────────────────────────
 
 const KEY_SELECTED = 'local_model_selected';
-const KEY_OCR_ENABLED = 'local_model_ocr_enabled';
 
 function getModelsDir(): string {
   return (FileSystem.documentDirectory ?? '') + 'models/';
@@ -183,14 +167,6 @@ export async function clearSelectedModelId(): Promise<void> {
   await AsyncStorage.removeItem(KEY_SELECTED);
 }
 
-export async function isLocalOcrEnabled(): Promise<boolean> {
-  const v = await AsyncStorage.getItem(KEY_OCR_ENABLED);
-  return v === 'true';
-}
-
-export async function setLocalOcrEnabled(enabled: boolean): Promise<void> {
-  await AsyncStorage.setItem(KEY_OCR_ENABLED, enabled ? 'true' : 'false');
-}
 
 // ─── Download ────────────────────────────────────────────────────────────────
 
@@ -257,21 +233,38 @@ export async function initLocalModel(modelId: string): Promise<void> {
     throw new Error(`Modelul "${modelId}" nu este descărcat. Descarcă-l din Setări → Asistent AI.`);
   }
 
+  // Verifică că fișierul nu e gol/corupt (minim 100MB)
+  const MIN_VALID_SIZE = 100 * 1024 * 1024;
+  if ((info as { size?: number }).size !== undefined && (info as { size: number }).size < MIN_VALID_SIZE) {
+    throw new Error(
+      'Fișierul modelului pare corupt sau incomplet. Șterge modelul din Setări → Asistent AI și descarcă-l din nou.'
+    );
+  }
+
+  const modelEntry = LOCAL_MODEL_CATALOG.find(m => m.id === modelId);
+  const nCtx = modelEntry?.nCtx ?? 32768;
+
   // Try GPU first, fall back to CPU if Metal not available
   try {
     _llamaContext = await initLlama({
       model: path,
       use_mlock: true,
-      n_ctx: 2048,
+      n_ctx: nCtx,
       n_gpu_layers: 99,
     });
   } catch {
-    _llamaContext = await initLlama({
-      model: path,
-      use_mlock: true,
-      n_ctx: 2048,
-      n_gpu_layers: 0,
-    });
+    try {
+      _llamaContext = await initLlama({
+        model: path,
+        use_mlock: true,
+        n_ctx: nCtx,
+        n_gpu_layers: 0,
+      });
+    } catch (e) {
+      throw new Error(
+        'Nu s-a putut încărca modelul AI local. Posibile cauze: fișier corupt, memorie insuficientă sau format incompatibil.\n\nÎncearcă: Setări → Asistent AI → șterge și descarcă din nou modelul.'
+      );
+    }
   }
   _loadedModelId = modelId;
 }

@@ -394,53 +394,8 @@ export async function sendMessage(userMessage: string, history: ChatMessage[]): 
 
 ${contextText}
 
-## Regula obligatorie: linkuri spre documente și entități
-Când menționezi un document specific, folosește ÎNTOTDEAUNA exact tag-ul [DOC:...|...] din context, fără modificări.
-Exemple corecte (dacă în context sunt definite astfel):
-- "RCA-ul tău [DOC:RCA|abc123] expiră pe 15 mai 2025."
-- "Am găsit [DOC:ITP|aaa], [DOC:RCA|bbb] și [DOC:Talon|ccc]."
-
-Când menționezi o entitate (persoană, vehicul, proprietate, card, animal) din lista de mai sus, folosește ÎNTOTDEAUNA exact tag-ul [ENT:...|...|...] din context, fără modificări.
-Exemple corecte (dacă în context sunt definite astfel):
-- "La adresa din buletinul lui [ENT:Tudor Vasile|person|id1] este înregistrată doar această persoană."
-- "Vehiculul [ENT:Dacia Logan|vehicle|id2] are ITP-ul expirat."
-Nu rescrie niciodată numele entității ca text simplu — folosește întotdeauna tag-ul [ENT:...] din context.
-
-## Formate speciale — returnează EXACT formatul de mai jos când e cerut
-
-### Check-in avion / date pașaport
-Când cere "check-in", "boarding", "date pașaport" pentru o persoană:
-Nume: <nume familie>
-Prenume: <prenume>
-Data nașterii: <ZZ.LL.AAAA>
-Număr pașaport: <număr>
-Data emitere: <ZZ.LL.AAAA>
-Data expirare: <ZZ.LL.AAAA>
-Naționalitate: Română
-
-### Date buletin / CI
-Când cere "date buletin", "CI", "act identitate" pentru o persoană:
-Nume: <nume familie>
-Prenume: <prenume>
-Data nașterii: <ZZ.LL.AAAA>
-Serie și număr: <serie + număr>
-CNP: <cnp>
-Data emitere: <ZZ.LL.AAAA>
-Data expirare: <ZZ.LL.AAAA>
-
-### Date pentru RCA (din talon + carte auto)
-Când cere "date pentru RCA", "date talon pentru RCA", "completare RCA":
-Număr înmatriculare: <plate>
-Serie șasiu (VIN): <vin>
-Marcă: <marca>
-Model: <model>
-An fabricație: <an din OCR>
-Combustibil: <combustibil din OCR>
-Capacitate cilindrică: <cm3 din OCR dacă există>
-Putere: <kW/CP din OCR dacă există>
-
-### IBAN / contact persoană
-Când cere "IBAN", "cont bancar", "telefon", "email" pentru o persoană — returnează direct valoarea, fără explicații lungi.`;
+Când menționezi un document specific, folosește ÎNTOTDEAUNA tag-ul [DOC:...|...] din context.
+Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.`;
 
   const messages: AiMessage[] = [
     { role: 'system', content: systemPrompt },

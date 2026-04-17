@@ -11,13 +11,13 @@ import {
 } from '@/services/localModel';
 
 describe('LOCAL_MODEL_CATALOG', () => {
-  it('conține exact 6 modele', () => {
-    expect(LOCAL_MODEL_CATALOG).toHaveLength(6);
+  it('conține exact 2 modele', () => {
+    expect(LOCAL_MODEL_CATALOG).toHaveLength(2);
   });
 
   it('fiecare model are id unic', () => {
     const ids = LOCAL_MODEL_CATALOG.map(m => m.id);
-    expect(new Set(ids).size).toBe(6);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('fiecare model are câmpurile obligatorii completate', () => {
@@ -65,32 +65,24 @@ describe('getIphoneGeneration', () => {
 });
 
 describe('isModelCompatible', () => {
-  const model4GB: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[0] }; // llama3-1b: minRam=4GB, minGen=12
-  const model6GB: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[2] }; // phi3-mini: minRam=6GB, minGen=14
-  const model8GB: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[5] }; // mistral-7b: minRam=8GB, minGen=15
+  // ministral-3b: minRam=6GB, minGen=14
+  const model6GB: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[0] };
+  // mistral-7b: minRam=8GB, minGen=15
+  const model8GB: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[1] };
 
-  const RAM_4GB = 4 * 1024 * 1024 * 1024;
   const RAM_6GB = 6 * 1024 * 1024 * 1024;
   const RAM_8GB = 8 * 1024 * 1024 * 1024;
 
-  it('compatibil: 4GB RAM + iPhone 12 + model 4GB/gen12', () => {
-    expect(isModelCompatible(model4GB, RAM_4GB, 12)).toBe(true);
-  });
-
-  it('incompatibil: RAM insuficient (3GB < 4GB)', () => {
-    expect(isModelCompatible(model4GB, 3 * 1024 * 1024 * 1024, 14)).toBe(false);
-  });
-
-  it('incompatibil: generație prea mică (iPhone 11 < 12)', () => {
-    expect(isModelCompatible(model4GB, RAM_6GB, 11)).toBe(false);
+  it('compatibil: model 6GB pe iPhone 14 cu 6GB RAM', () => {
+    expect(isModelCompatible(model6GB, RAM_6GB, 14)).toBe(true);
   });
 
   it('incompatibil: model 6GB pe telefon cu 4GB RAM', () => {
-    expect(isModelCompatible(model6GB, RAM_4GB, 14)).toBe(false);
+    expect(isModelCompatible(model6GB, 4 * 1024 * 1024 * 1024, 14)).toBe(false);
   });
 
-  it('compatibil: model 6GB pe iPhone 14 cu 6GB RAM', () => {
-    expect(isModelCompatible(model6GB, RAM_6GB, 14)).toBe(true);
+  it('incompatibil: generație prea mică (iPhone 13 < 14)', () => {
+    expect(isModelCompatible(model6GB, RAM_6GB, 13)).toBe(false);
   });
 
   it('compatibil: model 8GB pe iPhone 15 Pro (8GB)', () => {
@@ -102,7 +94,7 @@ describe('isModelCompatible', () => {
   });
 
   it('compatibil cu RAM null → true (emulator/dev)', () => {
-    expect(isModelCompatible(model4GB, null, 12)).toBe(true);
+    expect(isModelCompatible(model6GB, null, 14)).toBe(true);
   });
 });
 
@@ -121,10 +113,9 @@ describe('getCompatibleModels', () => {
     expect(compatible.find(m => m.id === 'mistral-7b')).toBeUndefined();
   });
 
-  it('include llama3-1b și gemma4-2b', () => {
+  it('include ministral-3b', () => {
     const compatible = getCompatibleModels();
-    expect(compatible.find(m => m.id === 'llama3-1b')).toBeDefined();
-    expect(compatible.find(m => m.id === 'gemma4-2b')).toBeDefined();
+    expect(compatible.find(m => m.id === 'ministral-3b')).toBeDefined();
   });
 });
 
@@ -144,13 +135,13 @@ describe('isModelDownloaded', () => {
   it('returnează false când fișierul nu există', async () => {
     (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: false });
     const { isModelDownloaded } = require('@/services/localModel');
-    expect(await isModelDownloaded('llama3-1b')).toBe(false);
+    expect(await isModelDownloaded('llama3-3b')).toBe(false);
   });
 
   it('returnează true când fișierul există', async () => {
     (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: true, isDirectory: false });
     const { isModelDownloaded } = require('@/services/localModel');
-    expect(await isModelDownloaded('llama3-1b')).toBe(true);
+    expect(await isModelDownloaded('llama3-3b')).toBe(true);
   });
 });
 
@@ -164,36 +155,14 @@ describe('getSelectedModelId / setSelectedModelId', () => {
   });
 
   it('returnează id-ul salvat', async () => {
-    AsyncStorageMock.getItem.mockResolvedValue('phi3-mini');
+    AsyncStorageMock.getItem.mockResolvedValue('qwen25-3b');
     const { getSelectedModelId } = require('@/services/localModel');
-    expect(await getSelectedModelId()).toBe('phi3-mini');
+    expect(await getSelectedModelId()).toBe('qwen25-3b');
   });
 
   it('salvează id-ul în AsyncStorage', async () => {
     const { setSelectedModelId } = require('@/services/localModel');
-    await setSelectedModelId('gemma4-2b');
-    expect(AsyncStorageMock.setItem).toHaveBeenCalledWith('local_model_selected', 'gemma4-2b');
-  });
-});
-
-describe('isLocalOcrEnabled / setLocalOcrEnabled', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('returnează false când nu e setat', async () => {
-    AsyncStorageMock.getItem.mockResolvedValue(null);
-    const { isLocalOcrEnabled } = require('@/services/localModel');
-    expect(await isLocalOcrEnabled()).toBe(false);
-  });
-
-  it('returnează true când e setat', async () => {
-    AsyncStorageMock.getItem.mockResolvedValue('true');
-    const { isLocalOcrEnabled } = require('@/services/localModel');
-    expect(await isLocalOcrEnabled()).toBe(true);
-  });
-
-  it('salvează flag-ul OCR', async () => {
-    const { setLocalOcrEnabled } = require('@/services/localModel');
-    await setLocalOcrEnabled(true);
-    expect(AsyncStorageMock.setItem).toHaveBeenCalledWith('local_model_ocr_enabled', 'true');
+    await setSelectedModelId('llama3-3b');
+    expect(AsyncStorageMock.setItem).toHaveBeenCalledWith('local_model_selected', 'llama3-3b');
   });
 });

@@ -2,10 +2,15 @@
   "name": "app",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
+    }
+  },
   "scripts": {
     "start": "expo start --clear",
     "android": "expo run:android",
-    "ios": "expo run:ios --device \"iPhone 16\"",
+    "ios": "expo run:ios --device \"00008110-001E74AC0A52801E\"",
     "web": "expo start --web",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
@@ -23,7 +28,8 @@
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/$1",
-      "^expo-file-system/legacy$": "<rootDir>/__mocks__/expo-file-system-legacy.js"
+      "^expo-file-system/legacy$": "<rootDir>/__mocks__/expo-file-system-legacy.js",
+      "^react-native-nitro-modules$": "<rootDir>/__mocks__/react-native-nitro-modules.js"
     },
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|pako)"
@@ -67,6 +73,7 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",
+    "react-native-nitro-modules": "^0.35.4",
     "react-native-reanimated": "4.2.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",

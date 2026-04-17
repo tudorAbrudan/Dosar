@@ -9,7 +9,6 @@
  */
 
 import { sendAiRequest } from './aiProvider';
-import { isLocalOcrEnabled, runLocalInference } from './localModel';
 import type { DocumentType, EntityType } from '@/types';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 
@@ -97,7 +96,12 @@ VEHICULE — distincție critică:
 - "talon" = Certificat de Înmatriculare (CR). Conține: "CERTIFICAT DE ÎNMATRICULARE", marcă/model/culoare/proprietar, ștampilă RAR cu data ITP. NU are "CARTE DE IDENTITATE". NU expiră ca document.
 - "carte_auto" = Carte de Identitate a Vehiculului (CIV). Conține: "CARTE DE IDENTITATE A VEHICULULUI" sau "CERTIFICATUL DE ÎNMATRICULARE AL VEHICULULUI" cu booklet mic. NU expiră.
 - "itp" = Inspecție Tehnică Periodică. Conține: "INSPECȚIE TEHNICĂ PERIODICĂ", nr. stație ITP, rezultat ADMIS/RESPINS.
-- "rca" = Poliță RCA. Conține: "ASIGURARE OBLIGATORIE", nr. poliță, asigurator, dată start/stop.
+- "rca" = Poliță RCA (Răspundere Civilă Auto). Conține: "ASIGURARE OBLIGATORIE" sau "RCA", nr. poliță (format RO/XX/... sau ROXXV...), asigurator, interval de valabilitate, primă de asigurare.
+  - Asiguratori români: Allianz, Groupama (prefix RO32V), Generali, Omniasig, Uniqa, Asirom, Grawe, Signal Iduna, Euroins, Axeria, Certasig, Metropolitan.
+  - Dacă asiguratorul NU apare explicit în text, detectează-l din prefixul numărului de poliță: RO32V→Groupama, RO/01/→Allianz, RO/GR→Grawe, RO/UN→Uniqa.
+  - prima: suma totală plătită ("Primă de asigurare", "Total de plată", "De plată") — format "850.00"
+  - valid_from: data intrării în vigoare / începerea riscului (ZZ.LL.AAAA)
+  - marca_model: marca și modelul vehiculului asigurat
 
 IDENTITATE:
 - "buletin" = carte de identitate română (CI), conține CNP, serie+număr (ex: RX 123456), adresă.
@@ -108,12 +112,20 @@ MEDICAL:
 - "analize_medicale" = buletin analize laborator: hemogramă, biochimie etc. NU are dată de expirare.
 - "reteta_medicala" = rețetă medicală cu medicamente prescrise. Are dată expirare (valabilitate rețetă).
 
+FACTURI (utilități și servicii):
+- "factura" = orice factură emisă de furnizori de servicii: curent electric (E.ON, Electrica, CEZ, Enel, DEER), gaz (Engie, Distrigaz, Romgaz), internet/TV (Digi/RCS&RDS, UPC/Vodafone, Orange, Telekom), apă (Apă Nova, Aquatim, Apa Canal), termoficare (Termoenergetica, RADET), etc.
+  - supplier: numele companiei furnizoare (caută în header/antet, chiar dacă nu e precedat de "Furnizor:")
+  - invoice_number: numărul facturii (poate fi "Seria XXX Nr. YYYYYYY" sau "Factura nr. XXXXXX")
+  - amount: TOTALUL DE PLATĂ (nu subtotaluri intermediare). Caută: "Total de plată", "Sold de plată", "Total facturat", "De plată", "Total". Ia ULTIMA valoare dacă apar multiple.
+  - due_date: data scadenței/limita de plată (format ZZ.LL.AAAA)
+  - period: perioada de facturare ("01.03.2024 - 31.03.2024") — caută "Perioadă de facturare", "Perioada", interval de date
+
 ━━━ CÂMPURI EXACTE PER TIP (folosește EXACT aceste chei în "fields") ━━━
 
 talon: plate="B 123 ABC", marca="VW", model="Golf", vin="VIN17CARACTERE", itp_expiry_date="ZZ.LL.AAAA" (data din ștampila ITP/RAR sau din "Data urmatoarei inspectii tehnice")
 carte_auto: plate="B 123 ABC", vin="VIN17CARACTERE"
 itp: plate="B 123 ABC"
-rca: policy_number="RO/XX/...", insurer="Allianz", plate="B 123 ABC"
+rca: policy_number="RO32V32LM1100745021", insurer="Groupama", plate="B 123 ABC", prima="850.00", valid_from="01.04.2024", marca_model="Dacia Logan"
 casco: policy_number="...", insurer="...", plate="B 123 ABC"
 vigneta: plate="B 123 ABC"
 buletin: series="RX 123456", cnp="1234567890123"
@@ -121,7 +133,7 @@ pasaport: series="05123456"
 permis_auto: series="12345678", categories="B"
 analize_medicale: lab="Synevo"
 reteta_medicala: doctor="Dr. Ionescu", medication_1="Amoxicilina 500mg"
-factura: invoice_number="FAC-001", supplier="E.ON", amount="225.06"
+factura: invoice_number="FAC-001", supplier="E.ON Energie România", amount="225.06", due_date="15.04.2024", period="01.03.2024 - 31.03.2024"
 garantie: product_name="iPhone 15", serie_produs="SN123"
 contract: tip_contract="Chirie"
 abonament: service_name="Netflix", amount="55.99"
@@ -138,6 +150,8 @@ bilet: categorie="Avion", venue="OTP→LHR", eveniment_artist="RO123"
 - issueDate: data emiterii/eliberării documentului (YYYY-MM-DD). null dacă nu există.
 - expiryDate: data expirării documentului (YYYY-MM-DD). EXCEPȚII — pune null pentru: carte_auto, analize_medicale, buletin (expiryDate e separat), cadastru, act_proprietate.
 - Pentru "talon": expiryDate = data ITP din ștampila RAR sau din "Data urmatoarei inspectii tehnice" (YYYY-MM-DD). Pune și în fields.itp_expiry_date (ZZ.LL.AAAA). NU pune data emiterii talonului în expiryDate.
+- Pentru "factura": expiryDate = data scadenței/limita de plată (YYYY-MM-DD). Pune și în fields.due_date (ZZ.LL.AAAA). NU pune data emiterii facturii în expiryDate.
+- Pentru "rca" și "casco": expiryDate = data expirării poliței (YYYY-MM-DD). issueDate = data emiterii poliței. Pune data intrării în vigoare în fields.valid_from (ZZ.LL.AAAA) — poate fi diferită de issueDate.
 - Nr. înmatriculare românesc: format "B 123 ABC" sau "CJ 01 XYZ" etc.
 - VIN: 17 caractere alfanumerice (niciodată litere I, O, Q).
 
@@ -161,10 +175,7 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
     { role: 'system' as const, content: systemMessage },
     { role: 'user' as const, content: prompt },
   ];
-  const useLocalOcr = await isLocalOcrEnabled();
-  const rawResponse = useLocalOcr
-    ? await runLocalInference(messages, 600).catch(() => sendAiRequest(messages, 600))
-    : await sendAiRequest(messages, 600);
+  const rawResponse = await sendAiRequest(messages, 600);
 
   return parseAiResponse(rawResponse, entities, indexToId);
 }

@@ -12,30 +12,28 @@ const pako = require('pako') as { inflate: (data: Uint8Array) => Uint8Array };
 type GlyphMap = Map<number, string>;
 
 export async function extractTextFromPdf(fileUri: string): Promise<string> {
+  // Folosim întotdeauna OCR pe imagini — mai robust decât parserul text
+  // pentru PDF-uri cu fonturi CID (Identity-H), care sunt standard în documente oficiale.
+  try {
+    const ocrResult = await extractTextFromPdfViaOcr(fileUri);
+    if (ocrResult.length > 0) {
+      console.log(`[pdfExtractor] OCR imagini: ${ocrResult.length} chars`);
+      return ocrResult;
+    }
+  } catch (e) {
+    console.log('[pdfExtractor] eroare OCR imagini:', e instanceof Error ? e.message : String(e));
+  }
+
+  // Fallback la parserul text dacă modulul nativ PdfRenderer nu e disponibil
+  console.log('[pdfExtractor] fallback la parser text');
   try {
     const uri = fileUri.startsWith('file://') ? fileUri : `file://${fileUri}`;
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    const result = parsePdf(base64);
-    console.log(`[pdfExtractor] parser: ${result.length} chars`);
-
-    // Dacă parserul a extras puțin text (< 80 chars), facem fallback la OCR pe imagini
-    if (result.length < 80) {
-      console.log('[pdfExtractor] text insuficient — fallback la OCR imagini');
-      const ocrResult = await extractTextFromPdfViaOcr(fileUri);
-      if (ocrResult.length > result.length) return ocrResult;
-    }
-
-    return result;
-  } catch (e) {
-    console.log('[pdfExtractor] eroare parser:', e instanceof Error ? e.message : String(e));
-    // Încearcă OCR ca fallback final
-    try {
-      return await extractTextFromPdfViaOcr(fileUri);
-    } catch {
-      return '';
-    }
+    return parsePdf(base64);
+  } catch {
+    return '';
   }
 }
 
