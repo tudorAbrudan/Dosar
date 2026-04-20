@@ -28,6 +28,10 @@ const SENSITIVE_TYPES = new Set<DocumentType>([
   'impozit_proprietate',
 ]);
 
+export function getSensitiveDocTypes(): DocumentType[] {
+  return [...SENSITIVE_TYPES] as DocumentType[];
+}
+
 export function getDocTypeSensitivity(type: DocumentType): OcrSensitivity {
   if (MEDICAL_TYPES.has(type)) return 'medical';
   if (SENSITIVE_TYPES.has(type)) return 'sensitive';

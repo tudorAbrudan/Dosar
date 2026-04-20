@@ -609,6 +609,9 @@ export default function AddDocumentScreen() {
       // Trimite la AI pentru cross-validare și completare câmpuri (dacă consent dat)
       if (combined.trim().length > 20) {
         void runAiOcrMapper(structuredCombined);
+        if (llmOcrEnabledRef.current) {
+          void runLlmExtraction(structuredCombined || combined);
+        }
       }
     } finally {
       setOcrLoading(false);

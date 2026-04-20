@@ -299,11 +299,7 @@ export default function SetariScreen() {
     });
     // OCR consent
     ocrConsent.getGlobalLlmOcrEnabled().then(setOcrLlmGlobal);
-    const sensitiveDocTypes = [
-      'buletin', 'pasaport', 'permis_auto', 'talon', 'carte_auto',
-      'rca', 'casco', 'itp', 'vigneta', 'act_proprietate', 'cadastru',
-      'card', 'pad', 'impozit_proprietate',
-    ] as const;
+    const sensitiveDocTypes = ocrConsent.getSensitiveDocTypes();
     Promise.all(
       sensitiveDocTypes.map(async t => {
         const v = await ocrConsent.getPerTypeConsent(t);
@@ -984,24 +980,9 @@ export default function SetariScreen() {
           {/* Lista expandată cu switch per tip sensibil */}
           {ocrSensitiveExpanded && (
             <>
-              {(
-                [
-                  ['buletin', 'Buletin'],
-                  ['pasaport', 'Pașaport'],
-                  ['permis_auto', 'Permis auto'],
-                  ['talon', 'Talon'],
-                  ['carte_auto', 'Carte auto'],
-                  ['rca', 'RCA'],
-                  ['casco', 'CASCO'],
-                  ['itp', 'ITP'],
-                  ['vigneta', 'Vignetă'],
-                  ['act_proprietate', 'Act proprietate'],
-                  ['cadastru', 'Cadastru'],
-                  ['card', 'Card'],
-                  ['pad', 'PAD Asigurare Locuință'],
-                  ['impozit_proprietate', 'Impozit proprietate'],
-                ] as const
-              ).map(([type, label], idx, arr) => {
+              {ocrConsent.getSensitiveDocTypes().map((docType, idx, arr) => {
+                const type = docType as DocumentType;
+                const label = DOCUMENT_TYPE_LABELS[type] ?? type;
                 const choice = sensitiveConsents[type];
                 const isAllowed = choice === 'allow';
                 const isLast = idx === arr.length - 1;
