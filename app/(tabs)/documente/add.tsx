@@ -37,7 +37,7 @@ import {
   detectDocumentType,
   formatOcrSummary,
 } from '@/services/ocr';
-import { extractFieldsForType } from '@/services/ocrExtractors';
+import { extractFieldsForType, isKnownUtilitySupplier } from '@/services/ocrExtractors';
 import { reconstructLayout } from '@/services/ocrLayout';
 import { toRelativePath } from '@/services/fileUtils';
 import { getDocumentsByEntity, findDuplicateDocument } from '@/services/documents';
@@ -54,6 +54,25 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
+import * as ocrConsent from '@/services/ocrConsent';
+import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
+import { Ionicons } from '@expo/vector-icons';
+
+const DELETE_OPTIONS: { label: string; value: string | null }[] = [
+  { label: 'Niciodată', value: null },
+  { label: '30 zile', value: '30d' },
+  { label: '90 zile', value: '90d' },
+  { label: '180 zile', value: '180d' },
+  { label: '1 an', value: '365d' },
+  { label: '2 ani', value: '730d' },
+  { label: '3 ani', value: '1095d' },
+  { label: '4 ani', value: '1460d' },
+  { label: '5 ani', value: '1825d' },
+];
+
+function autoDeleteLabel(val: string | null): string {
+  return DELETE_OPTIONS.find(o => o.value === val)?.label ?? 'Niciodată';
+}
 
 const ALL_STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
   .filter(([value]) => value !== 'custom')
@@ -67,6 +86,7 @@ const HIDE_EXPIRY_TYPES: DocumentType[] = [
 ];
 const CUSTOM_EXPIRY_LABEL: Partial<Record<DocumentType, string>> = {
   talon: 'Scadență ITP (pentru reminder)',
+  factura: 'Scadență (pentru reminder)',
 };
 
 const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
@@ -122,6 +142,9 @@ export default function AddDocumentScreen() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [aiOcrLoading, setAiOcrLoading] = useState(false);
   const [aiOcrApplied, setAiOcrApplied] = useState(false);
+  const [llmOcrEnabled, setLlmOcrEnabled] = useState(false);
+  const llmOcrEnabledRef = useRef(false);
+  const [llmFieldLoading, setLlmFieldLoading] = useState(false);
   const lastAiTextLengthRef = useRef(0);
   const [aiConsentAvailable, setAiConsentAvailable] = useState(false);
   const [duplicateDoc, setDuplicateDoc] = useState<Document | null>(null);
@@ -129,6 +152,13 @@ export default function AddDocumentScreen() {
   useEffect(() => {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setAiConsentAvailable(v === 'true'));
   }, []);
+
+  useEffect(() => {
+    ocrConsent.resolveLlmOcrEnabled(type).then(enabled => {
+      setLlmOcrEnabled(enabled);
+      llmOcrEnabledRef.current = enabled;
+    });
+  }, [type]);
 
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
@@ -186,6 +216,59 @@ export default function AddDocumentScreen() {
 
   // PhotoPage array for DocumentPhotoSection (uses localPath as id)
   const photoPages: PhotoPage[] = pages.map(p => ({ id: p.localPath, uri: p.uri }));
+
+  // ── Entity fuzzy match local ──────────────────────────────────────────────
+  // Fallback când AI-ul nu sugerează nicio entitate: caută simplul subșir al
+  // numelui entității (normalizat fără diacritice) în textul OCR.
+
+  function tryLocalEntityMatch(ocrText: string) {
+    // Nu suprascrie legăturile existente
+    if (entityLinks.length > 0) return;
+
+    const norm = (s: string) =>
+      s
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const normOcr = norm(ocrText);
+
+    type Candidate = { entityType: EntityType; entityId: string; score: number };
+    const candidates: Candidate[] = [];
+
+    const check = (etype: EntityType, items: Array<{ id: string; name: string }>) => {
+      for (const item of items) {
+        const normName = norm(item.name);
+        if (normName.length < 2) continue;
+        if (normOcr.includes(normName)) {
+          // Scor = lungimea numelui (evităm false-positive pe nume scurte)
+          candidates.push({ entityType: etype, entityId: item.id, score: normName.length });
+        }
+      }
+    };
+
+    check('person', persons);
+    check('vehicle', vehicles);
+    check('property', properties);
+    check('animal', animals);
+    check('company', companies);
+
+    if (candidates.length === 0) return;
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    // Minim 3 caractere ca să evităm potriviri accidentale pe silabe
+    if (best.score < 3) return;
+
+    setEntityLinks(prev => {
+      if (prev.some(l => l.entityType === best.entityType && l.entityId === best.entityId))
+        return prev;
+      return [...prev, { entityType: best.entityType, entityId: best.entityId }];
+    });
+    setPickerCategory(best.entityType);
+  }
 
   // ── OCR ──────────────────────────────────────────────────────────────────
 
@@ -245,7 +328,7 @@ export default function AddDocumentScreen() {
       const structuredCombined = Array.from(ocrStructuredTextsRef.current.values()).join(
         '\n\n---\n\n'
       );
-      setLiveOcrText(combinedText);
+      setLiveOcrText(structuredCombined);
 
       const detectedType = detectDocumentType(text);
       if (
@@ -295,8 +378,18 @@ export default function AddDocumentScreen() {
       }
 
       const summary = formatOcrSummary(text, info);
-      if (summary && !note) {
+      if (summary) {
         setNote(summary);
+      }
+
+      // Preset auto-ștergere 5 ani pentru facturi furnizori utilități (OCR local)
+      const localSupplier = finalMeta.supplier ?? '';
+      if (
+        docType === 'factura' &&
+        localSupplier &&
+        isKnownUtilitySupplier(localSupplier)
+      ) {
+        setAutoDelete(prev => (prev === null ? '1825d' : prev));
       }
 
       // Re-declanșează AI ori de câte ori textul combinat crește cu cel puțin 80 de caractere.
@@ -306,6 +399,15 @@ export default function AddDocumentScreen() {
       if (trimmedLen > 20 && trimmedLen > lastAiTextLengthRef.current + 80) {
         lastAiTextLengthRef.current = trimmedLen;
         void runAiOcrMapper(structuredCombined);
+        if (llmOcrEnabledRef.current) {
+          void runLlmExtraction(structuredCombined || combinedText);
+        }
+      } else {
+        // AI nu va rula — fallback local pentru entitate
+        tryLocalEntityMatch(combinedText);
+        if (llmOcrEnabledRef.current) {
+          void runLlmExtraction(structuredCombined || combinedText);
+        }
       }
 
       // Reminder-ul pentru dată expirare se oferă la Salvează (cu data finală după AI)
@@ -380,21 +482,33 @@ export default function AddDocumentScreen() {
         issueDateRef.current = result.issueDate;
       }
 
-      // Aplică prima sugestie de entitate cu confidence high sau medium
+      // Preset auto-ștergere 5 ani pentru facturi furnizori utilități
+      const effectiveDocType = result.documentType ?? type;
+      const supplierField = result.fields.supplier ?? '';
+      if (effectiveDocType === 'factura' && supplierField && isKnownUtilitySupplier(supplierField)) {
+        setAutoDelete(prev => (prev === null ? '1825d' : prev));
+      }
+
+      // Aplică prima sugestie de entitate cu confidence high sau medium.
+      // Nu adăugăm o a doua entitate de același tip dacă există deja una —
+      // previne dublarea când AI rulează de mai multe ori (scan multi-pagină).
       const topSuggestion = result.entitySuggestions.find(
         s => s.confidence === 'high' || s.confidence === 'medium'
       );
       if (topSuggestion) {
-        const alreadyLinked = entityLinks.some(
-          l => l.entityType === topSuggestion.entityType && l.entityId === topSuggestion.entityId
+        const alreadyLinkedSameType = entityLinks.some(
+          l => l.entityType === topSuggestion.entityType
         );
-        if (!alreadyLinked) {
+        if (!alreadyLinkedSameType) {
           setEntityLinks(prev => [
             ...prev,
             { entityType: topSuggestion.entityType, entityId: topSuggestion.entityId },
           ]);
           setPickerCategory(topSuggestion.entityType);
         }
+      } else {
+        // AI nu a găsit nicio entitate — fallback fuzzy local
+        tryLocalEntityMatch(combinedOcrText);
       }
 
       setAiOcrApplied(true);
@@ -407,6 +521,65 @@ export default function AddDocumentScreen() {
       // Alte erori sunt silențioase (OCR local deja aplicat)
     } finally {
       setAiOcrLoading(false);
+    }
+  }
+
+  async function runLlmExtraction(ocrText: string) {
+    if (!ocrText.trim()) return;
+    setLlmFieldLoading(true);
+    try {
+      const extracted = await extractFieldsWithLlm(type, ocrText);
+      if (Object.keys(extracted.metadata).length > 0) {
+        setMetadata(prev => ({ ...prev, ...extracted.metadata }));
+      }
+      if (extracted.expiry_date && !expiryDateRef.current) {
+        setExpiryDate(extracted.expiry_date);
+        expiryDateRef.current = extracted.expiry_date;
+      }
+      if (extracted.issue_date && !issueDateRef.current) {
+        setIssueDate(extracted.issue_date);
+        issueDateRef.current = extracted.issue_date;
+      }
+    } catch {
+      // LLM field extraction e opțional
+    } finally {
+      setLlmFieldLoading(false);
+    }
+  }
+
+  async function handleLlmOcrToggle(value: boolean) {
+    const sensitivity = ocrConsent.getDocTypeSensitivity(type);
+
+    if (value && (sensitivity === 'sensitive' || sensitivity === 'medical')) {
+      Alert.alert(
+        'Date sensibile',
+        `Textul extras din „${DOCUMENT_TYPE_LABELS[type]}" va fi trimis la AI pentru extracție câmpuri.\n\nSe trimite doar textul OCR, nicio imagine.\n\nEști de acord?`,
+        [
+          { text: 'Anulează', style: 'cancel' },
+          {
+            text: 'De acord',
+            onPress: async () => {
+              if (sensitivity === 'sensitive') {
+                await ocrConsent.setPerTypeConsent(type, 'allow');
+              }
+              setLlmOcrEnabled(true);
+              llmOcrEnabledRef.current = true;
+              if (liveOcrText) {
+                void runLlmExtraction(liveOcrText);
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      if (!value && sensitivity === 'sensitive') {
+        await ocrConsent.setPerTypeConsent(type, 'deny');
+      }
+      setLlmOcrEnabled(value);
+      llmOcrEnabledRef.current = value;
+      if (value && liveOcrText) {
+        void runLlmExtraction(liveOcrText);
+      }
     }
   }
 
@@ -432,7 +605,7 @@ export default function AddDocumentScreen() {
       const structuredCombined = Array.from(ocrStructuredTextsRef.current.values()).join(
         '\n\n---\n\n'
       );
-      setLiveOcrText(combined);
+      setLiveOcrText(structuredCombined);
       // Trimite la AI pentru cross-validare și completare câmpuri (dacă consent dat)
       if (combined.trim().length > 20) {
         void runAiOcrMapper(structuredCombined);
@@ -448,7 +621,7 @@ export default function AddDocumentScreen() {
     setPages(prev => prev.filter(p => p.localPath !== pageId));
     ocrTextsRef.current.delete(pageId);
     ocrStructuredTextsRef.current.delete(pageId);
-    setLiveOcrText(Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n'));
+    setLiveOcrText(Array.from(ocrStructuredTextsRef.current.values()).join('\n\n---\n\n'));
   }
 
   async function handleRotate(pageId: string, degrees: number) {
@@ -504,7 +677,7 @@ export default function AddDocumentScreen() {
         const displayText = pdfText || '[PDF atașat – fișier tip imagine/scan, fără text extras]';
         ocrTextsRef.current.set(dest, displayText);
         ocrStructuredTextsRef.current.set(dest, displayText);
-        setLiveOcrText(Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n'));
+        setLiveOcrText(Array.from(ocrStructuredTextsRef.current.values()).join('\n\n---\n\n'));
         if (pdfText) {
           if (pdfText.length < 100) {
             Alert.alert(
@@ -997,6 +1170,39 @@ export default function AddDocumentScreen() {
             </>
           )}
 
+          {/* LLM OCR consent */}
+          {aiConsentAvailable && (
+            <Pressable
+              style={[
+                styles.llmOcrRow,
+                {
+                  backgroundColor: C.card,
+                  borderColor: llmOcrEnabled ? primary : C.border,
+                },
+              ]}
+              onPress={() => handleLlmOcrToggle(!llmOcrEnabled)}
+            >
+              <Ionicons
+                name={llmOcrEnabled ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={llmOcrEnabled ? primary : C.text}
+                style={{ marginRight: 8 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.llmOcrLabel, { color: C.text }]}>
+                  Extracție AI câmpuri{llmFieldLoading ? ' ⏳' : ''}
+                </Text>
+                <Text style={[styles.llmOcrSubtitle, { color: C.text, opacity: 0.6 }]}>
+                  {ocrConsent.getDocTypeSensitivity(type) === 'medical'
+                    ? 'Date medicale — confirmare fără salvare preferință'
+                    : ocrConsent.getDocTypeSensitivity(type) === 'sensitive'
+                    ? 'Date sensibile — confirmare necesară'
+                    : 'Recomandat pentru acest tip de document'}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+
           {/* 3. CÂMPURI SPECIFICE TIPULUI */}
           {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
             <View key={field.key}>
@@ -1061,7 +1267,10 @@ export default function AddDocumentScreen() {
           ) : null}
 
           {/* 5. AUTO-ȘTERGERE */}
-          <Text style={styles.label}>Auto-ștergere (opțional)</Text>
+          <Text style={styles.label}>
+            {'Auto-ștergere (opțional)'}
+            {autoDelete !== null ? `: ${autoDeleteLabel(autoDelete)}` : ''}
+          </Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1071,11 +1280,7 @@ export default function AddDocumentScreen() {
             {(
               [
                 ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-                { label: 'Niciodată', value: null },
-                { label: '30 zile', value: '30d' },
-                { label: '90 zile', value: '90d' },
-                { label: '180 zile', value: '180d' },
-                { label: '1 an', value: '365d' },
+                ...DELETE_OPTIONS,
               ] as { label: string; value: string | null }[]
             ).map(opt => (
               <Pressable
@@ -1388,5 +1593,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#b45309',
+  },
+  llmOcrRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 8,
+  },
+  llmOcrLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  llmOcrSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });
