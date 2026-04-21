@@ -25,6 +25,7 @@ import { DOCUMENT_TYPE_LABELS, getDocumentLabel, DOC_PRIMARY_ENTITY } from '@/ty
 import type { Document, DocumentType, EntityType } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
+import { isStaleExpired } from '@/services/expiry';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -297,6 +298,8 @@ export default function HomeScreen() {
   );
 
   // ── Stats ────────────────────────────────────────────────────────────────────
+  // Expirate vechi (>30 zile) sunt excluse — rămân pe pagina entității și în RAG,
+  // dar nu mai apar pe Home ca atenționare.
   const stats = useMemo(() => {
     const now = Date.now();
     const limit30 = now + EXPIRING_DAYS * 24 * 60 * 60 * 1000;
@@ -304,6 +307,7 @@ export default function HomeScreen() {
       expiringSoon = 0;
     for (const d of documents) {
       if (!d.expiry_date) continue;
+      if (isStaleExpired(d.expiry_date)) continue;
       const t = new Date(d.expiry_date).getTime();
       if (t < now) expired++;
       else if (t <= limit30) expiringSoon++;
@@ -318,6 +322,7 @@ export default function HomeScreen() {
     return documents
       .filter(d => {
         if (!d.expiry_date) return false;
+        if (isStaleExpired(d.expiry_date)) return false;
         const t = new Date(d.expiry_date).getTime();
         return t <= limit;
       })

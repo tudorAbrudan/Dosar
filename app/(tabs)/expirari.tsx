@@ -17,6 +17,7 @@ import { primary, primaryTint } from '@/theme/colors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
+import { isExpired, isStaleExpired } from '@/services/expiry';
 import { DOCUMENT_TYPE_LABELS, DOC_PRIMARY_ENTITY } from '@/types';
 import type { Document, DocumentType, EntityType } from '@/types';
 
@@ -150,12 +151,6 @@ const DOC_ICON_COLOR: Record<DocumentType, string> = {
   custom: '#757575',
 };
 
-const today = new Date().toISOString().slice(0, 10);
-
-function isExpired(expiryDate: string): boolean {
-  return expiryDate < today;
-}
-
 function sortByExpiryAsc(a: Document, b: Document): number {
   return (a.expiry_date ?? '').localeCompare(b.expiry_date ?? '');
 }
@@ -207,8 +202,10 @@ export default function ExpirariScreen() {
   );
 
   const withExpiry = documents.filter(d => !!d.expiry_date && visibleDocTypes.includes(d.type));
+  // Expirate vechi (>30 zile de la expirare) rămân în DB pentru chatbot și în pagina entității,
+  // dar sunt ascunse aici ca să nu aglomereze lista de atenție.
   const expired = withExpiry
-    .filter(d => d.expiry_date && isExpired(d.expiry_date))
+    .filter(d => d.expiry_date && isExpired(d.expiry_date) && !isStaleExpired(d.expiry_date))
     .sort(sortByExpiryAsc);
   const upcoming = withExpiry
     .filter(d => d.expiry_date && !isExpired(d.expiry_date))
