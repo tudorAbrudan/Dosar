@@ -12,6 +12,8 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
+import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { useEntities } from '@/hooks/useEntities';
@@ -29,6 +31,8 @@ const ALL_ENTITY_TYPES: { key: EntityType; label: string }[] = [
 ];
 
 export default function AddEntityScreen() {
+  const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
+  const C = Colors[scheme];
   const params = useLocalSearchParams<{ type?: string }>();
   const [chosenType, setChosenType] = useState<EntityType | null>(
     (params.type as EntityType) || null
@@ -140,7 +144,7 @@ export default function AddEntityScreen() {
             </Pressable>
           )}
 
-          <View style={styles.separator} />
+          <View style={[styles.separator, { backgroundColor: C.border }]} />
           <Text style={styles.label}>Sau adaugă manual</Text>
           {ENTITY_TYPES.map(({ key, label }) => (
             <Pressable
@@ -184,7 +188,6 @@ export default function AddEntityScreen() {
                           ? 'Nume animal (ex. Rex)'
                           : 'Proprietate (ex. Apartament X)'
                 }
-                placeholderTextColor="#999"
                 value={name}
                 onChangeText={setName}
                 editable={!loading}
@@ -197,7 +200,6 @@ export default function AddEntityScreen() {
               <ThemedTextInput
                 style={styles.input}
                 placeholder="RO12345678"
-                placeholderTextColor="#999"
                 value={cui}
                 onChangeText={setCui}
                 editable={!loading}
@@ -206,7 +208,6 @@ export default function AddEntityScreen() {
               <ThemedTextInput
                 style={styles.input}
                 placeholder="J40/1234/2020"
-                placeholderTextColor="#999"
                 value={regCom}
                 onChangeText={setRegCom}
                 editable={!loading}
@@ -219,7 +220,6 @@ export default function AddEntityScreen() {
               <ThemedTextInput
                 style={styles.input}
                 placeholder="câine, pisică, papagal..."
-                placeholderTextColor="#999"
                 value={species}
                 onChangeText={setSpecies}
                 editable={!loading}
@@ -229,7 +229,11 @@ export default function AddEntityScreen() {
           {isCard && (
             <>
               <Pressable
-                style={({ pressed }) => [styles.scanButton, pressed && styles.buttonPressed]}
+                style={({ pressed }) => [
+                  styles.scanButton,
+                  { backgroundColor: C.textSecondary },
+                  pressed && styles.buttonPressed,
+                ]}
                 onPress={scanCard}
                 disabled={ocrLoading || loading}
               >
@@ -243,7 +247,6 @@ export default function AddEntityScreen() {
               <ThemedTextInput
                 style={styles.input}
                 placeholder="Nickname"
-                placeholderTextColor="#999"
                 value={nickname}
                 onChangeText={setNickname}
                 editable={!loading}
@@ -252,7 +255,6 @@ export default function AddEntityScreen() {
               <ThemedTextInput
                 style={styles.input}
                 placeholder="1234"
-                placeholderTextColor="#999"
                 value={last4}
                 onChangeText={t => setLast4(t.replace(/\D/g, '').slice(0, 4))}
                 keyboardType="number-pad"
@@ -262,7 +264,6 @@ export default function AddEntityScreen() {
               <ThemedTextInput
                 style={styles.input}
                 placeholder="12/28"
-                placeholderTextColor="#999"
                 value={expiry}
                 onChangeText={setExpiry}
                 editable={!loading}
@@ -282,7 +283,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, marginBottom: 6, opacity: 0.9 },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -309,7 +309,6 @@ const styles = StyleSheet.create({
   },
   typeButtonText: { fontSize: 16, fontWeight: '500', color: primary },
   scanButton: {
-    backgroundColor: '#555',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -327,7 +326,6 @@ const styles = StyleSheet.create({
   wizardButtonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
   separator: {
     height: 1,
-    backgroundColor: '#e0e0e0',
     marginVertical: 20,
   },
 });

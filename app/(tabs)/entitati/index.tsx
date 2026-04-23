@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
-import { primary } from '@/theme/colors';
+import { primary, statusColors } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import type { EntityType, Person, Property, Vehicle, Card, Animal, Company } from '@/types';
@@ -255,9 +255,18 @@ export default function EntitatiListScreen() {
 
       {/* ── Error banner ── */}
       {error ? (
-        <RNView style={styles.errorBanner}>
-          <Ionicons name="alert-circle-outline" size={16} color="#E53935" />
-          <RNText style={styles.errorText}>{error}</RNText>
+        <RNView
+          style={[
+            styles.errorBanner,
+            {
+              backgroundColor: scheme === 'dark' ? 'rgba(216,76,76,0.18)' : '#FFEBEE',
+              borderColor: statusColors.critical,
+              borderWidth: StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
+          <Ionicons name="alert-circle-outline" size={16} color={statusColors.critical} />
+          <RNText style={[styles.errorText, { color: statusColors.critical }]}>{error}</RNText>
         </RNView>
       ) : null}
 
@@ -463,10 +472,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginTop: 4,
     padding: 10,
-    backgroundColor: '#FFEBEE',
     borderRadius: 8,
   },
-  errorText: { color: '#E53935', fontSize: 13, flex: 1 },
+  errorText: { fontSize: 13, flex: 1 },
 
   // Scroll
   scroll: { flex: 1 },

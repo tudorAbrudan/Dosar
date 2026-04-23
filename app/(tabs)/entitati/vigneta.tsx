@@ -82,7 +82,7 @@ export default function VignetaScreen() {
 
 function RequiredCard({ country, C }: { country: VignetaCountry; C: (typeof Colors)['light'] }) {
   return (
-    <RNView style={[styles.card, styles.cardRequired]}>
+    <RNView style={[styles.card, styles.cardRequired, { backgroundColor: C.primaryMuted }]}>
       <RNView style={styles.cardHeader}>
         <RNText style={[styles.countryName, { color: primary }]}>{country.name}</RNText>
         <RNView style={styles.badgeRequired}>
@@ -91,17 +91,20 @@ function RequiredCard({ country, C }: { country: VignetaCountry; C: (typeof Colo
       </RNView>
       {country.validityOptions.length > 0 && (
         <RNView style={styles.validityRow}>
-          <RNText style={{ fontSize: 13, color: '#555' }}>Valabilitate: </RNText>
+          <RNText style={{ fontSize: 13, color: C.textSecondary }}>Valabilitate: </RNText>
           <RNText style={{ fontSize: 13, fontWeight: '600', color: primary, flexShrink: 1 }}>
             {country.validityOptions.join(' · ')}
           </RNText>
         </RNView>
       )}
       {country.note ? (
-        <RNText style={[styles.note, { color: '#555' }]}>{country.note}</RNText>
+        <RNText style={[styles.note, { color: C.textSecondary }]}>{country.note}</RNText>
       ) : null}
       {country.buyUrl ? (
-        <Pressable style={styles.buyBtn} onPress={() => Linking.openURL(country.buyUrl!)}>
+        <Pressable
+          style={[styles.buyBtn, { backgroundColor: C.primaryMuted }]}
+          onPress={() => Linking.openURL(country.buyUrl!)}
+        >
           <Ionicons name="open-outline" size={13} color={primary} style={{ marginRight: 4 }} />
           <RNText style={styles.buyBtnText}>Cumpără online</RNText>
         </Pressable>
@@ -139,7 +142,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cardRequired: {
-    backgroundColor: '#f0f7e8',
     borderColor: primary,
     shadowColor: primary,
     shadowOffset: { width: 0, height: 1 },
@@ -182,7 +184,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: '#e8f5e9',
   },
   buyBtnText: { fontSize: 12, fontWeight: '600', color: primary },
 });

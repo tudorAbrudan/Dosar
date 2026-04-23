@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
-import { primary } from '@/theme/colors';
+import { useColorScheme } from '@/components/useColorScheme';
+import { primary, light, dark } from '@/theme/colors';
 import { createVehicle } from '@/services/entities';
 import { createDocument } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
@@ -30,6 +31,8 @@ const DOC_OPTIONS: DocOption[] = [
 ];
 
 export default function WizardMasinaScreen() {
+  const scheme = useColorScheme();
+  const palette = scheme === 'dark' ? dark : light;
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<Set<DocumentType>>(new Set());
   const [expiries, setExpiries] = useState<Partial<Record<DocumentType, string>>>({});
@@ -90,7 +93,6 @@ export default function WizardMasinaScreen() {
             <ThemedTextInput
               style={styles.input}
               placeholder="ex. Dacia Logan 2020"
-              placeholderTextColor="#999"
               value={name}
               onChangeText={setName}
               editable={!loading}
@@ -110,6 +112,7 @@ export default function WizardMasinaScreen() {
                   <Pressable
                     style={({ pressed }) => [
                       styles.checkbox,
+                      { borderColor: palette.border },
                       isChecked && styles.checkboxChecked,
                       pressed && styles.checkboxPressed,
                     ]}
@@ -127,7 +130,6 @@ export default function WizardMasinaScreen() {
                       <ThemedTextInput
                         style={styles.inputInline}
                         placeholder="Data expirare (AAAA-LL-ZZ)"
-                        placeholderTextColor="#aaa"
                         value={expiries[type] ?? ''}
                         onChangeText={v => setExpiry(type, v)}
                         editable={!loading}
@@ -177,7 +179,6 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -194,7 +195,6 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#ccc',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
@@ -222,7 +222,6 @@ const styles = StyleSheet.create({
   },
   inputInline: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,

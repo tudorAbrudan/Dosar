@@ -648,12 +648,18 @@ export default function EntityDetailScreen() {
                 <RNView style={styles.photoRow}>
                   {editPhotoUri ? (
                     <RNView style={styles.photoPreviewWrap}>
-                      <Image source={{ uri: editPhotoUri }} style={styles.photoPreview} />
-                      <Pressable style={styles.photoActionBtn} onPress={handlePickPhoto}>
-                        <RNText style={styles.photoActionText}>Schimbă</RNText>
+                      <Image
+                        source={{ uri: editPhotoUri }}
+                        style={[styles.photoPreview, { backgroundColor: C.border }]}
+                      />
+                      <Pressable
+                        style={[styles.photoActionBtn, { backgroundColor: C.border }]}
+                        onPress={handlePickPhoto}
+                      >
+                        <RNText style={[styles.photoActionText, { color: C.text }]}>Schimbă</RNText>
                       </Pressable>
                       <Pressable
-                        style={[styles.photoActionBtn, { marginLeft: 8 }]}
+                        style={[styles.photoActionBtn, { marginLeft: 8, backgroundColor: C.border }]}
                         onPress={handleRemovePhoto}
                       >
                         <RNText style={[styles.photoActionText, { color: statusColors.critical }]}>
@@ -922,7 +928,6 @@ const styles = StyleSheet.create({
   modalLabel: { fontSize: 14, marginBottom: 6 },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -973,13 +978,11 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
-    backgroundColor: '#eee',
   },
   photoActionBtn: {
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   photoActionText: {
     fontSize: 13,
