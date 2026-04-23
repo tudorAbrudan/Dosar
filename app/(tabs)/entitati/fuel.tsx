@@ -10,12 +10,13 @@ import {
   ActivityIndicator,
   TextInput,
   Switch,
+  useColorScheme,
 } from 'react-native';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { Text, View } from '@/components/Themed';
-import { primary } from '@/theme/colors';
+import { primary, light, dark, statusColors } from '@/theme/colors';
 import {
   getFuelRecords,
   addFuelRecord,
@@ -37,6 +38,8 @@ export default function FuelScreen() {
     vehicleName: string;
   }>();
   const { colors } = useTheme();
+  const scheme = useColorScheme();
+  const palette = scheme === 'dark' ? dark : light;
 
   const [records, setRecords] = useState<FuelRecord[]>([]);
   const [stats, setStats] = useState<FuelStats | null>(null);
@@ -202,32 +205,40 @@ export default function FuelScreen() {
       {/* Stats bar */}
       {stats && (
         <View style={styles.statsBar}>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
             <Text style={styles.statValue}>{stats.totalRecords}</Text>
-            <Text style={styles.statLabel}>înreg.</Text>
+            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>înreg.</Text>
           </View>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
             <Text style={styles.statValue}>
               {stats.avgConsumptionL100 !== undefined
                 ? `${stats.avgConsumptionL100.toFixed(1)}`
                 : 'N/A'}
             </Text>
-            <Text style={styles.statLabel}>L/100km</Text>
+            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>L/100km</Text>
           </View>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
             <Text style={styles.statValue}>{stats.totalLiters.toFixed(1)}</Text>
-            <Text style={styles.statLabel}>L total</Text>
+            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>L total</Text>
           </View>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
             <Text style={styles.statValue}>{stats.totalCost.toFixed(2)}</Text>
-            <Text style={styles.statLabel}>RON</Text>
+            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>RON</Text>
           </View>
         </View>
       )}
 
       {stats?.needsService && (
-        <View style={styles.serviceBanner}>
-          <Text style={styles.serviceBannerText}>
+        <View
+          style={[
+            styles.serviceBanner,
+            {
+              backgroundColor: scheme === 'dark' ? 'rgba(216,76,76,0.18)' : '#fff0f0',
+              borderColor: statusColors.critical,
+            },
+          ]}
+        >
+          <Text style={[styles.serviceBannerText, { color: statusColors.critical }]}>
             ⚠️ Revizie depășită!
             {stats.kmUntilService !== undefined
               ? ` (${Math.abs(stats.kmUntilService)} km depășit)`
@@ -248,24 +259,38 @@ export default function FuelScreen() {
           <View style={styles.settingsRow}>
             <Text style={styles.settingsLabel}>Interval revizie (km):</Text>
             <TextInput
-              style={[styles.settingsInput, { borderColor: '#e0e0e0', color: colors.text }]}
+              style={[
+                styles.settingsInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
               value={settingsInterval}
               onChangeText={setSettingsInterval}
               keyboardType="number-pad"
               placeholder="Ex: 10000"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={palette.textSecondary}
             />
           </View>
 
           <View style={styles.settingsRow}>
             <Text style={styles.settingsLabel}>Ultima revizie la km:</Text>
             <TextInput
-              style={[styles.settingsInput, { borderColor: '#e0e0e0', color: colors.text }]}
+              style={[
+                styles.settingsInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
               value={settingsLastKm}
               onChangeText={setSettingsLastKm}
               keyboardType="number-pad"
               placeholder="Ex: 120000"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={palette.textSecondary}
             />
           </View>
 
@@ -344,7 +369,7 @@ export default function FuelScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: palette.card }]}>
             <Text style={styles.modalTitle}>Bon motorină</Text>
 
             {/* OCR */}
@@ -358,71 +383,111 @@ export default function FuelScreen() {
               </Text>
             </Pressable>
 
-            <Text style={styles.modalLabel}>Data</Text>
+            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Data</Text>
             <TextInput
-              style={[styles.modalInput, { borderColor: '#e0e0e0', color: colors.text }]}
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
               value={mDate}
               onChangeText={setMDate}
               placeholder="AAAA-LL-ZZ"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={palette.textSecondary}
               editable={!mLoading}
             />
 
-            <Text style={styles.modalLabel}>Litri</Text>
+            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Litri</Text>
             <TextInput
-              style={[styles.modalInput, { borderColor: '#e0e0e0', color: colors.text }]}
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
               value={mLiters}
               onChangeText={setMLiters}
               placeholder="Ex: 45.23"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={palette.textSecondary}
               keyboardType="decimal-pad"
               editable={!mLoading}
             />
 
-            <Text style={styles.modalLabel}>KM total (odometru)</Text>
+            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
+              KM total (odometru)
+            </Text>
             <TextInput
-              style={[styles.modalInput, { borderColor: '#e0e0e0', color: colors.text }]}
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
               value={mKm}
               onChangeText={setMKm}
               placeholder="Ex: 125430"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={palette.textSecondary}
               keyboardType="number-pad"
               editable={!mLoading}
             />
 
             <View style={styles.isFullRow}>
-              <Text style={styles.modalLabel}>Plin complet</Text>
+              <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
+                Plin complet
+              </Text>
               <Switch
                 value={mIsFull}
                 onValueChange={setMIsFull}
-                trackColor={{ false: '#ccc', true: primary }}
+                trackColor={{ false: palette.border, true: primary }}
                 disabled={mLoading}
               />
             </View>
             {!mIsFull && (
-              <Text style={styles.isFullHint}>
+              <Text style={[styles.isFullHint, { color: palette.textSecondary }]}>
                 Litrii nu vor fi contați în consum până la următorul plin complet.
               </Text>
             )}
 
-            <Text style={styles.modalLabel}>Preț total (RON)</Text>
+            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
+              Preț total (RON)
+            </Text>
             <TextInput
-              style={[styles.modalInput, { borderColor: '#e0e0e0', color: colors.text }]}
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
               value={mPrice}
               onChangeText={setMPrice}
               placeholder="Ex: 280.50"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={palette.textSecondary}
               keyboardType="decimal-pad"
               editable={!mLoading}
             />
 
             <View style={styles.modalButtons}>
               <Pressable
-                style={({ pressed }) => [styles.modalCancelBtn, pressed && styles.btnPressed]}
+                style={({ pressed }) => [
+                  styles.modalCancelBtn,
+                  { borderColor: palette.border },
+                  pressed && styles.btnPressed,
+                ]}
                 onPress={() => setModalVisible(false)}
                 disabled={mLoading}
               >
-                <Text style={styles.modalCancelText}>Anulare</Text>
+                <Text style={[styles.modalCancelText, { color: palette.textSecondary }]}>
+                  Anulare
+                </Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.modalSaveBtn, pressed && styles.btnPressed]}
@@ -453,25 +518,22 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
     borderRadius: 12,
     padding: 10,
     alignItems: 'center',
   },
   statValue: { fontSize: 15, fontWeight: '700', color: primary },
-  statLabel: { fontSize: 11, opacity: 0.6, marginTop: 2, textAlign: 'center' },
+  statLabel: { fontSize: 11, marginTop: 2, textAlign: 'center' },
 
   // Service banner
   serviceBanner: {
     marginHorizontal: 12,
     marginBottom: 8,
-    backgroundColor: '#fff0f0',
     borderWidth: 1,
-    borderColor: '#e00',
     borderRadius: 10,
     padding: 12,
   },
-  serviceBannerText: { color: '#c00', fontWeight: '600', fontSize: 14, textAlign: 'center' },
+  serviceBannerText: { fontWeight: '600', fontSize: 14, textAlign: 'center' },
 
   scroll: { flex: 1 },
   scrollContent: { padding: 12, paddingBottom: 90 },
@@ -587,14 +649,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalContent: {
-    backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 36,
   },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
-  modalLabel: { fontSize: 13, opacity: 0.8, marginBottom: 5 },
+  modalLabel: { fontSize: 13, marginBottom: 5 },
   modalInput: {
     borderWidth: 1,
     borderRadius: 10,
@@ -602,7 +663,6 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     fontSize: 15,
     marginBottom: 14,
-    backgroundColor: '#fafafa',
   },
   ocrBtn: {
     borderWidth: 1,
@@ -622,12 +682,11 @@ const styles = StyleSheet.create({
   modalCancelBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: 'center',
   },
-  modalCancelText: { fontSize: 15, opacity: 0.8 },
+  modalCancelText: { fontSize: 15 },
   modalSaveBtn: {
     flex: 1,
     backgroundColor: primary,
@@ -647,7 +706,6 @@ const styles = StyleSheet.create({
   isFullHint: {
     fontSize: 11,
     fontStyle: 'italic',
-    opacity: 0.7,
     marginBottom: 14,
   },
 });
