@@ -1,6 +1,6 @@
 import { db, generateId } from './db';
 import type { Person, Property, Vehicle, Card, Animal, Company } from '@/types';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export async function getPersons(): Promise<Person[]> {
   const rows = await db.getAllAsync<{
