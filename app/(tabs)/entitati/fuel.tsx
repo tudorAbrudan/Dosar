@@ -300,7 +300,14 @@ export default function FuelScreen() {
             onLongPress={() => handleDeleteRecord(record)}
           >
             <View style={styles.recordHeader}>
-              <Text style={styles.recordDate}>{record.date}</Text>
+              <View style={styles.recordHeaderLeft}>
+                <Text style={styles.recordDate}>{record.date}</Text>
+                {!record.is_full && (
+                  <View style={styles.partialChip}>
+                    <Text style={styles.partialChipText}>PARȚIAL</Text>
+                  </View>
+                )}
+              </View>
               {record.price !== undefined && (
                 <Text style={styles.recordPrice}>{record.price.toFixed(2)} RON</Text>
               )}
@@ -524,6 +531,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'transparent',
     marginBottom: 6,
+  },
+  recordHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  partialChip: {
+    backgroundColor: 'rgba(232,165,58,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  partialChipText: {
+    color: '#E8A53A',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   recordDate: { fontSize: 15, fontWeight: '600' },
   recordPrice: { fontSize: 15, fontWeight: '700', color: primary },
