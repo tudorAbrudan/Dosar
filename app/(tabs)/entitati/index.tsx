@@ -9,7 +9,9 @@ import {
   Text as RNText,
   TextInput,
   Platform,
+  Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -298,6 +300,41 @@ export default function EntitatiListScreen() {
             const iconBg = ENTITY_ICON_BG[entityType];
             const iconColor = ENTITY_ICON_COLOR[entityType];
             const iconName = ENTITY_ICON[entityType];
+            const vehiclePhoto =
+              entityType === 'vehicle' ? (item as Vehicle).photo_uri : undefined;
+
+            if (vehiclePhoto) {
+              const v = item as Vehicle;
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => router.push(`/(tabs)/entitati/${item.id}`)}
+                  onLongPress={() => deleteEntity(item.id, title, entityType)}
+                  android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
+                  style={({ pressed }) => [
+                    styles.vehicleCard,
+                    pressed && styles.cardPressed,
+                  ]}
+                >
+                  <Image source={{ uri: vehiclePhoto }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <RNView style={styles.vehicleCardText}>
+                    <RNText style={styles.vehicleName} numberOfLines={1}>
+                      {v.name}
+                    </RNText>
+                    {v.plate_number ? (
+                      <RNText style={styles.vehiclePlate} numberOfLines={1}>
+                        {v.plate_number}
+                      </RNText>
+                    ) : null}
+                  </RNView>
+                </Pressable>
+              );
+            }
+
             return (
               <Pressable
                 key={item.id}
@@ -503,5 +540,30 @@ const styles = StyleSheet.create({
   cardSub: {
     fontSize: 12,
     lineHeight: 17,
+  },
+
+  // Vehicle photo card
+  vehicleCard: {
+    height: 90,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+    justifyContent: 'flex-end',
+    padding: 12,
+    backgroundColor: '#000',
+  },
+  vehicleCardText: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  vehicleName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  vehiclePlate: {
+    fontSize: 12,
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.85)',
   },
 });
