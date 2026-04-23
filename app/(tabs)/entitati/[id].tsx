@@ -29,6 +29,10 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { getDocuments, linkDocumentToEntity } from '@/services/documents';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { Document as DocType, DocumentType, Company } from '@/types';
+import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
+import { EntityStatusBar } from '@/components/EntityStatusBar';
+import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
+import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 
 export default function EntityDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -83,6 +87,13 @@ export default function EntityDetailScreen() {
   const [linkDocVisible, setLinkDocVisible] = useState(false);
   const [unlinkedDocs, setUnlinkedDocs] = useState<DocType[]>([]);
 
+  const vehicle = vehicles.find(v => v.id === id);
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler(e => {
+    scrollY.value = e.contentOffset.y;
+  });
+  const vehicleStatus = useVehicleStatus(entityKind === 'vehicle_id' ? vehicle : undefined);
+
   useEffect(() => {
     if (!id) return;
     const person = persons.find(p => p.id === id);
@@ -134,8 +145,11 @@ export default function EntityDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshEntities();
-      if (id && entityName) loadDocs(entityKind, id);
-    }, [id, entityKind, entityName])
+      if (id && entityName) {
+        loadDocs(entityKind, id);
+        vehicleStatus.refresh();
+      }
+    }, [id, entityKind, entityName, vehicleStatus])
   );
 
   const refresh = () => {
@@ -327,7 +341,18 @@ export default function EntityDetailScreen() {
     <RNView style={[styles.container, { backgroundColor: C.background }]}>
       <Stack.Screen
         options={{
-          title: entityName || 'Entitate',
+          headerTitle: () => (
+            <RNView style={{ alignItems: 'center' }}>
+              <RNText style={{ fontSize: 16, fontWeight: '600', color: C.text }}>
+                {entityName || 'Entitate'}
+              </RNText>
+              {isVehicle && vehicle?.plate_number ? (
+                <RNText style={{ fontSize: 12, fontWeight: '500', color: C.textSecondary }}>
+                  {vehicle.plate_number}
+                </RNText>
+              ) : null}
+            </RNView>
+          ),
           headerLeft: () => (
             <Pressable onPress={() => router.back()} style={{ paddingRight: 16 }}>
               <RNText style={{ color: primary, fontSize: 16 }}>‹ Înapoi</RNText>
@@ -341,14 +366,23 @@ export default function EntityDetailScreen() {
         }}
       />
 
+      {isVehicle && vehicle?.photo_uri && (
+        <VehicleParallaxHero photoUri={vehicle.photo_uri} scrollY={scrollY} />
+      )}
+
       {/* ── Document list ── */}
-      <ScrollView
+      <Animated.ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isVehicle && vehicle?.photo_uri ? { paddingTop: MAX_HERO_HEIGHT + 8 } : null,
+        ]}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />
         }
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
       >
         {isPerson &&
           (() => {
@@ -399,6 +433,8 @@ export default function EntityDetailScreen() {
               </RNView>
             );
           })()}
+
+        {isVehicle && <EntityStatusBar items={vehicleStatus.items} />}
 
         <RNText style={[styles.sectionTitle, { color: C.textSecondary }]}>DOCUMENTE LEGATE</RNText>
 
@@ -472,7 +508,7 @@ export default function EntityDetailScreen() {
             <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
           </Pressable>
         ))}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* ── Bottom actions ── */}
       <BottomActionBar
