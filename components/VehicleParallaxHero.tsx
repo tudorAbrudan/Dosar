@@ -12,10 +12,7 @@ type Props = {
   scrollY: SharedValue<number>;
 };
 
-export const VehicleParallaxHero = memo(function VehicleParallaxHero({
-  photoUri,
-  scrollY,
-}: Props) {
+export const VehicleParallaxHero = memo(function VehicleParallaxHero({ photoUri, scrollY }: Props) {
   const { colors } = useTheme();
   const [naturalHeight, setNaturalHeight] = useState<number>(MAX_HERO_HEIGHT);
   const screenWidth = Dimensions.get('window').width;
@@ -39,12 +36,7 @@ export const VehicleParallaxHero = memo(function VehicleParallaxHero({
       [0, -naturalHeight * 0.5],
       'clamp' as any
     );
-    const scale = interpolate(
-      scrollY.value,
-      [-naturalHeight, 0],
-      [1.4, 1],
-      'clamp' as any
-    );
+    const scale = interpolate(scrollY.value, [-naturalHeight, 0], [1.4, 1], 'clamp' as any);
     return {
       transform: [{ translateY }, { scale }],
     };

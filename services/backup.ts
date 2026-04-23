@@ -212,7 +212,7 @@ async function extractFilesFromZip(zip: JSZip, fileMap?: Record<string, string>)
     }
   }
 
-  const fileEntries: Array<{ relativePath: string; file: JSZip.JSZipObject }> = [];
+  const fileEntries: { relativePath: string; file: JSZip.JSZipObject }[] = [];
   filesFolder.forEach((relativePath, file) => {
     if (!file.dir) {
       fileEntries.push({ relativePath, file });

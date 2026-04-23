@@ -142,13 +142,7 @@ export async function updateVehicle(
 ): Promise<void> {
   await db.runAsync(
     'UPDATE vehicles SET name = ?, photo_uri = ?, plate_number = ?, fuel_type = ? WHERE id = ?',
-    [
-      name,
-      photo_uri ?? null,
-      plate_number ?? null,
-      fuel_type ?? 'diesel',
-      id,
-    ]
+    [name, photo_uri ?? null, plate_number ?? null, fuel_type ?? 'diesel', id]
   );
 }
 

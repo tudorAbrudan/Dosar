@@ -300,8 +300,7 @@ export default function EntitatiListScreen() {
             const iconBg = ENTITY_ICON_BG[entityType];
             const iconColor = ENTITY_ICON_COLOR[entityType];
             const iconName = ENTITY_ICON[entityType];
-            const vehiclePhoto =
-              entityType === 'vehicle' ? (item as Vehicle).photo_uri : undefined;
+            const vehiclePhoto = entityType === 'vehicle' ? (item as Vehicle).photo_uri : undefined;
 
             if (vehiclePhoto) {
               const v = item as Vehicle;
@@ -311,12 +310,13 @@ export default function EntitatiListScreen() {
                   onPress={() => router.push(`/(tabs)/entitati/${item.id}`)}
                   onLongPress={() => deleteEntity(item.id, title, entityType)}
                   android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
-                  style={({ pressed }) => [
-                    styles.vehicleCard,
-                    pressed && styles.cardPressed,
-                  ]}
+                  style={({ pressed }) => [styles.vehicleCard, pressed && styles.cardPressed]}
                 >
-                  <Image source={{ uri: vehiclePhoto }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                  <Image
+                    source={{ uri: vehiclePhoto }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                  />
                   <LinearGradient
                     colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
                     style={StyleSheet.absoluteFill}

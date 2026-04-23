@@ -51,19 +51,13 @@ function formatIsoDateRo(iso: string): string {
   return `${d}.${m}.${y}`;
 }
 
-function severityFromDays(
-  days: number,
-  notificationDays: number
-): StatusSeverity {
+function severityFromDays(days: number, notificationDays: number): StatusSeverity {
   if (days <= CRITICAL_DAYS) return 'critical';
   if (days <= notificationDays) return 'warning';
   return 'ok';
 }
 
-function pickLatestDocWithExpiry(
-  docs: Document[],
-  type: Document['type']
-): Document | undefined {
+function pickLatestDocWithExpiry(docs: Document[], type: Document['type']): Document | undefined {
   const matches = docs.filter(d => d.type === type && d.expiry_date);
   if (matches.length === 0) return undefined;
   return matches.reduce((latest, d) =>

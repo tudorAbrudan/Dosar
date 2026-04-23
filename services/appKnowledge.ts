@@ -13,7 +13,7 @@ import { DOCUMENT_TYPE_LABELS } from '@/types';
 
 // ─── Grupare tipuri de documente pe categorie ────────────────────────────────
 
-const DOC_CATEGORIES: Array<{ label: string; types: string[] }> = [
+const DOC_CATEGORIES: { label: string; types: string[] }[] = [
   {
     label: 'Identitate',
     types: ['buletin', 'pasaport', 'permis_auto'],

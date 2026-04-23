@@ -206,8 +206,7 @@ export function computeConsumptionFromFullToFull(records: FuelRecord[]): {
     return { avgConsumptionL100: undefined, sparkline: [] };
   }
 
-  const avg =
-    windowConsumptions.reduce((s, v) => s + v, 0) / windowConsumptions.length;
+  const avg = windowConsumptions.reduce((s, v) => s + v, 0) / windowConsumptions.length;
   return {
     avgConsumptionL100: avg,
     sparkline: windowConsumptions.slice(-8),

@@ -83,7 +83,9 @@ export default function EntityDetailScreen() {
   const [editIban, setEditIban] = useState('');
   const [editPhotoUri, setEditPhotoUri] = useState<string | undefined>(undefined);
   const [editPlate, setEditPlate] = useState('');
-  const [editFuelType, setEditFuelType] = useState<'diesel' | 'benzina' | 'gpl' | 'electric'>('diesel');
+  const [editFuelType, setEditFuelType] = useState<'diesel' | 'benzina' | 'gpl' | 'electric'>(
+    'diesel'
+  );
   const [linkDocVisible, setLinkDocVisible] = useState(false);
   const [unlinkedDocs, setUnlinkedDocs] = useState<DocType[]>([]);
 
@@ -641,7 +643,9 @@ export default function EntityDetailScreen() {
 
             {isVehicle && (
               <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Poză vehicul</RNText>
+                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                  Poză vehicul
+                </RNText>
                 <RNView style={styles.photoRow}>
                   {editPhotoUri ? (
                     <RNView style={styles.photoPreviewWrap}>
@@ -649,8 +653,13 @@ export default function EntityDetailScreen() {
                       <Pressable style={styles.photoActionBtn} onPress={handlePickPhoto}>
                         <RNText style={styles.photoActionText}>Schimbă</RNText>
                       </Pressable>
-                      <Pressable style={[styles.photoActionBtn, { marginLeft: 8 }]} onPress={handleRemovePhoto}>
-                        <RNText style={[styles.photoActionText, { color: '#D84C4C' }]}>Elimină</RNText>
+                      <Pressable
+                        style={[styles.photoActionBtn, { marginLeft: 8 }]}
+                        onPress={handleRemovePhoto}
+                      >
+                        <RNText style={[styles.photoActionText, { color: '#D84C4C' }]}>
+                          Elimină
+                        </RNText>
                       </Pressable>
                     </RNView>
                   ) : (
@@ -673,11 +682,19 @@ export default function EntityDetailScreen() {
                   editable={!editLoading}
                 />
 
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Tip combustibil</RNText>
+                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                  Tip combustibil
+                </RNText>
                 <RNView style={styles.fuelTypeRow}>
                   {(['diesel', 'benzina', 'gpl', 'electric'] as const).map(t => {
                     const label =
-                      t === 'diesel' ? 'Diesel' : t === 'benzina' ? 'Benzină' : t === 'gpl' ? 'GPL' : 'Electric';
+                      t === 'diesel'
+                        ? 'Diesel'
+                        : t === 'benzina'
+                          ? 'Benzină'
+                          : t === 'gpl'
+                            ? 'GPL'
+                            : 'Electric';
                     const active = editFuelType === t;
                     return (
                       <Pressable
@@ -690,7 +707,9 @@ export default function EntityDetailScreen() {
                         ]}
                         onPress={() => setEditFuelType(t)}
                       >
-                        <RNText style={[styles.fuelTypeChipText, { color: active ? '#fff' : C.text }]}>
+                        <RNText
+                          style={[styles.fuelTypeChipText, { color: active ? '#fff' : C.text }]}
+                        >
                           {label}
                         </RNText>
                       </Pressable>

@@ -1,9 +1,7 @@
 import { computeConsumptionFromFullToFull } from '@/services/fuel';
 import type { FuelRecord } from '@/services/fuel';
 
-function record(
-  overrides: Partial<FuelRecord> & Pick<FuelRecord, 'id' | 'date'>
-): FuelRecord {
+function record(overrides: Partial<FuelRecord> & Pick<FuelRecord, 'id' | 'date'>): FuelRecord {
   return {
     vehicle_id: 'v1',
     is_full: true,
