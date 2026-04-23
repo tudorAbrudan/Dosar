@@ -20,12 +20,13 @@ export interface VehicleFuelSettings {
 
 export interface FuelStats {
   totalRecords: number;
-  avgConsumptionL100?: number; // L/100km calculat din ultimele înregistrări
+  avgConsumptionL100?: number;
   totalLiters: number;
   totalCost: number;
-  latestKm?: number; // cel mai recent km_total
-  needsService: boolean; // km_total > last_service_km + service_km_interval
-  kmUntilService?: number; // câți km mai sunt până la revizie (negativ = depășit)
+  latestKm?: number;
+  needsService: boolean;
+  kmUntilService?: number;
+  consumptionSparkline: number[];
 }
 
 type FuelRow = {
@@ -160,6 +161,59 @@ export async function saveFuelSettings(
   }
 }
 
+/**
+ * Pure helper: calculează consumul mediu L/100km folosind metoda full-to-full.
+ * Un bon parțial (is_full=false) contribuie cu litri la fereastra până la următorul plin complet,
+ * dar nu deschide o fereastră nouă.
+ *
+ * @returns avgConsumptionL100 — media aritmetică a tuturor ferestrelor complete;
+ *          sparkline — ultimele 8 valori (maxim) pentru graficul compact.
+ */
+export function computeConsumptionFromFullToFull(records: FuelRecord[]): {
+  avgConsumptionL100?: number;
+  sparkline: number[];
+} {
+  const withKm = records
+    .filter(r => r.km_total !== undefined && r.liters !== undefined)
+    .sort((a, b) => (a.km_total ?? 0) - (b.km_total ?? 0));
+
+  const fullIdx: number[] = [];
+  withKm.forEach((r, i) => {
+    if (r.is_full) fullIdx.push(i);
+  });
+
+  if (fullIdx.length < 2) {
+    return { avgConsumptionL100: undefined, sparkline: [] };
+  }
+
+  const windowConsumptions: number[] = [];
+  for (let i = 1; i < fullIdx.length; i++) {
+    const aIdx = fullIdx[i - 1];
+    const bIdx = fullIdx[i];
+    const a = withKm[aIdx];
+    const b = withKm[bIdx];
+    let litersInWindow = 0;
+    for (let j = aIdx + 1; j <= bIdx; j++) {
+      litersInWindow += withKm[j].liters ?? 0;
+    }
+    const kmInWindow = (b.km_total ?? 0) - (a.km_total ?? 0);
+    if (kmInWindow > 0 && litersInWindow > 0) {
+      windowConsumptions.push((litersInWindow / kmInWindow) * 100);
+    }
+  }
+
+  if (windowConsumptions.length === 0) {
+    return { avgConsumptionL100: undefined, sparkline: [] };
+  }
+
+  const avg =
+    windowConsumptions.reduce((s, v) => s + v, 0) / windowConsumptions.length;
+  return {
+    avgConsumptionL100: avg,
+    sparkline: windowConsumptions.slice(-8),
+  };
+}
+
 export async function computeFuelStats(vehicleId: string): Promise<FuelStats> {
   const records = await getFuelRecords(vehicleId);
   const settings = await getFuelSettings(vehicleId);
@@ -167,23 +221,11 @@ export async function computeFuelStats(vehicleId: string): Promise<FuelStats> {
   const totalLiters = records.reduce((s, r) => s + (r.liters ?? 0), 0);
   const totalCost = records.reduce((s, r) => s + (r.price ?? 0), 0);
 
-  // Calculează consum mediu L/100km din înregistrările cu km_total și liters
+  const { avgConsumptionL100, sparkline } = computeConsumptionFromFullToFull(records);
+
   const withKm = [...records]
-    .filter(r => r.km_total !== undefined && r.liters !== undefined)
+    .filter(r => r.km_total !== undefined)
     .sort((a, b) => (a.km_total ?? 0) - (b.km_total ?? 0));
-
-  let avgConsumptionL100: number | undefined;
-  if (withKm.length >= 2) {
-    const first = withKm[0];
-    const last = withKm[withKm.length - 1];
-    const totalKm = (last.km_total ?? 0) - (first.km_total ?? 0);
-    // Suma litri fără primul (primul = ce era în rezervor la start, nu consumat)
-    const totalLitersConsumed = withKm.slice(1).reduce((s, r) => s + (r.liters ?? 0), 0);
-    if (totalKm > 0 && totalLitersConsumed > 0) {
-      avgConsumptionL100 = (totalLitersConsumed / totalKm) * 100;
-    }
-  }
-
   const latestKm = withKm.length > 0 ? withKm[withKm.length - 1].km_total : undefined;
 
   let needsService = false;
@@ -203,5 +245,6 @@ export async function computeFuelStats(vehicleId: string): Promise<FuelStats> {
     latestKm,
     needsService,
     kmUntilService,
+    consumptionSparkline: sparkline,
   };
 }
