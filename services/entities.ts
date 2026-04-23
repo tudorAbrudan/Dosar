@@ -1,5 +1,6 @@
 import { db, generateId } from './db';
 import type { Person, Property, Vehicle, Card, Animal, Company } from '@/types';
+import * as FileSystem from 'expo-file-system';
 
 export async function getPersons(): Promise<Person[]> {
   const rows = await db.getAllAsync<{
@@ -28,10 +29,24 @@ export async function getProperties(): Promise<Property[]> {
 }
 
 export async function getVehicles(): Promise<Vehicle[]> {
-  const rows = await db.getAllAsync<{ id: string; name: string; created_at: string }>(
-    'SELECT id, name, created_at FROM vehicles ORDER BY created_at DESC'
+  const rows = await db.getAllAsync<{
+    id: string;
+    name: string;
+    photo_uri: string | null;
+    plate_number: string | null;
+    fuel_type: string | null;
+    created_at: string;
+  }>(
+    'SELECT id, name, photo_uri, plate_number, fuel_type, created_at FROM vehicles ORDER BY created_at DESC'
   );
-  return rows.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at }));
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    photo_uri: r.photo_uri ?? undefined,
+    plate_number: r.plate_number ?? undefined,
+    fuel_type: (r.fuel_type ?? 'diesel') as import('@/types').VehicleFuelType,
+    createdAt: r.created_at,
+  }));
 }
 
 export async function getCards(): Promise<Card[]> {
@@ -118,8 +133,23 @@ export async function updateProperty(id: string, name: string): Promise<void> {
   await db.runAsync('UPDATE properties SET name = ? WHERE id = ?', [name, id]);
 }
 
-export async function updateVehicle(id: string, name: string): Promise<void> {
-  await db.runAsync('UPDATE vehicles SET name = ? WHERE id = ?', [name, id]);
+export async function updateVehicle(
+  id: string,
+  name: string,
+  photo_uri?: string | null,
+  plate_number?: string | null,
+  fuel_type?: 'diesel' | 'benzina' | 'gpl' | 'electric' | null
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE vehicles SET name = ?, photo_uri = ?, plate_number = ?, fuel_type = ? WHERE id = ?',
+    [
+      name,
+      photo_uri ?? null,
+      plate_number ?? null,
+      fuel_type ?? 'diesel',
+      id,
+    ]
+  );
 }
 
 export async function updateCard(
@@ -145,6 +175,21 @@ export async function deleteProperty(id: string): Promise<void> {
 }
 
 export async function deleteVehicle(id: string): Promise<void> {
+  // Șterge fișierul poză dacă există (best-effort, fără eroare fatală)
+  try {
+    const row = await db.getFirstAsync<{ photo_uri: string | null }>(
+      'SELECT photo_uri FROM vehicles WHERE id = ?',
+      [id]
+    );
+    if (row?.photo_uri) {
+      const info = await FileSystem.getInfoAsync(row.photo_uri);
+      if (info.exists) {
+        await FileSystem.deleteAsync(row.photo_uri, { idempotent: true });
+      }
+    }
+  } catch {
+    // Nu blocăm ștergerea entității dacă ștergerea fișierului eșuează
+  }
   await db.runAsync('DELETE FROM vehicles WHERE id = ?', [id]);
 }
 
