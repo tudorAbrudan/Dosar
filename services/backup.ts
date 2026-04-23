@@ -135,8 +135,17 @@ export async function exportBackup(): Promise<void> {
     companyNames
   );
 
+  // Task 17: include vehicle photos in ZIP
+  for (const v of vehicles) {
+    if (!v.photo_uri) continue;
+    const rel = toRelativePath(v.photo_uri);
+    if (!rel || fileMap[rel]) continue;
+    const folder = sanitizeFolderName(v.name);
+    fileMap[rel] = `Vehicule/${folder}/photo.jpg`;
+  }
+
   const manifest = {
-    version: 5,
+    version: 6,
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -430,7 +439,34 @@ export async function importBackup(): Promise<ImportResult> {
         if (v.id) vehicleMap.set(v.id as string, existingId);
         skipped++;
       } else {
-        const created = await entities.createVehicle((v.name as string) || 'Vehicul');
+        const vehicleName = (v.name as string) || 'Vehicul';
+        const created = await entities.createVehicle(vehicleName);
+
+        const oldPhotoRel = v.photo_uri ? toRelativePath(v.photo_uri as string) : undefined;
+        let newPhotoUri: string | null = null;
+        if (oldPhotoRel) {
+          const oldPath = `${FileSystem.documentDirectory}${oldPhotoRel}`;
+          const newPath = `${FileSystem.documentDirectory}vehicles/${created.id}.jpg`;
+          try {
+            await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}vehicles`, {
+              intermediates: true,
+            });
+            const info = await FileSystem.getInfoAsync(oldPath);
+            if (info.exists) {
+              if (oldPath !== newPath) {
+                await FileSystem.moveAsync({ from: oldPath, to: newPath });
+              }
+              newPhotoUri = newPath;
+            }
+          } catch {
+            // dacă mutarea eșuează, păstrăm photo_uri null
+          }
+        }
+
+        const plate = (v.plate_number as string | undefined) ?? null;
+        const fuel = (v.fuel_type as 'diesel' | 'benzina' | 'gpl' | 'electric' | undefined) ?? null;
+        await entities.updateVehicle(created.id, vehicleName, newPhotoUri, plate, fuel);
+
         if (v.id) vehicleMap.set(v.id as string, created.id);
         existingVehicleByName.set(nameKey, created.id);
         imported++;
