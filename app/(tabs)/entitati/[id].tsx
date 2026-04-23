@@ -22,7 +22,7 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import type { BottomAction } from '@/components/BottomActionBar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary } from '@/theme/colors';
+import { primary, statusColors } from '@/theme/colors';
 import { radius } from '@/theme/layout';
 import { useEntities } from '@/hooks/useEntities';
 import { useDocuments } from '@/hooks/useDocuments';
@@ -657,7 +657,7 @@ export default function EntityDetailScreen() {
                         style={[styles.photoActionBtn, { marginLeft: 8 }]}
                         onPress={handleRemovePhoto}
                       >
-                        <RNText style={[styles.photoActionText, { color: '#D84C4C' }]}>
+                        <RNText style={[styles.photoActionText, { color: statusColors.critical }]}>
                           Elimină
                         </RNText>
                       </Pressable>

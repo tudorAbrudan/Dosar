@@ -1,6 +1,6 @@
 import { memo, useState, useEffect } from 'react';
 import { StyleSheet, Image, Dimensions } from 'react-native';
-import Animated, { useAnimatedStyle, interpolate } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@react-navigation/native';
@@ -34,9 +34,14 @@ export const VehicleParallaxHero = memo(function VehicleParallaxHero({ photoUri,
       scrollY.value,
       [0, naturalHeight],
       [0, -naturalHeight * 0.5],
-      'clamp' as any
+      Extrapolation.CLAMP
     );
-    const scale = interpolate(scrollY.value, [-naturalHeight, 0], [1.4, 1], 'clamp' as any);
+    const scale = interpolate(
+      scrollY.value,
+      [-naturalHeight, 0],
+      [1.4, 1],
+      Extrapolation.CLAMP
+    );
     return {
       transform: [{ translateY }, { scale }],
     };

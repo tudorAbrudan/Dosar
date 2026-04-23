@@ -1,9 +1,16 @@
 import { memo } from 'react';
-import { StyleSheet, ScrollView, Pressable, View, Text, Platform } from 'react-native';
+import {
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  View,
+  Text,
+  Platform,
+  useColorScheme,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Polyline } from 'react-native-svg';
-import { useTheme } from '@react-navigation/native';
-import { statusColors, primary } from '@/theme/colors';
+import { statusColors, primary, light, dark } from '@/theme/colors';
 import type { VehicleStatusItem } from '@/hooks/useVehicleStatus';
 
 function iconForKey(key: VehicleStatusItem['key']): keyof typeof Ionicons.glyphMap {
@@ -47,7 +54,6 @@ function Sparkline({ values }: { values: number[] }) {
 
 type CardProps = {
   item: VehicleStatusItem;
-  textColor: string;
   textSecondary: string;
   cardBg: string;
   cardShadow: string;
@@ -107,7 +113,8 @@ const StatusCard = memo(function StatusCard({
 });
 
 export function EntityStatusBar({ items }: { items: VehicleStatusItem[] }) {
-  const { colors } = useTheme();
+  const scheme = useColorScheme();
+  const palette = scheme === 'dark' ? dark : light;
   if (items.length === 0) return null;
   return (
     <ScrollView
@@ -120,10 +127,9 @@ export function EntityStatusBar({ items }: { items: VehicleStatusItem[] }) {
         <StatusCard
           key={item.key}
           item={item}
-          textColor={colors.text}
-          textSecondary={(colors as any).textSecondary ?? '#6b6b6b'}
-          cardBg={colors.card}
-          cardShadow="rgba(0,0,0,0.08)"
+          textSecondary={palette.textSecondary}
+          cardBg={palette.card}
+          cardShadow={palette.cardShadow}
         />
       ))}
     </ScrollView>

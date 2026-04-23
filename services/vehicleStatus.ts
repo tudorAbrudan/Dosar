@@ -28,9 +28,10 @@ type BuildArgs = {
 };
 
 function daysBetween(fromIso: string, to: Date): number {
-  const from = new Date(fromIso + 'T00:00:00.000Z');
-  const ms = from.getTime() - to.getTime();
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
+  const [y, m, d] = fromIso.split('-').map(Number);
+  const from = Date.UTC(y, (m ?? 1) - 1, d ?? 1);
+  const toUtc = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  return Math.round((from - toUtc) / (1000 * 60 * 60 * 24));
 }
 
 function formatDaysRemaining(days: number): string {
@@ -119,7 +120,8 @@ export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
       key: 'service',
       label: 'REVIZIE',
       value,
-      subValue: fuelStats.latestKm ? `la ${formatKm(fuelStats.latestKm)}` : undefined,
+      subValue:
+        fuelStats.latestKm !== undefined ? `la ${formatKm(fuelStats.latestKm)}` : undefined,
       severity,
     });
   }
