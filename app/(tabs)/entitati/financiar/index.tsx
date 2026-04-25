@@ -7,6 +7,7 @@ import {
   Alert,
   View as RNView,
   Text as RNText,
+  Modal,
 } from 'react-native';
 import { router, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,7 @@ import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { formatYearMonth } from '@/services/transactions';
 import { useCategoryTransactions, UNCATEGORIZED_KEY } from '@/hooks/useCategoryTransactions';
-import type { Transaction } from '@/types';
+import type { Transaction, ExpenseCategory } from '@/types';
 
 const RO_MONTHS = [
   'Ianuarie',
@@ -526,6 +527,94 @@ function CategoryTransactionsList({
   );
 }
 
+function CategoryQuickPickerModal({
+  visible,
+  categories,
+  currentCategoryId,
+  onPick,
+  onClose,
+  C,
+}: {
+  visible: boolean;
+  categories: ExpenseCategory[];
+  currentCategoryId: string | null;
+  onPick: (categoryId: string | null) => void;
+  onClose: () => void;
+  C: typeof Colors.light;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.pickerBackdrop} onPress={onClose}>
+        <Pressable
+          style={[styles.pickerSheet, { backgroundColor: C.card }]}
+          onPress={() => {}}
+        >
+          <RNView style={styles.pickerHeader}>
+            <RNText style={[styles.pickerTitle, { color: C.text }]}>
+              Schimbă categoria
+            </RNText>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <RNText style={{ color: primary, fontSize: 14, fontWeight: '600' }}>
+                Anulează
+              </RNText>
+            </Pressable>
+          </RNView>
+          <ScrollView style={{ maxHeight: 420 }}>
+            {categories.map(cat => {
+              const isCurrent = cat.id === currentCategoryId;
+              return (
+                <Pressable
+                  key={cat.id}
+                  onPress={() => onPick(cat.id)}
+                  style={({ pressed }) => [
+                    styles.pickerItem,
+                    { borderBottomColor: C.border },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <RNView
+                    style={[
+                      styles.pickerDot,
+                      { backgroundColor: cat.color || primary },
+                    ]}
+                  />
+                  <RNText style={[styles.pickerItemText, { color: C.text }]}>
+                    {cat.name}
+                  </RNText>
+                  {isCurrent && (
+                    <Ionicons name="checkmark" size={18} color={primary} />
+                  )}
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={() => onPick(null)}
+              style={({ pressed }) => [
+                styles.pickerItem,
+                { borderBottomColor: C.border, borderTopWidth: 1, borderTopColor: C.border },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <RNView style={[styles.pickerDot, { backgroundColor: C.textSecondary }]} />
+              <RNText style={[styles.pickerItemText, { color: C.text }]}>
+                Necategorizat
+              </RNText>
+              {currentCategoryId === null && (
+                <Ionicons name="checkmark" size={18} color={primary} />
+              )}
+            </Pressable>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function CategoryRow({
   item,
   expanded,
@@ -780,4 +869,33 @@ const styles = StyleSheet.create({
   expandedLoading: { paddingVertical: 12, alignItems: 'center' },
   expandedError: { paddingVertical: 12, alignItems: 'center' },
   expandedEmpty: { paddingVertical: 12, alignItems: 'center' },
+
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    paddingBottom: 24,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pickerTitle: { fontSize: 16, fontWeight: '700' },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pickerDot: { width: 12, height: 12, borderRadius: 6 },
+  pickerItemText: { flex: 1, fontSize: 14, fontWeight: '500' },
 });
