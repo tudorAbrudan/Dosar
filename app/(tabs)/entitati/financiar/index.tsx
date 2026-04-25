@@ -414,7 +414,9 @@ export default function FinanciarHubScreen() {
                 Tranzacții recente
               </RNText>
               {recent.length > 0 && (
-                <RNText style={[styles.txCount, { color: C.textSecondary }]}>{recent.length}</RNText>
+                <RNText style={[styles.txCount, { color: C.textSecondary }]}>
+                  {recent.length}
+                </RNText>
               )}
             </RNView>
             {recent.length === 0 && !loading ? (
@@ -467,9 +469,7 @@ export default function FinanciarHubScreen() {
         visible={pickerTxId !== null}
         categories={categories}
         currentCategoryId={
-          pickerTxId
-            ? (expandedTxs.find(t => t.id === pickerTxId)?.category_id ?? null)
-            : null
+          pickerTxId ? (expandedTxs.find(t => t.id === pickerTxId)?.category_id ?? null) : null
         }
         onPick={handleCategoryPick}
         onClose={() => !pickerSaving && setPickerTxId(null)}
@@ -563,9 +563,7 @@ function CategoryTransactionsList({
         <ExpandedTransactionRow
           key={t.id}
           tx={t}
-          categoryName={
-            (t.category_id && categoryMap.get(t.category_id)?.name) || 'Necategorizat'
-          }
+          categoryName={(t.category_id && categoryMap.get(t.category_id)?.name) || 'Necategorizat'}
           C={C}
           onPress={() =>
             router.push({
@@ -598,25 +596,13 @@ function CategoryQuickPickerModal({
   saving?: boolean;
 }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.pickerBackdrop} onPress={onClose}>
-        <Pressable
-          style={[styles.pickerSheet, { backgroundColor: C.card }]}
-          onPress={() => {}}
-        >
+        <Pressable style={[styles.pickerSheet, { backgroundColor: C.card }]} onPress={() => {}}>
           <RNView style={styles.pickerHeader}>
-            <RNText style={[styles.pickerTitle, { color: C.text }]}>
-              Schimbă categoria
-            </RNText>
+            <RNText style={[styles.pickerTitle, { color: C.text }]}>Schimbă categoria</RNText>
             <Pressable onPress={onClose} hitSlop={8}>
-              <RNText style={{ color: primary, fontSize: 14, fontWeight: '600' }}>
-                Anulează
-              </RNText>
+              <RNText style={{ color: primary, fontSize: 14, fontWeight: '600' }}>Anulează</RNText>
             </Pressable>
           </RNView>
           <ScrollView style={{ maxHeight: 420 }}>
@@ -634,18 +620,9 @@ function CategoryQuickPickerModal({
                     saving && { opacity: 0.5 },
                   ]}
                 >
-                  <RNView
-                    style={[
-                      styles.pickerDot,
-                      { backgroundColor: cat.color || primary },
-                    ]}
-                  />
-                  <RNText style={[styles.pickerItemText, { color: C.text }]}>
-                    {cat.name}
-                  </RNText>
-                  {isCurrent && (
-                    <Ionicons name="checkmark" size={18} color={primary} />
-                  )}
+                  <RNView style={[styles.pickerDot, { backgroundColor: cat.color || primary }]} />
+                  <RNText style={[styles.pickerItemText, { color: C.text }]}>{cat.name}</RNText>
+                  {isCurrent && <Ionicons name="checkmark" size={18} color={primary} />}
                 </Pressable>
               );
             })}
@@ -660,9 +637,7 @@ function CategoryQuickPickerModal({
               ]}
             >
               <RNView style={[styles.pickerDot, { backgroundColor: C.textSecondary }]} />
-              <RNText style={[styles.pickerItemText, { color: C.text }]}>
-                Necategorizat
-              </RNText>
+              <RNText style={[styles.pickerItemText, { color: C.text }]}>Necategorizat</RNText>
               {currentCategoryId === null && (
                 <Ionicons name="checkmark" size={18} color={primary} />
               )}
