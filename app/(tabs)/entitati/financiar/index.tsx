@@ -18,7 +18,7 @@ import { useMonthlyAnalysis } from '@/hooks/useMonthlyAnalysis';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { formatYearMonth } from '@/services/transactions';
-import { UNCATEGORIZED_KEY } from '@/hooks/useCategoryTransactions';
+import { useCategoryTransactions, UNCATEGORIZED_KEY } from '@/hooks/useCategoryTransactions';
 import type { Transaction } from '@/types';
 
 const RO_MONTHS = [
@@ -65,6 +65,13 @@ export default function FinanciarHubScreen() {
   const { categories } = useCategories();
   const { analysis, loading, refresh } = useMonthlyAnalysis(yearMonth, accountFilter);
 
+  const {
+    transactions: expandedTxs,
+    loading: expandedLoading,
+    error: expandedError,
+    refresh: refreshExpanded,
+  } = useCategoryTransactions(yearMonth, expandedCatKey, accountFilter);
+
   const categoryMap = useMemo(() => {
     const m = new Map<string, { name: string; icon?: string }>();
     categories.forEach(c => m.set(c.id, { name: c.name, icon: c.icon }));
@@ -75,7 +82,8 @@ export default function FinanciarHubScreen() {
     useCallback(() => {
       refreshAccounts();
       refresh();
-    }, [])
+      refreshExpanded();
+    }, [refreshExpanded])
   );
 
   const totals = analysis?.totals;
@@ -347,50 +355,64 @@ export default function FinanciarHubScreen() {
                     onPress={() => setExpandedCatKey(prev => (prev === key ? null : key))}
                     C={C}
                   />
+                  {expanded && (
+                    <CategoryTransactionsList
+                      loading={expandedLoading}
+                      error={expandedError}
+                      transactions={expandedTxs}
+                      categoryMap={categoryMap}
+                      C={C}
+                      onRetry={refreshExpanded}
+                    />
+                  )}
                 </RNView>
               );
             })}
           </RNView>
         )}
 
-        {/* Recent transactions */}
-        <RNView style={styles.txHeader}>
-          <RNText style={[styles.sectionTitle, { color: C.textSecondary }]}>
-            Tranzacții recente
-          </RNText>
-          {recent.length > 0 && (
-            <RNText style={[styles.txCount, { color: C.textSecondary }]}>{recent.length}</RNText>
-          )}
-        </RNView>
-        {recent.length === 0 && !loading ? (
-          <RNView
-            style={[styles.emptyCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
-          >
-            <Ionicons
-              name="receipt-outline"
-              size={32}
-              color={C.textSecondary}
-              style={{ opacity: 0.5 }}
-            />
-            <RNText style={[styles.emptySub, { color: C.textSecondary }]}>
-              Nicio tranzacție în luna selectată.
-            </RNText>
-          </RNView>
-        ) : (
-          recent.map(t => (
-            <TransactionRow
-              key={t.id}
-              tx={t}
-              categoryName={t.category_id ? categoryMap.get(t.category_id)?.name : undefined}
-              C={C}
-              onPress={() =>
-                router.push({
-                  pathname: '/(tabs)/entitati/cont/tranzactie',
-                  params: { id: t.id },
-                })
-              }
-            />
-          ))
+        {expandedCatKey === null && (
+          <>
+            {/* Recent transactions */}
+            <RNView style={styles.txHeader}>
+              <RNText style={[styles.sectionTitle, { color: C.textSecondary }]}>
+                Tranzacții recente
+              </RNText>
+              {recent.length > 0 && (
+                <RNText style={[styles.txCount, { color: C.textSecondary }]}>{recent.length}</RNText>
+              )}
+            </RNView>
+            {recent.length === 0 && !loading ? (
+              <RNView
+                style={[styles.emptyCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
+              >
+                <Ionicons
+                  name="receipt-outline"
+                  size={32}
+                  color={C.textSecondary}
+                  style={{ opacity: 0.5 }}
+                />
+                <RNText style={[styles.emptySub, { color: C.textSecondary }]}>
+                  Nicio tranzacție în luna selectată.
+                </RNText>
+              </RNView>
+            ) : (
+              recent.map(t => (
+                <TransactionRow
+                  key={t.id}
+                  tx={t}
+                  categoryName={t.category_id ? categoryMap.get(t.category_id)?.name : undefined}
+                  C={C}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(tabs)/entitati/cont/tranzactie',
+                      params: { id: t.id },
+                    })
+                  }
+                />
+              ))
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -437,6 +459,69 @@ function TotalCard({
         {prefix}
         {Math.round(value).toLocaleString('ro-RO')}
       </RNText>
+    </RNView>
+  );
+}
+
+function CategoryTransactionsList({
+  loading,
+  error,
+  transactions,
+  categoryMap,
+  C,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string | null;
+  transactions: Transaction[];
+  categoryMap: Map<string, { name: string; icon?: string }>;
+  C: typeof Colors.light;
+  onRetry: () => void;
+}) {
+  if (loading) {
+    return (
+      <RNView style={styles.expandedLoading}>
+        <RNText style={{ color: C.textSecondary, fontSize: 12 }}>Se încarcă…</RNText>
+      </RNView>
+    );
+  }
+  if (error) {
+    return (
+      <RNView style={styles.expandedError}>
+        <RNText style={{ color: statusColors.critical, fontSize: 12, marginBottom: 6 }}>
+          Nu s-a putut încărca lista
+        </RNText>
+        <Pressable onPress={onRetry} hitSlop={8}>
+          <RNText style={{ color: primary, fontSize: 12, fontWeight: '600' }}>Reîncearcă</RNText>
+        </Pressable>
+      </RNView>
+    );
+  }
+  if (transactions.length === 0) {
+    return (
+      <RNView style={styles.expandedEmpty}>
+        <RNText style={{ color: C.textSecondary, fontSize: 12 }}>
+          Nicio tranzacție în această categorie.
+        </RNText>
+      </RNView>
+    );
+  }
+  return (
+    <RNView style={styles.expandedList}>
+      {transactions.map(t => (
+        <TransactionRow
+          key={t.id}
+          tx={t}
+          categoryName={t.category_id ? categoryMap.get(t.category_id)?.name : undefined}
+          C={C}
+          onPress={() =>
+            router.push({
+              pathname: '/(tabs)/entitati/cont/tranzactie',
+              params: { id: t.id },
+            })
+          }
+        />
+      ))}
     </RNView>
   );
 }
@@ -690,4 +775,9 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+
+  expandedList: { paddingTop: 8, paddingBottom: 4, gap: 4 },
+  expandedLoading: { paddingVertical: 12, alignItems: 'center' },
+  expandedError: { paddingVertical: 12, alignItems: 'center' },
+  expandedEmpty: { paddingVertical: 12, alignItems: 'center' },
 });
