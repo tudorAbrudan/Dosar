@@ -83,7 +83,7 @@ export default function FinanciarHubScreen() {
       refreshAccounts();
       refresh();
       refreshExpanded();
-    }, [refreshExpanded])
+    }, [refreshAccounts, refresh, refreshExpanded])
   );
 
   const totals = analysis?.totals;
