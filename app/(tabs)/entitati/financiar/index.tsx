@@ -106,6 +106,7 @@ export default function FinanciarHubScreen() {
   const handleCategoryPick = useCallback(
     async (newCategoryId: string | null) => {
       if (!pickerTxId) return;
+      if (pickerSaving) return;
       setPickerSaving(true);
       try {
         await updateTransaction(pickerTxId, { category_id: newCategoryId });
@@ -120,7 +121,7 @@ export default function FinanciarHubScreen() {
         setPickerSaving(false);
       }
     },
-    [pickerTxId, refresh, refreshExpanded]
+    [pickerTxId, pickerSaving, refresh, refreshExpanded]
   );
   const todayYm = formatYearMonth(new Date());
   const isCurrentMonth = yearMonth === todayYm;
@@ -473,6 +474,7 @@ export default function FinanciarHubScreen() {
         onPick={handleCategoryPick}
         onClose={() => !pickerSaving && setPickerTxId(null)}
         C={C}
+        saving={pickerSaving}
       />
     </RNView>
   );
@@ -585,6 +587,7 @@ function CategoryQuickPickerModal({
   onPick,
   onClose,
   C,
+  saving,
 }: {
   visible: boolean;
   categories: ExpenseCategory[];
@@ -592,6 +595,7 @@ function CategoryQuickPickerModal({
   onPick: (categoryId: string | null) => void;
   onClose: () => void;
   C: typeof Colors.light;
+  saving?: boolean;
 }) {
   return (
     <Modal
@@ -622,10 +626,12 @@ function CategoryQuickPickerModal({
                 <Pressable
                   key={cat.id}
                   onPress={() => onPick(cat.id)}
+                  disabled={saving}
                   style={({ pressed }) => [
                     styles.pickerItem,
                     { borderBottomColor: C.border },
                     pressed && { opacity: 0.7 },
+                    saving && { opacity: 0.5 },
                   ]}
                 >
                   <RNView
@@ -645,10 +651,12 @@ function CategoryQuickPickerModal({
             })}
             <Pressable
               onPress={() => onPick(null)}
+              disabled={saving}
               style={({ pressed }) => [
                 styles.pickerItem,
                 { borderBottomColor: C.border, borderTopWidth: 1, borderTopColor: C.border },
                 pressed && { opacity: 0.7 },
+                saving && { opacity: 0.5 },
               ]}
             >
               <RNView style={[styles.pickerDot, { backgroundColor: C.textSecondary }]} />
