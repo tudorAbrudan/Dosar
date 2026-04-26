@@ -10,9 +10,6 @@ export default function EntitatiLayout() {
       <Stack.Screen name="wizard-proprietate" options={{ title: 'Adaugă proprietate' }} />
       <Stack.Screen name="fuel" options={{ title: 'Carburant & Revizii' }} />
       <Stack.Screen name="fuel-stats" options={{ title: 'Statistici carburant' }} />
-      <Stack.Screen name="cont" options={{ headerShown: false }} />
-      <Stack.Screen name="financiar" options={{ headerShown: false }} />
-      <Stack.Screen name="categorii" options={{ title: 'Categorii cheltuieli' }} />
     </Stack>
   );
 }
