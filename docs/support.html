@@ -364,6 +364,76 @@
         Folosește câmpul <strong>„Notă privată"</strong> din ecranul de document (la editare și detaliu). Acest câmp e destinat explicit datelor sensibile: <strong>nu ajunge niciodată la asistentul AI</strong> și nu este trimis la niciun serviciu extern. Este afișat mascat by default; poți dezvălui conținutul cu butonul „Arată". Se păstrează doar local, pe device.
       </div>
     </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Cum încep să țin evidența cheltuielilor?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        În onboarding ai un pas dedicat „Evidență cheltuieli". Activezi toggle-ul și Dosar îți creează automat contul „Cheltuieli generale". Apoi mergi la <strong>Entități → Gestiune financiară</strong>: vei găsi selectorul de lună, totaluri venituri/cheltuieli, top categorii și buton pentru tranzacție nouă. Poți activa oricând și ulterior din <strong>Setări → Entități</strong>, bifând „Cont financiar". <a href="gestiune-financiara.html">Detalii complete →</a>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Cum import un extras bancar (PDF sau CSV)?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Mergi la <strong>Entități → Gestiune financiară → Conturi → contul tău → Import extras</strong>. Alegi un fișier PDF (de la BT, ING, Revolut etc.) sau CSV. Pentru CSV trebuie să existe coloane pentru dată, descriere și sumă (separator <code>,</code> sau <code>;</code>). Pentru PDF, Dosar încearcă întâi parsarea locală — dacă nu reușește, apeși butonul AI și fie textul OCR (cu Dosar AI sau model local), fie paginile PDF ca imagini (cu cheie API proprie) sunt trimise la asistentul tău AI configurat. Tranzacțiile detectate ca duplicate sau transferuri interne sunt marcate automat. În detaliul contului ai un istoric al extraselor importate; ștergerea unui extras șterge tranzacțiile asociate, dar dezleagă transferurile interne, ca să nu strice cealaltă jumătate. <a href="gestiune-financiara.html#ai-import">Detalii moduri de extragere →</a>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        De ce extrasul meu pare dublat sau cu totaluri eronate la import?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Pentru extrase complexe, fluxul OCR + AI text (folosit cu Dosar AI sau model local) poate confunda subtotalurile sau soldurile cu tranzacții individuale, ceea ce duce la totaluri inflate. Soluția pentru acuratețe maximă: setează o cheie API proprie din <strong>Setări → Asistent AI</strong> (Mistral, OpenAI etc.) — atunci paginile PDF se trimit ca imagini direct la AI vision, care vede structura originală a documentului și extrage doar tranzacțiile reale. <a href="gestiune-financiara.html#ai-import">Compararea modurilor →</a>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Pot transforma un bon sau o factură într-o tranzacție?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Da. La salvarea unui <strong>bon de cumpărături</strong>, <strong>bon de parcare</strong>, <strong>factură</strong> sau <strong>abonament</strong> care are sumă, Dosar te întreabă „Înregistrează ca tranzacție?". Dacă alegi „Da, adaugă tranzacție", deschide editorul cu sumă, dată, comerciant și descriere pre-completate. Dacă alegi „Nu, doar document", documentul rămâne salvat — și mai târziu, în ecranul lui de detaliu, ai butonul <strong>„Adaugă tranzacție"</strong>. Dacă există deja una atașată, butonul devine <strong>„Vezi tranzacția"</strong> și nu apar duplicate.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Cum sunt prinse transferurile între conturile mele?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Dosar caută automat perechi de tranzacții cu sumă opusă pe conturi diferite, în ±5 zile distanță. Detecția rulează atât la importul unui extras bancar, cât și la fiecare tranzacție manuală pe care o salvezi. Dacă găsește exact o pereche care se potrivește, le leagă ca <em>transfer intern</em> — nu te deranjează cu dialog, dar le exclude din analitica de cheltuieli (un transfer nu e o cheltuială reală, e doar o mutare între conturile tale).
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Pot ține evidența mai multor mașini?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Da. Adaugi orice număr de vehicule din <strong>Entități → + Adaugă → Vehicul</strong>. Pentru fiecare ai propriul dosar cu acte (talon, RCA, ITP, vignetă), alimentări, mentenanță programată și statistici de consum. Reminderele de expirare funcționează independent pentru fiecare mașină. <a href="gestiune-auto.html">Detalii complete →</a>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Cum funcționează reminderele de mentenanță auto?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Setezi reguli de tipul „schimb ulei la 15.000 km sau 12 luni, ce vine primul". Dosar urmărește kilometrajul (din alimentările pe care le înregistrezi) și te anunță înainte de termen. Predefinit pentru: ulei, filtru ulei, filtru aer, filtru polen, plăcuțe frână, anvelope, baterie, curea distribuție. Poți adăuga propriile reguli oricând.
+      </div>
+    </div>
   <!-- DOSAR:FAQ_EXTRAS_END -->
 
   </div>

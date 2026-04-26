@@ -46,11 +46,20 @@ jest.mock('expo-sqlite', () => ({
 // nu că Expo aruncă excepție (asta e problema pe care am avut-o în build 10)
 jest.mock('expo-modules-core', () => ({
   requireNativeModule: jest.fn(() => ({})),
+  requireOptionalNativeModule: jest.fn(() => null),
   NativeModulesProxy: {},
   EventEmitter: jest.fn().mockImplementation(() => ({
     addListener: jest.fn(),
     removeAllListeners: jest.fn(),
   })),
+}));
+
+jest.mock('expo-crypto', () => ({
+  digestStringAsync: jest.fn().mockResolvedValue('mock-hash'),
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  CryptoEncoding: { HEX: 'hex' },
+  randomUUID: jest.fn(() => 'mock-uuid'),
+  getRandomBytesAsync: jest.fn().mockResolvedValue(new Uint8Array(16)),
 }));
 
 jest.mock('expo-sharing', () => ({

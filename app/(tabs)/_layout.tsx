@@ -78,6 +78,12 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="entitati"
+        listeners={() => ({
+          tabPress: e => {
+            e.preventDefault();
+            router.navigate('/(tabs)/entitati');
+          },
+        })}
         options={{
           title: 'Entități',
           tabBarIcon: ({ color }) => (

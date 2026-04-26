@@ -49,6 +49,57 @@ export interface FuelInfo {
   km?: number;
   price?: number;
   date?: string; // AAAA-LL-ZZ dacă găsit
+  station?: string; // brand + adresă (ex. "OMV Cluj-Napoca, Calea Turzii")
+}
+
+// Branduri benzinărie cunoscute pe piața RO. Ordine: cei mai frecvenți primii.
+const STATION_BRANDS = [
+  'OMV',
+  'MOL',
+  'Petrom',
+  'Lukoil',
+  'Rompetrol',
+  'Socar',
+  'Gazprom',
+  'Shell',
+  'BP',
+  'Avia',
+  'Eko',
+];
+const BRAND_REGEX = new RegExp(`\\b(${STATION_BRANDS.join('|')})\\b`, 'i');
+
+// Filtrăm liniile care evident NU sunt adresa (sume, total, CUI, cantitate, TVA, etc.)
+const NOISE_REGEX =
+  /^\s*(total|tva|tax|cnp|cui|cif|reg\.?\s*com|cantitate|pret|preț|sum[aă]|nr\.?\s*bon|cas[aă]|operator|client|nr\.?\s*chitan|data|ora|pl[aă]ti)/i;
+
+/**
+ * Extrage informația despre benzinărie din textul OCR al unui bon.
+ * Strategia: găsește primul brand cunoscut, apoi adaugă linia următoare dacă pare o adresă.
+ */
+export function extractStation(text: string): string | undefined {
+  const lines = text
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (BRAND_REGEX.test(lines[i])) {
+      const brandLine = lines[i].replace(/\s+/g, ' ').trim();
+      // Caută linia următoare care arată ca o adresă (nu e zgomot și are litere)
+      let address = '';
+      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        const candidate = lines[j].replace(/\s+/g, ' ').trim();
+        if (NOISE_REGEX.test(candidate)) continue;
+        if (!/[a-zA-ZăâîșțĂÂÎȘȚ]{3,}/.test(candidate)) continue;
+        // Sărim peste linii care încep cu cifre lungi (probabil cod fiscal / numere bon)
+        if (/^\d{5,}/.test(candidate)) continue;
+        address = candidate;
+        break;
+      }
+      return address ? `${brandLine}, ${address}` : brandLine;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -107,6 +158,10 @@ export function extractFuelInfo(text: string): FuelInfo {
   if (dateMatch) {
     result.date = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
   }
+
+  // Benzinărie: brand cunoscut + linia adresă următoare
+  const station = extractStation(text);
+  if (station) result.station = station;
 
   return result;
 }

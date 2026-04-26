@@ -5,6 +5,7 @@ function record(overrides: Partial<FuelRecord> & Pick<FuelRecord, 'id' | 'date'>
   return {
     vehicle_id: 'v1',
     is_full: true,
+    currency: 'RON',
     created_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };

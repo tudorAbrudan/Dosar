@@ -244,6 +244,8 @@ export default function ExpirariScreen() {
           const card = cards.find(c => c.id === doc.card_id);
           return card ? `${card.nickname ?? ''} ••${card.last4}`.trim() : null;
         }
+        default:
+          return null;
       }
     }
     // Entitatea primară conform tipului documentului

@@ -826,6 +826,7 @@ export default function EditDocumentScreen() {
               card: '💳',
               animal: '🐾',
               company: '🏢',
+              financial_account: '💰',
             };
             function entityLinkLabel(link: DocumentEntityLink): string {
               switch (link.entityType) {
@@ -843,6 +844,8 @@ export default function EditDocumentScreen() {
                   return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
                 case 'company':
                   return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
+                default:
+                  return link.entityId;
               }
             }
             return (

@@ -18,6 +18,10 @@ App **local-first**: date în SQLite pe device, fișiere locale, backup în iClo
 - Documente veterinare per animal (vaccin, deparazitare, vizite)
 - Câmp „Notă privată" per document (CVV/PIN/parole) — nu pleacă niciodată la AI
 - Detecție duplicate la adăugare și afișare în detaliu (fișier identic + tip+entitate)
+- Hub Gestiune financiară: tranzacții, conturi, categorii, evoluție multi-lună
+- Import extrase bancare PDF/CSV cu parsare locală și fallback AI opțional
+- Bon/factură → tranzacție automată cu pre-completare și deduplicare
+- Detectare automată de transferuri interne între conturi (la import și manual)
 - Asistent AI local-aware (chatbot cu context din documentele tale)
   <!-- DOSAR:APP_FEATURES_END -->
 

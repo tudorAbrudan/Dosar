@@ -464,5 +464,7 @@ function checkEntityExists(type: EntityType, id: string, entities: AvailableEnti
       return entities.animals.some(e => e.id === id);
     case 'company':
       return entities.companies.some(e => e.id === id);
+    default:
+      return false;
   }
 }

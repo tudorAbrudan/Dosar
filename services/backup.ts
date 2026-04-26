@@ -2,14 +2,18 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import JSZip from 'jszip';
-import type { DocumentType, EntityType } from '@/types';
+import type { DocumentType, EntityType, FinancialAccountType, TransactionSource } from '@/types';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import * as entities from './entities';
 import * as docs from './documents';
+import * as financialAccounts from './financialAccounts';
+import * as categories from './categories';
+import * as transactions from './transactions';
+import * as fuel from './fuel';
 import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { onRestoreSuccess } from './reviewPrompt';
-import { db } from './db';
+import { db, generateId } from './db';
 
 /**
  * Citește un fișier ca base64. Returnează null dacă nu există sau nu poate fi citit.
@@ -92,7 +96,7 @@ function buildFileMap(
  *  - backup.json  (manifest cu entități + documente + fileMap)
  *  - files/<NumeEntitate>/<TipDocument>/<fisier>  (pozele și PDF-urile organizate pe entități)
  *
- * Format version: 5
+ * Format version: 8
  */
 export async function exportBackup(): Promise<void> {
   const [
@@ -102,6 +106,11 @@ export async function exportBackup(): Promise<void> {
     cards,
     animals,
     companies,
+    financialAccountsList,
+    expenseCategoriesList,
+    transactionsList,
+    bankStatementsRows,
+    fuelRecordsList,
     documents,
     allPages,
     customTypes,
@@ -113,6 +122,24 @@ export async function exportBackup(): Promise<void> {
     entities.getCards(),
     entities.getAnimals(),
     entities.getCompanies(),
+    financialAccounts.getFinancialAccounts(true),
+    categories.getCategories(true),
+    transactions.getTransactions({ excludeDuplicates: false }),
+    db.getAllAsync<{
+      id: string;
+      account_id: string;
+      period_from: string;
+      period_to: string;
+      file_path: string | null;
+      file_hash: string | null;
+      imported_at: string;
+      transaction_count: number;
+      total_inflow: number;
+      total_outflow: number;
+      notes: string | null;
+      created_at: string;
+    }>('SELECT * FROM bank_statements'),
+    fuel.getAllFuelRecords(),
     docs.getDocuments(),
     docs.getAllDocumentPages(),
     getCustomTypes(),
@@ -151,7 +178,7 @@ export async function exportBackup(): Promise<void> {
   }
 
   const manifest = {
-    version: 7,
+    version: 8,
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -159,6 +186,11 @@ export async function exportBackup(): Promise<void> {
     cards,
     animals,
     companies,
+    financialAccounts: financialAccountsList,
+    expenseCategories: expenseCategoriesList,
+    transactions: transactionsList,
+    bankStatements: bankStatementsRows,
+    fuelRecords: fuelRecordsList,
     customTypes,
     documents,
     documentPages: allPages,
@@ -341,6 +373,9 @@ export async function importBackup(): Promise<ImportResult> {
     existingCards,
     existingAnimals,
     existingCompanies,
+    existingFinancialAccounts,
+    existingCategories,
+    existingFuelRecords,
     existingDocuments,
     existingCustomTypes,
   ] = await Promise.all([
@@ -350,6 +385,9 @@ export async function importBackup(): Promise<ImportResult> {
     entities.getCards(),
     entities.getAnimals(),
     entities.getCompanies(),
+    financialAccounts.getFinancialAccounts(true),
+    categories.getCategories(true),
+    fuel.getAllFuelRecords(),
     docs.getDocuments(),
     getCustomTypes(),
   ]);
@@ -385,6 +423,24 @@ export async function importBackup(): Promise<ImportResult> {
   const existingDocByKey = new Map(
     existingDocuments.map(d => [`${d.type}|${d.issue_date ?? ''}|${d.expiry_date ?? ''}`, d.id])
   );
+  // Cont financiar: dedupe by name + type (case-insensitive)
+  const existingFinancialAccountByKey = new Map(
+    existingFinancialAccounts.map(a => [`${a.name.toLowerCase().trim()}|${a.type}`, a.id])
+  );
+  // Categorii: sistem după `key`, custom după `name`
+  const existingCategoryByKey = new Map(
+    existingCategories.filter(c => c.key).map(c => [`sys:${c.key}`, c.id])
+  );
+  const existingCategoryByName = new Map(
+    existingCategories.filter(c => !c.is_system).map(c => [c.name.toLowerCase().trim(), c.id])
+  );
+  // Fuel record: dedupe exact (vehicle + date + liters + km_total)
+  const existingFuelByKey = new Set(
+    existingFuelRecords.map(
+      f =>
+        `${f.vehicle_id ?? ''}|${f.date}|${f.liters ?? ''}|${f.km_total ?? ''}|${f.station ?? ''}`
+    )
+  );
 
   // --- Import entități și documente (comun pentru ambele formate) ---
   let imported = 0;
@@ -397,6 +453,11 @@ export async function importBackup(): Promise<ImportResult> {
   const cardMap = new Map<string, string>();
   const animalMap = new Map<string, string>();
   const companyMap = new Map<string, string>();
+  const financialAccountMap = new Map<string, string>();
+  const categoryMap = new Map<string, string>();
+  const fuelRecordMap = new Map<string, string>();
+  const transactionMap = new Map<string, string>();
+  const bankStatementMap = new Map<string, string>();
   const customTypeMap = new Map<string, string>();
   const docIdMap = new Map<string, string>();
 
@@ -552,6 +613,41 @@ export async function importBackup(): Promise<ImportResult> {
     }
   }
 
+  // Conturi financiare (înainte de entityOrder ca să fie incluse în remap)
+  for (const a of (payload.financialAccounts as AnyRecord[]) ?? []) {
+    try {
+      const nameKey = ((a.name as string) || '').toLowerCase().trim();
+      const type = (a.type as FinancialAccountType) || 'bank';
+      const key = `${nameKey}|${type}`;
+      const existingId = existingFinancialAccountByKey.get(key);
+      if (existingId) {
+        if (a.id) financialAccountMap.set(a.id as string, existingId);
+        skipped++;
+      } else {
+        const created = await financialAccounts.createFinancialAccount({
+          name: (a.name as string) || 'Cont',
+          type,
+          currency: (a.currency as string) || 'RON',
+          initial_balance: (a.initial_balance as number) ?? 0,
+          initial_balance_date: a.initial_balance_date as string | undefined,
+          iban: a.iban as string | undefined,
+          bank_name: a.bank_name as string | undefined,
+          color: a.color as string | undefined,
+          icon: a.icon as string | undefined,
+          notes: a.notes as string | undefined,
+        });
+        if (a.archived === true || a.archived === 1) {
+          await financialAccounts.archiveFinancialAccount(created.id, true);
+        }
+        if (a.id) financialAccountMap.set(a.id as string, created.id);
+        existingFinancialAccountByKey.set(key, created.id);
+        imported++;
+      }
+    } catch (e) {
+      errors.push(`Cont financiar "${a.name}": ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
   // Restaurează ordinea globală a entităților, remappând ID-urile vechi la cele noi.
   // Ordinea e nice-to-have: erorile individuale nu blochează restul importului.
   for (const row of (payload.entityOrder as AnyRecord[]) ?? []) {
@@ -567,6 +663,7 @@ export async function importBackup(): Promise<ImportResult> {
       else if (entityType === 'card') newId = cardMap.get(oldId);
       else if (entityType === 'animal') newId = animalMap.get(oldId);
       else if (entityType === 'company') newId = companyMap.get(oldId);
+      else if (entityType === 'financial_account') newId = financialAccountMap.get(oldId);
       if (!newId) continue;
       await db.runAsync(
         'INSERT OR REPLACE INTO entity_order (entity_type, entity_id, sort_order) VALUES (?, ?, ?)',
@@ -592,6 +689,264 @@ export async function importBackup(): Promise<ImportResult> {
       }
     } catch (e) {
       errors.push(`Tip personalizat "${ct.name}": ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Categorii cheltuieli — sistem după `key`, custom după `name`
+  for (const c of (payload.expenseCategories as AnyRecord[]) ?? []) {
+    try {
+      const key = c.key as string | undefined;
+      const isSystem = c.is_system === true || c.is_system === 1;
+      const oldId = c.id as string | undefined;
+
+      if (isSystem && key) {
+        const existingId = existingCategoryByKey.get(`sys:${key}`);
+        if (existingId) {
+          if (oldId) categoryMap.set(oldId, existingId);
+          // Aplică limita lunară din backup dacă era setată (overrides default-ul)
+          if (typeof c.monthly_limit === 'number') {
+            try {
+              await db.runAsync('UPDATE expense_categories SET monthly_limit = ? WHERE id = ?', [
+                c.monthly_limit,
+                existingId,
+              ]);
+            } catch {
+              // ignorăm
+            }
+          }
+          skipped++;
+        }
+        // Categoriile sistem nu se inserează manual (sunt seed-ate la pornire); skip dacă lipsesc
+        continue;
+      }
+
+      const nameKey = ((c.name as string) || '').toLowerCase().trim();
+      const existingId = existingCategoryByName.get(nameKey);
+      if (existingId) {
+        if (oldId) categoryMap.set(oldId, existingId);
+        skipped++;
+      } else {
+        const created = await categories.createCategory({
+          name: (c.name as string) || 'Categorie',
+          icon: c.icon as string | undefined,
+          color: c.color as string | undefined,
+          monthly_limit: c.monthly_limit as number | undefined,
+          display_order: c.display_order as number | undefined,
+        });
+        if (c.archived === true || c.archived === 1) {
+          await categories.archiveCategory(created.id, true);
+        }
+        if (oldId) categoryMap.set(oldId, created.id);
+        existingCategoryByName.set(nameKey, created.id);
+        imported++;
+      }
+    } catch (e) {
+      errors.push(`Categorie "${c.name}": ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Extrase bancare — dedupe prin (account_id + period_from + period_to + file_hash)
+  const existingBankStatements = await db.getAllAsync<{
+    id: string;
+    account_id: string;
+    period_from: string;
+    period_to: string;
+    file_hash: string | null;
+  }>('SELECT id, account_id, period_from, period_to, file_hash FROM bank_statements');
+  const existingStatementByKey = new Map(
+    existingBankStatements.map(s => [
+      `${s.account_id}|${s.period_from}|${s.period_to}|${s.file_hash ?? ''}`,
+      s.id,
+    ])
+  );
+
+  for (const s of (payload.bankStatements as AnyRecord[]) ?? []) {
+    try {
+      const oldAccountId = s.account_id as string | undefined;
+      if (!oldAccountId) continue;
+      const newAccountId = financialAccountMap.get(oldAccountId);
+      if (!newAccountId) continue;
+      const key = `${newAccountId}|${s.period_from as string}|${s.period_to as string}|${(s.file_hash as string) ?? ''}`;
+      const existingId = existingStatementByKey.get(key);
+      if (existingId) {
+        if (s.id) bankStatementMap.set(s.id as string, existingId);
+        skipped++;
+        continue;
+      }
+      const newId = generateId();
+      const filePath = s.file_path ? toRelativePath(s.file_path as string) : null;
+      await db.runAsync(
+        `INSERT INTO bank_statements
+           (id, account_id, period_from, period_to, file_path, file_hash,
+            imported_at, transaction_count, total_inflow, total_outflow, notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          newAccountId,
+          s.period_from as string,
+          s.period_to as string,
+          filePath,
+          (s.file_hash as string | null) ?? null,
+          (s.imported_at as string) || new Date().toISOString(),
+          (s.transaction_count as number) ?? 0,
+          (s.total_inflow as number) ?? 0,
+          (s.total_outflow as number) ?? 0,
+          (s.notes as string | null) ?? null,
+          (s.created_at as string) || new Date().toISOString(),
+        ]
+      );
+      if (s.id) bankStatementMap.set(s.id as string, newId);
+      existingStatementByKey.set(key, newId);
+      imported++;
+    } catch (e) {
+      errors.push(`Extras bancar: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Înregistrări carburant — înainte de tranzacții (tranzacțiile leagă fuel_record_id)
+  for (const f of (payload.fuelRecords as AnyRecord[]) ?? []) {
+    try {
+      const oldId = f.id as string | undefined;
+      const oldVehicleId = f.vehicle_id as string | undefined;
+      const newVehicleId = oldVehicleId ? vehicleMap.get(oldVehicleId) : undefined;
+      const oldAccountId = f.account_id as string | undefined;
+      const newAccountId = oldAccountId ? financialAccountMap.get(oldAccountId) : undefined;
+
+      const dedupeKey = `${newVehicleId ?? ''}|${f.date as string}|${f.liters ?? ''}|${f.km_total ?? ''}|${(f.station as string) ?? ''}`;
+      if (existingFuelByKey.has(dedupeKey)) {
+        skipped++;
+        continue;
+      }
+
+      const input = {
+        date: f.date as string,
+        liters: f.liters as number | undefined,
+        km_total: f.km_total as number | undefined,
+        price: f.price as number | undefined,
+        currency: (f.currency as string) || 'RON',
+        fuel_type: f.fuel_type as 'diesel' | 'benzina' | 'gpl' | 'electric' | undefined,
+        is_full: f.is_full === true || f.is_full === 1,
+        station: f.station as string | undefined,
+        pump_number: f.pump_number as string | undefined,
+        account_id: newAccountId,
+      };
+
+      const created = newVehicleId
+        ? await fuel.addFuelRecord(newVehicleId, input)
+        : await fuel.addCanisterFuelRecord(input);
+
+      if (oldId) fuelRecordMap.set(oldId, created.id);
+      existingFuelByKey.add(dedupeKey);
+      imported++;
+    } catch (e) {
+      errors.push(`Alimentare carburant: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Tranzacții — primul pas: insert fără linked_transaction_id / duplicate_of_id (al doilea pas leagă)
+  // Dedupe: account + date + amount + (description || merchant)
+  const existingTransactions = await transactions.getTransactions({ excludeDuplicates: false });
+  const txKey = (t: {
+    account_id?: string;
+    date: string;
+    amount: number;
+    description?: string;
+    merchant?: string;
+  }) =>
+    `${t.account_id ?? ''}|${t.date}|${t.amount.toFixed(2)}|${(t.description ?? '').toLowerCase().trim()}|${(t.merchant ?? '').toLowerCase().trim()}`;
+  const existingTxByKey = new Map(existingTransactions.map(t => [txKey(t), t.id]));
+
+  const txWithLink: { oldId: string; newId: string; oldLinkedId: string }[] = [];
+  const txDuplicates: { oldId: string; newId: string; oldOriginalId: string }[] = [];
+  const txWithSourceDoc: { newId: string; oldDocId: string }[] = [];
+
+  for (const t of (payload.transactions as AnyRecord[]) ?? []) {
+    try {
+      const oldId = t.id as string | undefined;
+      const oldAccountId = t.account_id as string | undefined;
+      const newAccountId = oldAccountId ? financialAccountMap.get(oldAccountId) : undefined;
+      const oldCategoryId = t.category_id as string | undefined;
+      const newCategoryId = oldCategoryId ? categoryMap.get(oldCategoryId) : undefined;
+      const oldStatementId = t.statement_id as string | undefined;
+      const newStatementId = oldStatementId ? bankStatementMap.get(oldStatementId) : undefined;
+      const oldFuelRecordId = t.fuel_record_id as string | undefined;
+      const newFuelRecordId = oldFuelRecordId ? fuelRecordMap.get(oldFuelRecordId) : undefined;
+
+      const candidate = {
+        account_id: newAccountId,
+        date: t.date as string,
+        amount: t.amount as number,
+        description: t.description as string | undefined,
+        merchant: t.merchant as string | undefined,
+      };
+      const existingId = existingTxByKey.get(txKey(candidate));
+      if (existingId) {
+        if (oldId) transactionMap.set(oldId, existingId);
+        skipped++;
+        continue;
+      }
+
+      const created = await transactions.createTransaction({
+        account_id: newAccountId,
+        date: t.date as string,
+        amount: t.amount as number,
+        currency: (t.currency as string) || 'RON',
+        amount_ron: t.amount_ron as number | undefined,
+        description: t.description as string | undefined,
+        merchant: t.merchant as string | undefined,
+        category_id: newCategoryId,
+        source: (t.source as TransactionSource) || 'manual',
+        statement_id: newStatementId,
+        fuel_record_id: newFuelRecordId,
+        is_refund: t.is_refund === true || t.is_refund === 1,
+        notes: t.notes as string | undefined,
+      });
+
+      if (oldId) transactionMap.set(oldId, created.id);
+      existingTxByKey.set(txKey(candidate), created.id);
+
+      const oldLinkedId = t.linked_transaction_id as string | undefined;
+      const isTransfer = t.is_internal_transfer === true || t.is_internal_transfer === 1;
+      if (isTransfer && oldLinkedId && oldId) {
+        txWithLink.push({ oldId, newId: created.id, oldLinkedId });
+      }
+      const oldOriginalId = t.duplicate_of_id as string | undefined;
+      if (oldOriginalId && oldId) {
+        txDuplicates.push({ oldId, newId: created.id, oldOriginalId });
+      }
+      const oldSourceDocId = t.source_document_id as string | undefined;
+      if (oldSourceDocId) {
+        txWithSourceDoc.push({ newId: created.id, oldDocId: oldSourceDocId });
+      }
+      imported++;
+    } catch (e) {
+      errors.push(`Tranzacție: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Pas 2: leagă transferurile interne (perechi)
+  const linkedSeen = new Set<string>();
+  for (const entry of txWithLink) {
+    if (linkedSeen.has(entry.oldId)) continue;
+    const newLinkedId = transactionMap.get(entry.oldLinkedId);
+    if (!newLinkedId) continue;
+    try {
+      await transactions.linkAsInternalTransfer(entry.newId, newLinkedId);
+      linkedSeen.add(entry.oldId);
+      linkedSeen.add(entry.oldLinkedId);
+    } catch {
+      // perechea poate să nu îndeplinească constrângerile (ex. dată > 2 zile după dedupe); ignorăm
+    }
+  }
+
+  // Pas 2: marchează duplicatele
+  for (const entry of txDuplicates) {
+    const newOriginalId = transactionMap.get(entry.oldOriginalId);
+    if (!newOriginalId) continue;
+    try {
+      await transactions.markAsDuplicate(entry.newId, newOriginalId);
+    } catch {
+      // ignorăm
     }
   }
 
@@ -645,6 +1000,21 @@ export async function importBackup(): Promise<ImportResult> {
       imported++;
     } catch (e) {
       errors.push(`Pagina document: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Pas final: re-leagă tranzacții la documentele lor sursă (acum că ambele
+  // tabele sunt importate cu ID-urile noi).
+  for (const link of txWithSourceDoc) {
+    const newDocId = docIdMap.get(link.oldDocId);
+    if (!newDocId) continue;
+    try {
+      await db.runAsync('UPDATE transactions SET source_document_id = ? WHERE id = ?', [
+        newDocId,
+        link.newId,
+      ]);
+    } catch {
+      // best-effort
     }
   }
 

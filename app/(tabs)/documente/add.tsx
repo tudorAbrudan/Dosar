@@ -67,7 +67,6 @@ import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import * as ocrConsent from '@/services/ocrConsent';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 
-
 const DELETE_OPTIONS: { label: string; value: string | null }[] = [
   { label: 'Niciodată', value: null },
   { label: '30 zile', value: '30d' },
@@ -94,6 +93,11 @@ const HIDE_EXPIRY_TYPES: DocumentType[] = [
   'cadastru',
   'act_proprietate',
 ];
+
+// Tipuri de documente care reprezintă o cheltuială și pot fi propuse spre
+// înregistrare ca tranzacție în „Gestiune financiară" — dacă hub-ul e activ
+// și există cont și sumă detectată în metadata.
+const TX_PROMPT_TYPES: DocumentType[] = ['bon_cumparaturi', 'bon_parcare', 'factura'];
 const CUSTOM_EXPIRY_LABEL: Partial<Record<DocumentType, string>> = {
   talon: 'Scadență ITP (pentru reminder)',
   factura: 'Scadență (pentru reminder)',
@@ -106,6 +110,7 @@ const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
   { key: 'card', label: 'Card' },
   { key: 'animal', label: 'Animal' },
   { key: 'company', label: 'Firmă' },
+  { key: 'financial_account', label: 'Cont financiar' },
 ];
 
 async function applyDocumentScan(uri: string): Promise<string> {
@@ -131,7 +136,8 @@ export default function AddDocumentScreen() {
     type?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards, animals, companies } = useEntities();
+  const { persons, properties, vehicles, cards, animals, companies, financialAccounts } =
+    useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes, visibleDocTypes } = useVisibilitySettings();
@@ -166,11 +172,15 @@ export default function AddDocumentScreen() {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setTextAiConsentAvailable(v === 'true'));
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    if (!hasMountedRef.current) { hasMountedRef.current = true; return; }
-    setPhotoRefreshKey(k => k + 1);
-  }, []));
-
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return;
+      }
+      setPhotoRefreshKey(k => k + 1);
+    }, [])
+  );
 
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
@@ -409,11 +419,7 @@ export default function AddDocumentScreen() {
 
       // Preset auto-ștergere 5 ani pentru facturi furnizori utilități (OCR local)
       const localSupplier = finalMeta.supplier ?? '';
-      if (
-        docType === 'factura' &&
-        localSupplier &&
-        isKnownUtilitySupplier(localSupplier)
-      ) {
+      if (docType === 'factura' && localSupplier && isKnownUtilitySupplier(localSupplier)) {
         setAutoDelete(prev => (prev === null ? '1825d' : prev));
       }
 
@@ -462,13 +468,16 @@ export default function AddDocumentScreen() {
       if (firstPage) {
         try {
           if (isPdfFile(firstPage.localPath)) {
-            firstImageBase64 = (await renderPdfFirstPageForVision(firstPage.localPath)) ?? undefined;
+            firstImageBase64 =
+              (await renderPdfFirstPageForVision(firstPage.localPath)) ?? undefined;
           } else {
             firstImageBase64 = await FileSystem.readAsStringAsync(firstPage.localPath, {
               encoding: FileSystem.EncodingType.Base64,
             });
           }
-        } catch { /* ignoră dacă fișierul nu poate fi citit */ }
+        } catch {
+          /* ignoră dacă fișierul nu poate fi citit */
+        }
       }
 
       const result = await mapOcrWithAi(combinedOcrText, availableEntities, firstImageBase64);
@@ -527,7 +536,11 @@ export default function AddDocumentScreen() {
       // Preset auto-ștergere 5 ani pentru facturi furnizori utilități
       const effectiveDocType = result.documentType ?? type;
       const supplierField = result.fields.supplier ?? '';
-      if (effectiveDocType === 'factura' && supplierField && isKnownUtilitySupplier(supplierField)) {
+      if (
+        effectiveDocType === 'factura' &&
+        supplierField &&
+        isKnownUtilitySupplier(supplierField)
+      ) {
         setAutoDelete(prev => (prev === null ? '1825d' : prev));
       }
 
@@ -601,7 +614,7 @@ export default function AddDocumentScreen() {
               encoding: FileSystem.EncodingType.Base64,
             });
           }
-        } catch { }
+        } catch {}
 
         const extracted = await extractFieldsWithLlm(type, ocrText, imageBase64);
 
@@ -933,8 +946,10 @@ export default function AddDocumentScreen() {
       if (action === 'update') {
         setLoading(true);
         try {
-          const newOcrText = Array.from(ocrStructuredTextsRef.current.values())
-            .filter(Boolean).join('\n\n---\n\n') || undefined;
+          const newOcrText =
+            Array.from(ocrStructuredTextsRef.current.values())
+              .filter(Boolean)
+              .join('\n\n---\n\n') || undefined;
           await updateDocument(duplicateDoc.id, {
             type: duplicateDoc.type,
             issue_date: issueDate.trim() || duplicateDoc.issue_date || undefined,
@@ -942,9 +957,10 @@ export default function AddDocumentScreen() {
               ? expiryDate.trim() || duplicateDoc.expiry_date || undefined
               : undefined,
             note: note.trim() || duplicateDoc.note || undefined,
-            file_path: pages.length > 0
-              ? toRelativePath(pages[0].localPath)
-              : (duplicateDoc.file_path ?? undefined),
+            file_path:
+              pages.length > 0
+                ? toRelativePath(pages[0].localPath)
+                : (duplicateDoc.file_path ?? undefined),
             metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
             auto_delete: autoDelete ?? duplicateDoc.auto_delete ?? undefined,
             ocr_text: newOcrText,
@@ -1000,6 +1016,47 @@ export default function AddDocumentScreen() {
       }
       await refresh();
       scheduleExpirationReminders().catch(() => {});
+
+      // Auto-prompt înregistrare cheltuială (bon/factură) în Gestiune financiară.
+      // Documentul tocmai a fost creat → nu există încă tranzacție pentru el,
+      // deci nu mai facem check-ul de duplicare. Pentru cazul „re-edit document
+      // existent", butonul „Adaugă tranzacție" de pe ecranul de detaliu document
+      // verifică `source_document_id` înainte de a deschide ecranul de tranzacție.
+      const financeHubActive = visibleEntityTypes.includes('financial_account');
+      const activeAccounts = financialAccounts.filter(a => !a.archived);
+      if (TX_PROMPT_TYPES.includes(type) && financeHubActive && activeAccounts.length > 0) {
+        const rawAmount = (metadata.amount ?? '').replace(',', '.').trim();
+        const amountNum = parseFloat(rawAmount);
+        if (!isNaN(amountNum) && amountNum > 0) {
+          const merchant = metadata.store ?? metadata.supplier ?? metadata.location ?? '';
+          const proceed = await new Promise<boolean>(resolve => {
+            Alert.alert(
+              'Înregistrează ca tranzacție?',
+              `${amountNum.toFixed(2)} RON${merchant ? ` la ${merchant}` : ''}.\n\nDacă „Nu, doar document", documentul rămâne salvat și poți adăuga tranzacția mai târziu din ecranul de detaliu.`,
+              [
+                { text: 'Nu, doar document', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Da, adaugă tranzacție', onPress: () => resolve(true) },
+              ]
+            );
+          });
+          if (proceed) {
+            setLoading(false);
+            const accountIdParam = activeAccounts.length === 1 ? activeAccounts[0].id : undefined;
+            router.replace({
+              pathname: '/(tabs)/entitati/cont/tranzactie',
+              params: {
+                ...(accountIdParam ? { account_id: accountIdParam } : {}),
+                prefill_amount: amountNum.toFixed(2),
+                prefill_date: issueDateRef.current.trim() || new Date().toISOString().slice(0, 10),
+                prefill_merchant: merchant,
+                prefill_kind: 'expense',
+                source_document_id: newDoc.id,
+              },
+            });
+            return;
+          }
+        }
+      }
 
       const finalExpiry = expiryDateRef.current.trim();
       if (finalExpiry && isCalendarAvailable()) {
@@ -1088,7 +1145,11 @@ export default function AddDocumentScreen() {
             ? animals.map(a => ({ id: a.id, label: a.name }))
             : pickerCategory === 'company'
               ? companies.map(c => ({ id: c.id, label: c.name }))
-              : cards.map(c => ({ id: c.id, label: c.nickname }));
+              : pickerCategory === 'financial_account'
+                ? financialAccounts
+                    .filter(a => !a.archived)
+                    .map(a => ({ id: a.id, label: `${a.name} (${a.currency})` }))
+                : cards.map(c => ({ id: c.id, label: c.nickname }));
 
   function toggleEntityLink(id: string) {
     setEntityLinks(prev => {
@@ -1112,6 +1173,10 @@ export default function AddDocumentScreen() {
         return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
       case 'company':
         return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
+      case 'financial_account':
+        return financialAccounts.find(a => a.id === link.entityId)?.name ?? link.entityId;
+      default:
+        return link.entityId;
     }
   }
 
@@ -1194,7 +1259,8 @@ export default function AddDocumentScreen() {
                 </Pressable>
               </View>
               <Text style={[styles.aiActionInfo, { color: C.textSecondary }]}>
-                Se trimite imaginea/PDF-ul documentului la AI pentru extragerea datelor. Acțiune manuală explicită.
+                Se trimite imaginea/PDF-ul documentului la AI pentru extragerea datelor. Acțiune
+                manuală explicită.
               </Text>
             </View>
           )}
@@ -1202,10 +1268,16 @@ export default function AddDocumentScreen() {
           {/* TIP INACTIV DETECTAT DE AI */}
           {suggestedInactiveType && (
             <View style={styles.inactiveBanner}>
-              <Ionicons name="information-circle-outline" size={18} color="#E65100" style={{ marginRight: 8, marginTop: 1 }} />
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color="#E65100"
+                style={{ marginRight: 8, marginTop: 1 }}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.inactiveBannerTitle}>
-                  AI-ul a detectat tipul „{DOCUMENT_TYPE_LABELS[suggestedInactiveType] ?? suggestedInactiveType}"
+                  AI-ul a detectat tipul „
+                  {DOCUMENT_TYPE_LABELS[suggestedInactiveType] ?? suggestedInactiveType}"
                 </Text>
                 <Text style={styles.inactiveBannerBody}>
                   Acest tip nu e activat. Activează-l din Setări → Tipuri de documente vizibile.
@@ -1460,10 +1532,13 @@ export default function AddDocumentScreen() {
           {/* 6b. NOTĂ PRIVATĂ — nu se trimite la AI */}
           <View style={styles.privateLabelRow}>
             <Ionicons name="lock-closed" size={14} color={sensitive} />
-            <Text style={[styles.label, { color: sensitive, opacity: 1 }]}>Notă privată (opțional)</Text>
+            <Text style={[styles.label, { color: sensitive, opacity: 1 }]}>
+              Notă privată (opțional)
+            </Text>
           </View>
           <Text style={[styles.privateHint, { color: C.textSecondary }]}>
-            Rămâne pe acest telefon. Nu se trimite niciodată la asistentul AI. Potrivită pentru CVV, PIN, parole, coduri de acces.
+            Rămâne pe acest telefon. Nu se trimite niciodată la asistentul AI. Potrivită pentru CVV,
+            PIN, parole, coduri de acces.
           </Text>
           <ThemedTextInput
             style={[styles.input, styles.inputMultiline, styles.privateInput]}

@@ -21,6 +21,8 @@ import { radius, spacing } from '@/theme/layout';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
+import { getMonthlyTotals, type MonthlyTotals } from '@/services/transactions';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel, DOC_PRIMARY_ENTITY } from '@/types';
 import type { Document, DocumentType, EntityType } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
@@ -278,7 +280,10 @@ export default function HomeScreen() {
     refresh: refreshEntities,
   } = useEntities();
   const { customTypes } = useCustomTypes();
-  const { visibleDocTypes } = useVisibilitySettings();
+  const { visibleDocTypes, visibleEntityTypes } = useVisibilitySettings();
+  const financeHubActive = visibleEntityTypes.includes('financial_account');
+  const { accounts: financialAccounts, refresh: refreshAccounts } = useFinancialAccounts();
+  const [monthlyTotals, setMonthlyTotals] = useState<MonthlyTotals | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<Document[][]>([]);
   const backfillDoneRef = useRef(false);
 
@@ -293,6 +298,9 @@ export default function HomeScreen() {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
       refresh();
       refreshEntities();
+      refreshAccounts();
+      const ym = new Date().toISOString().slice(0, 7);
+      getMonthlyTotals(ym).then(setMonthlyTotals).catch(() => {});
       findFileDuplicates().then(setDuplicateGroups).catch(() => {});
     }, [])
   );
@@ -345,6 +353,25 @@ export default function HomeScreen() {
     [documents, vehicles, persons, visibleDocTypes]
   );
 
+  // ── Financial summary ────────────────────────────────────────────────────────
+  // Hub-ul „Gestiune financiară" poate fi dezactivat din Setări → vizibilitate.
+  // Când e dezactivat, widget-ul de pe Home dispare complet (chiar dacă DB-ul
+  // încă conține conturi — datele rămân pentru o eventuală reactivare).
+  const financialSummary = useMemo(() => {
+    if (!financeHubActive) return null;
+    if (!financialAccounts.length) return null;
+    const byCurrency = new Map<string, number>();
+    for (const a of financialAccounts) {
+      if (a.archived) continue;
+      const cur = a.currency || 'RON';
+      byCurrency.set(cur, (byCurrency.get(cur) ?? 0) + a.balance);
+    }
+    const ronBalance = byCurrency.get('RON') ?? 0;
+    const otherCurrencies = Array.from(byCurrency.keys()).filter(c => c !== 'RON');
+    const activeCount = financialAccounts.filter(a => !a.archived).length;
+    return { ronBalance, otherCurrencies, activeCount, byCurrency };
+  }, [financialAccounts, financeHubActive]);
+
   // ── Entity helpers ────────────────────────────────────────────────────────────
   function resolveEntityName(doc: Document): string | null {
     function getByType(type: EntityType): string | null {
@@ -370,6 +397,8 @@ export default function HomeScreen() {
           const c = cards.find(c => c.id === doc.card_id);
           return c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
         }
+        default:
+          return null;
       }
     }
     // Entitatea primară conform tipului documentului
@@ -485,6 +514,92 @@ export default function HomeScreen() {
             />
           </RNView>
         </SurfaceCard>
+
+        {/* ── Financiar ── */}
+        {financialSummary && (
+          <RNView style={styles.section}>
+            <RNView style={styles.sectionHeader}>
+              <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>FINANCIAR</RNText>
+            </RNView>
+            <Pressable
+              style={({ pressed }) => [
+                styles.financialCard,
+                { backgroundColor: C.card, shadowColor: C.cardShadow },
+                pressed && { opacity: 0.92 },
+              ]}
+              onPress={() => router.push('/(tabs)/entitati/financiar')}
+            >
+              <RNView style={styles.financialBalanceRow}>
+                <RNView style={{ flex: 1 }}>
+                  <RNText style={[styles.financialLabel, { color: C.textSecondary }]}>
+                    Sold total ({financialSummary.activeCount}{' '}
+                    {financialSummary.activeCount === 1 ? 'cont' : 'conturi'})
+                  </RNText>
+                  <RNText style={[styles.financialBalance, { color: C.text }]}>
+                    {financialSummary.ronBalance.toFixed(2)} RON
+                  </RNText>
+                  {financialSummary.otherCurrencies.length > 0 && (
+                    <RNText style={[styles.financialNote, { color: C.textSecondary }]}>
+                      +{' '}
+                      {financialSummary.otherCurrencies
+                        .map(
+                          c =>
+                            `${(financialSummary.byCurrency.get(c) ?? 0).toFixed(2)} ${c}`
+                        )
+                        .join(' · ')}
+                    </RNText>
+                  )}
+                </RNView>
+                <Pressable
+                  style={[styles.financialAddBtn, { backgroundColor: primary }]}
+                  onPress={() => router.push('/(tabs)/entitati/cont/tranzactie')}
+                  hitSlop={6}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                </Pressable>
+              </RNView>
+              {monthlyTotals && (
+                <RNView style={[styles.financialDivider, { backgroundColor: C.border }]} />
+              )}
+              {monthlyTotals && (
+                <RNView style={styles.financialMonthRow}>
+                  <RNView style={styles.financialStat}>
+                    <RNText style={[styles.financialStatLabel, { color: C.textSecondary }]}>
+                      Venituri
+                    </RNText>
+                    <RNText style={[styles.financialStatValue, { color: '#2E7D32' }]}>
+                      +{monthlyTotals.income_ron.toFixed(0)}
+                    </RNText>
+                  </RNView>
+                  <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
+                  <RNView style={styles.financialStat}>
+                    <RNText style={[styles.financialStatLabel, { color: C.textSecondary }]}>
+                      Cheltuieli
+                    </RNText>
+                    <RNText style={[styles.financialStatValue, { color: '#C62828' }]}>
+                      -{monthlyTotals.expense_ron.toFixed(0)}
+                    </RNText>
+                  </RNView>
+                  <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
+                  <RNView style={styles.financialStat}>
+                    <RNText style={[styles.financialStatLabel, { color: C.textSecondary }]}>
+                      Net luna
+                    </RNText>
+                    <RNText
+                      style={[
+                        styles.financialStatValue,
+                        { color: monthlyTotals.net_ron >= 0 ? '#2E7D32' : '#C62828' },
+                      ]}
+                    >
+                      {monthlyTotals.net_ron >= 0 ? '+' : ''}
+                      {monthlyTotals.net_ron.toFixed(0)}
+                    </RNText>
+                  </RNView>
+                </RNView>
+              )}
+            </Pressable>
+          </RNView>
+        )}
 
         {/* ── Alerte contextuale ── */}
         {alerts.length > 0 && (
@@ -796,6 +911,32 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   sectionLink: { fontSize: 13, color: primary, fontWeight: '500' },
+
+  // Financial widget
+  financialCard: {
+    borderRadius: radius.lg,
+    padding: 14,
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4 },
+      android: { elevation: 2 },
+    }),
+  },
+  financialBalanceRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  financialLabel: { fontSize: 11, fontWeight: '500', letterSpacing: 0.4 },
+  financialBalance: { fontSize: 22, fontWeight: '700', marginTop: 2 },
+  financialNote: { fontSize: 11, marginTop: 2 },
+  financialAddBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  financialDivider: { height: StyleSheet.hairlineWidth, marginVertical: 12 },
+  financialMonthRow: { flexDirection: 'row', alignItems: 'stretch' },
+  financialStat: { flex: 1, alignItems: 'center', paddingVertical: 4 },
+  financialStatLabel: { fontSize: 10, fontWeight: '500', textTransform: 'uppercase' },
+  financialStatValue: { fontSize: 16, fontWeight: '700', marginTop: 2 },
 
   // Alert cards
   alertCard: {

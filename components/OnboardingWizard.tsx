@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { SUPPORT_URL } from '@/constants/AppLinks';
+import { AI_INFO_URL, SUPPORT_URL } from '@/constants/AppLinks';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import {
   ALL_ENTITY_TYPES,
@@ -35,22 +35,24 @@ import {
   requestNotificationPermission,
   scheduleExpirationReminders,
 } from '@/services/notifications';
+import { getCategories } from '@/services/categories';
+import { createFinancialAccount, getFinancialAccounts } from '@/services/financialAccounts';
+import type { ExpenseCategory } from '@/types';
 import { primary, statusColors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/layout';
 import { useThemePreference } from '@/hooks/useThemeScheme';
-
-const TOTAL_STEPS = 10;
 
 const WELCOME = 0;
 const APPEARANCE = 1;
 const SECURITY = 2;
 const ENTITIES = 3;
-const DOCS = 4;
-const NOTIFICATIONS = 5;
-const BACKUP = 6;
-const AI_STEP = 7;
-const OCR_PRIVACY = 8;
-const SUMMARY = 9;
+const EXPENSES = 4;
+const VEHICLE_MGMT = 5;
+const DOCS = 6;
+const NOTIFICATIONS = 7;
+const BACKUP = 8;
+const AI_STEP = 9;
+const SUMMARY = 10;
 
 const NOTIF_DAY_OPTIONS = [7, 14, 30] as const;
 
@@ -61,6 +63,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   card: 'Card',
   animal: 'Animal',
   company: 'Firmă',
+  financial_account: 'Cont financiar',
 };
 
 const ENTITY_ICONS: Record<EntityType, string> = {
@@ -70,6 +73,7 @@ const ENTITY_ICONS: Record<EntityType, string> = {
   card: '💳',
   animal: '🐾',
   company: '🏢',
+  financial_account: '💰',
 };
 
 const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
@@ -79,6 +83,7 @@ const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   card: 'Carduri bancare, abonamente',
   animal: 'Vaccinuri, deparazitare, vizite vet',
   company: 'Certificat înregistrare, acte constitutive, TVA',
+  financial_account: 'Conturi bancare, numerar, economii, investiții',
 };
 
 interface Props {
@@ -95,6 +100,10 @@ function stepTitle(step: number): string {
       return 'Securitate';
     case ENTITIES:
       return 'Ce vei gestiona?';
+    case EXPENSES:
+      return 'Evidență cheltuieli';
+    case VEHICLE_MGMT:
+      return 'Gestiune auto';
     case DOCS:
       return 'Ce documente te interesează?';
     case NOTIFICATIONS:
@@ -103,8 +112,6 @@ function stepTitle(step: number): string {
       return 'Backup';
     case AI_STEP:
       return 'Asistent AI';
-    case OCR_PRIVACY:
-      return 'Extracție AI din documente';
     case SUMMARY:
       return 'Rezumat';
     default:
@@ -122,6 +129,10 @@ function stepSubtitle(step: number): string {
       return 'Câteva recomandări pentru datele tale sensibile.';
     case ENTITIES:
       return 'Alege tipurile de entități pe care le vei folosi. Poți schimba oricând din Setări.';
+    case EXPENSES:
+      return 'Urmărește venituri și cheltuieli pe categorii și luni. Totul rămâne pe dispozitiv.';
+    case VEHICLE_MGMT:
+      return 'Talon, RCA, ITP, alimentări, statistici de consum — într-un singur loc.';
     case DOCS:
       return 'Am preselectat documentele aferente entităților alese. Ajustează după nevoie.';
     case NOTIFICATIONS:
@@ -130,8 +141,6 @@ function stepSubtitle(step: number): string {
       return 'Exportul periodic (fișier ZIP) îți protejează datele la schimbare de telefon sau reinstalare.';
     case AI_STEP:
       return 'Complet opțional. Datele tale rămân pe dispozitiv — AI-ul e activat doar când îl folosești.';
-    case OCR_PRIVACY:
-      return 'Controlezi ce date sunt trimise la AI. Poți schimba oricând din Setări → Asistent AI.';
     case SUMMARY:
       return 'Verifică setările. Poți modifica totul din Setări oricând.';
     default:
@@ -147,7 +156,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const { preference: themePref, setPreference: setThemePref } = useThemePreference();
 
   const [step, setStep] = useState(WELCOME);
-  const [selectedEntities, setSelectedEntities] = useState<EntityType[]>([...ALL_ENTITY_TYPES]);
+  // În ENTITIES afișăm doar entitățile „de viață" — financial_account e controlat
+  // separat din pasul EXPENSES (toggle pentru evidența cheltuielilor).
+  const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(
+    ALL_ENTITY_TYPES.filter(e => e !== 'financial_account')
+  );
   const [selectedDocTypes, setSelectedDocTypes] = useState<DocumentType[]>([
     ...DEFAULT_VISIBLE_DOC_TYPES,
   ]);
@@ -163,6 +176,25 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const [aiExternalApiKey, setAiExternalApiKey] = useState('');
   const [aiExternalModel, setAiExternalModel] = useState('');
   const [aiConsentChecked, setAiConsentChecked] = useState(false);
+  const [expensesEnabled, setExpensesEnabled] = useState(true);
+  const [systemCategories, setSystemCategories] = useState<ExpenseCategory[]>([]);
+
+  // Lista de pași activi (VEHICLE_MGMT apare doar dacă utilizatorul a ales vehicul).
+  const activeSteps: number[] = [
+    WELCOME,
+    APPEARANCE,
+    SECURITY,
+    ENTITIES,
+    EXPENSES,
+    ...(selectedEntities.includes('vehicle') ? [VEHICLE_MGMT] : []),
+    DOCS,
+    NOTIFICATIONS,
+    BACKUP,
+    AI_STEP,
+    SUMMARY,
+  ];
+  const currentIdx = Math.max(0, activeSteps.indexOf(step));
+  const totalActive = activeSteps.length;
 
   useEffect(() => {
     settings.getPushEnabled().then(setPushEnabled);
@@ -170,6 +202,9 @@ export default function OnboardingWizard({ onComplete }: Props) {
       setNotifDays(d === 7 || d === 14 || d === 30 ? d : 7);
     });
     settings.getAppLockEnabled().then(setLockEnabled);
+    getCategories(false)
+      .then(cats => setSystemCategories(cats.filter(c => c.is_system)))
+      .catch(() => setSystemCategories([]));
     if (Platform.OS !== 'web') {
       Notifications.getPermissionsAsync().then(({ status }) => {
         if (status === 'granted') setNotifPermStatus('granted');
@@ -193,18 +228,6 @@ export default function OnboardingWizard({ onComplete }: Props) {
       if (isSelected && prev.length <= 1) return prev;
       return isSelected ? prev.filter(d => d !== docType) : [...prev, docType];
     });
-  }
-
-  function goNextFromEntities() {
-    // Pre-selecție: intersecție dintre DEFAULT_VISIBLE_DOC_TYPES și tipurile aferente entităților alese
-    const entityDocs = new Set<DocumentType>();
-    selectedEntities.forEach(entity => {
-      ENTITY_DOCUMENT_TYPES[entity].forEach(doc => entityDocs.add(doc));
-    });
-    const preselected = DEFAULT_VISIBLE_DOC_TYPES.filter(doc => entityDocs.has(doc));
-    // Dacă nu reiese nimic, fallback la DEFAULT_VISIBLE_DOC_TYPES
-    setSelectedDocTypes(preselected.length > 0 ? preselected : [...DEFAULT_VISIBLE_DOC_TYPES]);
-    setStep(DOCS);
   }
 
   async function handlePushSwitchToggle(value: boolean) {
@@ -240,15 +263,41 @@ export default function OnboardingWizard({ onComplete }: Props) {
     await settings.setPushEnabled(pushEnabled);
     await settings.setNotificationDays(notifDays);
     await scheduleExpirationReminders();
-    setStep(BACKUP);
+    gotoNextActive();
   }
 
   async function handleComplete() {
-    await settings.setVisibleEntityTypes(selectedEntities);
+    // Hub-ul „Gestiune financiară" e singleton — vizibilitatea lui e controlată
+    // exclusiv din toggle-ul EXPENSES. Restul entităților „de viață" (persoană,
+    // vehicul etc.) vin din ENTITIES.
+    const baseEntities = selectedEntities.filter(e => e !== 'financial_account');
+    const finalEntities: EntityType[] = expensesEnabled
+      ? [...baseEntities, 'financial_account']
+      : baseEntities;
+    await settings.setVisibleEntityTypes(finalEntities);
     await settings.setVisibleDocTypes(selectedDocTypes);
     await settings.setPushEnabled(pushEnabled);
     await settings.setNotificationDays(notifDays);
     await scheduleExpirationReminders();
+
+    // Auto-creează „Cheltuieli generale" dacă utilizatorul vrea evidența
+    // cheltuielilor și nu are deja un cont financiar.
+    if (expensesEnabled) {
+      try {
+        const existing = await getFinancialAccounts(true);
+        if (existing.length === 0) {
+          await createFinancialAccount({
+            name: 'Cheltuieli generale',
+            type: 'cash',
+            currency: 'RON',
+            initial_balance: 0,
+            icon: 'wallet',
+          });
+        }
+      } catch {
+        /* eroare neesențială — userul poate crea contul manual din hub */
+      }
+    }
     const isRemote = aiProviderChoice === 'builtin' || aiProviderChoice === 'external';
     // Local: fără transmitere externă, acord implicit; none: fără AI
     const consentValue =
@@ -284,24 +333,39 @@ export default function OnboardingWizard({ onComplete }: Props) {
     return true;
   };
 
+  function gotoNextActive() {
+    const idx = activeSteps.indexOf(step);
+    if (idx < 0 || idx >= activeSteps.length - 1) return;
+    setStep(activeSteps[idx + 1]);
+  }
+
   function handleFooterPrimary() {
     if (step === SUMMARY) {
       void handleComplete();
       return;
     }
     if (step === ENTITIES) {
-      goNextFromEntities();
+      // Pre-selectează tipuri documente pe baza entităților alese,
+      // apoi sare la pasul următor activ (poate fi EXPENSES sau, sărind peste, DOCS).
+      const entityDocs = new Set<DocumentType>();
+      selectedEntities.forEach(entity => {
+        ENTITY_DOCUMENT_TYPES[entity].forEach(doc => entityDocs.add(doc));
+      });
+      const preselected = DEFAULT_VISIBLE_DOC_TYPES.filter(doc => entityDocs.has(doc));
+      setSelectedDocTypes(preselected.length > 0 ? preselected : [...DEFAULT_VISIBLE_DOC_TYPES]);
+      gotoNextActive();
       return;
     }
     if (step === NOTIFICATIONS) {
       void goNextFromNotifications();
       return;
     }
-    setStep(s => s + 1);
+    gotoNextActive();
   }
 
   function handleBack() {
-    if (step > WELCOME) setStep(s => s - 1);
+    const idx = activeSteps.indexOf(step);
+    if (idx > 0) setStep(activeSteps[idx - 1]);
   }
 
   const DOC_GROUPS: { label: string; types: DocumentType[] }[] = [
@@ -372,15 +436,15 @@ export default function OnboardingWizard({ onComplete }: Props) {
     <View style={[styles.overlay, { backgroundColor: C.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16, borderBottomColor: C.border }]}>
         <Text style={[styles.stepIndicator, { color: C.textSecondary }]}>
-          {step + 1} / {TOTAL_STEPS}
+          {currentIdx + 1} / {totalActive}
         </Text>
         <Text style={[styles.title, { color: C.text }]}>{stepTitle(step)}</Text>
         <Text style={[styles.subtitle, { color: C.textSecondary }]}>{stepSubtitle(step)}</Text>
       </View>
 
       <View style={[styles.progressTrack, { backgroundColor: C.border }]}>
-        <View style={{ flex: step + 1, backgroundColor: primary }} />
-        <View style={{ flex: Math.max(0, TOTAL_STEPS - step - 1), minWidth: 0 }} />
+        <View style={{ flex: currentIdx + 1, backgroundColor: primary }} />
+        <View style={{ flex: Math.max(0, totalActive - currentIdx - 1), minWidth: 0 }} />
       </View>
 
       <ScrollView
@@ -467,7 +531,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
         )}
 
         {step === ENTITIES &&
-          ALL_ENTITY_TYPES.map(entityType => {
+          ALL_ENTITY_TYPES.filter(e => e !== 'financial_account').map(entityType => {
             const isSelected = selectedEntities.includes(entityType);
             return (
               <Pressable
@@ -511,6 +575,126 @@ export default function OnboardingWizard({ onComplete }: Props) {
               </Pressable>
             );
           })}
+
+        {step === EXPENSES && (
+          <>
+            <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
+              <View style={styles.notifRow}>
+                <View style={styles.notifRowText}>
+                  <Text style={[styles.notifLabel, { color: C.text }]}>
+                    Activează evidența cheltuielilor
+                  </Text>
+                  <Text style={[styles.notifSub, { color: C.textSecondary }]}>
+                    Adaugă venituri și cheltuieli, vezi totaluri lunare pe categorii.
+                  </Text>
+                </View>
+                <Switch
+                  value={expensesEnabled}
+                  onValueChange={setExpensesEnabled}
+                  trackColor={{ false: C.border, true: primary }}
+                />
+              </View>
+              {expensesEnabled && (
+                <>
+                  <Text
+                    style={[
+                      styles.notifDaysLabel,
+                      { color: C.textSecondary, marginTop: 16, marginBottom: 8 },
+                    ]}
+                  >
+                    Categorii incluse implicit
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {systemCategories.length === 0 ? (
+                      <Text style={[styles.notifSub, { color: C.textSecondary }]}>
+                        Mâncare, Transport, Utilități, Sănătate, Mașină, Casă, Distracție,
+                        Abonamente, Cumpărături, Educație, Călătorii, Venituri.
+                      </Text>
+                    ) : (
+                      systemCategories.map(cat => (
+                        <View
+                          key={cat.id}
+                          style={[
+                            styles.chip,
+                            { borderColor: C.border, backgroundColor: C.background },
+                          ]}
+                        >
+                          {cat.icon && (
+                            <Ionicons
+                              name={cat.icon as React.ComponentProps<typeof Ionicons>['name']}
+                              size={13}
+                              color={cat.color || C.textSecondary}
+                              style={{ marginRight: 6 }}
+                            />
+                          )}
+                          <Text style={[styles.chipText, { color: C.text }]}>{cat.name}</Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                  <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 12 }]}>
+                    Vom crea automat un cont „Cheltuieli generale" pentru a începe rapid. Poți
+                    adăuga conturi bancare sau de economii separate oricând.
+                  </Text>
+                  <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 8 }]}>
+                    Bonurile, facturile și abonamentele cu sumă pot deveni tranzacții cu un tap.
+                    Bonurile de carburant se transformă automat în tranzacții, iar transferurile
+                    între conturile tale sunt detectate și marcate automat.
+                  </Text>
+                  <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 8 }]}>
+                    ℹ️ Pentru import extras mai precis (PDF trimis direct la AI), poți seta o
+                    cheie API proprie din Setări → Asistent AI după onboarding.
+                  </Text>
+                </>
+              )}
+            </View>
+          </>
+        )}
+
+        {step === VEHICLE_MGMT && (
+          <View style={styles.bulletBlock}>
+            {[
+              {
+                icon: 'car-sport-outline' as const,
+                title: 'Acte vehicul într-un singur loc',
+                desc: 'Talon, carte auto, RCA, CASCO, ITP, vignetă, revizie — fiecare cu data de expirare.',
+              },
+              {
+                icon: 'notifications-outline' as const,
+                title: 'Remindere automate',
+                desc: 'Cu 7, 14 sau 30 zile înainte de expirare. Notificări locale, fără server.',
+              },
+              {
+                icon: 'speedometer-outline' as const,
+                title: 'Alimentări și statistici consum',
+                desc: 'Înregistrezi alimentările și vezi consumul mediu, costul pe 100 km, evoluția lunară.',
+              },
+              {
+                icon: 'scan-outline' as const,
+                title: 'Scanare cu OCR',
+                desc: 'Fotografiezi talonul sau cartea auto — datele esențiale se completează automat.',
+              },
+            ].map(item => (
+              <View
+                key={item.icon}
+                style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}
+              >
+                <View style={styles.cardRow}>
+                  <Ionicons name={item.icon} size={22} color={C.primary} />
+                  <View style={{ flex: 1, marginLeft: spacing.gap }}>
+                    <Text style={[styles.cardTitle, { color: C.text }]}>{item.title}</Text>
+                    <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
+                      {item.desc}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+            <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 4 }]}>
+              Adaugi vehiculele tale ulterior din tabul Entități → Vehicul.
+            </Text>
+          </View>
+        )}
 
         {step === DOCS && (
           <>
@@ -783,36 +967,32 @@ export default function OnboardingWizard({ onComplete }: Props) {
               </Pressable>
             )}
 
+            {aiProviderChoice !== 'none' && (
+              <View style={[styles.card, { backgroundColor: C.card, marginTop: spacing.gap }]}>
+                <View style={styles.cardRow}>
+                  <Ionicons name="image-outline" size={20} color="#F57F17" />
+                  <View style={{ flex: 1, marginLeft: spacing.gap }}>
+                    <Text style={[styles.cardTitle, { color: C.text }]}>
+                      Extracție AI din documente
+                    </Text>
+                    <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
+                      Textul OCR e trimis automat (dacă e activat). Imaginile se trimit doar la
+                      apăsarea butonului „Trimite documentul la AI" din formular — niciodată
+                      automat.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             <Pressable
-              onPress={() => Linking.openURL('https://dosarapp.ro/#asistent-ai')}
+              onPress={() => Linking.openURL(AI_INFO_URL)}
               style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: 4 }]}
             >
               <Text style={[styles.link, { color: C.primary }]}>
                 Află mai multe despre opțiunile AI →
               </Text>
             </Pressable>
-          </View>
-        )}
-
-        {step === OCR_PRIVACY && (
-          <View style={styles.stepContent}>
-            <View style={[styles.card, { backgroundColor: C.card }]}>
-              <View style={styles.cardRow}>
-                <Ionicons name="image-outline" size={20} color="#F57F17" />
-                <View style={{ flex: 1, marginLeft: spacing.gap }}>
-                  <Text style={[styles.cardTitle, { color: C.text }]}>
-                    Trimitere imagine/document la AI
-                  </Text>
-                  <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
-                    Doar la apăsarea butonului „Trimite documentul la AI" din formularul documentului — niciodată automat
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <Text style={[styles.infoText, { color: C.textSecondary, marginTop: spacing.screen }]}>
-              Textul OCR e trimis automat (dacă e activat). Imaginile se trimit doar la cerere explicită — apăsând butonul din formular.
-            </Text>
           </View>
         )}
 
@@ -825,6 +1005,10 @@ export default function OnboardingWizard({ onComplete }: Props) {
             <Text style={[styles.summaryLine, { color: C.text }]}>
               <Text style={styles.summaryKey}>Entități: </Text>
               {selectedEntities.map(e => ENTITY_LABELS[e]).join(', ')}
+            </Text>
+            <Text style={[styles.summaryLine, { color: C.text }]}>
+              <Text style={styles.summaryKey}>Evidență cheltuieli: </Text>
+              {expensesEnabled ? 'Activă (Cheltuieli generale)' : 'Dezactivată'}
             </Text>
             <Text style={[styles.summaryLine, { color: C.text }]}>
               <Text style={styles.summaryKey}>Tipuri documente vizibile: </Text>

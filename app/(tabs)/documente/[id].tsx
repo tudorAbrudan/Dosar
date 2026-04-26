@@ -40,7 +40,8 @@ import {
   findDuplicatesOfDocument,
 } from '@/services/documents';
 import type { DocumentDuplicates } from '@/services/documents';
-import type { DocumentEntityLink, EntityType } from '@/types';
+import { getTransactionForDocument } from '@/services/transactions';
+import type { DocumentEntityLink, EntityType, Transaction } from '@/types';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import {
   addExpiryCalendarEvent,
@@ -116,6 +117,7 @@ export default function DocumentDetailScreen() {
     byHash: [],
     byTypeAndEntity: [],
   });
+  const [existingTx, setExistingTx] = useState<Transaction | null>(null);
   const [focusNonce, setFocusNonce] = useState(0);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -137,6 +139,9 @@ export default function DocumentDetailScreen() {
     findDuplicatesOfDocument(id)
       .then(setDuplicates)
       .catch(() => {});
+    getTransactionForDocument(id)
+      .then(setExistingTx)
+      .catch(() => {});
   }, [id]);
 
   // Reîncarcă documentul la revenirea din ecranul de editare
@@ -156,6 +161,9 @@ export default function DocumentDetailScreen() {
         .catch(() => {});
       findDuplicatesOfDocument(id)
         .then(setDuplicates)
+        .catch(() => {});
+      getTransactionForDocument(id)
+        .then(setExistingTx)
         .catch(() => {});
     }, [id])
   );
@@ -697,7 +705,9 @@ export default function DocumentDetailScreen() {
             const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
               encoding: FileSystem.EncodingType.Base64,
             });
-            imgTags.push(`<div class="img-page"><img src="data:image/jpeg;base64,${base64}" /></div>`);
+            imgTags.push(
+              `<div class="img-page"><img src="data:image/jpeg;base64,${base64}" /></div>`
+            );
           } catch {
             // imaginea nu a putut fi citită — continuăm
           }
@@ -1065,6 +1075,8 @@ export default function DocumentDetailScreen() {
                   return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
                 case 'company':
                   return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
+                default:
+                  return link.entityId;
               }
             }
             const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
@@ -1074,6 +1086,7 @@ export default function DocumentDetailScreen() {
               card: '💳',
               animal: '🐾',
               company: '🏢',
+              financial_account: '💰',
             };
             return (
               <>
@@ -1183,6 +1196,76 @@ export default function DocumentDetailScreen() {
             </Pressable>
           )}
         </View>
+
+        {(() => {
+          const isFinancialDoc =
+            doc.type === 'factura' ||
+            doc.type === 'abonament' ||
+            doc.type === 'bon_cumparaturi' ||
+            doc.type === 'bon_parcare';
+          if (!isFinancialDoc) return null;
+
+          // Tranzacție deja atașată — buton „Vezi tranzacția"
+          if (existingTx) {
+            return (
+              <Pressable
+                style={[styles.expenseBtn, { borderColor: primary, backgroundColor: colors.card }]}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/entitati/cont/tranzactie',
+                    params: { id: existingTx.id },
+                  })
+                }
+              >
+                <Ionicons name="receipt-outline" size={18} color={primary} />
+                <Text style={[styles.expenseBtnText, { color: primary }]}>Vezi tranzacția</Text>
+              </Pressable>
+            );
+          }
+
+          const amountRaw = doc.metadata?.amount;
+          // Acceptă „225.06", „225,06", „225 RON", „225.06 lei"
+          const cleaned = amountRaw
+            ? String(amountRaw)
+                .replace(/[^0-9.,-]/g, '')
+                .replace(',', '.')
+            : '';
+          const amountNum = cleaned ? Number(cleaned) : NaN;
+          const hasAmount = Number.isFinite(amountNum) && amountNum > 0;
+
+          const merchantField =
+            (doc.type === 'factura' && doc.metadata?.supplier) ||
+            (doc.type === 'bon_cumparaturi' && doc.metadata?.store) ||
+            (doc.type === 'bon_parcare' && doc.metadata?.location) ||
+            (doc.type === 'abonament' && doc.metadata?.service_name) ||
+            '';
+          const txDate = doc.issue_date ?? doc.expiry_date ?? new Date().toISOString().slice(0, 10);
+          const docLabel = getDocumentLabel(doc, customTypes);
+
+          return (
+            <Pressable
+              style={[styles.expenseBtn, { borderColor: primary, backgroundColor: colors.card }]}
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/entitati/cont/tranzactie',
+                  params: {
+                    ...(hasAmount ? { prefill_amount: amountNum.toFixed(2) } : {}),
+                    prefill_date: txDate,
+                    prefill_merchant: String(merchantField),
+                    prefill_description: docLabel,
+                    prefill_kind: 'expense',
+                    source_document_id: doc.id,
+                  },
+                })
+              }
+            >
+              <Ionicons name="cash-outline" size={18} color={primary} />
+              <Text style={[styles.expenseBtnText, { color: primary }]}>
+                {hasAmount ? 'Adaugă ca cheltuială' : 'Adaugă tranzacție'}
+              </Text>
+            </Pressable>
+          );
+        })()}
 
         {(doc.type === 'rca' || doc.type === 'itp') && (
           <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
@@ -1402,4 +1485,16 @@ const styles = StyleSheet.create({
     borderColor: primary,
   },
   asigaBtnText: { color: primary, fontSize: 14, fontWeight: '600' },
+  expenseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  expenseBtnText: { fontSize: 14, fontWeight: '600' },
 });

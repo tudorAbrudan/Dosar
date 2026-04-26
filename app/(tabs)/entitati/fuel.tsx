@@ -11,12 +11,14 @@ import {
   TextInput,
   Switch,
 } from 'react-native';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { primary, light, dark } from '@/theme/colors';
+import { DatePickerField } from '@/components/DatePickerField';
+import { FuelConsumptionChart } from '@/components/FuelConsumptionChart';
 import {
   getFuelRecords,
   addFuelRecord,
@@ -26,6 +28,8 @@ import {
 } from '@/services/fuel';
 import { extractText, extractFuelInfo } from '@/services/ocr';
 import type { FuelRecord, FuelStats } from '@/services/fuel';
+import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
+import { Ionicons } from '@expo/vector-icons';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,6 +40,7 @@ export default function FuelScreen() {
     vehicleId: string;
     vehicleName: string;
   }>();
+  const router = useRouter();
   const { colors } = useTheme();
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
@@ -53,6 +58,11 @@ export default function FuelScreen() {
   const [mPrice, setMPrice] = useState('');
   const [mLoading, setMLoading] = useState(false);
   const [mIsFull, setMIsFull] = useState(true);
+  const [mStation, setMStation] = useState('');
+  const [mPump, setMPump] = useState('');
+  const [mAccountId, setMAccountId] = useState<string | null>(null);
+  const [mAccountPickerOpen, setMAccountPickerOpen] = useState(false);
+  const { accounts: fAccounts } = useFinancialAccounts();
 
   const load = useCallback(async () => {
     if (!vehicleId) return;
@@ -95,6 +105,10 @@ export default function FuelScreen() {
     setMKm('');
     setMPrice('');
     setMIsFull(true);
+    setMStation('');
+    setMPump('');
+    setMAccountId(null);
+    setMAccountPickerOpen(false);
     setModalVisible(true);
   }
 
@@ -105,6 +119,10 @@ export default function FuelScreen() {
     setMKm(record.km_total !== undefined ? String(record.km_total) : '');
     setMPrice(record.price !== undefined ? String(record.price) : '');
     setMIsFull(record.is_full);
+    setMStation(record.station ?? '');
+    setMPump(record.pump_number ?? '');
+    setMAccountId(record.account_id ?? null);
+    setMAccountPickerOpen(false);
     setModalVisible(true);
   }
 
@@ -121,13 +139,14 @@ export default function FuelScreen() {
     try {
       const { text } = await extractText(uri);
       const info = extractFuelInfo(text);
-      if (!info.liters && !info.km && !info.price && !info.date) {
+      if (!info.liters && !info.km && !info.price && !info.date && !info.station) {
         Alert.alert('OCR', 'Nu s-au putut extrage date din bon. Completează manual.');
       } else {
         if (info.date) setMDate(info.date);
         if (info.liters !== undefined) setMLiters(String(info.liters));
         if (info.km !== undefined) setMKm(String(info.km));
         if (info.price !== undefined) setMPrice(String(info.price));
+        if (info.station) setMStation(info.station);
       }
     } catch {
       Alert.alert('Eroare OCR', 'Nu s-a putut citi bonul. Completează manual.');
@@ -136,7 +155,15 @@ export default function FuelScreen() {
     }
   }
 
-  async function persistRecord(date: string, liters?: number, km?: number, price?: number) {
+  async function persistRecord(
+    date: string,
+    liters?: number,
+    km?: number,
+    price?: number,
+    station?: string,
+    pump?: string,
+    accountId?: string | null
+  ) {
     if (!vehicleId) return;
     setMLoading(true);
     try {
@@ -147,6 +174,9 @@ export default function FuelScreen() {
           km_total: km,
           price,
           is_full: mIsFull,
+          station,
+          pump_number: pump,
+          account_id: accountId ?? null,
         });
       } else {
         await addFuelRecord(vehicleId, {
@@ -155,6 +185,9 @@ export default function FuelScreen() {
           km_total: km,
           price,
           is_full: mIsFull,
+          station,
+          pump_number: pump,
+          account_id: accountId ?? undefined,
         });
       }
       setModalVisible(false);
@@ -174,9 +207,12 @@ export default function FuelScreen() {
       Alert.alert('Eroare', 'Data este obligatorie.');
       return;
     }
-    const liters = mLiters.trim() ? parseFloat(mLiters) : undefined;
+    const liters = mLiters.trim() ? parseFloat(mLiters.replace(',', '.')) : undefined;
     const km = mKm.trim() ? parseInt(mKm, 10) : undefined;
-    const price = mPrice.trim() ? parseFloat(mPrice) : undefined;
+    const price = mPrice.trim() ? parseFloat(mPrice.replace(',', '.')) : undefined;
+    const station = mStation.trim() || undefined;
+    const pump = mPump.trim() || undefined;
+    const accountId = mAccountId;
 
     // Validare ordine cronologică: km trebuie să fie monoton crescător
     // raportat la vecinii sortați după dată (excluzând bonul editat).
@@ -203,7 +239,7 @@ export default function FuelScreen() {
             { text: 'Anulează', style: 'cancel' },
             {
               text: 'Salvează oricum',
-              onPress: () => persistRecord(date, liters, km, price),
+              onPress: () => persistRecord(date, liters, km, price, station, pump, accountId),
             },
           ]
         );
@@ -211,7 +247,7 @@ export default function FuelScreen() {
       }
     }
 
-    await persistRecord(date, liters, km, price);
+    await persistRecord(date, liters, km, price, station, pump, accountId);
   }
 
   function handleDeleteRecord(record: FuelRecord) {
@@ -236,28 +272,61 @@ export default function FuelScreen() {
     <View style={styles.container}>
       {/* Stats bar */}
       {stats && (
-        <View style={styles.statsBar}>
-          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-            <Text style={styles.statValue}>{stats.totalRecords}</Text>
-            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>înreg.</Text>
+        <>
+          <View style={styles.statsBar}>
+            <View style={[styles.statCard, { backgroundColor: palette.card }]}>
+              <Text
+                style={styles.statValue}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {stats.totalRecords}
+              </Text>
+              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>înreg.</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: palette.card }]}>
+              <Text
+                style={styles.statValue}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {stats.totalLiters.toFixed(1)}
+              </Text>
+              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>L total</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: palette.card }]}>
+              <Text
+                style={styles.statValue}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {stats.totalCost.toFixed(2)}
+              </Text>
+              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>RON</Text>
+            </View>
           </View>
-          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-            <Text style={styles.statValue}>
-              {stats.avgConsumptionL100 !== undefined
-                ? `${stats.avgConsumptionL100.toFixed(1)}`
-                : 'N/A'}
+          <FuelConsumptionChart
+            values={stats.consumptionSparkline}
+            averageL100={stats.avgConsumptionL100}
+            cardColor={palette.card}
+            textSecondary={palette.textSecondary}
+          />
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/(tabs)/entitati/fuel-stats?vehicleId=${vehicleId}&vehicleName=${encodeURIComponent(vehicleName ?? '')}`
+              )
+            }
+            style={({ pressed }) => [styles.statsLink, pressed && styles.btnPressed]}
+          >
+            <Text style={[styles.statsLinkText, { color: primary }]}>
+              Vezi statistici detaliate →
             </Text>
-            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>L/100km</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-            <Text style={styles.statValue}>{stats.totalLiters.toFixed(1)}</Text>
-            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>L total</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-            <Text style={styles.statValue}>{stats.totalCost.toFixed(2)}</Text>
-            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>RON</Text>
-          </View>
-        </View>
+          </Pressable>
+        </>
       )}
 
       <ScrollView
@@ -278,18 +347,31 @@ export default function FuelScreen() {
           // records sortate DESC după dată → "anteriorul" chronologic e records[i+1]
           const prev = i + 1 < records.length ? records[i + 1] : null;
           let kmSinceLast: number | undefined;
-          let consumptionSinceLast: number | undefined;
           if (prev && record.km_total !== undefined && prev.km_total !== undefined) {
             const delta = record.km_total - prev.km_total;
-            if (delta > 0) {
-              kmSinceLast = delta;
-              if (
-                record.is_full &&
-                prev.is_full &&
-                record.liters !== undefined &&
-                record.liters > 0
-              ) {
-                consumptionSinceLast = (record.liters / delta) * 100;
+            if (delta > 0) kmSinceLast = delta;
+          }
+
+          // Consum mediu: doar la bonurile pline. Adună litrii din toate bonurile
+          // (parțiale + acest plin) de la ultimul plin anterior și împarte la km parcurși.
+          let consumptionSinceLast: number | undefined;
+          if (record.is_full && record.km_total !== undefined) {
+            let prevFullIdx = -1;
+            for (let j = i + 1; j < records.length; j++) {
+              if (records[j].is_full && records[j].km_total !== undefined) {
+                prevFullIdx = j;
+                break;
+              }
+            }
+            if (prevFullIdx !== -1) {
+              const prevFull = records[prevFullIdx];
+              const kmDelta = record.km_total - (prevFull.km_total ?? 0);
+              let totalLiters = 0;
+              for (let j = i; j < prevFullIdx; j++) {
+                totalLiters += records[j].liters ?? 0;
+              }
+              if (kmDelta > 0 && totalLiters > 0) {
+                consumptionSinceLast = (totalLiters / kmDelta) * 100;
               }
             }
           }
@@ -328,6 +410,11 @@ export default function FuelScreen() {
                   </Text>
                 )}
               </View>
+              {record.station && (
+                <Text style={[styles.recordStation, { color: palette.textSecondary }]}>
+                  📍 {record.station}
+                </Text>
+              )}
               {prev && (
                 <Text style={[styles.recordSinceLast, { color: palette.textSecondary }]}>
                   De la ultima:{' '}
@@ -377,7 +464,9 @@ export default function FuelScreen() {
               </Text>
             </Pressable>
 
-            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Data</Text>
+            <DatePickerField label="Data" value={mDate} onChange={setMDate} disabled={mLoading} />
+
+            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Benzinărie</Text>
             <TextInput
               style={[
                 styles.modalInput,
@@ -387,10 +476,28 @@ export default function FuelScreen() {
                   backgroundColor: palette.background,
                 },
               ]}
-              value={mDate}
-              onChangeText={setMDate}
-              placeholder="AAAA-LL-ZZ"
+              value={mStation}
+              onChangeText={setMStation}
+              placeholder="Ex: OMV Cluj-Napoca, Calea Turzii"
               placeholderTextColor={palette.textSecondary}
+              editable={!mLoading}
+            />
+
+            <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Nr. pompă</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: palette.border,
+                  color: colors.text,
+                  backgroundColor: palette.background,
+                },
+              ]}
+              value={mPump}
+              onChangeText={setMPump}
+              placeholder="Ex: 4"
+              placeholderTextColor={palette.textSecondary}
+              keyboardType="default"
               editable={!mLoading}
             />
 
@@ -471,6 +578,71 @@ export default function FuelScreen() {
               editable={!mLoading}
             />
 
+            {fAccounts.length > 0 && (
+              <>
+                <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
+                  Cont plată
+                </Text>
+                <Pressable
+                  style={[
+                    styles.modalInput,
+                    {
+                      borderColor: palette.border,
+                      backgroundColor: palette.background,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    },
+                  ]}
+                  onPress={() => setMAccountPickerOpen(v => !v)}
+                  disabled={mLoading}
+                >
+                  <Text style={{ color: colors.text, fontSize: 15 }}>
+                    {mAccountId
+                      ? fAccounts.find(a => a.id === mAccountId)?.name ?? 'Cont necunoscut'
+                      : 'Fără cont'}
+                  </Text>
+                  <Ionicons
+                    name={mAccountPickerOpen ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={palette.textSecondary}
+                  />
+                </Pressable>
+                {mAccountPickerOpen && (
+                  <View
+                    style={[
+                      styles.pickerList,
+                      { borderColor: palette.border, backgroundColor: palette.background },
+                    ]}
+                  >
+                    <Pressable
+                      style={styles.pickerItem}
+                      onPress={() => {
+                        setMAccountId(null);
+                        setMAccountPickerOpen(false);
+                      }}
+                    >
+                      <Text style={{ color: colors.text }}>Fără cont</Text>
+                    </Pressable>
+                    {fAccounts.map(a => (
+                      <Pressable
+                        key={a.id}
+                        style={[styles.pickerItem, { borderTopColor: palette.border, borderTopWidth: StyleSheet.hairlineWidth }]}
+                        onPress={() => {
+                          setMAccountId(a.id);
+                          setMAccountPickerOpen(false);
+                        }}
+                      >
+                        <Text style={{ color: colors.text }}>
+                          {a.name} ({a.currency})
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
             <View style={styles.modalButtons}>
               <Pressable
                 style={({ pressed }) => [
@@ -521,6 +693,14 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 15, fontWeight: '700', color: primary },
   statLabel: { fontSize: 11, marginTop: 2, textAlign: 'center' },
 
+  statsLink: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  statsLinkText: { fontSize: 13, fontWeight: '600' },
+
   scroll: { flex: 1 },
   scrollContent: { padding: 12, paddingBottom: 90 },
 
@@ -570,6 +750,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   recordMeta: { fontSize: 13, opacity: 0.7 },
+  recordStation: { fontSize: 12, marginTop: 4 },
   recordSinceLast: { fontSize: 12, marginTop: 6, fontStyle: 'italic' },
   recordHint: { fontSize: 11, opacity: 0.35, marginTop: 4 },
 
@@ -659,5 +840,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontStyle: 'italic',
     marginBottom: 14,
+  },
+  pickerList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    marginTop: -8,
+    marginBottom: 14,
+    maxHeight: 220,
+  },
+  pickerItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
 });

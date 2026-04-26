@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -40,7 +40,7 @@ import {
   type ChatThread,
   type StoredMessage,
 } from '@/services/chatThreads';
-import { AI_CONSENT_KEY } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, isAiAvailable } from '@/services/aiProvider';
 
 // ─── Mention types ─────────────────────────────────────────────────────────────
 
@@ -554,12 +554,14 @@ interface ConversationViewProps {
   colors: typeof lightColors;
   insets: { top: number; bottom: number };
   mentionItems: MentionItem[];
+  aiUnavailableReason: string | null;
   onBack: () => void;
   onRename: () => void;
   onClear: () => void;
   onDelete: () => void;
   onDeleteMessage: (msg: ConversationMessage) => void;
   onSend: (displayText: string, aiText: string) => void;
+  onOpenSettings: () => void;
 }
 
 function ConversationView({
@@ -569,12 +571,14 @@ function ConversationView({
   colors,
   insets,
   mentionItems,
+  aiUnavailableReason,
   onBack,
   onRename,
   onClear,
   onDelete,
   onDeleteMessage,
   onSend,
+  onOpenSettings,
 }: ConversationViewProps) {
   const [input, setInput] = useState('');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -677,6 +681,27 @@ function ConversationView({
         </Pressable>
       </View>
 
+      {/* Banner AI indisponibil */}
+      {aiUnavailableReason && (
+        <Pressable
+          style={[styles.aiBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={onOpenSettings}
+        >
+          <Text style={styles.aiBannerIcon}>⚠️</Text>
+          <View style={styles.aiBannerTextWrap}>
+            <Text style={[styles.aiBannerTitle, { color: colors.text }]}>
+              Asistentul AI nu este disponibil
+            </Text>
+            <Text style={[styles.aiBannerBody, { color: colors.textSecondary }]}>
+              {aiUnavailableReason}
+            </Text>
+            <Text style={[styles.aiBannerCta, { color: colors.primary }]}>
+              Apasă pentru Setări →
+            </Text>
+          </View>
+        </Pressable>
+      )}
+
       {/* Messages */}
       <ScrollView
         ref={scrollRef}
@@ -766,22 +791,30 @@ function ConversationView({
               borderColor: colors.border,
             },
           ]}
-          placeholder="Scrie un mesaj... (@ pentru entități)"
+          placeholder={
+            aiUnavailableReason
+              ? 'AI indisponibil. Verifică Setări.'
+              : 'Scrie un mesaj... (@ pentru entități)'
+          }
           placeholderTextColor={colors.textSecondary}
           value={input}
           onChangeText={handleInputChange}
           onSubmitEditing={handleSend}
           returnKeyType="send"
-          editable={!loading}
+          editable={!loading && !aiUnavailableReason}
           multiline
         />
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
-            { backgroundColor: colors.primary, opacity: pressed || !input.trim() ? 0.6 : 1 },
+            {
+              backgroundColor: colors.primary,
+              opacity:
+                pressed || !input.trim() || aiUnavailableReason ? 0.6 : 1,
+            },
           ]}
           onPress={handleSend}
-          disabled={loading || !input.trim()}
+          disabled={loading || !input.trim() || !!aiUnavailableReason}
         >
           <Text style={styles.sendButtonText}>Trimite</Text>
         </Pressable>
@@ -818,6 +851,24 @@ export default function ChatScreen() {
   // Modals
   const [renameTarget, setRenameTarget] = useState<ChatThread | null>(null);
   const threadInitialized = useRef(false);
+
+  // AI availability (banner)
+  const [aiUnavailableReason, setAiUnavailableReason] = useState<string | null>(null);
+
+  const checkAiAvailability = useCallback(async () => {
+    try {
+      const { ok, reason } = await isAiAvailable();
+      setAiUnavailableReason(ok ? null : (reason ?? 'AI indisponibil.'));
+    } catch {
+      setAiUnavailableReason('Nu s-a putut verifica configurația AI. Deschide Setări → Asistent AI.');
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void checkAiAvailability();
+    }, [checkAiAvailability])
+  );
 
   // ── Inițializare ────────────────────────────────────────────────────────────
 
@@ -1130,12 +1181,14 @@ export default function ChatScreen() {
           colors={colors}
           insets={insets}
           mentionItems={mentionItems}
+          aiUnavailableReason={aiUnavailableReason}
           onBack={() => setActiveThread(null)}
           onRename={() => setRenameTarget(activeThread)}
           onClear={handleClearMessages}
           onDelete={() => handleDeleteThread(activeThread)}
           onDeleteMessage={handleDeleteMessage}
           onSend={handleSend}
+          onOpenSettings={() => router.push('/(tabs)/setari')}
         />
       )}
     </>
@@ -1201,6 +1254,24 @@ const styles = StyleSheet.create({
   convHeaderTitle: { flex: 1, fontSize: 16, fontWeight: '600', textAlign: 'center' },
   menuBtn: { minWidth: 40, alignItems: 'flex-end' },
   menuBtnText: { fontSize: 20, fontWeight: '700', letterSpacing: 1 },
+
+  // AI unavailable banner
+  aiBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  aiBannerIcon: { fontSize: 20, lineHeight: 22 },
+  aiBannerTextWrap: { flex: 1, gap: 2 },
+  aiBannerTitle: { fontSize: 14, fontWeight: '700' },
+  aiBannerBody: { fontSize: 13, lineHeight: 18 },
+  aiBannerCta: { fontSize: 13, fontWeight: '600', marginTop: 4 },
 
   // Messages
   messageList: { flex: 1 },

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Person, Property, Vehicle, Card, Animal, Company } from '@/types';
+import type { Person, Property, Vehicle, Card, Animal, Company, FinancialAccount } from '@/types';
 import * as entities from '@/services/entities';
+import * as financialAccounts from '@/services/financialAccounts';
 import { setGlobalOrder, getGlobalOrderMap, type EntityRef } from '@/services/entityOrder';
 
 export function useEntities() {
@@ -10,6 +11,7 @@ export function useEntities() {
   const [cards, setCards] = useState<Card[]>([]);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [financialAccountsList, setFinancialAccountsList] = useState<FinancialAccount[]>([]);
   const [globalOrderMap, setGlobalOrderMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,13 +20,14 @@ export function useEntities() {
     setLoading(true);
     setError(null);
     try {
-      const [p, pr, v, c, a, co, orderMap] = await Promise.all([
+      const [p, pr, v, c, a, co, fa, orderMap] = await Promise.all([
         entities.getPersons(),
         entities.getProperties(),
         entities.getVehicles(),
         entities.getCards(),
         entities.getAnimals(),
         entities.getCompanies(),
+        financialAccounts.getFinancialAccounts(),
         getGlobalOrderMap(),
       ]);
       setPersons(p);
@@ -33,6 +36,7 @@ export function useEntities() {
       setCards(c);
       setAnimals(a);
       setCompanies(co);
+      setFinancialAccountsList(fa);
       setGlobalOrderMap(orderMap);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Eroare la încărcare');
@@ -67,6 +71,7 @@ export function useEntities() {
     cards,
     animals,
     companies,
+    financialAccounts: financialAccountsList,
     globalOrderMap,
     loading,
     error,
@@ -78,17 +83,20 @@ export function useEntities() {
     createCard: entities.createCard,
     createAnimal: entities.createAnimal,
     createCompany: entities.createCompany,
+    createFinancialAccount: financialAccounts.createFinancialAccount,
     deletePerson: entities.deletePerson,
     deleteProperty: entities.deleteProperty,
     deleteVehicle: entities.deleteVehicle,
     deleteCard: entities.deleteCard,
     deleteAnimal: entities.deleteAnimal,
     deleteCompany: entities.deleteCompany,
+    deleteFinancialAccount: financialAccounts.deleteFinancialAccount,
     updatePerson: entities.updatePerson,
     updateProperty: entities.updateProperty,
     updateVehicle: entities.updateVehicle,
     updateCard: entities.updateCard,
     updateAnimal: entities.updateAnimal,
     updateCompany: entities.updateCompany,
+    updateFinancialAccount: financialAccounts.updateFinancialAccount,
   };
 }
