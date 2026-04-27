@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -78,12 +78,36 @@ export default function CloudBackupScreen() {
   const cloud = useCloudBackup();
   const [freq, setFreq] = useState<SnapshotFrequency>('weekly');
   const [retention, setRetention] = useState<number>(4);
+  const [loaded, setLoaded] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState<RestoreProgress | null>(null);
+
+  // Gate setState pentru restore progress contra unmount (utilizatorul poate
+  // naviga înapoi mid-restore — restoreFromCloud continuă să cheme callback-ul).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const safeSetRestoreProgress = useCallback((p: RestoreProgress | null) => {
+    if (mountedRef.current) setRestoreProgress(p);
+  }, []);
+
+  // One-shot guard pentru deep-link `?action=restore`. `handleRestore` se
+  // re-creează la fiecare tick al `cloud` (status ticks etc.); fără guard,
+  // efectul re-fire ar deschide Alert-ul de mai multe ori.
+  const restoreTriggeredRef = useRef(false);
 
   useEffect(() => {
     void (async () => {
-      setFreq(await getCloudSnapshotFrequency());
-      setRetention(await getCloudSnapshotRetention());
+      const [f, r] = await Promise.all([getCloudSnapshotFrequency(), getCloudSnapshotRetention()]);
+      if (mountedRef.current) {
+        setFreq(f);
+        setRetention(r);
+        setLoaded(true);
+      }
     })();
   }, []);
 
@@ -98,15 +122,16 @@ export default function CloudBackupScreen() {
     await cloud.setEnabled(value);
   };
 
-  // Hook-ul `useCloudBackup` nu aruncă — eșecurile sunt expuse via `cloud.error`
-  // / `cloud.status === 'error'` după `refresh`. Lăsăm badge-ul de status să
-  // comunice rezultatul; afișăm Alert doar dacă starea e deja `error` la apel.
+  // `cloud.backupNow()` rezolvă DUPĂ ce upload + refresh sunt complete
+  // (vezi `inFlightBackupRef` în hook). Așadar, după await, backup-ul e
+  // finalizat — nu „pornit". Notă: state-ul React citit imediat după await
+  // poate fi cu un tick stale; badge-ul se re-randa la următorul refresh.
   const handleBackupNow = async () => {
     await cloud.backupNow();
     if (cloud.status === 'error' && cloud.error) {
       Alert.alert('Eroare backup', cloud.error);
     } else {
-      Alert.alert('Backup', 'Backup pornit. Vezi statusul în partea de sus a ecranului.');
+      Alert.alert('Backup', 'Backup finalizat.');
     }
   };
 
@@ -121,6 +146,11 @@ export default function CloudBackupScreen() {
     await setCloudSnapshotRetention(next);
   };
 
+  // Extras într-o variabilă locală ca să închidem strict pe `refresh` în
+  // useCallback; folosirea `cloud.refresh` în array-ul de deps ar declanșa
+  // exhaustive-deps să ceară `cloud` ca dep, ceea ce ar reintroduce bug-ul de
+  // re-fire la fiecare status tick.
+  const cloudRefresh = cloud.refresh;
   const handleRestore = useCallback(async () => {
     Alert.alert(
       'Restaurează din iCloud',
@@ -131,26 +161,27 @@ export default function CloudBackupScreen() {
           text: 'Restaurează',
           style: 'destructive',
           onPress: async () => {
-            setRestoreProgress({ phase: 'manifest', current: 0, total: 1 });
+            safeSetRestoreProgress({ phase: 'manifest', current: 0, total: 1 });
             try {
-              await restoreFromCloud(setRestoreProgress);
-              setRestoreProgress({ phase: 'done', current: 1, total: 1 });
+              await restoreFromCloud(safeSetRestoreProgress);
+              safeSetRestoreProgress({ phase: 'done', current: 1, total: 1 });
               Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
-              await cloud.refresh();
+              await cloudRefresh();
             } catch (e) {
               const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
               Alert.alert('Eroare restaurare', msg);
             } finally {
-              setRestoreProgress(null);
+              if (mountedRef.current) setRestoreProgress(null);
             }
           },
         },
       ]
     );
-  }, [cloud]);
+  }, [cloudRefresh, safeSetRestoreProgress]);
 
   useEffect(() => {
-    if (params.action === 'restore') {
+    if (params.action === 'restore' && !restoreTriggeredRef.current) {
+      restoreTriggeredRef.current = true;
       void handleRestore();
     }
   }, [params.action, handleRestore]);
@@ -226,27 +257,33 @@ export default function CloudBackupScreen() {
         <View
           style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
         >
-          {FREQUENCY_OPTIONS.map((opt, idx) => {
-            const selected = freq === opt.value;
-            const isLast = idx === FREQUENCY_OPTIONS.length - 1;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => handleFrequency(opt.value)}
-                style={({ pressed }) => [
-                  styles.optionRow,
-                  !isLast && {
-                    borderBottomColor: palette.border,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                  },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <Text style={[styles.optionLabel, { color: palette.text }]}>{opt.label}</Text>
-                {selected ? <Ionicons name="checkmark" size={20} color={primary} /> : null}
-              </Pressable>
-            );
-          })}
+          {!loaded ? (
+            <View style={styles.skeletonRow}>
+              <ActivityIndicator size="small" color={primary} />
+            </View>
+          ) : (
+            FREQUENCY_OPTIONS.map((opt, idx) => {
+              const selected = freq === opt.value;
+              const isLast = idx === FREQUENCY_OPTIONS.length - 1;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => handleFrequency(opt.value)}
+                  style={({ pressed }) => [
+                    styles.optionRow,
+                    !isLast && {
+                      borderBottomColor: palette.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.optionLabel, { color: palette.text }]}>{opt.label}</Text>
+                  {selected ? <Ionicons name="checkmark" size={20} color={primary} /> : null}
+                </Pressable>
+              );
+            })
+          )}
         </View>
 
         {/* ── Retenție snapshot ── */}
@@ -256,41 +293,51 @@ export default function CloudBackupScreen() {
         <View
           style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
         >
-          <View style={styles.retentionRow}>
-            <Text style={[styles.toggleLabel, { color: palette.text }]}>Păstrează ultimele</Text>
-            <View style={styles.stepperRow}>
-              <Pressable
-                onPress={() => handleRetention(-1)}
-                disabled={retention <= 1}
-                style={({ pressed }) => [
-                  styles.stepperBtn,
-                  { borderColor: palette.border },
-                  pressed && { opacity: 0.6 },
-                  retention <= 1 && { opacity: 0.4 },
-                ]}
-                hitSlop={8}
-              >
-                <Ionicons name="remove" size={18} color={palette.text} />
-              </Pressable>
-              <Text style={[styles.retText, { color: palette.text }]}>{retention}</Text>
-              <Pressable
-                onPress={() => handleRetention(1)}
-                disabled={retention >= 20}
-                style={({ pressed }) => [
-                  styles.stepperBtn,
-                  { borderColor: palette.border },
-                  pressed && { opacity: 0.6 },
-                  retention >= 20 && { opacity: 0.4 },
-                ]}
-                hitSlop={8}
-              >
-                <Ionicons name="add" size={18} color={palette.text} />
-              </Pressable>
+          {!loaded ? (
+            <View style={styles.skeletonRow}>
+              <ActivityIndicator size="small" color={primary} />
             </View>
-          </View>
-          <Text style={[styles.hint, { color: palette.textSecondary }]}>
-            Snapshot-urile mai vechi sunt șterse automat din iCloud.
-          </Text>
+          ) : (
+            <>
+              <View style={styles.retentionRow}>
+                <Text style={[styles.toggleLabel, { color: palette.text }]}>
+                  Păstrează ultimele
+                </Text>
+                <View style={styles.stepperRow}>
+                  <Pressable
+                    onPress={() => handleRetention(-1)}
+                    disabled={retention <= 1}
+                    style={({ pressed }) => [
+                      styles.stepperBtn,
+                      { borderColor: palette.border },
+                      pressed && { opacity: 0.6 },
+                      retention <= 1 && { opacity: 0.4 },
+                    ]}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="remove" size={18} color={palette.text} />
+                  </Pressable>
+                  <Text style={[styles.retText, { color: palette.text }]}>{retention}</Text>
+                  <Pressable
+                    onPress={() => handleRetention(1)}
+                    disabled={retention >= 20}
+                    style={({ pressed }) => [
+                      styles.stepperBtn,
+                      { borderColor: palette.border },
+                      pressed && { opacity: 0.6 },
+                      retention >= 20 && { opacity: 0.4 },
+                    ]}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="add" size={18} color={palette.text} />
+                  </Pressable>
+                </View>
+              </View>
+              <Text style={[styles.hint, { color: palette.textSecondary }]}>
+                Snapshot-urile mai vechi sunt șterse automat din iCloud.
+              </Text>
+            </>
+          )}
         </View>
 
         {/* ── Acțiuni ── */}
@@ -408,6 +455,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   optionLabel: { fontSize: 15 },
+
+  skeletonRow: {
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   retentionRow: {
     flexDirection: 'row',
