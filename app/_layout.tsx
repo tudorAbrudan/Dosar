@@ -21,6 +21,7 @@ import { ThemePreferenceContext } from '@/hooks/useThemeScheme';
 import type { ThemePreference } from '@/hooks/useThemeScheme';
 import { useAppLock } from '@/hooks/useAppLock';
 import { useReviewPrompt } from '@/hooks/useReviewPrompt';
+import { useCloudBackup } from '@/hooks/useCloudBackup';
 import { db } from '@/services/db';
 import * as settings from '@/services/settings';
 
@@ -68,6 +69,7 @@ function RootLayoutNav() {
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const reviewPrompt = useReviewPrompt();
+  useCloudBackup(); // global AppState wiring; result is unused at root.
 
   const showReviewModal =
     reviewPrompt.visible && onboardingDone === true && !appLock.locked && !updateInfo;

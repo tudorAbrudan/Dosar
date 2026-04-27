@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import type { EntityType, DocumentType } from '@/types';
+import type { EntityType, DocumentType, SnapshotFrequency } from '@/types';
 import { ALL_ENTITY_TYPES, STANDARD_DOC_TYPES, DEFAULT_VISIBLE_DOC_TYPES } from '@/types';
 
 const KEY_NOTIF_DAYS = 'settings_notif_days';
@@ -10,6 +10,17 @@ const KEY_APP_LOCK_PIN = 'app_lock_pin';
 const KEY_PUSH_ENABLED = 'settings_push_enabled';
 const KEY_CLOUD_BACKUP_ENABLED = 'cloud_backup_enabled';
 const KEY_CLOUD_IGNORED_UPLOADED_AT = 'cloud_ignored_uploaded_at';
+const KEY_CLOUD_SNAPSHOT_FREQUENCY = 'cloud_snapshot_frequency';
+const KEY_CLOUD_SNAPSHOT_RETENTION = 'cloud_snapshot_retention';
+const KEY_CLOUD_ENCRYPTION_ENABLED = 'cloud_encryption_enabled';
+
+const VALID_FREQUENCIES: readonly SnapshotFrequency[] = [
+  'off',
+  'daily',
+  'every3days',
+  'weekly',
+  'monthly',
+];
 
 export async function getNotificationDays(): Promise<number> {
   const v = await AsyncStorage.getItem(KEY_NOTIF_DAYS);
@@ -50,6 +61,37 @@ export async function getCloudIgnoredUploadedAt(): Promise<number | null> {
 
 export async function setCloudIgnoredUploadedAt(timestamp: number): Promise<void> {
   await AsyncStorage.setItem(KEY_CLOUD_IGNORED_UPLOADED_AT, String(timestamp));
+}
+
+export async function getCloudSnapshotFrequency(): Promise<SnapshotFrequency> {
+  const v = await AsyncStorage.getItem(KEY_CLOUD_SNAPSHOT_FREQUENCY);
+  return VALID_FREQUENCIES.includes(v as SnapshotFrequency) ? (v as SnapshotFrequency) : 'weekly';
+}
+
+export async function setCloudSnapshotFrequency(value: SnapshotFrequency): Promise<void> {
+  await AsyncStorage.setItem(KEY_CLOUD_SNAPSHOT_FREQUENCY, value);
+}
+
+export async function getCloudSnapshotRetention(): Promise<number> {
+  const v = await AsyncStorage.getItem(KEY_CLOUD_SNAPSHOT_RETENTION);
+  if (v == null) return 4;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 4;
+  return Math.max(1, Math.min(20, Math.trunc(n)));
+}
+
+export async function setCloudSnapshotRetention(value: number): Promise<void> {
+  const clamped = Math.max(1, Math.min(20, Math.trunc(value)));
+  await AsyncStorage.setItem(KEY_CLOUD_SNAPSHOT_RETENTION, String(clamped));
+}
+
+export async function getCloudEncryptionEnabled(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_CLOUD_ENCRYPTION_ENABLED);
+  return v === 'true';
+}
+
+export async function setCloudEncryptionEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_CLOUD_ENCRYPTION_ENABLED, enabled ? 'true' : 'false');
 }
 
 export async function getAppLockEnabled(): Promise<boolean> {

@@ -180,6 +180,14 @@ export async function readCloudMeta(): Promise<CloudManifestMeta | null> {
 const FILES_PREFIX = `${CLOUD_ROOT}/files/`;
 const MAX_ATTEMPTS = 5;
 
+/**
+ * Skip oversized files in upload (`processQueue`) AND download (`restoreFromCloud`).
+ * Justification: base64 encoding of a 50 MB file is ~67 MB held in JS memory; large
+ * media is the wrong fit for iCloud Documents anyway. Cap is intentionally generous
+ * for typical document/photo backups.
+ */
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
 function fileNameFromPath(relPath: string): string {
   return relPath.split('/').pop() ?? relPath;
 }
@@ -246,6 +254,18 @@ export async function processQueue(): Promise<void> {
       const info = await FileSystem.getInfoAsync(localUri);
       if (!info.exists) {
         await db.runAsync('DELETE FROM pending_uploads WHERE id = ?', [row.id]);
+        continue;
+      }
+      if ('size' in info && typeof info.size === 'number' && info.size > MAX_FILE_BYTES) {
+        // Permanent skip — bump to MAX_ATTEMPTS so it stops being retried.
+        await db.runAsync(
+          'UPDATE pending_uploads SET attempt_count = ?, last_error = ? WHERE id = ?',
+          [
+            MAX_ATTEMPTS,
+            `Fișier prea mare (${Math.round(info.size / 1024 / 1024)} MB > limită ${MAX_FILE_BYTES / 1024 / 1024} MB)`,
+            row.id,
+          ]
+        );
         continue;
       }
       const base64 = await FileSystem.readAsStringAsync(localUri, {
@@ -441,13 +461,19 @@ export async function restoreFromCloud(
       if (!localInfo.exists) {
         const remote = `${FILES_PREFIX}${fileNameFromPath(fileRel)}`;
         if (await cloudStorage.exists(remote)) {
-          // TODO(task-11): apply file-size cap shared with upload queue (see Task 7 review).
-          const base64 = await cloudStorage.readFile(remote, 'base64');
-          const dir = localUri.substring(0, localUri.lastIndexOf('/'));
-          await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-          await FileSystem.writeAsStringAsync(localUri, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          const remoteSize = await cloudStorage.fileSize(remote);
+          if (remoteSize > MAX_FILE_BYTES) {
+            console.warn(
+              `[cloudSync.restore] skip oversized file "${fileRel}" (${Math.round(remoteSize / 1024 / 1024)} MB > limită ${MAX_FILE_BYTES / 1024 / 1024} MB)`
+            );
+          } else {
+            const base64 = await cloudStorage.readFile(remote, 'base64');
+            const dir = localUri.substring(0, localUri.lastIndexOf('/'));
+            await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+            await FileSystem.writeAsStringAsync(localUri, base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          }
         }
       }
     } catch (e) {
