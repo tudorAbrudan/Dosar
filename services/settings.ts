@@ -9,6 +9,7 @@ const KEY_APP_LOCK_ENABLED = 'app_lock_enabled';
 const KEY_APP_LOCK_PIN = 'app_lock_pin';
 const KEY_PUSH_ENABLED = 'settings_push_enabled';
 const KEY_CLOUD_BACKUP_ENABLED = 'cloud_backup_enabled';
+const KEY_CLOUD_IGNORED_UPLOADED_AT = 'cloud_ignored_uploaded_at';
 
 export async function getNotificationDays(): Promise<number> {
   const v = await AsyncStorage.getItem(KEY_NOTIF_DAYS);
@@ -38,6 +39,17 @@ export async function getCloudBackupEnabled(): Promise<boolean> {
 
 export async function setCloudBackupEnabled(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEY_CLOUD_BACKUP_ENABLED, enabled ? 'true' : 'false');
+}
+
+export async function getCloudIgnoredUploadedAt(): Promise<number | null> {
+  const v = await AsyncStorage.getItem(KEY_CLOUD_IGNORED_UPLOADED_AT);
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function setCloudIgnoredUploadedAt(timestamp: number): Promise<void> {
+  await AsyncStorage.setItem(KEY_CLOUD_IGNORED_UPLOADED_AT, String(timestamp));
 }
 
 export async function getAppLockEnabled(): Promise<boolean> {

@@ -9,6 +9,8 @@ export const primaryPressed = '#8FA05A';
 export const primaryMuted = '#E8F0D8';
 /** Badge / fundal discret pentru accente primary */
 export const primaryTint = 'rgba(163, 184, 108, 0.16)';
+/** Text/icon color for content placed on `primary` background (CTAs on primary). */
+export const onPrimary = '#FFFFFF';
 
 /** Paleta severity pentru status bar auto */
 export const statusColors = {

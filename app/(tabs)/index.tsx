@@ -26,6 +26,8 @@ import type { Document, DocumentType, EntityType } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
 import { isStaleExpired } from '@/services/expiry';
+import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
+import { CloudBackupBanner } from '@/components/CloudBackupBanner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -281,6 +283,7 @@ export default function HomeScreen() {
   const { visibleDocTypes } = useVisibilitySettings();
   const [duplicateGroups, setDuplicateGroups] = useState<Document[][]>([]);
   const backfillDoneRef = useRef(false);
+  const cloud = useCloudRestoreDetector();
 
   useEffect(() => {
     if (backfillDoneRef.current) return;
@@ -437,6 +440,15 @@ export default function HomeScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Banner backup mai nou pe iCloud ── */}
+        {cloud.showBanner && cloud.cloudMeta && (
+          <CloudBackupBanner
+            meta={cloud.cloudMeta}
+            onRestore={() => router.push('/cloud-backup?action=restore')}
+            onDismiss={cloud.dismiss}
+          />
+        )}
+
         {/* ── Rezumat + acțiuni (card integrat) ── */}
         <SurfaceCard style={styles.integratedCard}>
           <RNView style={styles.statsRow}>
