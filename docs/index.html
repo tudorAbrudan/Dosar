@@ -240,6 +240,14 @@
       transition: transform .3s, box-shadow .3s;
     }
     .feat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+    a.feat-card { display: block; text-decoration: none; color: inherit; }
+    a.feat-card:hover { border-color: var(--primary); }
+    a.feat-card:hover .feat-cta { color: var(--primary-dark); }
+    .feat-cta {
+      display: inline-flex; align-items: center; gap: 4px;
+      margin-top: 10px; font-size: .85rem; font-weight: 600;
+      color: var(--primary); transition: color .2s;
+    }
     .feat-icon {
       width: 48px; height: 48px; border-radius: 13px;
       background: rgba(158,181,103,0.12);
@@ -610,11 +618,12 @@
       <div class="feat-title">OCR on-device</div>
       <div class="feat-desc">Fotografiezi un document și app-ul extrage automat textul. Rulează pe device, fără cloud.</div>
     </div>
-    <div class="feat-card reveal d2">
+    <a class="feat-card reveal d2" href="gestiune-auto.html">
       <div class="feat-icon">🚗</div>
       <div class="feat-title">Tracker auto complet</div>
       <div class="feat-desc">RCA, ITP, CASCO, Vignetă, Talon, Carte auto — toate la un loc, cu alerte înainte de expirare.</div>
-    </div>
+      <span class="feat-cta">Vezi tot →</span>
+    </a>
     <div class="feat-card reveal d3">
       <div class="feat-icon">🔧</div>
       <div class="feat-title">Remindere mentenanță vehicul</div>
