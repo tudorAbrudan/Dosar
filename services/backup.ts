@@ -251,6 +251,14 @@ export interface ApplyManifestOptions {
   wipeFirst?: boolean;
 }
 
+// Set to true while applyManifest is running (cloud restore OR ZIP import).
+// Document service hooks consult `isImportInProgress()` to suppress
+// re-enqueueing into `pending_uploads` for files that came from the manifest.
+let _importInProgress = false;
+export function isImportInProgress(): boolean {
+  return _importInProgress;
+}
+
 /**
  * Aplică un manifest (payload JSON deja parsat) peste DB-ul curent.
  * Folosit atât de importBackup (după parse ZIP/JSON) cât și de cloudSync.restore().
@@ -260,20 +268,30 @@ export interface ApplyManifestOptions {
  * de dinaintea apelului (nu rămâne pe jumătate restaurat). Pentru
  * `wipeFirst: false` (calea ZIP din `importBackup`) execuția rămâne aditivă
  * fără tranzacție — un eșec parțial poate lăsa entități importate în DB.
+ *
+ * Atomicitate: tranzacția DB se aplică doar pentru `wipeFirst: true` și
+ * acoperă DOAR scrierea în SQLite. Operațiunile pe disc (copy fișiere,
+ * fișiere descărcate de `restoreFromCloud`) NU sunt rollback-uite — pot
+ * rămâne orfani după un eșec, recuperate la următoarea încercare.
  */
 export async function applyManifest(
   payload: Record<string, unknown>,
   options: ApplyManifestOptions = {}
 ): Promise<ImportResult> {
-  if (options.wipeFirst) {
-    let result!: ImportResult;
-    await db.withTransactionAsync(async () => {
-      await wipeUserData();
-      result = await applyManifestBody(payload);
-    });
-    return result;
+  _importInProgress = true;
+  try {
+    if (options.wipeFirst) {
+      let result!: ImportResult;
+      await db.withTransactionAsync(async () => {
+        await wipeUserData();
+        result = await applyManifestBody(payload);
+      });
+      return result;
+    }
+    return await applyManifestBody(payload);
+  } finally {
+    _importInProgress = false;
   }
-  return await applyManifestBody(payload);
 }
 
 async function applyManifestBody(payload: Record<string, unknown>): Promise<ImportResult> {
@@ -415,7 +433,11 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
             const info = await FileSystem.getInfoAsync(oldPath);
             if (info.exists) {
               if (oldPath !== newPath) {
-                await FileSystem.moveAsync({ from: oldPath, to: newPath });
+                // Use copyAsync (not moveAsync) so a transaction rollback can be retried
+                // — the source file remains on disk for the next attempt. Orphan source
+                // files after successful import are an accepted trade-off until a
+                // dedicated cleanup pass is added.
+                await FileSystem.copyAsync({ from: oldPath, to: newPath });
               }
               newPhotoUri = newRelative;
             }

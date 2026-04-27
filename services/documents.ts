@@ -4,6 +4,7 @@ import { computeFileHash } from './fileHash';
 import { onDocumentCreated, onDocumentRenewed } from './reviewPrompt';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
+import { isImportInProgress } from './backup';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
 
 export interface CreateDocumentInput {
@@ -326,7 +327,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
 
   if (input.file_path) {
     const cloudEnabled = await getCloudBackupEnabled();
-    if (cloudEnabled) {
+    if (cloudEnabled && !isImportInProgress()) {
       await cloudSync.enqueueFileUpload(input.file_path);
       cloudSync.processQueue().catch(() => {
         /* fire and forget */
@@ -563,7 +564,7 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
 
   if (filePath) {
     const cloudEnabled = await getCloudBackupEnabled();
-    if (cloudEnabled) {
+    if (cloudEnabled && !isImportInProgress()) {
       await cloudSync.enqueueFileUpload(filePath);
       cloudSync.processQueue().catch(() => {
         /* fire and forget */

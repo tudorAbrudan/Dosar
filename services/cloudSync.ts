@@ -377,6 +377,8 @@ function asArray<T = unknown>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+// Set deduplicates because a document and its page may legitimately share
+// the same `file_path` in legacy data; we don't want to download twice.
 function collectFileNamesFromPayload(payload: Record<string, unknown>): string[] {
   const out = new Set<string>();
   for (const d of asArray<{ file_path?: string }>(payload.documents)) {
@@ -401,7 +403,14 @@ function collectFileNamesFromPayload(payload: Record<string, unknown>): string[]
  * nu opresc restore-ul. Eșecul în `applyManifest` rollback-uiește tranzacția
  * și DB-ul rămâne în starea anterioară.
  *
- * @throws când iCloud nu e disponibil, manifestul lipsește, versiunea e mai
+ * La final șterge `pending_uploads` în întregime — restore-ul este sursa
+ * autoritară, nu vrem re-upload pentru fișiere tocmai descărcate.
+ *
+ * Dacă `applyManifest` eșuează, fișierele descărcate rămân pe disc (vor fi
+ * sărite la următoarea încercare via `!localInfo.exists`). Cleanup pentru
+ * orfani după un eșec definitiv este TBD într-o iterație ulterioară.
+ *
+ * @throws când iCloud nu este disponibil, manifestul lipsește, versiunea e mai
  *   nouă decât suportă app-ul, sau `applyManifest` eșuează (transaction rollback).
  */
 export async function restoreFromCloud(
@@ -460,6 +469,10 @@ export async function restoreFromCloud(
       last_manifest_uploaded_at: meta.uploadedAt,
     });
   }
+
+  // Restore is authoritative — drop any pending uploads (pre-restore staleness
+  // or in-flight rows that beat the import-in-progress guard).
+  await db.runAsync('DELETE FROM pending_uploads');
 
   onProgress?.({ phase: 'done', current: 1, total: 1 });
 
