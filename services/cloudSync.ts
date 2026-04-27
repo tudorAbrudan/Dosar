@@ -8,6 +8,16 @@ import * as docs from './documents';
 import * as fuel from './fuel';
 import { getCustomTypes } from './customTypes';
 import { toFileUri } from './fileUtils';
+import { getCloudEncryptionEnabled } from './settings';
+import {
+  PasswordRequiredError,
+  decryptString,
+  decryptToBase64,
+  encryptBase64,
+  encryptString,
+  getSessionKey,
+  isSessionUnlocked,
+} from './cloudCrypto';
 import type {
   Animal,
   Card,
@@ -123,6 +133,12 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
  * Compară hash-ul manifestului curent cu ultimul uploadat. Dacă diferă, urcă manifest + meta.
  * Returnează true dacă a făcut upload, false dacă skip (no changes).
  *
+ * Dacă criptarea e activă (`getCloudEncryptionEnabled() === true`) manifestul e
+ * encriptat cu cheia de sesiune înainte de upload, iar `meta.encrypted` devine `true`.
+ * Hash-ul e calculat pe formatul canonic plain — așa rămâne stabil indiferent
+ * dacă encriptarea e on/off (IV-ul random ar varia hash-ul ciphertext-ului).
+ *
+ * @throws `PasswordRequiredError` când criptarea e activă dar sesiunea nu e deblocată.
  * @throws când iCloud devine indisponibil între `isAvailable()` și `writeFile`,
  *   sau când scrierea/serializarea eșuează. Apelantul (Task 11) este responsabil
  *   să prindă și să decidă retry vs. logging.
@@ -140,7 +156,18 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   }
 
   const json = JSON.stringify(payload);
-  await cloudStorage.writeFile(MANIFEST_PATH, json, 'utf8');
+  const encryptionEnabled = await getCloudEncryptionEnabled();
+  let payloadToWrite = json;
+  let encrypted = false;
+  if (encryptionEnabled) {
+    const key = getSessionKey();
+    if (!key) {
+      throw new PasswordRequiredError('Parolă necesară pentru backup criptat');
+    }
+    payloadToWrite = await encryptString(json, key);
+    encrypted = true;
+  }
+  await cloudStorage.writeFile(MANIFEST_PATH, payloadToWrite, 'utf8');
 
   const documentCount = payload.documents.length;
   const fileCount =
@@ -150,7 +177,7 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
     uploadedAt: Date.now(),
     hash,
     deviceId: state.device_id,
-    encrypted: false,
+    encrypted,
     documentCount,
     fileCount,
   };
@@ -243,6 +270,7 @@ export async function dequeueFileDelete(filePath: string): Promise<void> {
 export async function processQueue(): Promise<void> {
   if (!(await cloudStorage.isAvailable())) return;
 
+  const encryptionEnabled = await getCloudEncryptionEnabled();
   const pending = await db.getAllAsync<{ id: number; file_path: string; attempt_count: number }>(
     'SELECT id, file_path, attempt_count FROM pending_uploads WHERE attempt_count < ? ORDER BY id ASC',
     [MAX_ATTEMPTS]
@@ -258,6 +286,8 @@ export async function processQueue(): Promise<void> {
       }
       if ('size' in info && typeof info.size === 'number' && info.size > MAX_FILE_BYTES) {
         // Permanent skip — bump to MAX_ATTEMPTS so it stops being retried.
+        // Important: prioritate peste encriptare; nu vrem să încercăm să encriptăm
+        // un payload pe care oricum nu-l urcăm.
         await db.runAsync(
           'UPDATE pending_uploads SET attempt_count = ?, last_error = ? WHERE id = ?',
           [
@@ -268,9 +298,31 @@ export async function processQueue(): Promise<void> {
         );
         continue;
       }
-      const base64 = await FileSystem.readAsStringAsync(localUri, {
+      // Dacă encriptarea e activă dar sesiunea nu e deblocată, marchează rândul cu
+      // mesaj — DAR nu bump-uim attempt_count, ca să fie reprocesat la următorul
+      // tick AppState după ce userul deblochează.
+      if (encryptionEnabled && !isSessionUnlocked()) {
+        await db.runAsync('UPDATE pending_uploads SET last_error = ? WHERE id = ?', [
+          'Parolă necesară',
+          row.id,
+        ]);
+        continue;
+      }
+      let base64 = await FileSystem.readAsStringAsync(localUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      if (encryptionEnabled) {
+        const key = getSessionKey();
+        if (!key) {
+          // Defensive — isSessionUnlocked() era true mai sus, dar a flippat între timp.
+          await db.runAsync('UPDATE pending_uploads SET last_error = ? WHERE id = ?', [
+            'Parolă necesară',
+            row.id,
+          ]);
+          continue;
+        }
+        base64 = await encryptBase64(base64, key);
+      }
       const remote = `${FILES_PREFIX}${fileNameFromPath(row.file_path)}`;
       await cloudStorage.writeFile(remote, base64, 'base64');
       await db.runAsync('DELETE FROM pending_uploads WHERE id = ?', [row.id]);
@@ -430,6 +482,12 @@ function collectFileNamesFromPayload(payload: Record<string, unknown>): string[]
  * sărite la următoarea încercare via `!localInfo.exists`). Cleanup pentru
  * orfani după un eșec definitiv este TBD într-o iterație ulterioară.
  *
+ * Dacă `meta.encrypted === true` și sesiunea nu e deblocată, aruncă
+ * `PasswordRequiredError` înainte de orice modificare. Apelantul (Setări) trebuie
+ * să prompt-eze utilizatorul, să apeleze `unlockWithPassword`, apoi să reîncerce.
+ *
+ * @throws `PasswordRequiredError` când backup-ul e criptat și nu există session key,
+ *   sau când decriptarea manifestului eșuează (parolă greșită).
  * @throws când iCloud nu este disponibil, manifestul lipsește, versiunea e mai
  *   nouă decât suportă app-ul, sau `applyManifest` eșuează (transaction rollback).
  */
@@ -440,11 +498,32 @@ export async function restoreFromCloud(
     throw new Error('iCloud nu este disponibil');
   }
 
+  // Citește meta întâi — aflăm flag-ul `encrypted` înainte să încercăm să citim
+  // manifestul. Dacă meta lipsește dar manifestul există (caz rar de backup
+  // parțial), presupunem necriptat ca să nu blocăm restore-ul vechi.
+  const metaPre = await readCloudMeta();
+  const isEncrypted = metaPre?.encrypted === true;
+  if (isEncrypted && !isSessionUnlocked()) {
+    throw new PasswordRequiredError('Parolă necesară pentru restaurare backup criptat');
+  }
+  const sessionKey = isEncrypted ? getSessionKey() : null;
+
   onProgress?.({ phase: 'manifest', current: 0, total: 1 });
   if (!(await cloudStorage.exists(MANIFEST_PATH))) {
     throw new Error('Nu există backup în iCloud');
   }
-  const manifestText = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
+  const manifestRaw = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
+  let manifestText = manifestRaw;
+  if (isEncrypted) {
+    if (!sessionKey) {
+      throw new PasswordRequiredError('Parolă necesară pentru restaurare backup criptat');
+    }
+    try {
+      manifestText = await decryptString(manifestRaw, sessionKey);
+    } catch {
+      throw new PasswordRequiredError('Parola pare incorectă. Manifestul nu poate fi decriptat.');
+    }
+  }
   const payload = JSON.parse(manifestText) as Record<string, unknown>;
   const version = (payload.version as number) ?? 0;
   if (version > MANIFEST_VERSION) {
@@ -467,7 +546,21 @@ export async function restoreFromCloud(
               `[cloudSync.restore] skip oversized file "${fileRel}" (${Math.round(remoteSize / 1024 / 1024)} MB > limită ${MAX_FILE_BYTES / 1024 / 1024} MB)`
             );
           } else {
-            const base64 = await cloudStorage.readFile(remote, 'base64');
+            let base64 = await cloudStorage.readFile(remote, 'base64');
+            if (isEncrypted && sessionKey) {
+              try {
+                base64 = await decryptToBase64(base64, sessionKey);
+              } catch (e) {
+                // Per-fișier: nu blocăm restore-ul; logăm și sărim.
+                console.warn(
+                  `[cloudSync.restore] skip file "${fileRel}" (decrypt failed):`,
+                  e instanceof Error ? e.message : e
+                );
+                downloaded++;
+                onProgress?.({ phase: 'files', current: downloaded, total: fileNames.length });
+                continue;
+              }
+            }
             const dir = localUri.substring(0, localUri.lastIndexOf('/'));
             await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
             await FileSystem.writeAsStringAsync(localUri, base64, {

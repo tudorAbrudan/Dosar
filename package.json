@@ -29,10 +29,13 @@
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/$1",
       "^expo-file-system/legacy$": "<rootDir>/__mocks__/expo-file-system-legacy.js",
-      "^react-native-nitro-modules$": "<rootDir>/__mocks__/react-native-nitro-modules.js"
+      "^react-native-nitro-modules$": "<rootDir>/__mocks__/react-native-nitro-modules.js",
+      "^@noble/ciphers/aes(\\.js)?$": "<rootDir>/node_modules/@noble/ciphers/aes.js",
+      "^@noble/hashes/pbkdf2(\\.js)?$": "<rootDir>/node_modules/@noble/hashes/pbkdf2.js",
+      "^@noble/hashes/sha2(\\.js)?$": "<rootDir>/node_modules/@noble/hashes/sha2.js"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|pako)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|pako|@noble/.*)"
     ],
     "testMatch": [
       "**/__tests__/**/*.test.ts",
@@ -44,6 +47,8 @@
     ]
   },
   "dependencies": {
+    "@noble/ciphers": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-ml-kit/text-recognition": "^2.0.0",
     "@react-navigation/native": "^7.1.28",

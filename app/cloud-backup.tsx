@@ -21,8 +21,18 @@ import {
   setCloudSnapshotFrequency,
   getCloudSnapshotRetention,
   setCloudSnapshotRetention,
+  getCloudEncryptionEnabled,
+  setCloudEncryptionEnabled,
 } from '@/services/settings';
+import {
+  PasswordRequiredError,
+  clearPassword,
+  setSessionKey,
+  setupPassword,
+  unlockWithPassword,
+} from '@/services/cloudCrypto';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
+import { CloudPasswordModal, type CloudPasswordModalMode } from '@/components/CloudPasswordModal';
 import type { SnapshotFrequency, CloudStatus } from '@/types';
 
 const FREQUENCY_OPTIONS: { value: SnapshotFrequency; label: string }[] = [
@@ -81,6 +91,15 @@ export default function CloudBackupScreen() {
   const [loaded, setLoaded] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState<RestoreProgress | null>(null);
 
+  // ── Encryption state ─────────────────────────────────────────────────────
+  // Notă: nu prompt-ăm parola la mount. O cerem doar când o acțiune (backup
+  // sau restore) eșuează cu PasswordRequiredError, sau când userul activează
+  // criptarea. O iterație ulterioară poate adăuga unlock-on-screen-mount.
+  const [encryptionEnabled, setEncryptionEnabledState] = useState(false);
+  const [pwModalMode, setPwModalMode] = useState<CloudPasswordModalMode | null>(null);
+  // Acțiunea care a declanșat unlock-ul; rulată după onSubmit reușit.
+  const [pendingAfterUnlock, setPendingAfterUnlock] = useState<null | 'backup' | 'restore'>(null);
+
   // Gate setState pentru restore progress contra unmount (utilizatorul poate
   // naviga înapoi mid-restore — restoreFromCloud continuă să cheme callback-ul).
   const mountedRef = useRef(true);
@@ -102,10 +121,15 @@ export default function CloudBackupScreen() {
 
   useEffect(() => {
     void (async () => {
-      const [f, r] = await Promise.all([getCloudSnapshotFrequency(), getCloudSnapshotRetention()]);
+      const [f, r, enc] = await Promise.all([
+        getCloudSnapshotFrequency(),
+        getCloudSnapshotRetention(),
+        getCloudEncryptionEnabled(),
+      ]);
       if (mountedRef.current) {
         setFreq(f);
         setRetention(r);
+        setEncryptionEnabledState(enc);
         setLoaded(true);
       }
     })();
@@ -128,8 +152,16 @@ export default function CloudBackupScreen() {
   // poate fi cu un tick stale; badge-ul se re-randa la următorul refresh.
   const handleBackupNow = async () => {
     await cloud.backupNow();
-    if (cloud.status === 'error' && cloud.error) {
-      Alert.alert('Eroare backup', cloud.error);
+    // `cloud.error` poate conține mesajul `PasswordRequiredError` re-aruncat
+    // de `uploadManifestIfChanged`. Detectăm după mesaj (string starts cu „Parolă").
+    const err = cloud.error;
+    if (cloud.status === 'error' && err) {
+      if (/^Parolă/.test(err)) {
+        setPendingAfterUnlock('backup');
+        setPwModalMode('unlock');
+      } else {
+        Alert.alert('Eroare backup', err);
+      }
     } else {
       Alert.alert('Backup', 'Backup finalizat.');
     }
@@ -151,6 +183,27 @@ export default function CloudBackupScreen() {
   // exhaustive-deps să ceară `cloud` ca dep, ceea ce ar reintroduce bug-ul de
   // re-fire la fiecare status tick.
   const cloudRefresh = cloud.refresh;
+  // Rulează restore-ul efectiv (după ce userul a confirmat sau după unlock).
+  const runRestore = useCallback(async () => {
+    safeSetRestoreProgress({ phase: 'manifest', current: 0, total: 1 });
+    try {
+      await restoreFromCloud(safeSetRestoreProgress);
+      safeSetRestoreProgress({ phase: 'done', current: 1, total: 1 });
+      Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
+      await cloudRefresh();
+    } catch (e) {
+      if (e instanceof PasswordRequiredError) {
+        setPendingAfterUnlock('restore');
+        setPwModalMode('unlock');
+      } else {
+        const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+        Alert.alert('Eroare restaurare', msg);
+      }
+    } finally {
+      if (mountedRef.current) setRestoreProgress(null);
+    }
+  }, [cloudRefresh, safeSetRestoreProgress]);
+
   const handleRestore = useCallback(async () => {
     Alert.alert(
       'Restaurează din iCloud',
@@ -160,24 +213,95 @@ export default function CloudBackupScreen() {
         {
           text: 'Restaurează',
           style: 'destructive',
+          onPress: () => {
+            void runRestore();
+          },
+        },
+      ]
+    );
+  }, [runRestore]);
+
+  // ── Encryption toggle ────────────────────────────────────────────────────
+  const handleEncryptionToggle = (value: boolean) => {
+    if (value) {
+      // OFF → ON: cere parolă nouă.
+      setPendingAfterUnlock(null);
+      setPwModalMode('setup');
+      return;
+    }
+    // ON → OFF: avertizează — backup-urile criptate rămân criptate în iCloud.
+    Alert.alert(
+      'Dezactivează criptarea',
+      'Datele rămase în iCloud rămân criptate; le poți decripta doar cu parola actuală. ' +
+        'Backup-urile viitoare vor fi necriptate. Continui?',
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Dezactivează',
+          style: 'destructive',
           onPress: async () => {
-            safeSetRestoreProgress({ phase: 'manifest', current: 0, total: 1 });
             try {
-              await restoreFromCloud(safeSetRestoreProgress);
-              safeSetRestoreProgress({ phase: 'done', current: 1, total: 1 });
-              Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
+              await clearPassword();
+              await setCloudEncryptionEnabled(false);
+              setEncryptionEnabledState(false);
               await cloudRefresh();
             } catch (e) {
-              const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
-              Alert.alert('Eroare restaurare', msg);
-            } finally {
-              if (mountedRef.current) setRestoreProgress(null);
+              Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
             }
           },
         },
       ]
     );
-  }, [cloudRefresh, safeSetRestoreProgress]);
+  };
+
+  const handleChangePassword = () => {
+    Alert.alert(
+      'Schimbă parola',
+      'Atenție: toate backup-urile criptate cu parola curentă vor deveni nedecriptabile. ' +
+        'Va fi nevoie să faci un backup nou imediat după schimbare. Continui?',
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Continuă',
+          style: 'destructive',
+          onPress: () => {
+            setPendingAfterUnlock(null);
+            setPwModalMode('setup');
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePasswordSubmit = async (password: string) => {
+    if (pwModalMode === 'setup') {
+      const key = await setupPassword(password);
+      setSessionKey(key);
+      await setCloudEncryptionEnabled(true);
+      setEncryptionEnabledState(true);
+      setPwModalMode(null);
+      await cloudRefresh();
+      return;
+    }
+    // mode === 'unlock'
+    const key = await unlockWithPassword(password);
+    setSessionKey(key);
+    setPwModalMode(null);
+    if (pendingAfterUnlock === 'backup') {
+      setPendingAfterUnlock(null);
+      await cloud.backupNow();
+    } else if (pendingAfterUnlock === 'restore') {
+      setPendingAfterUnlock(null);
+      await runRestore();
+    } else {
+      await cloudRefresh();
+    }
+  };
+
+  const handlePasswordCancel = () => {
+    setPwModalMode(null);
+    setPendingAfterUnlock(null);
+  };
 
   useEffect(() => {
     if (params.action === 'restore' && !restoreTriggeredRef.current) {
@@ -340,6 +464,43 @@ export default function CloudBackupScreen() {
           )}
         </View>
 
+        {/* ── Criptare backup ── */}
+        <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>CRIPTARE BACKUP</Text>
+        <View
+          style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
+        >
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleTextWrap}>
+              <Text style={[styles.toggleLabel, { color: palette.text }]}>
+                Criptează backup-ul cu parolă
+              </Text>
+              <Text style={[styles.toggleSub, { color: palette.textSecondary }]}>
+                Doar tu poți decripta. Dacă uiți parola, datele sunt pierdute.
+              </Text>
+            </View>
+            <Switch
+              value={encryptionEnabled}
+              onValueChange={handleEncryptionToggle}
+              disabled={!loaded}
+              trackColor={{ false: palette.border, true: primary }}
+              thumbColor={onPrimary}
+            />
+          </View>
+          {encryptionEnabled ? (
+            <Pressable
+              onPress={handleChangePassword}
+              style={({ pressed }) => [
+                styles.btnOutline,
+                { borderColor: primary, marginTop: 12 },
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Ionicons name="key-outline" size={18} color={primary} style={styles.btnIcon} />
+              <Text style={[styles.btnOutlineText, { color: primary }]}>Schimbă parola</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
         {/* ── Acțiuni ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>ACȚIUNI</Text>
         <View
@@ -405,6 +566,13 @@ export default function CloudBackupScreen() {
           <CloudRestoreProgress progress={restoreProgress} />
         </View>
       </Modal>
+
+      <CloudPasswordModal
+        visible={pwModalMode !== null}
+        mode={pwModalMode ?? 'unlock'}
+        onSubmit={handlePasswordSubmit}
+        onCancel={handlePasswordCancel}
+      />
     </View>
   );
 }
