@@ -254,15 +254,29 @@ export interface ApplyManifestOptions {
 /**
  * Aplică un manifest (payload JSON deja parsat) peste DB-ul curent.
  * Folosit atât de importBackup (după parse ZIP/JSON) cât și de cloudSync.restore().
+ *
+ * Când `wipeFirst: true`, întreaga operație (wipe + import) rulează într-o
+ * tranzacție SQLite atomică: dacă orice pas eșuează, DB-ul rămâne în starea
+ * de dinaintea apelului (nu rămâne pe jumătate restaurat). Pentru
+ * `wipeFirst: false` (calea ZIP din `importBackup`) execuția rămâne aditivă
+ * fără tranzacție — un eșec parțial poate lăsa entități importate în DB.
  */
 export async function applyManifest(
   payload: Record<string, unknown>,
   options: ApplyManifestOptions = {}
 ): Promise<ImportResult> {
   if (options.wipeFirst) {
-    await wipeUserData();
+    let result!: ImportResult;
+    await db.withTransactionAsync(async () => {
+      await wipeUserData();
+      result = await applyManifestBody(payload);
+    });
+    return result;
   }
+  return await applyManifestBody(payload);
+}
 
+async function applyManifestBody(payload: Record<string, unknown>): Promise<ImportResult> {
   // --- Încarcă entitățile existente pentru deduplicare ---
   const [
     existingPersons,

@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { db } from './db';
 import * as cloudStorage from './cloudStorage';
+import { applyManifest } from './backup';
 import { buildCanonicalManifest, hashManifestAsync } from './manifestHash';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -364,4 +365,106 @@ export async function listSnapshots(): Promise<string[]> {
     .filter(f => f.startsWith('manifest_') && f.endsWith('.json'))
     .sort()
     .reverse();
+}
+
+export interface RestoreProgress {
+  phase: 'manifest' | 'files' | 'apply' | 'done';
+  current: number;
+  total: number;
+}
+
+function asArray<T = unknown>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function collectFileNamesFromPayload(payload: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+  for (const d of asArray<{ file_path?: string }>(payload.documents)) {
+    if (d.file_path) out.add(d.file_path);
+  }
+  for (const p of asArray<{ file_path?: string }>(payload.documentPages)) {
+    if (p.file_path) out.add(p.file_path);
+  }
+  for (const v of asArray<{ photo_uri?: string }>(payload.vehicles)) {
+    if (v.photo_uri) out.add(v.photo_uri);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Restaurează aplicația din backup-ul iCloud: descarcă manifest + fișiere, apoi
+ * apelează `applyManifest({ wipeFirst: true })` într-o tranzacție atomică.
+ *
+ * Pași raportați prin `onProgress`: `manifest` → `files` → `apply` → `done`.
+ *
+ * Erorile per-fișier (rețea, lipsă remote) sunt logate în consolă și sărite,
+ * nu opresc restore-ul. Eșecul în `applyManifest` rollback-uiește tranzacția
+ * și DB-ul rămâne în starea anterioară.
+ *
+ * @throws când iCloud nu e disponibil, manifestul lipsește, versiunea e mai
+ *   nouă decât suportă app-ul, sau `applyManifest` eșuează (transaction rollback).
+ */
+export async function restoreFromCloud(
+  onProgress?: (p: RestoreProgress) => void
+): Promise<{ documentCount: number; fileCount: number }> {
+  if (!(await cloudStorage.isAvailable())) {
+    throw new Error('iCloud nu este disponibil');
+  }
+
+  onProgress?.({ phase: 'manifest', current: 0, total: 1 });
+  if (!(await cloudStorage.exists(MANIFEST_PATH))) {
+    throw new Error('Nu există backup în iCloud');
+  }
+  const manifestText = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
+  const payload = JSON.parse(manifestText) as Record<string, unknown>;
+  const version = (payload.version as number) ?? 0;
+  if (version > MANIFEST_VERSION) {
+    throw new Error('Backup-ul a fost creat cu o versiune mai nouă a aplicației');
+  }
+  onProgress?.({ phase: 'manifest', current: 1, total: 1 });
+
+  const fileNames = collectFileNamesFromPayload(payload);
+  let downloaded = 0;
+  for (const fileRel of fileNames) {
+    try {
+      const localUri = `${FileSystem.documentDirectory}${fileRel}`;
+      const localInfo = await FileSystem.getInfoAsync(localUri);
+      if (!localInfo.exists) {
+        const remote = `${FILES_PREFIX}${fileNameFromPath(fileRel)}`;
+        if (await cloudStorage.exists(remote)) {
+          // TODO(task-11): apply file-size cap shared with upload queue (see Task 7 review).
+          const base64 = await cloudStorage.readFile(remote, 'base64');
+          const dir = localUri.substring(0, localUri.lastIndexOf('/'));
+          await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+          await FileSystem.writeAsStringAsync(localUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        }
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Eroare necunoscută';
+      console.warn(`[cloudSync.restore] skip file "${fileRel}":`, message);
+    }
+    downloaded++;
+    onProgress?.({ phase: 'files', current: downloaded, total: fileNames.length });
+  }
+
+  onProgress?.({ phase: 'apply', current: 0, total: 1 });
+  await applyManifest(payload, { wipeFirst: true });
+  onProgress?.({ phase: 'apply', current: 1, total: 1 });
+
+  const meta = await readCloudMeta();
+  if (meta) {
+    await setCloudState({
+      last_manifest_hash: meta.hash,
+      last_manifest_uploaded_at: meta.uploadedAt,
+    });
+  }
+
+  onProgress?.({ phase: 'done', current: 1, total: 1 });
+
+  return {
+    documentCount: asArray(payload.documents).length,
+    fileCount: fileNames.length,
+  };
 }
