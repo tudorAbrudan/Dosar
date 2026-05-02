@@ -6,7 +6,6 @@ import {
   RefreshControl,
   Alert,
   Modal,
-  KeyboardAvoidingView,
   Platform,
   View as RNView,
   Text as RNText,
@@ -20,12 +19,12 @@ import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedTextInput } from '@/components/Themed';
+import { FormSheetModal } from '@/components/ui/FormSheetModal';
 import { BottomActionBar } from '@/components/BottomActionBar';
 import type { BottomAction } from '@/components/BottomActionBar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { primary, statusColors } from '@/theme/colors';
-import { radius } from '@/theme/layout';
 import { useEntities } from '@/hooks/useEntities';
 import { useDocuments } from '@/hooks/useDocuments';
 import { getDocuments, linkDocumentToEntity } from '@/services/documents';
@@ -723,240 +722,228 @@ export default function EntityDetailScreen() {
       </Modal>
 
       {/* ── Edit modal ── */}
-      <Modal
+      <FormSheetModal
         visible={editVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={handleCancelEdit}
+        title="Editează entitate"
+        onClose={handleCancelEdit}
+        onSave={handleSaveEdit}
+        saving={editLoading}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <RNView style={[styles.modalContent, { backgroundColor: C.card }]}>
-            <RNText style={[styles.modalTitle, { color: C.text }]}>Editează entitate</RNText>
-
-            {!isCard && (
-              <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Nume</RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="Nume"
-                  value={editName}
-                  onChangeText={setEditName}
-                  editable={!editLoading}
-                />
-              </>
-            )}
-
-            {isVehicle && (
-              <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Poză vehicul
-                </RNText>
-                <RNView style={styles.photoRow}>
-                  {editPhotoUri ? (
-                    <RNView style={styles.photoPreviewWrap}>
-                      <Image
-                        source={{ uri: toFileUri(editPhotoUri) }}
-                        style={[styles.photoPreview, { backgroundColor: C.border }]}
-                      />
-                      <Pressable
-                        style={[styles.photoActionBtn, { backgroundColor: C.border }]}
-                        onPress={handlePickPhoto}
-                      >
-                        <RNText style={[styles.photoActionText, { color: C.text }]}>Schimbă</RNText>
-                      </Pressable>
-                      <Pressable
-                        style={[
-                          styles.photoActionBtn,
-                          { marginLeft: 8, backgroundColor: C.border },
-                        ]}
-                        onPress={handleRemovePhoto}
-                      >
-                        <RNText style={[styles.photoActionText, { color: statusColors.critical }]}>
-                          Elimină
-                        </RNText>
-                      </Pressable>
-                    </RNView>
-                  ) : (
-                    <Pressable style={styles.photoAddBtn} onPress={handlePickPhoto}>
-                      <Ionicons name="camera-outline" size={18} color={primary} />
-                      <RNText style={[styles.photoAddText, { color: primary }]}>Adaugă poză</RNText>
-                    </Pressable>
-                  )}
-                </RNView>
-
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Nr. înmatriculare (opțional)
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="B 12 ABC"
-                  value={editPlate}
-                  onChangeText={t => setEditPlate(t.toUpperCase())}
-                  autoCapitalize="characters"
-                  editable={!editLoading}
-                />
-
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Tip combustibil
-                </RNText>
-                <RNView style={styles.fuelTypeRow}>
-                  {(['diesel', 'benzina', 'gpl', 'electric'] as const).map(t => {
-                    const label =
-                      t === 'diesel'
-                        ? 'Diesel'
-                        : t === 'benzina'
-                          ? 'Benzină'
-                          : t === 'gpl'
-                            ? 'GPL'
-                            : 'Electric';
-                    const active = editFuelType === t;
-                    return (
-                      <Pressable
-                        key={t}
-                        style={[
-                          styles.fuelTypeChip,
-                          active
-                            ? { backgroundColor: primary, borderColor: primary }
-                            : { backgroundColor: C.card, borderColor: C.border },
-                        ]}
-                        onPress={() => setEditFuelType(t)}
-                      >
-                        <RNText
-                          style={[styles.fuelTypeChipText, { color: active ? '#fff' : C.text }]}
-                        >
-                          {label}
-                        </RNText>
-                      </Pressable>
-                    );
-                  })}
-                </RNView>
-              </>
-            )}
-
-            {isPerson && (
-              <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Telefon (opțional)
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="0722 123 456"
-                  value={editPhone}
-                  onChangeText={setEditPhone}
-                  keyboardType="phone-pad"
-                  editable={!editLoading}
-                />
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Email (opțional)
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="email@exemplu.com"
-                  value={editEmail}
-                  onChangeText={setEditEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  editable={!editLoading}
-                />
-              </>
-            )}
-
-            {isCompany && (
-              <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  CUI (opțional)
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="RO12345678"
-                  value={editCui}
-                  onChangeText={setEditCui}
-                  editable={!editLoading}
-                />
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Nr. Registru Comerț (opțional)
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="J40/1234/2020"
-                  value={editRegCom}
-                  onChangeText={setEditRegCom}
-                  editable={!editLoading}
-                />
-              </>
-            )}
-
-            {isAnimal && (
-              <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Specie</RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="câine, pisică, papagal..."
-                  value={editSpecies}
-                  onChangeText={setEditSpecies}
-                  editable={!editLoading}
-                />
-              </>
-            )}
-
-            {isCard && (
-              <>
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Nickname</RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="Nickname card"
-                  value={editNickname}
-                  onChangeText={setEditNickname}
-                  editable={!editLoading}
-                />
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Ultimele 4 cifre
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="1234"
-                  value={editLast4}
-                  onChangeText={t => setEditLast4(t.replace(/\D/g, '').slice(0, 4))}
-                  keyboardType="number-pad"
-                  editable={!editLoading}
-                />
-                <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                  Expirare MM/AA (opțional)
-                </RNText>
-                <ThemedTextInput
-                  style={styles.modalInput}
-                  placeholder="12/28"
-                  value={editExpiry}
-                  onChangeText={setEditExpiry}
-                  editable={!editLoading}
-                />
-              </>
-            )}
-
-            <RNView style={styles.modalButtons}>
-              <Pressable
-                style={[styles.modalCancelBtn, { borderColor: C.border }]}
-                onPress={handleCancelEdit}
-                disabled={editLoading}
-              >
-                <RNText style={[styles.modalCancelText, { color: C.text }]}>Anulare</RNText>
-              </Pressable>
-              <Pressable
-                style={styles.modalSaveBtn}
-                onPress={handleSaveEdit}
-                disabled={editLoading}
-              >
-                <RNText style={styles.modalSaveText}>
-                  {editLoading ? 'Se salvează...' : 'Salvează'}
-                </RNText>
-              </Pressable>
-            </RNView>
+        {!isCard && (
+          <RNView>
+            <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Nume</RNText>
+            <ThemedTextInput
+              style={styles.modalInput}
+              placeholder="Nume"
+              value={editName}
+              onChangeText={setEditName}
+              editable={!editLoading}
+            />
           </RNView>
-        </KeyboardAvoidingView>
-      </Modal>
+        )}
+
+        {isVehicle && (
+          <>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Poză vehicul</RNText>
+              <RNView style={styles.photoRow}>
+                {editPhotoUri ? (
+                  <RNView style={styles.photoPreviewWrap}>
+                    <Image
+                      source={{ uri: toFileUri(editPhotoUri) }}
+                      style={[styles.photoPreview, { backgroundColor: C.border }]}
+                    />
+                    <Pressable
+                      style={[styles.photoActionBtn, { backgroundColor: C.border }]}
+                      onPress={handlePickPhoto}
+                    >
+                      <RNText style={[styles.photoActionText, { color: C.text }]}>Schimbă</RNText>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.photoActionBtn, { marginLeft: 8, backgroundColor: C.border }]}
+                      onPress={handleRemovePhoto}
+                    >
+                      <RNText style={[styles.photoActionText, { color: statusColors.critical }]}>
+                        Elimină
+                      </RNText>
+                    </Pressable>
+                  </RNView>
+                ) : (
+                  <Pressable style={styles.photoAddBtn} onPress={handlePickPhoto}>
+                    <Ionicons name="camera-outline" size={18} color={primary} />
+                    <RNText style={[styles.photoAddText, { color: primary }]}>Adaugă poză</RNText>
+                  </Pressable>
+                )}
+              </RNView>
+            </RNView>
+
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Nr. înmatriculare (opțional)
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="B 12 ABC"
+                value={editPlate}
+                onChangeText={t => setEditPlate(t.toUpperCase())}
+                autoCapitalize="characters"
+                editable={!editLoading}
+              />
+            </RNView>
+
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Tip combustibil
+              </RNText>
+              <RNView style={styles.fuelTypeRow}>
+                {(['diesel', 'benzina', 'gpl', 'electric'] as const).map(t => {
+                  const label =
+                    t === 'diesel'
+                      ? 'Diesel'
+                      : t === 'benzina'
+                        ? 'Benzină'
+                        : t === 'gpl'
+                          ? 'GPL'
+                          : 'Electric';
+                  const active = editFuelType === t;
+                  return (
+                    <Pressable
+                      key={t}
+                      style={[
+                        styles.fuelTypeChip,
+                        active
+                          ? { backgroundColor: primary, borderColor: primary }
+                          : { backgroundColor: C.card, borderColor: C.border },
+                      ]}
+                      onPress={() => setEditFuelType(t)}
+                    >
+                      <RNText
+                        style={[styles.fuelTypeChipText, { color: active ? '#fff' : C.text }]}
+                      >
+                        {label}
+                      </RNText>
+                    </Pressable>
+                  );
+                })}
+              </RNView>
+            </RNView>
+          </>
+        )}
+
+        {isPerson && (
+          <>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Telefon (opțional)
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="0722 123 456"
+                value={editPhone}
+                onChangeText={setEditPhone}
+                keyboardType="phone-pad"
+                editable={!editLoading}
+              />
+            </RNView>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Email (opțional)
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="email@exemplu.com"
+                value={editEmail}
+                onChangeText={setEditEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                editable={!editLoading}
+              />
+            </RNView>
+          </>
+        )}
+
+        {isCompany && (
+          <>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                CUI (opțional)
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="RO12345678"
+                value={editCui}
+                onChangeText={setEditCui}
+                editable={!editLoading}
+              />
+            </RNView>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Nr. Registru Comerț (opțional)
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="J40/1234/2020"
+                value={editRegCom}
+                onChangeText={setEditRegCom}
+                editable={!editLoading}
+              />
+            </RNView>
+          </>
+        )}
+
+        {isAnimal && (
+          <RNView>
+            <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Specie</RNText>
+            <ThemedTextInput
+              style={styles.modalInput}
+              placeholder="câine, pisică, papagal..."
+              value={editSpecies}
+              onChangeText={setEditSpecies}
+              editable={!editLoading}
+            />
+          </RNView>
+        )}
+
+        {isCard && (
+          <>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Nickname</RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="Nickname card"
+                value={editNickname}
+                onChangeText={setEditNickname}
+                editable={!editLoading}
+              />
+            </RNView>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Ultimele 4 cifre
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="1234"
+                value={editLast4}
+                onChangeText={t => setEditLast4(t.replace(/\D/g, '').slice(0, 4))}
+                keyboardType="number-pad"
+                editable={!editLoading}
+              />
+            </RNView>
+            <RNView>
+              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Expirare MM/AA (opțional)
+              </RNText>
+              <ThemedTextInput
+                style={styles.modalInput}
+                placeholder="12/28"
+                value={editExpiry}
+                onChangeText={setEditExpiry}
+                editable={!editLoading}
+              />
+            </RNView>
+          </>
+        )}
+      </FormSheetModal>
     </RNView>
   );
 }
@@ -1059,14 +1046,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCancelText: { fontSize: 16, opacity: 0.8 },
-  modalSaveBtn: {
-    flex: 1,
-    backgroundColor: primary,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalSaveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   photoRow: {
     marginBottom: 16,
   },
