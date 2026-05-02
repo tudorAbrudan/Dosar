@@ -9,11 +9,10 @@ import {
   ActivityIndicator,
   Modal,
   StatusBar,
-  KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -22,7 +21,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { primary, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import { DatePickerField } from '@/components/DatePickerField';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
@@ -690,23 +689,15 @@ export default function EditDocumentScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: getDocumentLabel(doc, customTypes),
-        }}
-      />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <FormPageScreen
+        title={getDocumentLabel(doc, customTypes)}
+        onSave={handleSave}
+        saving={saving}
+        scrollContentStyle={styles.content}
         keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
       >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets={true}
-        >
           {/* 1. POZE & OCR */}
           <Text style={styles.sectionLabel}>Poze / scan</Text>
           <DocumentPhotoSection
@@ -984,9 +975,7 @@ export default function EditDocumentScreen() {
             autoCorrect={false}
             autoCapitalize="none"
           />
-        </ScrollView>
-        <BottomActionBar label="Salvează" onPress={handleSave} loading={saving} safeArea />
-      </KeyboardAvoidingView>
+      </FormPageScreen>
 
       {/* Fullscreen modal */}
       <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
@@ -1171,7 +1160,6 @@ export default function EditDocumentScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   content: { padding: 20, paddingBottom: 48 },
   sectionLabel: { fontSize: 15, fontWeight: '600', opacity: 1, marginBottom: 10, marginTop: 4 },
