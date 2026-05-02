@@ -142,6 +142,53 @@ export function mergeFuelResults(
   };
 }
 
+export async function mapFuelReceiptWithAi(
+  ocrText: string,
+  imageBase64: string
+): Promise<FuelAiResult> {
+  const sanitizedOcr = sanitizeOcrText(ocrText);
+
+  const systemMessage =
+    'Ești un expert în extragerea datelor din bonuri de carburant românești. Returnează exclusiv JSON valid, fără text suplimentar.';
+
+  const prompt = `Extrage datele din bonul de carburant. TEXT OCR:
+"""
+${sanitizedOcr}
+"""
+
+Câmpuri de extras (toate opționale, omite ce nu e clar):
+- liters: cantitatea de carburant (număr cu zecimale, ex: 42.31)
+- price: TOTALUL de plată (NU preț/litru, NU subtotal). Caută "Total", "De plată", "Suma" — ia ULTIMA valoare dacă apar mai multe (număr, ex: 285.50)
+- km: kilometrajul total al vehiculului (5-7 cifre). Apare lângă "KM", "Odometru". NU confunda cu nr. bon, cod fiscal, ora, dată.
+- date: data bonului (YYYY-MM-DD). Convertește din ZZ.LL.AAAA.
+- station: brand benzinărie + oraș/adresă scurtă (ex: "OMV Cluj-Napoca, Calea Turzii"). Branduri RO: OMV, MOL, Petrom, Lukoil, Rompetrol, Socar, Gazprom, Shell, BP, Avia, Eko.
+
+Returnează EXCLUSIV JSON:
+{"liters": <număr|null>, "price": <număr|null>, "km": <int|null>, "date": "<YYYY-MM-DD|null>", "station": "<text|null>"}
+
+Răspunde DOAR cu JSON, fără text suplimentar.`;
+
+  const rawResponse = await sendAiRequestWithImage(
+    systemMessage,
+    prompt,
+    imageBase64,
+    'image/jpeg',
+    400
+  );
+
+  const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    return {};
+  }
+
+  return validateFuelAiResponse(parsed);
+}
+
 // ─── Mapper principal ─────────────────────────────────────────────────────────
 
 export async function mapOcrWithAi(
