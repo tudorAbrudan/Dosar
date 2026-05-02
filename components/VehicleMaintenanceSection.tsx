@@ -1,17 +1,6 @@
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Pressable,
-  Modal,
-  TextInput,
-  Switch,
-  Alert,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { StyleSheet, View, Text, Pressable, TextInput, Switch, Alert } from 'react-native';
+import { FormSheetModal } from '@/components/ui/FormSheetModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -317,239 +306,209 @@ export const VehicleMaintenanceSection = forwardRef<VehicleMaintenanceSectionHan
         {tasksWithStatus.length === 0
           ? null
           : tasksWithStatus.map(({ task, status }) => {
-            const preset = getPreset(task.preset_key);
-            const iconName = (preset?.icon ??
-              'construct-outline') as keyof typeof Ionicons.glyphMap;
-            const color = statusColor(status.status);
-            return (
-              <Pressable
-                key={task.id}
-                onPress={() => handleTaskOptions(task)}
-                style={[
-                  styles.taskCard,
-                  { backgroundColor: C.card, borderColor: C.border, borderLeftColor: color },
-                ]}
-              >
-                <View style={[styles.taskIcon, { backgroundColor: `${color}22` }]}>
-                  <Ionicons name={iconName} size={20} color={color} />
-                </View>
-                <View style={styles.taskBody}>
-                  <Text style={[styles.taskName, { color: C.text }]} numberOfLines={1}>
-                    {task.name}
-                  </Text>
-                  <Text style={[styles.taskDue, { color }]} numberOfLines={1}>
-                    {status.dueMessage}
-                  </Text>
-                  <Text style={[styles.taskMeta, { color: C.textSecondary }]} numberOfLines={1}>
-                    Interval:{' '}
-                    {task.trigger_km != null
-                      ? `${task.trigger_km.toLocaleString('ro-RO')} km`
-                      : '—'}
-                    {task.trigger_km != null && task.trigger_months != null ? ' / ' : ''}
-                    {task.trigger_months != null
-                      ? `${task.trigger_months} luni`
-                      : task.trigger_km == null
-                        ? '—'
-                        : ''}
-                  </Text>
-                </View>
-                <Ionicons name="ellipsis-horizontal" size={18} color={C.textSecondary} />
-              </Pressable>
-            );
-          })}
-
-        <Modal
-          visible={modalVisible}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setModalVisible(false)}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1, backgroundColor: C.background }}
-          >
-            <View style={[styles.modalHeader, { borderBottomColor: C.border }]}>
-              <Pressable onPress={() => setModalVisible(false)} disabled={saving} hitSlop={12}>
-                <Text style={[styles.modalAction, { color: C.textSecondary }]}>Anulează</Text>
-              </Pressable>
-              <Text style={[styles.modalTitle, { color: C.text }]}>
-                {editingId ? 'Editează mentenanță' : 'Adaugă mentenanță'}
-              </Text>
-              <Pressable onPress={handleSave} disabled={saving} hitSlop={12}>
-                <Text style={[styles.modalAction, { color: primary, fontWeight: '600' }]}>
-                  {saving ? 'Salvez...' : 'Salvează'}
-                </Text>
-              </Pressable>
-            </View>
-
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }}>
-              <View>
-                <Text style={[styles.label, { color: C.textSecondary }]}>Preset</Text>
-                <View style={styles.presetRow}>
-                  {MAINTENANCE_PRESETS.map(p => {
-                    const active = form.presetKey === p.key;
-                    return (
-                      <Pressable
-                        key={p.key}
-                        onPress={() => applyPreset(p)}
-                        style={[
-                          styles.presetChip,
-                          {
-                            backgroundColor: active ? primary : C.card,
-                            borderColor: active ? primary : C.border,
-                          },
-                        ]}
-                      >
-                        <Ionicons
-                          name={p.icon as keyof typeof Ionicons.glyphMap}
-                          size={14}
-                          color={active ? '#fff' : C.text}
-                        />
-                        <Text
-                          style={[styles.presetChipText, { color: active ? '#fff' : C.text }]}
-                          numberOfLines={1}
-                        >
-                          {p.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View>
-                <Text style={[styles.label, { color: C.textSecondary }]}>Nume</Text>
-                <TextInput
-                  value={form.name}
-                  onChangeText={t => setForm(f => ({ ...f, name: t }))}
-                  placeholder="ex: Schimb ulei"
-                  placeholderTextColor={C.textSecondary}
+              const preset = getPreset(task.preset_key);
+              const iconName = (preset?.icon ??
+                'construct-outline') as keyof typeof Ionicons.glyphMap;
+              const color = statusColor(status.status);
+              return (
+                <Pressable
+                  key={task.id}
+                  onPress={() => handleTaskOptions(task)}
                   style={[
-                    styles.input,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                    styles.taskCard,
+                    { backgroundColor: C.card, borderColor: C.border, borderLeftColor: color },
                   ]}
-                />
-              </View>
-
-              <View style={styles.row2}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: C.textSecondary }]}>Interval km</Text>
-                  <TextInput
-                    value={form.triggerKm}
-                    onChangeText={t =>
-                      setForm(f => ({ ...f, triggerKm: t.replace(/[^0-9]/g, '') }))
-                    }
-                    placeholder="ex: 15000"
-                    placeholderTextColor={C.textSecondary}
-                    keyboardType="number-pad"
-                    style={[
-                      styles.input,
-                      { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                    ]}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: C.textSecondary }]}>Interval luni</Text>
-                  <TextInput
-                    value={form.triggerMonths}
-                    onChangeText={t =>
-                      setForm(f => ({ ...f, triggerMonths: t.replace(/[^0-9]/g, '') }))
-                    }
-                    placeholder="ex: 12"
-                    placeholderTextColor={C.textSecondary}
-                    keyboardType="number-pad"
-                    style={[
-                      styles.input,
-                      { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                    ]}
-                  />
-                </View>
-              </View>
-              <Text style={[styles.helper, { color: C.textSecondary }]}>
-                Setează cel puțin un prag. Task-ul e „due" când oricare e atins.
-              </Text>
-
-              <View style={styles.row2}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: C.textSecondary }]}>
-                    Ultima efectuare — km
-                  </Text>
-                  <TextInput
-                    value={form.lastDoneKm}
-                    onChangeText={t =>
-                      setForm(f => ({ ...f, lastDoneKm: t.replace(/[^0-9]/g, '') }))
-                    }
-                    placeholder={currentKm != null ? currentKm.toLocaleString('ro-RO') : 'opțional'}
-                    placeholderTextColor={C.textSecondary}
-                    keyboardType="number-pad"
-                    style={[
-                      styles.input,
-                      { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                    ]}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: C.textSecondary }]}>
-                    Ultima efectuare — dată
-                  </Text>
-                  <TextInput
-                    value={form.lastDoneDate}
-                    onChangeText={t => setForm(f => ({ ...f, lastDoneDate: t }))}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={C.textSecondary}
-                    style={[
-                      styles.input,
-                      { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              <View>
-                <Text style={[styles.label, { color: C.textSecondary }]}>Notă (opțional)</Text>
-                <TextInput
-                  value={form.note}
-                  onChangeText={t => setForm(f => ({ ...f, note: t }))}
-                  placeholder="ex: schimbat la service Popescu"
-                  placeholderTextColor={C.textSecondary}
-                  multiline
-                  style={[
-                    styles.input,
-                    {
-                      color: C.text,
-                      borderColor: C.border,
-                      backgroundColor: C.card,
-                      height: 80,
-                      textAlignVertical: 'top',
-                      paddingTop: 12,
-                    },
-                  ]}
-                />
-              </View>
-
-              {calendarAvailable && form.triggerMonths.trim() ? (
-                <View
-                  style={[styles.calendarRow, { backgroundColor: C.card, borderColor: C.border }]}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.calendarTitle, { color: C.text }]}>
-                      Adaugă în calendar
+                  <View style={[styles.taskIcon, { backgroundColor: `${color}22` }]}>
+                    <Ionicons name={iconName} size={20} color={color} />
+                  </View>
+                  <View style={styles.taskBody}>
+                    <Text style={[styles.taskName, { color: C.text }]} numberOfLines={1}>
+                      {task.name}
                     </Text>
-                    <Text style={[styles.calendarHint, { color: C.textSecondary }]}>
-                      Reminder cu 7 zile înainte de scadența pe luni. Se actualizează automat când
-                      marchezi intervenția ca efectuată.
+                    <Text style={[styles.taskDue, { color }]} numberOfLines={1}>
+                      {status.dueMessage}
+                    </Text>
+                    <Text style={[styles.taskMeta, { color: C.textSecondary }]} numberOfLines={1}>
+                      Interval:{' '}
+                      {task.trigger_km != null
+                        ? `${task.trigger_km.toLocaleString('ro-RO')} km`
+                        : '—'}
+                      {task.trigger_km != null && task.trigger_months != null ? ' / ' : ''}
+                      {task.trigger_months != null
+                        ? `${task.trigger_months} luni`
+                        : task.trigger_km == null
+                          ? '—'
+                          : ''}
                     </Text>
                   </View>
-                  <Switch
-                    value={form.addToCalendar}
-                    onValueChange={v => setForm(f => ({ ...f, addToCalendar: v }))}
-                    trackColor={{ false: C.border, true: primary }}
-                  />
-                </View>
-              ) : null}
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </Modal>
+                  <Ionicons name="ellipsis-horizontal" size={18} color={C.textSecondary} />
+                </Pressable>
+              );
+            })}
+
+        <FormSheetModal
+          visible={modalVisible}
+          title={editingId ? 'Editează mentenanță' : 'Adaugă mentenanță'}
+          onClose={() => setModalVisible(false)}
+          onSave={handleSave}
+          saving={saving}
+        >
+          <View>
+            <Text style={[styles.label, { color: C.textSecondary }]}>Preset</Text>
+            <View style={styles.presetRow}>
+              {MAINTENANCE_PRESETS.map(p => {
+                const active = form.presetKey === p.key;
+                return (
+                  <Pressable
+                    key={p.key}
+                    onPress={() => applyPreset(p)}
+                    style={[
+                      styles.presetChip,
+                      {
+                        backgroundColor: active ? primary : C.card,
+                        borderColor: active ? primary : C.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={p.icon as keyof typeof Ionicons.glyphMap}
+                      size={14}
+                      color={active ? '#fff' : C.text}
+                    />
+                    <Text
+                      style={[styles.presetChipText, { color: active ? '#fff' : C.text }]}
+                      numberOfLines={1}
+                    >
+                      {p.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View>
+            <Text style={[styles.label, { color: C.textSecondary }]}>Nume</Text>
+            <TextInput
+              value={form.name}
+              onChangeText={t => setForm(f => ({ ...f, name: t }))}
+              placeholder="ex: Schimb ulei"
+              placeholderTextColor={C.textSecondary}
+              style={[
+                styles.input,
+                { color: C.text, borderColor: C.border, backgroundColor: C.card },
+              ]}
+            />
+          </View>
+
+          <View style={styles.row2}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: C.textSecondary }]}>Interval km</Text>
+              <TextInput
+                value={form.triggerKm}
+                onChangeText={t => setForm(f => ({ ...f, triggerKm: t.replace(/[^0-9]/g, '') }))}
+                placeholder="ex: 15000"
+                placeholderTextColor={C.textSecondary}
+                keyboardType="number-pad"
+                style={[
+                  styles.input,
+                  { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                ]}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: C.textSecondary }]}>Interval luni</Text>
+              <TextInput
+                value={form.triggerMonths}
+                onChangeText={t =>
+                  setForm(f => ({ ...f, triggerMonths: t.replace(/[^0-9]/g, '') }))
+                }
+                placeholder="ex: 12"
+                placeholderTextColor={C.textSecondary}
+                keyboardType="number-pad"
+                style={[
+                  styles.input,
+                  { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                ]}
+              />
+            </View>
+          </View>
+          <Text style={[styles.helper, { color: C.textSecondary }]}>
+            Setează cel puțin un prag. Task-ul e „due" când oricare e atins.
+          </Text>
+
+          <View style={styles.row2}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: C.textSecondary }]}>Ultima efectuare — km</Text>
+              <TextInput
+                value={form.lastDoneKm}
+                onChangeText={t => setForm(f => ({ ...f, lastDoneKm: t.replace(/[^0-9]/g, '') }))}
+                placeholder={currentKm != null ? currentKm.toLocaleString('ro-RO') : 'opțional'}
+                placeholderTextColor={C.textSecondary}
+                keyboardType="number-pad"
+                style={[
+                  styles.input,
+                  { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                ]}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: C.textSecondary }]}>
+                Ultima efectuare — dată
+              </Text>
+              <TextInput
+                value={form.lastDoneDate}
+                onChangeText={t => setForm(f => ({ ...f, lastDoneDate: t }))}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={C.textSecondary}
+                style={[
+                  styles.input,
+                  { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View>
+            <Text style={[styles.label, { color: C.textSecondary }]}>Notă (opțional)</Text>
+            <TextInput
+              value={form.note}
+              onChangeText={t => setForm(f => ({ ...f, note: t }))}
+              placeholder="ex: schimbat la service Popescu"
+              placeholderTextColor={C.textSecondary}
+              multiline
+              style={[
+                styles.input,
+                {
+                  color: C.text,
+                  borderColor: C.border,
+                  backgroundColor: C.card,
+                  height: 80,
+                  textAlignVertical: 'top',
+                  paddingTop: 12,
+                },
+              ]}
+            />
+          </View>
+
+          {calendarAvailable && form.triggerMonths.trim() ? (
+            <View style={[styles.calendarRow, { backgroundColor: C.card, borderColor: C.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.calendarTitle, { color: C.text }]}>Adaugă în calendar</Text>
+                <Text style={[styles.calendarHint, { color: C.textSecondary }]}>
+                  Reminder cu 7 zile înainte de scadența pe luni. Se actualizează automat când
+                  marchezi intervenția ca efectuată.
+                </Text>
+              </View>
+              <Switch
+                value={form.addToCalendar}
+                onValueChange={v => setForm(f => ({ ...f, addToCalendar: v }))}
+                trackColor={{ false: C.border, true: primary }}
+              />
+            </View>
+          ) : null}
+        </FormSheetModal>
       </>
     );
   }
@@ -616,21 +575,6 @@ const styles = StyleSheet.create({
   },
   taskMeta: {
     fontSize: 11,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  modalAction: {
-    fontSize: 15,
   },
   label: {
     fontSize: 11,
