@@ -56,7 +56,7 @@ const DOC_TYPE_LIST = Object.entries(DOCUMENT_TYPE_LABELS)
  * Scop: previne prompt injection prin escaparea delimitatorilor și
  * a secvențelor care ar putea suprascrie instrucțiunile sistemului.
  */
-function sanitizeOcrText(text: string): string {
+export function sanitizeOcrText(text: string): string {
   return text
     .slice(0, 15000)
     .replace(/"""/g, "'''") // escape triple-quote delimiter
