@@ -103,10 +103,11 @@ export function validateFuelAiResponse(parsed: unknown): FuelAiResult {
 
   // date: YYYY-MM-DD valid, în ultimii 2 ani și nu în viitor
   if (typeof p.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) {
-    const d = new Date(p.date);
-    const now = new Date();
-    const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-    if (!isNaN(d.getTime()) && d <= now && d >= twoYearsAgo) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const twoYearsAgoDate = new Date();
+    twoYearsAgoDate.setFullYear(twoYearsAgoDate.getFullYear() - 2);
+    const twoYearsAgoStr = twoYearsAgoDate.toISOString().slice(0, 10);
+    if (p.date <= todayStr && p.date >= twoYearsAgoStr) {
       r.date = p.date;
     }
   }
@@ -119,6 +120,7 @@ export function validateFuelAiResponse(parsed: unknown): FuelAiResult {
   return r;
 }
 
+// Mirror of FuelInfo from services/ocr.ts — duplicated to keep aiOcrMapper test-friendly (no ML Kit native import).
 export interface FuelMergeRegexInput {
   liters?: number;
   km?: number;
