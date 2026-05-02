@@ -66,6 +66,16 @@ export function sanitizeOcrText(text: string): string {
     .replace(/\[\/INST\]/gi, '[/inst]');
 }
 
+// ─── Bon carburant ────────────────────────────────────────────────────────────
+
+export interface FuelAiResult {
+  liters?: number;
+  km?: number;
+  price?: number;
+  date?: string; // YYYY-MM-DD
+  station?: string;
+}
+
 // ─── Mapper principal ─────────────────────────────────────────────────────────
 
 export async function mapOcrWithAi(
