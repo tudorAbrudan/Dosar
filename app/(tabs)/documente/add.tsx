@@ -6,14 +6,13 @@ import {
   Alert,
   Image,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Modal,
   StatusBar,
   useWindowDimensions,
   InteractionManager,
 } from 'react-native';
-import { router, useLocalSearchParams, Stack, useFocusEffect } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,7 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { primary, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
@@ -1139,469 +1138,449 @@ export default function AddDocumentScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Adaugă document',
-          headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={{ paddingRight: 8 }}>
-              <Text style={{ color: primary, fontSize: 16 }}>Înapoi</Text>
-            </Pressable>
-          ),
-        }}
-      />
-      <KeyboardAvoidingView
-        style={[styles.container, { backgroundColor: C.background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <FormPageScreen
+        title="Adaugă document"
+        onSave={handleSubmit}
+        saving={loading}
+        saveDisabled={!canSave}
+        scrollContentStyle={styles.scrollContent}
         keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
       >
-        <ScrollView
-          style={[styles.scroll, { backgroundColor: C.background }]}
-          contentContainerStyle={styles.scrollContent}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
-        >
-          {/* 1. POZE & OCR */}
-          <Text style={[styles.label, styles.sectionLabel]}>Poze / scan</Text>
-          <DocumentPhotoSection
-            pages={photoPages}
-            ocrLoading={ocrLoading || aiOcrLoading}
-            ocrText={liveOcrText || undefined}
-            refreshKey={photoRefreshKey}
-            onAddPage={handleAddPage}
-            onRotate={handleRotate}
-            onDelete={handleDeletePage}
-            onRunOcr={handleManualOcr}
-            onFullscreen={setFullscreenUri}
-            onReorderPage={handleReorderPage}
-          />
-          {aiOcrApplied && (
-            <View style={[styles.aiBadge, { backgroundColor: C.primaryMuted ?? '#f0f5e8' }]}>
-              <Text style={[styles.aiBadgeText, { color: primary }]}>
-                ✦ Câmpuri completate cu AI · Verifică înainte de salvare
-              </Text>
-            </View>
-          )}
-          {(aiOcrLoading || llmFieldLoading) && (
-            <View style={styles.aiLoadingRow}>
-              <ActivityIndicator size="small" color={primary} style={{ marginRight: 6 }} />
-              <Text style={[styles.aiLoadingText, { color: C.textSecondary }]}>
-                {llmFieldLoading ? 'Analizez documentul cu AI...' : 'Analizez cu AI...'}
-              </Text>
-            </View>
-          )}
-          {textAiConsentAvailable && pages.length > 0 && !llmFieldLoading && (
-            <View>
-              <View style={styles.aiActionsRow}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.aiActionBtn,
-                    { borderColor: '#F57F17', opacity: pressed ? 0.75 : 1 },
-                  ]}
-                  onPress={handleAiImageAnalysis}
-                >
-                  <Text style={[styles.aiActionBtnText, { color: '#F57F17' }]}>
-                    Trimite documentul la AI
-                  </Text>
-                </Pressable>
-              </View>
-              <Text style={[styles.aiActionInfo, { color: C.textSecondary }]}>
-                Se trimite imaginea/PDF-ul documentului la AI pentru extragerea datelor. Acțiune
-                manuală explicită.
-              </Text>
-            </View>
-          )}
-
-          {/* TIP INACTIV DETECTAT DE AI */}
-          {suggestedInactiveType && (
-            <View style={styles.inactiveBanner}>
-              <Ionicons
-                name="information-circle-outline"
-                size={18}
-                color="#E65100"
-                style={{ marginRight: 8, marginTop: 1 }}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inactiveBannerTitle}>
-                  AI-ul a detectat tipul „
-                  {DOCUMENT_TYPE_LABELS[suggestedInactiveType] ?? suggestedInactiveType}"
+        {/* 1. POZE & OCR */}
+        <Text style={[styles.label, styles.sectionLabel]}>Poze / scan</Text>
+        <DocumentPhotoSection
+          pages={photoPages}
+          ocrLoading={ocrLoading || aiOcrLoading}
+          ocrText={liveOcrText || undefined}
+          refreshKey={photoRefreshKey}
+          onAddPage={handleAddPage}
+          onRotate={handleRotate}
+          onDelete={handleDeletePage}
+          onRunOcr={handleManualOcr}
+          onFullscreen={setFullscreenUri}
+          onReorderPage={handleReorderPage}
+        />
+        {aiOcrApplied && (
+          <View style={[styles.aiBadge, { backgroundColor: C.primaryMuted ?? '#f0f5e8' }]}>
+            <Text style={[styles.aiBadgeText, { color: primary }]}>
+              ✦ Câmpuri completate cu AI · Verifică înainte de salvare
+            </Text>
+          </View>
+        )}
+        {(aiOcrLoading || llmFieldLoading) && (
+          <View style={styles.aiLoadingRow}>
+            <ActivityIndicator size="small" color={primary} style={{ marginRight: 6 }} />
+            <Text style={[styles.aiLoadingText, { color: C.textSecondary }]}>
+              {llmFieldLoading ? 'Analizez documentul cu AI...' : 'Analizez cu AI...'}
+            </Text>
+          </View>
+        )}
+        {textAiConsentAvailable && pages.length > 0 && !llmFieldLoading && (
+          <View>
+            <View style={styles.aiActionsRow}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.aiActionBtn,
+                  { borderColor: '#F57F17', opacity: pressed ? 0.75 : 1 },
+                ]}
+                onPress={handleAiImageAnalysis}
+              >
+                <Text style={[styles.aiActionBtnText, { color: '#F57F17' }]}>
+                  Trimite documentul la AI
                 </Text>
-                <Text style={styles.inactiveBannerBody}>
-                  Acest tip nu e activat. Activează-l din Setări → Tipuri de documente vizibile.
-                </Text>
-                <Pressable onPress={() => router.push('/(tabs)/setari')}>
-                  <Text style={styles.inactiveBannerLink}>Deschide Setările →</Text>
-                </Pressable>
-              </View>
-              <Pressable onPress={() => setSuggestedInactiveType(null)} hitSlop={8}>
-                <Ionicons name="close" size={16} color="#999" />
               </Pressable>
             </View>
-          )}
-
-          {/* DUPLICAT */}
-          {duplicateDoc && (
-            <Pressable
-              style={[
-                styles.duplicateBanner,
-                {
-                  backgroundColor:
-                    scheme === 'dark' ? 'rgba(232,165,58,0.18)' : 'rgba(232,165,58,0.12)',
-                  borderColor: statusColors.warning,
-                },
-              ]}
-              onPress={() => router.push(`/(tabs)/documente/${duplicateDoc.id}`)}
-            >
-              <Text style={[styles.duplicateBannerTitle, { color: statusColors.warning }]}>
-                Document similar găsit
-              </Text>
-              <Text style={[styles.duplicateBannerBody, { color: C.text }]}>
-                Există deja un document de tip „
-                {DOCUMENT_TYPE_LABELS[duplicateDoc.type] ?? duplicateDoc.type}" pentru această
-                entitate.
-              </Text>
-              <Text style={[styles.duplicateBannerLink, { color: statusColors.warning }]}>
-                Deschide documentul existent →
-              </Text>
-            </Pressable>
-          )}
-
-          {/* 2. TIP DOCUMENT */}
-          <Text style={styles.label}>Tip document</Text>
-          <Pressable
-            style={[styles.typeToggleRow, { borderColor: C.border }]}
-            onPress={() => setTypePickerVisible(v => !v)}
-          >
-            <Text style={[styles.typeToggleCurrent, { color: C.text }]}>
-              {type === 'custom'
-                ? (customTypes.find(c => c.id === customTypeId)?.name ?? 'Tip personalizat')
-                : (DOCUMENT_TYPE_LABELS[type] ?? type)}
+            <Text style={[styles.aiActionInfo, { color: C.textSecondary }]}>
+              Se trimite imaginea/PDF-ul documentului la AI pentru extragerea datelor. Acțiune
+              manuală explicită.
             </Text>
-            <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
-          </Pressable>
-          {typePickerVisible && (
-            <>
-              {hasHiddenTypes && (
-                <Pressable onPress={() => router.push('/(tabs)/setari')} style={styles.showAllBtn}>
-                  <Text style={[styles.showAllBtnText, { color: C.textSecondary }]}>
-                    Alte tipuri (dezactivate în Setări) →
-                  </Text>
-                </Pressable>
-              )}
-              <View style={styles.typeRow}>
-                {visibleStandardTypes.map(({ value, label }) => {
-                  const active = type === value;
-                  return (
-                    <Pressable
-                      key={value}
-                      style={[
-                        styles.typeChip,
-                        { borderColor: C.border },
-                        active && styles.typeChipActive,
-                      ]}
-                      onPress={() => {
-                        const combinedText = Array.from(ocrTextsRef.current.values()).join(
-                          '\n\n---\n\n'
-                        );
-                        setType(value);
-                        setCustomTypeId(null);
-                        setMetadata({});
-                        if (combinedText.trim().length > 0) {
-                          const extracted = extractFieldsForType(value, combinedText);
-                          if (Object.keys(extracted.metadata).length > 0) {
-                            setMetadata(extracted.metadata);
-                          }
-                        }
-                        setTypePickerVisible(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.typeChipText,
-                          { color: C.text },
-                          active && styles.typeChipTextActive,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                {customTypes.map(ct => {
-                  const active = type === 'custom' && customTypeId === ct.id;
-                  return (
-                    <Pressable
-                      key={ct.id}
-                      style={[
-                        styles.typeChip,
-                        { borderColor: C.border },
-                        active && styles.typeChipActive,
-                      ]}
-                      onPress={() => {
-                        setType('custom');
-                        setCustomTypeId(ct.id);
-                        setMetadata({});
-                        setTypePickerVisible(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.typeChipText,
-                          { color: C.text },
-                          active && styles.typeChipTextActive,
-                        ]}
-                      >
-                        {ct.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          )}
+          </View>
+        )}
 
-          {/* 3. CÂMPURI SPECIFICE TIPULUI */}
-          {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
-            <View key={field.key}>
-              <Text style={styles.label}>{field.label}</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder={field.placeholder ?? ''}
-                value={metadata[field.key] ?? ''}
-                onChangeText={v => setMetadata(prev => ({ ...prev, [field.key]: v }))}
-                keyboardType={field.keyboardType ?? 'default'}
-                editable={!loading}
-              />
+        {/* TIP INACTIV DETECTAT DE AI */}
+        {suggestedInactiveType && (
+          <View style={styles.inactiveBanner}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color="#E65100"
+              style={{ marginRight: 8, marginTop: 1 }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inactiveBannerTitle}>
+                AI-ul a detectat tipul „
+                {DOCUMENT_TYPE_LABELS[suggestedInactiveType] ?? suggestedInactiveType}"
+              </Text>
+              <Text style={styles.inactiveBannerBody}>
+                Acest tip nu e activat. Activează-l din Setări → Tipuri de documente vizibile.
+              </Text>
+              <Pressable onPress={() => router.push('/(tabs)/setari')}>
+                <Text style={styles.inactiveBannerLink}>Deschide Setările →</Text>
+              </Pressable>
             </View>
-          ))}
+            <Pressable onPress={() => setSuggestedInactiveType(null)} hitSlop={8}>
+              <Ionicons name="close" size={16} color="#999" />
+            </Pressable>
+          </View>
+        )}
 
-          {/* 4. DATE */}
+        {/* DUPLICAT */}
+        {duplicateDoc && (
+          <Pressable
+            style={[
+              styles.duplicateBanner,
+              {
+                backgroundColor:
+                  scheme === 'dark' ? 'rgba(232,165,58,0.18)' : 'rgba(232,165,58,0.12)',
+                borderColor: statusColors.warning,
+              },
+            ]}
+            onPress={() => router.push(`/(tabs)/documente/${duplicateDoc.id}`)}
+          >
+            <Text style={[styles.duplicateBannerTitle, { color: statusColors.warning }]}>
+              Document similar găsit
+            </Text>
+            <Text style={[styles.duplicateBannerBody, { color: C.text }]}>
+              Există deja un document de tip „
+              {DOCUMENT_TYPE_LABELS[duplicateDoc.type] ?? duplicateDoc.type}" pentru această
+              entitate.
+            </Text>
+            <Text style={[styles.duplicateBannerLink, { color: statusColors.warning }]}>
+              Deschide documentul existent →
+            </Text>
+          </Pressable>
+        )}
+
+        {/* 2. TIP DOCUMENT */}
+        <Text style={styles.label}>Tip document</Text>
+        <Pressable
+          style={[styles.typeToggleRow, { borderColor: C.border }]}
+          onPress={() => setTypePickerVisible(v => !v)}
+        >
+          <Text style={[styles.typeToggleCurrent, { color: C.text }]}>
+            {type === 'custom'
+              ? (customTypes.find(c => c.id === customTypeId)?.name ?? 'Tip personalizat')
+              : (DOCUMENT_TYPE_LABELS[type] ?? type)}
+          </Text>
+          <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
+        </Pressable>
+        {typePickerVisible && (
+          <>
+            {hasHiddenTypes && (
+              <Pressable onPress={() => router.push('/(tabs)/setari')} style={styles.showAllBtn}>
+                <Text style={[styles.showAllBtnText, { color: C.textSecondary }]}>
+                  Alte tipuri (dezactivate în Setări) →
+                </Text>
+              </Pressable>
+            )}
+            <View style={styles.typeRow}>
+              {visibleStandardTypes.map(({ value, label }) => {
+                const active = type === value;
+                return (
+                  <Pressable
+                    key={value}
+                    style={[
+                      styles.typeChip,
+                      { borderColor: C.border },
+                      active && styles.typeChipActive,
+                    ]}
+                    onPress={() => {
+                      const combinedText = Array.from(ocrTextsRef.current.values()).join(
+                        '\n\n---\n\n'
+                      );
+                      setType(value);
+                      setCustomTypeId(null);
+                      setMetadata({});
+                      if (combinedText.trim().length > 0) {
+                        const extracted = extractFieldsForType(value, combinedText);
+                        if (Object.keys(extracted.metadata).length > 0) {
+                          setMetadata(extracted.metadata);
+                        }
+                      }
+                      setTypePickerVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.typeChipText,
+                        { color: C.text },
+                        active && styles.typeChipTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {customTypes.map(ct => {
+                const active = type === 'custom' && customTypeId === ct.id;
+                return (
+                  <Pressable
+                    key={ct.id}
+                    style={[
+                      styles.typeChip,
+                      { borderColor: C.border },
+                      active && styles.typeChipActive,
+                    ]}
+                    onPress={() => {
+                      setType('custom');
+                      setCustomTypeId(ct.id);
+                      setMetadata({});
+                      setTypePickerVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.typeChipText,
+                        { color: C.text },
+                        active && styles.typeChipTextActive,
+                      ]}
+                    >
+                      {ct.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {/* 3. CÂMPURI SPECIFICE TIPULUI */}
+        {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
+          <View key={field.key}>
+            <Text style={styles.label}>{field.label}</Text>
+            <ThemedTextInput
+              style={styles.input}
+              placeholder={field.placeholder ?? ''}
+              value={metadata[field.key] ?? ''}
+              onChangeText={v => setMetadata(prev => ({ ...prev, [field.key]: v }))}
+              keyboardType={field.keyboardType ?? 'default'}
+              editable={!loading}
+            />
+          </View>
+        ))}
+
+        {/* 4. DATE */}
+        <DatePickerField
+          label="Data emisiune (opțional)"
+          value={issueDate}
+          onChange={v => {
+            issueDateRef.current = v;
+            setIssueDate(v);
+          }}
+          disabled={loading}
+        />
+        {!HIDE_EXPIRY_TYPES.includes(type) && (
           <DatePickerField
-            label="Data emisiune (opțional)"
-            value={issueDate}
+            label={CUSTOM_EXPIRY_LABEL[type] ?? 'Data expirare (opțional)'}
+            value={expiryDate}
             onChange={v => {
-              issueDateRef.current = v;
-              setIssueDate(v);
+              expiryDateRef.current = v;
+              setExpiryDate(v);
             }}
             disabled={loading}
           />
-          {!HIDE_EXPIRY_TYPES.includes(type) && (
-            <DatePickerField
-              label={CUSTOM_EXPIRY_LABEL[type] ?? 'Data expirare (opțional)'}
-              value={expiryDate}
-              onChange={v => {
-                expiryDateRef.current = v;
-                setExpiryDate(v);
-              }}
-              disabled={loading}
-            />
-          )}
-          {expiryDate && !HIDE_EXPIRY_TYPES.includes(type) ? (
-            <Pressable
-              style={styles.calendarInlineBtn}
-              onPress={async () => {
-                if (!isCalendarAvailable()) {
-                  Alert.alert('Calendar indisponibil', 'Necesită build nativ (expo run:ios).');
-                  return;
-                }
-                const id = await addExpiryCalendarEvent({
-                  docType: type,
-                  expiryDate,
-                  entityName: undefined,
-                  note: note.trim() || undefined,
-                });
-                if (!id)
-                  Alert.alert(
-                    'Eroare',
-                    'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.'
-                  );
-                else Alert.alert('Calendar', 'Reminder adăugat în calendar.');
-              }}
-            >
-              <Text style={styles.calendarInlineBtnText}>📅 Adaugă reminder în calendar</Text>
-            </Pressable>
-          ) : null}
+        )}
+        {expiryDate && !HIDE_EXPIRY_TYPES.includes(type) ? (
+          <Pressable
+            style={styles.calendarInlineBtn}
+            onPress={async () => {
+              if (!isCalendarAvailable()) {
+                Alert.alert('Calendar indisponibil', 'Necesită build nativ (expo run:ios).');
+                return;
+              }
+              const id = await addExpiryCalendarEvent({
+                docType: type,
+                expiryDate,
+                entityName: undefined,
+                note: note.trim() || undefined,
+              });
+              if (!id)
+                Alert.alert(
+                  'Eroare',
+                  'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.'
+                );
+              else Alert.alert('Calendar', 'Reminder adăugat în calendar.');
+            }}
+          >
+            <Text style={styles.calendarInlineBtnText}>📅 Adaugă reminder în calendar</Text>
+          </Pressable>
+        ) : null}
 
-          {/* 5. AUTO-ȘTERGERE */}
-          <Text style={styles.label}>
-            {'Auto-ștergere (opțional)'}
-            {autoDelete !== null ? `: ${autoDeleteLabel(autoDelete)}` : ''}
+        {/* 5. AUTO-ȘTERGERE */}
+        <Text style={styles.label}>
+          {'Auto-ștergere (opțional)'}
+          {autoDelete !== null ? `: ${autoDeleteLabel(autoDelete)}` : ''}
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsRow}
+          style={styles.chipsScroll}
+        >
+          {(
+            [
+              ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
+              ...DELETE_OPTIONS,
+            ] as { label: string; value: string | null }[]
+          ).map(opt => {
+            const active = autoDelete === opt.value;
+            return (
+              <Pressable
+                key={opt.value ?? 'never'}
+                style={[
+                  styles.typeChip,
+                  { borderColor: C.border },
+                  active && styles.typeChipActive,
+                ]}
+                onPress={() => setAutoDelete(opt.value)}
+              >
+                <Text
+                  style={[
+                    styles.typeChipText,
+                    { color: C.text },
+                    active && styles.typeChipTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* 6. NOTĂ */}
+        <Text style={styles.label}>Notă (opțional)</Text>
+        <ThemedTextInput
+          style={[styles.input, styles.inputMultiline]}
+          placeholder="Notă"
+          value={note}
+          onChangeText={setNote}
+          multiline
+          scrollEnabled
+          editable={!loading}
+        />
+
+        {/* 6b. NOTĂ PRIVATĂ — nu se trimite la AI */}
+        <View style={styles.privateLabelRow}>
+          <Ionicons name="lock-closed" size={14} color={sensitive} />
+          <Text style={[styles.label, { color: sensitive, opacity: 1 }]}>
+            Notă privată (opțional)
           </Text>
+        </View>
+        <Text style={[styles.privateHint, { color: C.textSecondary }]}>
+          Rămâne pe acest telefon. Nu se trimite niciodată la asistentul AI. Potrivită pentru CVV,
+          PIN, parole, coduri de acces.
+        </Text>
+        <ThemedTextInput
+          style={[styles.input, styles.inputMultiline, styles.privateInput]}
+          placeholder="Ex. CVV 123 · PIN 4821"
+          placeholderTextColor="#999"
+          value={privateNotes}
+          onChangeText={setPrivateNotes}
+          multiline
+          scrollEnabled
+          editable={!loading}
+          secureTextEntry={false}
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
+
+        {/* 7. LEAGĂ DE ENTITATE */}
+        <>
+          <Text style={[styles.label, styles.sectionLabel]}>
+            Leagă de entitate
+            {anyEntitySelected ? (
+              <Text style={{ color: primary }}>
+                {' '}
+                · {entityLinks.length} {entityLinks.length === 1 ? 'selectată' : 'selectate'}
+              </Text>
+            ) : (
+              <Text style={{ opacity: 0.5 }}> (opțional)</Text>
+            )}
+          </Text>
+
+          {/* Rezumat entități selectate */}
+          {anyEntitySelected && (
+            <Text style={[styles.entitySummary, { color: C.textSecondary }]} numberOfLines={2}>
+              {entityLinks.map(l => getEntityDisplayName(l)).join('  ·  ')}
+            </Text>
+          )}
+
+          {/* Taburi categorii cu badge */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-            style={styles.chipsScroll}
+            style={styles.categoryRow}
+            contentContainerStyle={styles.categoryRowContent}
           >
-            {(
-              [
-                ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-                ...DELETE_OPTIONS,
-              ] as { label: string; value: string | null }[]
-            ).map(opt => {
-              const active = autoDelete === opt.value;
-              return (
-                <Pressable
-                  key={opt.value ?? 'never'}
-                  style={[
-                    styles.typeChip,
-                    { borderColor: C.border },
-                    active && styles.typeChipActive,
-                  ]}
-                  onPress={() => setAutoDelete(opt.value)}
-                >
-                  <Text
+            {ENTITY_CATEGORIES.filter(cat => visibleEntityTypes.includes(cat.key)).map(
+              ({ key, label }) => {
+                const countInCat = entityLinks.filter(l => l.entityType === key).length;
+                const active = pickerCategory === key;
+                return (
+                  <Pressable
+                    key={key}
                     style={[
-                      styles.typeChipText,
-                      { color: C.text },
-                      active && styles.typeChipTextActive,
+                      styles.categoryTab,
+                      { borderColor: C.border },
+                      active && styles.categoryTabActive,
                     ]}
+                    onPress={() => setPickerCategory(key)}
                   >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <Text
+                      style={[
+                        styles.categoryTabText,
+                        { color: C.text },
+                        active && styles.categoryTabTextActive,
+                      ]}
+                    >
+                      {label}
+                      {countInCat > 0 ? ` (${countInCat})` : ''}
+                    </Text>
+                  </Pressable>
+                );
+              }
+            )}
           </ScrollView>
 
-          {/* 6. NOTĂ */}
-          <Text style={styles.label}>Notă (opțional)</Text>
-          <ThemedTextInput
-            style={[styles.input, styles.inputMultiline]}
-            placeholder="Notă"
-            value={note}
-            onChangeText={setNote}
-            multiline
-            scrollEnabled
-            editable={!loading}
-          />
-
-          {/* 6b. NOTĂ PRIVATĂ — nu se trimite la AI */}
-          <View style={styles.privateLabelRow}>
-            <Ionicons name="lock-closed" size={14} color={sensitive} />
-            <Text style={[styles.label, { color: sensitive, opacity: 1 }]}>
-              Notă privată (opțional)
-            </Text>
-          </View>
-          <Text style={[styles.privateHint, { color: C.textSecondary }]}>
-            Rămâne pe acest telefon. Nu se trimite niciodată la asistentul AI. Potrivită pentru CVV,
-            PIN, parole, coduri de acces.
-          </Text>
-          <ThemedTextInput
-            style={[styles.input, styles.inputMultiline, styles.privateInput]}
-            placeholder="Ex. CVV 123 · PIN 4821"
-            placeholderTextColor="#999"
-            value={privateNotes}
-            onChangeText={setPrivateNotes}
-            multiline
-            scrollEnabled
-            editable={!loading}
-            secureTextEntry={false}
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-
-          {/* 7. LEAGĂ DE ENTITATE */}
-          <>
-            <Text style={[styles.label, styles.sectionLabel]}>
-              Leagă de entitate
-              {anyEntitySelected ? (
-                <Text style={{ color: primary }}>
-                  {' '}
-                  · {entityLinks.length} {entityLinks.length === 1 ? 'selectată' : 'selectate'}
-                </Text>
-              ) : (
-                <Text style={{ opacity: 0.5 }}> (opțional)</Text>
-              )}
-            </Text>
-
-            {/* Rezumat entități selectate */}
-            {anyEntitySelected && (
-              <Text style={[styles.entitySummary, { color: C.textSecondary }]} numberOfLines={2}>
-                {entityLinks.map(l => getEntityDisplayName(l)).join('  ·  ')}
-              </Text>
-            )}
-
-            {/* Taburi categorii cu badge */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.categoryRow}
-              contentContainerStyle={styles.categoryRowContent}
-            >
-              {ENTITY_CATEGORIES.filter(cat => visibleEntityTypes.includes(cat.key)).map(
-                ({ key, label }) => {
-                  const countInCat = entityLinks.filter(l => l.entityType === key).length;
-                  const active = pickerCategory === key;
-                  return (
-                    <Pressable
-                      key={key}
+          {/* Entități ca chips — tap = toggle selectare */}
+          {pickerEntities.length === 0 ? (
+            <Text style={styles.pickerEmpty}>Nicio entitate adăugată.</Text>
+          ) : (
+            <View style={styles.entityChipsWrap}>
+              {pickerEntities.map(e => {
+                const isSelected = entityLinks.some(
+                  l => l.entityType === pickerCategory && l.entityId === e.id
+                );
+                return (
+                  <Pressable
+                    key={e.id}
+                    style={[
+                      styles.entityChipItem,
+                      { borderColor: C.border },
+                      isSelected && styles.entityChipItemActive,
+                    ]}
+                    onPress={() => toggleEntityLink(e.id)}
+                  >
+                    <Text
                       style={[
-                        styles.categoryTab,
-                        { borderColor: C.border },
-                        active && styles.categoryTabActive,
+                        styles.entityChipLabel,
+                        { color: C.text },
+                        isSelected && styles.entityChipLabelActive,
                       ]}
-                      onPress={() => setPickerCategory(key)}
                     >
-                      <Text
-                        style={[
-                          styles.categoryTabText,
-                          { color: C.text },
-                          active && styles.categoryTabTextActive,
-                        ]}
-                      >
-                        {label}
-                        {countInCat > 0 ? ` (${countInCat})` : ''}
-                      </Text>
-                    </Pressable>
-                  );
-                }
-              )}
-            </ScrollView>
-
-            {/* Entități ca chips — tap = toggle selectare */}
-            {pickerEntities.length === 0 ? (
-              <Text style={styles.pickerEmpty}>Nicio entitate adăugată.</Text>
-            ) : (
-              <View style={styles.entityChipsWrap}>
-                {pickerEntities.map(e => {
-                  const isSelected = entityLinks.some(
-                    l => l.entityType === pickerCategory && l.entityId === e.id
-                  );
-                  return (
-                    <Pressable
-                      key={e.id}
-                      style={[
-                        styles.entityChipItem,
-                        { borderColor: C.border },
-                        isSelected && styles.entityChipItemActive,
-                      ]}
-                      onPress={() => toggleEntityLink(e.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.entityChipLabel,
-                          { color: C.text },
-                          isSelected && styles.entityChipLabelActive,
-                        ]}
-                      >
-                        {isSelected ? `✓ ${e.label}` : e.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </>
-        </ScrollView>
-        <BottomActionBar
-          label="Salvează"
-          onPress={handleSubmit}
-          loading={loading}
-          disabled={!canSave}
-          safeArea
-        />
-      </KeyboardAvoidingView>
+                      {isSelected ? `✓ ${e.label}` : e.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </>
+      </FormPageScreen>
 
       <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.fsOverlay}>
@@ -1636,8 +1615,6 @@ export default function AddDocumentScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 48 },
   linked: { fontSize: 14, opacity: 0.8, marginBottom: 16 },
   label: { fontSize: 14, marginBottom: 6, opacity: 0.9 },
@@ -1710,17 +1687,6 @@ const styles = StyleSheet.create({
   pickerEmpty: { opacity: 0.6, fontSize: 14, marginBottom: 20 },
   chipsScroll: { marginBottom: 20 },
   chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  // Submit
-  button: {
-    backgroundColor: primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonPressed: { opacity: 0.9 },
-  buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600', textAlign: 'center' },
   calendarInlineBtn: {
     alignSelf: 'flex-start',
     marginTop: -12,
