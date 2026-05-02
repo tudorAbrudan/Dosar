@@ -25,7 +25,7 @@ import {
   computeFuelStats,
 } from '@/services/fuel';
 import { extractText, extractFuelInfo } from '@/services/ocr';
-import { mapFuelReceiptWithAi, mergeFuelResults } from '@/services/aiOcrMapper';
+import { mapFuelReceiptWithAi, mergeFuelResults, type FuelAiResult } from '@/services/aiOcrMapper';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { FuelRecord, FuelStats } from '@/services/fuel';
 
@@ -143,20 +143,16 @@ export default function FuelScreen() {
         return;
       }
 
-      const base64 =
-        asset.base64 ??
-        (await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        }));
-
-      let aiResult = {} as Awaited<ReturnType<typeof mapFuelReceiptWithAi>>;
+      let aiResult: FuelAiResult = {};
       try {
+        const base64 =
+          asset.base64 ??
+          (await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          }));
         aiResult = await mapFuelReceiptWithAi(ocrText, base64);
       } catch (err) {
-        console.warn(
-          '[fuel-ai] failed:',
-          err instanceof Error ? err.message : 'unknown error'
-        );
+        console.warn('[fuel-ai] failed:', err instanceof Error ? err.message : 'unknown error');
       }
 
       const regexResult = extractFuelInfo(ocrText);
