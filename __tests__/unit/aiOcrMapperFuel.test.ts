@@ -1,4 +1,8 @@
-import { validateFuelAiResponse, mergeFuelResults } from '@/services/aiOcrMapper';
+import {
+  validateFuelAiResponse,
+  mergeFuelResults,
+  extractFirstJsonObject,
+} from '@/services/aiOcrMapper';
 import type { FuelAiResult } from '@/services/aiOcrMapper';
 
 describe('validateFuelAiResponse', () => {
@@ -154,5 +158,30 @@ describe('mergeFuelResults', () => {
       date: undefined,
       station: 'AI Station',
     });
+  });
+});
+
+describe('extractFirstJsonObject', () => {
+  it('returns null when no opening brace is present', () => {
+    expect(extractFirstJsonObject('no json here')).toBeNull();
+  });
+
+  it('returns parsed object for bare JSON input', () => {
+    expect(extractFirstJsonObject('{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it('parses JSON wrapped in ```json fences with trailing prose', () => {
+    const raw = '```json\n{"liters": 42.31, "station": "OMV"}\n```\nThat is all.';
+    expect(extractFirstJsonObject(raw)).toEqual({ liters: 42.31, station: 'OMV' });
+  });
+
+  it('returns the first parseable object when scanning from end finds an inner one', () => {
+    // Scan-from-end strategy: it tries the largest envelope first; the largest
+    // valid parse it can find from index 0 is the first standalone object.
+    expect(extractFirstJsonObject('{"a":1}\nextra\n{"b":2}')).toEqual({ a: 1 });
+  });
+
+  it('returns null when an opening brace has no valid matching close', () => {
+    expect(extractFirstJsonObject('{not valid')).toBeNull();
   });
 });

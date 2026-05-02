@@ -34,12 +34,12 @@ export interface AiOcrResult {
 // ─── Entități disponibile (pentru context AI) ─────────────────────────────────
 
 export interface AvailableEntities {
-  persons: Array<{ id: string; name: string }>;
-  vehicles: Array<{ id: string; name: string; plate?: string; vin?: string }>;
-  properties: Array<{ id: string; name: string }>;
-  cards: Array<{ id: string; nickname: string; last4: string }>;
-  animals: Array<{ id: string; name: string; species: string }>;
-  companies: Array<{ id: string; name: string }>;
+  persons: { id: string; name: string }[];
+  vehicles: { id: string; name: string; plate?: string; vin?: string }[];
+  properties: { id: string; name: string }[];
+  cards: { id: string; nickname: string; last4: string }[];
+  animals: { id: string; name: string; species: string }[];
+  companies: { id: string; name: string }[];
 }
 
 // ─── Tipuri document pentru prompt ───────────────────────────────────────────
@@ -48,6 +48,27 @@ const DOC_TYPE_LIST = Object.entries(DOCUMENT_TYPE_LABELS)
   .filter(([v]) => v !== 'custom')
   .map(([v, l]) => `${v}: ${l}`)
   .join(', ');
+
+// ─── Extracție JSON ───────────────────────────────────────────────────────────
+
+// Extrage primul obiect JSON valid dintr-un text (poate include ``` sau text auxiliar)
+export function extractFirstJsonObject(raw: string): unknown | null {
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  // Încearcă lacom mai întâi (cazul comun: model returnează exact JSON)
+  const end = raw.lastIndexOf('}');
+  if (end <= start) return null;
+  // Scanează închideri de la cea mai exterioară spre interior până găsim parse valid
+  for (let i = end; i > start; i--) {
+    if (raw[i] !== '}') continue;
+    try {
+      return JSON.parse(raw.slice(start, i + 1));
+    } catch {
+      // continuă căutarea cu paranteza precedentă
+    }
+  }
+  return null;
+}
 
 // ─── Sanitizare OCR ───────────────────────────────────────────────────────────
 
@@ -92,12 +113,7 @@ export function validateFuelAiResponse(parsed: unknown): FuelAiResult {
   }
 
   // km: integer plauzibil (1000 < km < 9_999_999)
-  if (
-    typeof p.km === 'number' &&
-    Number.isInteger(p.km) &&
-    p.km > 1000 &&
-    p.km < 9_999_999
-  ) {
+  if (typeof p.km === 'number' && Number.isInteger(p.km) && p.km > 1000 && p.km < 9_999_999) {
     r.km = p.km;
   }
 
@@ -129,10 +145,7 @@ export interface FuelMergeRegexInput {
   station?: string;
 }
 
-export function mergeFuelResults(
-  ai: FuelAiResult,
-  regex: FuelMergeRegexInput
-): FuelAiResult {
+export function mergeFuelResults(ai: FuelAiResult, regex: FuelMergeRegexInput): FuelAiResult {
   return {
     liters: ai.liters ?? regex.liters,
     km: ai.km ?? regex.km,
@@ -176,16 +189,8 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
     400
   );
 
-  const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return {};
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    return {};
-  }
-
+  const parsed = extractFirstJsonObject(rawResponse);
+  if (parsed === null) return {};
   return validateFuelAiResponse(parsed);
 }
 
@@ -311,7 +316,13 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
 
   let rawResponse: string;
   if (imageBase64) {
-    rawResponse = await sendAiRequestWithImage(systemMessage, prompt, imageBase64, 'image/jpeg', 1400);
+    rawResponse = await sendAiRequestWithImage(
+      systemMessage,
+      prompt,
+      imageBase64,
+      'image/jpeg',
+      1400
+    );
   } else {
     rawResponse = await sendAiRequest(
       [
@@ -353,9 +364,7 @@ function augmentWithPlateMatch(
   const target = normalizePlate(extractedPlate);
   if (!target) return result;
 
-  const matched = entities.vehicles.find(
-    v => v.plate && normalizePlate(v.plate) === target
-  );
+  const matched = entities.vehicles.find(v => v.plate && normalizePlate(v.plate) === target);
   if (!matched) return result;
 
   const highMatch: AiEntitySuggestion = {
@@ -389,7 +398,7 @@ function buildEntityContext(entities: AvailableEntities): {
   const indexToId = new Map<string, string>();
   let idx = 0;
 
-  const addGroup = (label: string, items: Array<{ id: string; display: string }>) => {
+  const addGroup = (label: string, items: { id: string; display: string }[]) => {
     if (items.length === 0) return;
     const parts = items.map(item => {
       const key = `e${idx++}`;
@@ -441,12 +450,12 @@ interface RawAiJson {
   fields?: Record<string, unknown>;
   issueDate?: string;
   expiryDate?: string;
-  entitySuggestions?: Array<{
+  entitySuggestions?: {
     entityType?: string;
     entityId?: string;
     entityName?: string;
     confidence?: string;
-  }>;
+  }[];
   structuredNote?: string;
 }
 
@@ -458,17 +467,11 @@ function parseAiResponse(
   indexToId: Map<string, string>
 ): AiOcrResult {
   // Extrage JSON din răspuns (poate veni cu ``` sau text suplimentar)
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  const parsedJson = extractFirstJsonObject(raw);
+  if (parsedJson === null) {
     return { fields: {}, entitySuggestions: [] };
   }
-
-  let parsed: RawAiJson;
-  try {
-    parsed = JSON.parse(jsonMatch[0]) as RawAiJson;
-  } catch {
-    return { fields: {}, entitySuggestions: [] };
-  }
+  const parsed = parsedJson as RawAiJson;
 
   // Validăm tipul documentului
   const documentType = validateDocumentType(parsed.documentType);
