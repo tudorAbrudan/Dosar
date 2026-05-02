@@ -3,8 +3,6 @@ import {
   StyleSheet,
   Pressable,
   Alert,
-  Keyboard,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   ScrollView,
@@ -16,7 +14,7 @@ import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { extractText, extractCardInfo } from '@/services/ocr';
@@ -167,133 +165,125 @@ export default function AddEntityScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <FormPageScreen
+      title="Adaugă"
+      onSave={handleSubmit}
+      saving={loading}
+      scrollContentStyle={styles.inner}
       keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
     >
-      <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.inner}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {!isCard && (
-            <>
-              <Text style={styles.label}>Nume</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder={
-                  type === 'company'
-                    ? 'Denumire firmă (ex. S.C. ABC S.R.L.)'
-                    : type === 'person'
-                      ? 'ex. Diana Popescu'
-                      : type === 'vehicle'
-                        ? 'ex. Dacia Logan B 123 ABC'
-                        : type === 'animal'
-                          ? 'ex. Rex'
-                          : 'ex. Apartament Str. Eminescu 5'
-                }
-                value={name}
-                onChangeText={setName}
-                editable={!loading}
-              />
-              <Text style={styles.hint}>
-                {type === 'person'
-                  ? 'Important pentru AI: folosește numele complet (Prenume Nume) exact cum apare în acte, pentru legarea automată a documentelor.'
+      {!isCard && (
+        <>
+          <Text style={styles.label}>Nume</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder={
+              type === 'company'
+                ? 'Denumire firmă (ex. S.C. ABC S.R.L.)'
+                : type === 'person'
+                  ? 'ex. Diana Popescu'
                   : type === 'vehicle'
-                    ? 'Important pentru AI: format recomandat Marcă Model Nr.înmatriculare (ex. Dacia Logan B 123 ABC), exact cum apare în talon și RCA.'
-                    : type === 'property'
-                      ? 'Important pentru AI: folosește adresa completă sau o descriere unică pentru potrivire automată cu actele de proprietate.'
-                      : type === 'animal'
-                        ? 'Important pentru AI: folosește numele exact din actele veterinare pentru legarea automată a vaccinurilor și consultațiilor.'
-                        : type === 'company'
-                          ? 'Important pentru AI: folosește denumirea exactă din documente (facturi, contracte) pentru potrivire automată.'
-                          : null}
-              </Text>
-            </>
-          )}
-          {isCompany && (
-            <>
-              <Text style={styles.label}>CUI (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="RO12345678"
-                value={cui}
-                onChangeText={setCui}
-                editable={!loading}
-              />
-              <Text style={styles.label}>Nr. Registru Comerț (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="J40/1234/2020"
-                value={regCom}
-                onChangeText={setRegCom}
-                editable={!loading}
-              />
-            </>
-          )}
-          {isAnimal && (
-            <>
-              <Text style={styles.label}>Specie (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="câine, pisică, papagal..."
-                value={species}
-                onChangeText={setSpecies}
-                editable={!loading}
-              />
-            </>
-          )}
-          {isCard && (
-            <>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.scanButton,
-                  { backgroundColor: C.textSecondary },
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={scanCard}
-                disabled={ocrLoading || loading}
-              >
-                {ocrLoading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.scanButtonText}>Scanează cardul (OCR)</Text>
-                )}
-              </Pressable>
-              <Text style={styles.label}>Nickname (ex. Card personal)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="Nickname"
-                value={nickname}
-                onChangeText={setNickname}
-                editable={!loading}
-              />
-              <Text style={styles.label}>Ultimele 4 cifre (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="1234"
-                value={last4}
-                onChangeText={t => setLast4(t.replace(/\D/g, '').slice(0, 4))}
-                keyboardType="number-pad"
-                editable={!loading}
-              />
-              <Text style={styles.label}>Expirare MM/AA (opțional)</Text>
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="12/28"
-                value={expiry}
-                onChangeText={setExpiry}
-                editable={!loading}
-              />
-            </>
-          )}
-        </ScrollView>
-      </Pressable>
-      <BottomActionBar label="Salvează" onPress={handleSubmit} loading={loading} safeArea />
-    </KeyboardAvoidingView>
+                    ? 'ex. Dacia Logan B 123 ABC'
+                    : type === 'animal'
+                      ? 'ex. Rex'
+                      : 'ex. Apartament Str. Eminescu 5'
+            }
+            value={name}
+            onChangeText={setName}
+            editable={!loading}
+          />
+          <Text style={styles.hint}>
+            {type === 'person'
+              ? 'Important pentru AI: folosește numele complet (Prenume Nume) exact cum apare în acte, pentru legarea automată a documentelor.'
+              : type === 'vehicle'
+                ? 'Important pentru AI: format recomandat Marcă Model Nr.înmatriculare (ex. Dacia Logan B 123 ABC), exact cum apare în talon și RCA.'
+                : type === 'property'
+                  ? 'Important pentru AI: folosește adresa completă sau o descriere unică pentru potrivire automată cu actele de proprietate.'
+                  : type === 'animal'
+                    ? 'Important pentru AI: folosește numele exact din actele veterinare pentru legarea automată a vaccinurilor și consultațiilor.'
+                    : type === 'company'
+                      ? 'Important pentru AI: folosește denumirea exactă din documente (facturi, contracte) pentru potrivire automată.'
+                      : null}
+          </Text>
+        </>
+      )}
+      {isCompany && (
+        <>
+          <Text style={styles.label}>CUI (opțional)</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder="RO12345678"
+            value={cui}
+            onChangeText={setCui}
+            editable={!loading}
+          />
+          <Text style={styles.label}>Nr. Registru Comerț (opțional)</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder="J40/1234/2020"
+            value={regCom}
+            onChangeText={setRegCom}
+            editable={!loading}
+          />
+        </>
+      )}
+      {isAnimal && (
+        <>
+          <Text style={styles.label}>Specie (opțional)</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder="câine, pisică, papagal..."
+            value={species}
+            onChangeText={setSpecies}
+            editable={!loading}
+          />
+        </>
+      )}
+      {isCard && (
+        <>
+          <Pressable
+            style={({ pressed }) => [
+              styles.scanButton,
+              { backgroundColor: C.textSecondary },
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={scanCard}
+            disabled={ocrLoading || loading}
+          >
+            {ocrLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.scanButtonText}>Scanează cardul (OCR)</Text>
+            )}
+          </Pressable>
+          <Text style={styles.label}>Nickname (ex. Card personal)</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder="Nickname"
+            value={nickname}
+            onChangeText={setNickname}
+            editable={!loading}
+          />
+          <Text style={styles.label}>Ultimele 4 cifre (opțional)</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder="1234"
+            value={last4}
+            onChangeText={t => setLast4(t.replace(/\D/g, '').slice(0, 4))}
+            keyboardType="number-pad"
+            editable={!loading}
+          />
+          <Text style={styles.label}>Expirare MM/AA (opțional)</Text>
+          <ThemedTextInput
+            style={styles.input}
+            placeholder="12/28"
+            value={expiry}
+            onChangeText={setExpiry}
+            editable={!loading}
+          />
+        </>
+      )}
+    </FormPageScreen>
   );
 }
 
