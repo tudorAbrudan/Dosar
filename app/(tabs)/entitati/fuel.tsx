@@ -520,9 +520,7 @@ export default function FuelScreen() {
             value={mKm}
             onChangeText={setMKm}
             placeholder={
-              lastKm !== undefined
-                ? `Anterior: ${lastKm.toLocaleString('ro-RO')}`
-                : 'Ex: 125430'
+              lastKm !== undefined ? `Anterior: ${lastKm.toLocaleString('ro-RO')}` : 'Ex: 125430'
             }
             placeholderTextColor={palette.textSecondary}
             keyboardType="number-pad"
