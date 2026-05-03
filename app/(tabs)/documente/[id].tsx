@@ -27,7 +27,10 @@ import { Text, View } from '@/components/Themed';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { BottomActionBar } from '@/components/BottomActionBar';
-import { primary, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { DocumentDetailCard } from '@/components/DocumentDetailCard';
+import { DocumentDetailRow } from '@/components/DocumentDetailRow';
+import { useColorScheme } from '@/components/useColorScheme';
+import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import {
   getDocumentById,
   deleteDocument,
@@ -94,6 +97,8 @@ export default function DocumentDetailScreen() {
     entityId?: string;
   }>();
   const { colors } = useTheme();
+  const scheme = useColorScheme();
+  const palette = scheme === 'dark' ? dark : light;
   const { customTypes } = useCustomTypes();
   const { companies, persons, properties, vehicles, cards, animals } = useEntities();
   const [doc, setDoc] = useState<DocType | null>(null);
@@ -1046,97 +1051,115 @@ export default function DocumentDetailScreen() {
           </View>
         )}
 
-        <View style={styles.meta}>
-          <Text style={styles.label}>Tip</Text>
-          <Text style={styles.value}>{getDocumentLabel(doc, customTypes)}</Text>
-          {(() => {
-            // Funcție helper pentru numele entității
-            function entityLinkLabel(link: DocumentEntityLink): string {
-              switch (link.entityType) {
-                case 'person':
-                  return persons.find(p => p.id === link.entityId)?.name ?? link.entityId;
-                case 'vehicle':
-                  return vehicles.find(v => v.id === link.entityId)?.name ?? link.entityId;
-                case 'property':
-                  return properties.find(p => p.id === link.entityId)?.name ?? link.entityId;
-                case 'card': {
-                  const c = cards.find(c => c.id === link.entityId);
-                  return c ? `${c.nickname} ····${c.last4}` : link.entityId;
-                }
-                case 'animal':
-                  return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
-                case 'company':
-                  return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
-                default:
-                  return link.entityId;
+        {(() => {
+          // Helper pentru numele entității
+          function entityLinkLabel(link: DocumentEntityLink): string {
+            switch (link.entityType) {
+              case 'person':
+                return persons.find(p => p.id === link.entityId)?.name ?? link.entityId;
+              case 'vehicle':
+                return vehicles.find(v => v.id === link.entityId)?.name ?? link.entityId;
+              case 'property':
+                return properties.find(p => p.id === link.entityId)?.name ?? link.entityId;
+              case 'card': {
+                const c = cards.find(c => c.id === link.entityId);
+                return c ? `${c.nickname} ····${c.last4}` : link.entityId;
               }
+              case 'animal':
+                return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
+              case 'company':
+                return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
+              default:
+                return link.entityId;
             }
-            const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
-              person: '👤',
-              vehicle: '🚗',
-              property: '🏠',
-              card: '💳',
-              animal: '🐾',
-              company: '🏢',
-            };
-            return (
-              <>
-                <Text style={styles.label}>Legat de</Text>
+          }
+          const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+            person: '👤',
+            vehicle: '🚗',
+            property: '🏠',
+            card: '💳',
+            animal: '🐾',
+            company: '🏢',
+          };
+
+          // Filtrează DOCUMENT_FIELDS — doar cele cu valoare nenulă/non-empty.
+          const filteredFields = (DOCUMENT_FIELDS[doc.type] ?? []).filter((f: FieldDef) => {
+            const v = doc.metadata?.[f.key];
+            return v !== undefined && v !== null && v !== '';
+          });
+
+          return (
+            <DocumentDetailCard title="Detalii">
+              <DocumentDetailRow label="Tip" value={getDocumentLabel(doc, customTypes)} />
+              <DocumentDetailRow label="Legat de">
                 <View style={styles.entityLinksRow}>
                   {entityLinks.length === 0 && (
-                    <Text style={[styles.value, styles.entityPlaceholder]}>Nelegat</Text>
+                    <Text style={[styles.entityPlaceholder, { color: palette.textSecondary }]}>
+                      Nelegat
+                    </Text>
                   )}
                   {entityLinks.map((link, idx) => (
                     <View
                       key={idx}
                       style={[
                         styles.entityChip,
-                        { backgroundColor: colors.card, borderColor: colors.border },
+                        { backgroundColor: palette.background, borderColor: palette.border },
                       ]}
                     >
-                      <Text style={[styles.entityChipText, { color: colors.text }]}>
+                      <Text style={[styles.entityChipText, { color: palette.text }]}>
                         {ENTITY_TYPE_LABELS[link.entityType]} {entityLinkLabel(link)}
                       </Text>
                     </View>
                   ))}
                 </View>
-              </>
-            );
-          })()}
-          {doc.issue_date && (
-            <>
-              <Text style={styles.label}>Data emisiune</Text>
-              <Text style={styles.value}>{doc.issue_date}</Text>
-            </>
-          )}
-          {doc.expiry_date && (
-            <>
-              <Text style={styles.label}>
-                {doc.type === 'factura' ? 'Scadență' : 'Data expirare'}
-              </Text>
-              <Text style={styles.value}>{doc.expiry_date}</Text>
-              <Pressable
-                style={[
-                  styles.calendarBtn,
-                  { borderColor: colors.border, backgroundColor: colors.card },
-                ]}
-                onPress={handleCalendar}
-              >
-                <Text style={{ fontSize: 18 }}>📅</Text>
-                <Text style={[styles.calendarBtnLabel, { color: primary }]}>
-                  Adaugă reminder în calendar
-                </Text>
-              </Pressable>
-            </>
-          )}
-          {doc.note && (
-            <>
-              <Text style={styles.label}>Notă</Text>
-              <Text style={styles.value}>{doc.note}</Text>
-            </>
-          )}
-          {doc.private_notes && (
-            <View style={styles.privateBox}>
+              </DocumentDetailRow>
+              {doc.issue_date && <DocumentDetailRow label="Data emisiune" value={doc.issue_date} />}
+              {doc.expiry_date && (
+                <DocumentDetailRow
+                  label={doc.type === 'factura' ? 'Scadență' : 'Data expirare'}
+                  value={doc.expiry_date}
+                />
+              )}
+              {doc.expiry_date && (
+                <DocumentDetailRow>
+                  <Pressable
+                    style={[
+                      styles.calendarBtn,
+                      { borderColor: palette.border, backgroundColor: palette.background },
+                    ]}
+                    onPress={handleCalendar}
+                  >
+                    <Text style={{ fontSize: 18 }}>📅</Text>
+                    <Text style={[styles.calendarBtnLabel, { color: primary }]}>
+                      Adaugă reminder în calendar
+                    </Text>
+                  </Pressable>
+                </DocumentDetailRow>
+              )}
+              {doc.auto_delete && (
+                <DocumentDetailRow label="Auto-ștergere" value={autoDeleteLabel(doc.auto_delete)} />
+              )}
+              {filteredFields.map((field: FieldDef) => (
+                <DocumentDetailRow
+                  key={field.key}
+                  label={field.label}
+                  value={String(doc.metadata![field.key])}
+                />
+              ))}
+            </DocumentDetailCard>
+          );
+        })()}
+
+        {doc.note && (
+          <DocumentDetailCard title="Notă">
+            <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
+          </DocumentDetailCard>
+        )}
+
+        {doc.private_notes && (
+          <DocumentDetailCard
+            tone="sensitive"
+            header={
               <View style={styles.privateHeader}>
                 <Ionicons name="lock-closed" size={13} color={sensitive} />
                 <Text style={styles.privateLabel}>Notă privată · nu se trimite la AI</Text>
@@ -1150,43 +1173,30 @@ export default function DocumentDetailScreen() {
                   </Text>
                 </Pressable>
               </View>
-              <Text style={styles.privateValue}>
-                {privateVisible
-                  ? doc.private_notes
-                  : '•'.repeat(Math.min(doc.private_notes.length, 16))}
-              </Text>
-            </View>
-          )}
-          {doc.auto_delete && (
-            <>
-              <Text style={styles.label}>Auto-ștergere</Text>
-              <Text style={styles.value}>{autoDeleteLabel(doc.auto_delete)}</Text>
-            </>
-          )}
-          {(DOCUMENT_FIELDS[doc.type] ?? []).map((field: FieldDef) => {
-            const val = doc.metadata?.[field.key];
-            return (
-              <View key={field.key}>
-                <Text style={styles.label}>{field.label}</Text>
-                <Text style={[styles.value, !val && styles.emptyValue]}>{val || '—'}</Text>
-              </View>
-            );
-          })}
-          {doc.type === 'bilet' && doc.metadata?.event_date && (
-            <Pressable
-              style={[
-                styles.calendarBtn,
-                { borderColor: colors.border, backgroundColor: colors.card },
-              ]}
-              onPress={handleCalendar}
-            >
-              <Text style={{ fontSize: 18 }}>📅</Text>
-              <Text style={[styles.calendarBtnLabel, { color: primary }]}>
-                Reminder eveniment în calendar
-              </Text>
-            </Pressable>
-          )}
-        </View>
+            }
+          >
+            <Text style={styles.privateValue}>
+              {privateVisible
+                ? doc.private_notes
+                : '•'.repeat(Math.min(doc.private_notes.length, 16))}
+            </Text>
+          </DocumentDetailCard>
+        )}
+
+        {doc.type === 'bilet' && doc.metadata?.event_date && (
+          <Pressable
+            style={[
+              styles.calendarBtn,
+              { borderColor: palette.border, backgroundColor: palette.card, marginBottom: 12 },
+            ]}
+            onPress={handleCalendar}
+          >
+            <Text style={{ fontSize: 18 }}>📅</Text>
+            <Text style={[styles.calendarBtnLabel, { color: primary }]}>
+              Reminder eveniment în calendar
+            </Text>
+          </Pressable>
+        )}
 
         {(doc.type === 'rca' || doc.type === 'itp') && (
           <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
@@ -1333,17 +1343,6 @@ const styles = StyleSheet.create({
     margin: 8,
   },
   pdfOpenBtnText: { color: primary, fontSize: 15, fontWeight: '500' },
-  meta: { marginBottom: 24 },
-  label: { fontSize: 12, opacity: 0.7, marginTop: 12, marginBottom: 2 },
-  value: { fontSize: 16 },
-  privateBox: {
-    marginTop: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: sensitiveBorder,
-    borderRadius: 12,
-    backgroundColor: sensitiveBg,
-  },
   dupBox: {
     marginBottom: 16,
     padding: 12,
@@ -1369,8 +1368,11 @@ const styles = StyleSheet.create({
   privateToggle: { paddingHorizontal: 8, paddingVertical: 2 },
   privateToggleText: { fontSize: 12, color: sensitive, fontWeight: '600' },
   privateValue: { fontSize: 16, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  entityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  entityPlaceholder: { opacity: 0.4 },
+  noteText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  entityPlaceholder: { opacity: 0.6, fontSize: 14, fontStyle: 'italic' },
   entityLinksRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 4 },
   entityChip: {
     flexDirection: 'row',
@@ -1383,8 +1385,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   entityChipText: { fontSize: 13, fontWeight: '500' },
-  emptyValue: { opacity: 0.3 },
-  ocrText: { fontSize: 13, opacity: 0.7, lineHeight: 20, marginTop: 6 },
   calendarBtn: {
     marginTop: 10,
     paddingVertical: 14,
