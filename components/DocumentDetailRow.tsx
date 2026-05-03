@@ -34,9 +34,7 @@ export function DocumentDetailRow({ label, value, children, last = false }: Prop
   // Layout inline când avem label + valoare scalară
   return (
     <View style={[styles.container, styles.inlineRow, separatorStyle]}>
-      {label && (
-        <Text style={[styles.inlineLabel, { color: palette.textSecondary }]}>{label}</Text>
-      )}
+      {label && <Text style={[styles.inlineLabel, { color: palette.textSecondary }]}>{label}</Text>}
       {value !== undefined && (
         <Text style={[styles.inlineValue, { color: palette.text }]}>{value}</Text>
       )}
