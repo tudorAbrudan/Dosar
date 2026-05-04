@@ -850,6 +850,33 @@ export default function AddDocumentScreen() {
     }
   }
 
+  async function processAndSaveScannedPages(uris: string[]) {
+    if (uris.length === 0) return;
+    try {
+      const dir = `${FileSystem.documentDirectory}documents`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+
+      const newPages: { uri: string; localPath: string }[] = [];
+      for (let i = 0; i < uris.length; i++) {
+        const filename = `doc_${Date.now()}_${i}.jpg`;
+        const dest = `${dir}/${filename}`;
+        await FileSystem.copyAsync({ from: uris[i], to: dest });
+        newPages.push({ uri: dest, localPath: dest });
+      }
+
+      setPages(prev => [...prev, ...newPages]);
+
+      for (const page of newPages) {
+        runOcrOnImage(page.localPath);
+      }
+    } catch (e) {
+      Alert.alert(
+        'Eroare',
+        e instanceof Error ? e.message : 'Nu s-au putut salva paginile scanate'
+      );
+    }
+  }
+
   async function pickImage() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
