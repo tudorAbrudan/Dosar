@@ -31,6 +31,7 @@
       "^expo-file-system/legacy$": "<rootDir>/__mocks__/expo-file-system-legacy.js",
       "^react-native-nitro-modules$": "<rootDir>/__mocks__/react-native-nitro-modules.js",
       "^react-native-cloud-storage$": "<rootDir>/__mocks__/react-native-cloud-storage.js",
+      "^react-native-document-scanner-plugin$": "<rootDir>/__mocks__/react-native-document-scanner-plugin.js",
       "^@noble/ciphers/aes(\\.js)?$": "<rootDir>/node_modules/@noble/ciphers/aes.js",
       "^@noble/hashes/pbkdf2(\\.js)?$": "<rootDir>/node_modules/@noble/hashes/pbkdf2.js",
       "^@noble/hashes/sha2(\\.js)?$": "<rootDir>/node_modules/@noble/hashes/sha2.js"
