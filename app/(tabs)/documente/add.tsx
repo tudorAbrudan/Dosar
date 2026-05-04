@@ -65,6 +65,7 @@ import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import * as ocrConsent from '@/services/ocrConsent';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
+import { scanDocumentPages } from '@/services/documentScanner';
 
 const DELETE_OPTIONS: { label: string; value: string | null }[] = [
   { label: 'Niciodată', value: null },
@@ -107,14 +108,6 @@ const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
   { key: 'company', label: 'Firmă' },
 ];
 
-async function applyDocumentScan(uri: string): Promise<string> {
-  const result = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1600 } }], {
-    compress: 0.9,
-    format: ImageManipulator.SaveFormat.JPEG,
-    base64: false,
-  });
-  return result.uri;
-}
 
 export default function AddDocumentScreen() {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -806,16 +799,27 @@ export default function AddDocumentScreen() {
     }
   }
 
+  async function scanDocumentHandler() {
+    try {
+      const uris = await scanDocumentPages();
+      if (!uris) return;
+      await processAndSaveScannedPages(uris);
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Scanarea a eșuat');
+    }
+  }
+
   function handleAddPage() {
     Alert.alert('Adaugă atașament', '', [
-      { text: 'Cameră', onPress: takePhoto },
+      { text: 'Scanează document', onPress: scanDocumentHandler },
+      { text: 'Cameră (poză brută)', onPress: takePhoto },
       { text: 'Galerie', onPress: pickImage },
       { text: 'Adaugă PDF', onPress: pickPdf },
       { text: 'Anulare', style: 'cancel' },
     ]);
   }
 
-  async function processAndSaveImage(uri: string, optimize: boolean, exifOrientation?: number) {
+  async function processAndSaveImage(uri: string, exifOrientation?: number) {
     try {
       let finalUri = uri;
 
@@ -835,9 +839,6 @@ export default function AddDocumentScreen() {
         }
       }
 
-      if (optimize) {
-        finalUri = await applyDocumentScan(finalUri);
-      }
       const filename = `doc_${Date.now()}.jpg`;
       const dir = `${FileSystem.documentDirectory}documents`;
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
@@ -890,7 +891,7 @@ export default function AddDocumentScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       const exifOrientation = result.assets[0].exif?.Orientation as number | undefined;
-      await processAndSaveImage(result.assets[0].uri, false, exifOrientation);
+      await processAndSaveImage(result.assets[0].uri, exifOrientation);
     }
   }
 
@@ -907,17 +908,7 @@ export default function AddDocumentScreen() {
     if (!result.canceled && result.assets[0]) {
       const uri = result.assets[0].uri;
       const exifOrientation = result.assets[0].exif?.Orientation as number | undefined;
-      Alert.alert('Procesare imagine', 'Cum vrei să salvezi imaginea?', [
-        {
-          text: 'Scan document (optimizat)',
-          onPress: () => processAndSaveImage(uri, true, exifOrientation),
-        },
-        {
-          text: 'Poză normală',
-          onPress: () => processAndSaveImage(uri, false, exifOrientation),
-        },
-        { text: 'Anulare', style: 'cancel' },
-      ]);
+      await processAndSaveImage(uri, exifOrientation);
     }
   }
 
