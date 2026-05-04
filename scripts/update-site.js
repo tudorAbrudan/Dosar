@@ -140,12 +140,20 @@ const FEATURES = [
     chatbot: 'reminder în calendar',
   },
   {
+    id: 'document-scanner',
+    icon: '📷',
+    title: 'Scanner document multi-pagină',
+    desc: 'Scanner nativ cu detecție automată a marginilor și corecție de perspectivă. Scanezi mai multe pagini într-o singură sesiune și se atașează toate la același document. Pe iOS folosește același motor ca Apple Notes (VisionKit); pe Android — ML Kit.',
+    readmeBullet: 'Scanner nativ multi-pagină cu detecție margini (VisionKit / ML Kit)',
+    chatbot: 'scanner nativ multi-pagină cu detecție margini și corecție perspectivă',
+  },
+  {
     id: 'ocr',
     icon: '🔍',
     title: 'OCR on-device',
-    desc: 'Fotografiezi un document și app-ul extrage automat textul. Rulează pe device, fără cloud.',
+    desc: 'După scanare sau atașarea unei poze, app-ul extrage automat textul. Rulează pe device, fără cloud.',
     readmeBullet: 'OCR on-device pentru extragere automată de text',
-    chatbot: 'scanare și OCR on-device',
+    chatbot: 'OCR on-device pe pagini scanate sau pozate',
   },
   {
     id: 'vehicle-tracker',

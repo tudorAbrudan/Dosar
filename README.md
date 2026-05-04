@@ -12,6 +12,7 @@ App **local-first**: date în SQLite pe device, fișiere locale, backup în iClo
 - Organizat pe Persoane / Vehicule / Proprietăți / Carduri / Animale / Firme
 - Backup complet în iCloud / Drive și transfer între dispozitive
 - Export reminder expirare în calendarul nativ
+- Scanner nativ multi-pagină cu detecție margini (VisionKit / ML Kit)
 - OCR on-device pentru extragere automată de text
 - Tracker auto (RCA, ITP, CASCO, Vignetă, Talon)
 - Remindere mentenanță vehicul (km + luni) cu sync calendar
