@@ -61,6 +61,7 @@ db.execSync(`
     custom_type_id TEXT,
     metadata TEXT,
     auto_delete TEXT,
+    calendar_event_id TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -522,4 +523,32 @@ try {
   `);
 } catch {
   // best-effort: dacă migrarea eșuează, app-ul continuă cu schema existentă
+}
+
+// Migrare: orientation_locked pe document_pages — devine 1 după ce userul rotește
+// manual o pagină; OCR-ul respectă apoi orientarea fixată și nu mai încearcă
+// auto-rotire (vezi ocrWithAutoRotate în ecranele documentelor).
+try {
+  db.execSync(
+    'ALTER TABLE document_pages ADD COLUMN orientation_locked INTEGER NOT NULL DEFAULT 0'
+  );
+} catch {
+  // coloana există deja
+}
+
+// Migrare: main_orientation_locked pe documents — analog cu document_pages, dar
+// pentru pagina principală (doc.file_path), care nu are rând în document_pages.
+try {
+  db.execSync(
+    'ALTER TABLE documents ADD COLUMN main_orientation_locked INTEGER NOT NULL DEFAULT 0'
+  );
+} catch {
+  // coloana există deja
+}
+
+// Migrare: adaugă calendar_event_id la documents pentru dedupe reminder calendar
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN calendar_event_id TEXT');
+} catch {
+  // coloana există deja
 }

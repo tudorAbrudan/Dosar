@@ -41,7 +41,7 @@ import {
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 
 export default function EntityDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const C = Colors[scheme];
   const {
@@ -97,6 +97,7 @@ export default function EntityDetailScreen() {
   const [unlinkedDocs, setUnlinkedDocs] = useState<DocType[]>([]);
 
   const vehicle = vehicles.find(v => v.id === id);
+  const autoEditTriggeredRef = useRef(false);
   const maintenanceRef = useRef<VehicleMaintenanceSectionHandle>(null);
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler(e => {
@@ -151,6 +152,15 @@ export default function EntityDetailScreen() {
     if (!id || !entityName) return;
     loadDocs(entityKind, id);
   }, [id, entityKind, entityName]);
+
+  useEffect(() => {
+    if (autoEditTriggeredRef.current) return;
+    if (edit !== '1') return;
+    if (!entityName) return;
+    autoEditTriggeredRef.current = true;
+    openEditModal();
+    router.setParams({ edit: undefined });
+  }, [edit, entityName]);
 
   useFocusEffect(
     useCallback(() => {

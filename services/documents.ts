@@ -50,6 +50,8 @@ type Row = {
   metadata: string | null;
   file_hash: string | null;
   private_notes: string | null;
+  main_orientation_locked: number | null;
+  calendar_event_id: string | null;
   created_at: string;
 };
 
@@ -59,7 +61,19 @@ type PageRow = {
   page_order: number;
   file_path: string;
   created_at: string;
+  orientation_locked: number;
 };
+
+function mapPageRow(r: PageRow): DocumentPage {
+  return {
+    id: r.id,
+    document_id: r.document_id,
+    page_order: r.page_order,
+    file_path: r.file_path,
+    created_at: r.created_at,
+    orientation_locked: r.orientation_locked === 1,
+  };
+}
 
 // ─── Junction table helpers ───────────────────────────────────────────────────
 
@@ -112,6 +126,7 @@ function buildEntityLinksFromInput(input: {
 function mapRow(r: Row, pages?: DocumentPage[]): Document {
   return {
     id: r.id,
+    main_orientation_locked: r.main_orientation_locked === 1,
     type: r.type as DocumentType,
     custom_type_id: r.custom_type_id ?? undefined,
     issue_date: r.issue_date ?? undefined,
@@ -130,6 +145,7 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
     ocr_text: r.ocr_text ?? undefined,
     file_hash: r.file_hash ?? undefined,
     private_notes: r.private_notes ?? undefined,
+    calendar_event_id: r.calendar_event_id ?? undefined,
     created_at: r.created_at,
   };
 }
@@ -161,13 +177,7 @@ async function loadPages(documentId: string): Promise<DocumentPage[]> {
     'SELECT * FROM document_pages WHERE document_id = ? ORDER BY page_order ASC',
     [documentId]
   );
-  return rows.map(r => ({
-    id: r.id,
-    document_id: r.document_id,
-    page_order: r.page_order,
-    file_path: r.file_path,
-    created_at: r.created_at,
-  }));
+  return rows.map(mapPageRow);
 }
 
 export async function getDocuments(): Promise<Document[]> {
@@ -341,6 +351,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
 
   return {
     id,
+    main_orientation_locked: false,
     type: input.type,
     custom_type_id: input.custom_type_id,
     issue_date: input.issue_date,
@@ -365,6 +376,18 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
 
 export async function setDocumentOcrText(id: string, ocrText: string): Promise<void> {
   await db.runAsync('UPDATE documents SET ocr_text = ? WHERE id = ?', [ocrText.trim(), id]);
+  emit('documents:changed');
+}
+
+/**
+ * Setează / șterge ID-ul evenimentului din calendar asociat documentului.
+ * Folosit pentru dedupe + silent update reminder de expirare (sau bilet).
+ */
+export async function setDocumentCalendarEventId(
+  id: string,
+  eventId: string | null
+): Promise<void> {
+  await db.runAsync('UPDATE documents SET calendar_event_id = ? WHERE id = ?', [eventId, id]);
   emit('documents:changed');
 }
 
@@ -568,15 +591,16 @@ export async function getDocumentEntityLinks(documentId: string): Promise<Docume
   return getEntityLinks(documentId);
 }
 
-export async function addDocumentPage(documentId: string, filePath: string): Promise<void> {
+export async function addDocumentPage(documentId: string, filePath: string): Promise<string> {
   const maxOrder = await db.getFirstAsync<{ max: number | null }>(
     'SELECT MAX(page_order) as max FROM document_pages WHERE document_id = ?',
     [documentId]
   );
   const nextOrder = (maxOrder?.max ?? -1) + 1;
+  const pageId = generateId();
   await db.runAsync(
     'INSERT INTO document_pages (id, document_id, page_order, file_path, created_at) VALUES (?, ?, ?, ?, ?)',
-    [generateId(), documentId, nextOrder, filePath, new Date().toISOString()]
+    [pageId, documentId, nextOrder, filePath, new Date().toISOString()]
   );
 
   if (filePath) {
@@ -590,6 +614,7 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
   }
 
   emit('documents:changed');
+  return pageId;
 }
 
 export async function removeDocumentPage(pageId: string): Promise<void> {
@@ -757,11 +782,21 @@ export async function getAllDocumentPages(): Promise<DocumentPage[]> {
   const rows = await db.getAllAsync<PageRow>(
     'SELECT * FROM document_pages ORDER BY document_id, page_order ASC'
   );
-  return rows.map(r => ({
-    id: r.id,
-    document_id: r.document_id,
-    page_order: r.page_order,
-    file_path: r.file_path,
-    created_at: r.created_at,
-  }));
+  return rows.map(mapPageRow);
+}
+
+/**
+ * Marchează o pagină ca având orientarea fixată manual de utilizator.
+ * Odată setat, OCR-ul nu mai încearcă auto-rotire pe acea pagină.
+ */
+export async function lockPageOrientation(pageId: string): Promise<void> {
+  await db.runAsync('UPDATE document_pages SET orientation_locked = 1 WHERE id = ?', [pageId]);
+}
+
+/**
+ * Echivalentul lui lockPageOrientation pentru pagina principală a unui document
+ * (doc.file_path), care nu are rând în document_pages.
+ */
+export async function lockMainOrientation(documentId: string): Promise<void> {
+  await db.runAsync('UPDATE documents SET main_orientation_locked = 1 WHERE id = ?', [documentId]);
 }

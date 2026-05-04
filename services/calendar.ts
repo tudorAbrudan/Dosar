@@ -112,6 +112,117 @@ export function isCalendarAvailable(): boolean {
   return CalendarModule !== null;
 }
 
+/**
+ * Actualizează un eveniment de expirare existent (titlu, notes, dată, alarm).
+ * Dacă eventul a fost șters manual din Calendar.app, recreează silent.
+ * Returnează ID-ul (același sau nou).
+ */
+export async function updateExpiryCalendarEvent(
+  eventId: string,
+  opts: CalendarEventOptions
+): Promise<string | null> {
+  if (!CalendarModule) return null;
+
+  try {
+    const typeLabel = DOCUMENT_TYPE_LABELS[opts.docType] ?? opts.docType;
+    const title = opts.entityName
+      ? `Expiră ${typeLabel} – ${opts.entityName}`
+      : `Expiră ${typeLabel}`;
+
+    const asigraUrl = ASIGRA_TYPES[opts.docType];
+    const deepLink = opts.documentId ? `acte:///documente/${opts.documentId}` : null;
+    const notes = [
+      `Tip: ${typeLabel}`,
+      opts.entityName ? `Entitate: ${opts.entityName}` : null,
+      `Expiră: ${opts.expiryDate}`,
+      opts.note ? `Notă: ${opts.note}` : null,
+      asigraUrl ? `Compară oferte: ${asigraUrl}` : null,
+      deepLink ? `Deschide în Acte: ${deepLink}` : null,
+      'Adăugat de Acte – Documente Personale · https://tudorabrudan.github.io/Dosar/',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const [year, month, day] = opts.expiryDate.split('-').map(Number);
+    const startDate = new Date(year, month - 1, day, 9, 0, 0);
+    const endDate = new Date(year, month - 1, day, 10, 0, 0);
+
+    await CalendarModule.updateEventAsync(eventId, {
+      title,
+      notes,
+      startDate,
+      endDate,
+      alarms: [{ relativeOffset: -REMINDER_DAYS_BEFORE * 24 * 60 }],
+      url: opts.documentId ? `acte:///documente/${opts.documentId}` : undefined,
+      timeZone: 'Europe/Bucharest',
+    });
+    return eventId;
+  } catch {
+    // Eveniment șters din calendar de utilizator → creează unul nou
+    return addExpiryCalendarEvent(opts);
+  }
+}
+
+/**
+ * Actualizează un eveniment de bilet existent.
+ * Dacă a fost șters manual din Calendar.app, recreează silent.
+ */
+export async function updateBiletCalendarEvent(
+  eventId: string,
+  opts: EventCalendarOptions
+): Promise<string | null> {
+  if (!CalendarModule) return null;
+
+  try {
+    let year: number, month: number, day: number;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(opts.eventDate)) {
+      [year, month, day] = opts.eventDate.split('-').map(Number);
+    } else {
+      const m = opts.eventDate.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{4})$/);
+      if (!m) return null;
+      day = Number(m[1]);
+      month = Number(m[2]);
+      year = Number(m[3]);
+    }
+
+    const startDate = new Date(year, month - 1, day, 10, 0, 0);
+    const endDate = new Date(year, month - 1, day, 12, 0, 0);
+
+    const deepLink = opts.documentId ? `acte:///documente/${opts.documentId}` : null;
+    const notes = [
+      opts.venue ? `Locație / Rută: ${opts.venue}` : null,
+      opts.note ? `Notă: ${opts.note}` : null,
+      deepLink ? `Deschide în Acte: ${deepLink}` : null,
+      'Adăugat de Acte – Documente Personale · https://tudorabrudan.github.io/Dosar/',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    await CalendarModule.updateEventAsync(eventId, {
+      title: opts.title,
+      notes,
+      startDate,
+      endDate,
+      alarms: [{ relativeOffset: -24 * 60 }, { relativeOffset: -2 * 60 }],
+      url: opts.documentId ? `acte:///documente/${opts.documentId}` : undefined,
+      timeZone: 'Europe/Bucharest',
+    });
+    return eventId;
+  } catch {
+    return addEventToCalendar(opts);
+  }
+}
+
+/** Șterge un eveniment generic din calendar (silent fail dacă nu există). */
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  if (!CalendarModule) return;
+  try {
+    await CalendarModule.deleteEventAsync(eventId);
+  } catch {
+    // deja șters sau calendar inaccesibil
+  }
+}
+
 export interface EventCalendarOptions {
   title: string; // ex: "Concert Coldplay"
   eventDate: string; // AAAA-LL-ZZ sau ZZ.LL.AAAA

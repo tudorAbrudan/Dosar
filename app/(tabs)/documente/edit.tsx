@@ -37,9 +37,19 @@ import {
   addEntityLinkToDocument,
   removeEntityLinkFromDocument,
   getDocumentEntityLinks,
+  lockPageOrientation,
+  lockMainOrientation,
+  setDocumentCalendarEventId,
 } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
-import { addExpiryCalendarEvent, isCalendarAvailable } from '@/services/calendar';
+import {
+  addExpiryCalendarEvent,
+  addEventToCalendar,
+  updateExpiryCalendarEvent,
+  updateBiletCalendarEvent,
+  deleteCalendarEvent,
+  isCalendarAvailable,
+} from '@/services/calendar';
 import {
   extractText,
   extractDocumentInfo,
@@ -159,10 +169,36 @@ export default function EditDocumentScreen() {
 
   const allPages = useMemo(() => {
     if (!doc) return [];
-    const main = doc.file_path ? [{ id: '__main__', file_path: doc.file_path }] : [];
-    const extra = (doc.pages ?? []).map(p => ({ id: p.id, file_path: p.file_path }));
+    const main = doc.file_path
+      ? [
+          {
+            id: '__main__',
+            file_path: doc.file_path,
+            orientation_locked: doc.main_orientation_locked,
+          },
+        ]
+      : [];
+    const extra = (doc.pages ?? []).map(p => ({
+      id: p.id,
+      file_path: p.file_path,
+      orientation_locked: p.orientation_locked,
+    }));
     return [...main, ...extra];
   }, [doc]);
+
+  const entityName = useMemo<string | null>(() => {
+    if (!doc) return null;
+    if (doc.person_id) return persons.find(p => p.id === doc.person_id)?.name ?? null;
+    if (doc.property_id) return properties.find(p => p.id === doc.property_id)?.name ?? null;
+    if (doc.vehicle_id) return vehicles.find(v => v.id === doc.vehicle_id)?.name ?? null;
+    if (doc.card_id) {
+      const c = cards.find(c => c.id === doc.card_id);
+      return c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
+    }
+    if (doc.animal_id) return animals.find(a => a.id === doc.animal_id)?.name ?? null;
+    if (doc.company_id) return companies.find(c => c.id === doc.company_id)?.name ?? null;
+    return null;
+  }, [doc, persons, properties, vehicles, cards, animals, companies]);
 
   const photoPages: PhotoPage[] = useMemo(
     () =>
@@ -176,6 +212,7 @@ export default function EditDocumentScreen() {
   // ── Photo management (immediate, persists to DB) ─────────────────────────
 
   async function handleRotate(pageId: string, degrees: number) {
+    if (!doc) return;
     const page = allPages.find(p => p.id === pageId);
     if (!page) return;
     const sourceUri = rotatedUris[page.file_path] ?? toFileUri(page.file_path);
@@ -188,6 +225,14 @@ export default function EditDocumentScreen() {
       const absoluteUri = toFileUri(page.file_path);
       const dest = absoluteUri.startsWith('file://') ? absoluteUri.slice(7) : absoluteUri;
       await FileSystem.copyAsync({ from: result.uri, to: dest });
+      // Lock orientarea — OCR-ul nu va mai încerca auto-rotire pe această pagină.
+      if (pageId === '__main__') {
+        await lockMainOrientation(doc.id);
+      } else {
+        await lockPageOrientation(pageId);
+      }
+      const updated = await getDocumentById(doc.id);
+      if (updated) setDoc(updated);
     } catch {
       Alert.alert('Eroare', 'Nu s-a putut roti imaginea.');
     }
@@ -421,10 +466,14 @@ export default function EditDocumentScreen() {
   // ── OCR ──────────────────────────────────────────────────────────────────
 
   async function ocrWithAutoRotate(
-    storedPath: string
+    storedPath: string,
+    isLocked: boolean
   ): Promise<{ text: string; rotated: boolean }> {
     const fileUri = toFileUri(storedPath);
-    let { text } = await extractText(fileUri);
+    const { text } = await extractText(fileUri);
+
+    // Pagină rotită manual de user — respectă orientarea, nu mai încerca alte rotații.
+    if (isLocked) return { text, rotated: false };
 
     // Încearcă mereu toate cele 3 rotații — threshold-ul >= 50 era insuficient deoarece
     // Vision pe iOS modern extrage ≥50 chars chiar și din imagini rotite greșit.
@@ -453,7 +502,8 @@ export default function EditDocumentScreen() {
 
   async function runOcrOnNewPage(localPath: string, currentDoc: DocType) {
     try {
-      const { text, rotated } = await ocrWithAutoRotate(localPath);
+      // Pagină nou-adăugată — niciodată lock-uită; lăsăm auto-rotate să încerce
+      const { text, rotated } = await ocrWithAutoRotate(localPath, false);
       if (!text.trim()) return;
       const detectedType = detectDocumentType(text);
       const info = extractDocumentInfo(text);
@@ -508,7 +558,10 @@ export default function EditDocumentScreen() {
             const pdfText = await extractTextFromPdf(toFileUri(page.file_path));
             if (pdfText.trim()) texts.push(pdfText);
           } else {
-            const { text, rotated } = await ocrWithAutoRotate(page.file_path);
+            const { text, rotated } = await ocrWithAutoRotate(
+              page.file_path,
+              page.orientation_locked
+            );
             if (text.trim()) texts.push(text);
             if (rotated) anyRotated = true;
           }
@@ -626,34 +679,97 @@ export default function EditDocumentScreen() {
       });
       scheduleExpirationReminders().catch(() => {});
 
+      const navigateBack = () => {
+        if (router.canGoBack()) router.back();
+        else router.replace('/(tabs)/documente');
+      };
+
+      if (!isCalendarAvailable()) {
+        navigateBack();
+        return;
+      }
+
       const finalExpiry = expiryDateRef.current.trim();
-      if (finalExpiry && isCalendarAvailable()) {
+      const isBilet = type === 'bilet';
+      const biletDate = isBilet ? metadata.event_date?.trim() : undefined;
+      const hasEvent = doc.calendar_event_id;
+
+      // Dacă documentul are deja un eveniment în calendar, facem silent update / delete.
+      if (hasEvent) {
+        if (isBilet && biletDate) {
+          const newId = await updateBiletCalendarEvent(hasEvent, {
+            title:
+              [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment',
+            eventDate: biletDate,
+            venue: metadata.venue,
+            note: note.trim() || undefined,
+            documentId: doc.id,
+          });
+          if (newId && newId !== hasEvent) await setDocumentCalendarEventId(doc.id, newId);
+        } else if (!isBilet && finalExpiry) {
+          const newId = await updateExpiryCalendarEvent(hasEvent, {
+            docType: type,
+            expiryDate: finalExpiry,
+            entityName: entityName ?? undefined,
+            documentId: doc.id,
+            note: note.trim() || undefined,
+          });
+          if (newId && newId !== hasEvent) await setDocumentCalendarEventId(doc.id, newId);
+        } else {
+          // Userul a șters data → ștergem și eventul.
+          await deleteCalendarEvent(hasEvent);
+          await setDocumentCalendarEventId(doc.id, null);
+        }
+        navigateBack();
+        return;
+      }
+
+      // Fără eveniment existent → comportamentul curent (Alert).
+      if (isBilet && biletDate) {
+        const title =
+          [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment';
+        setSaving(false);
+        Alert.alert('Adaugă în calendar?', `Vrei reminder pentru evenimentul din ${biletDate}?`, [
+          { text: 'Nu', style: 'cancel', onPress: navigateBack },
+          {
+            text: 'Adaugă',
+            onPress: async () => {
+              const calId = await addEventToCalendar({
+                title,
+                eventDate: biletDate,
+                venue: metadata.venue,
+                note: note.trim() || undefined,
+                documentId: doc.id,
+              });
+              if (calId) await setDocumentCalendarEventId(doc.id, calId);
+              else Alert.alert('Eroare', 'Nu s-a putut accesa calendarul.');
+              navigateBack();
+            },
+          },
+        ]);
+        return;
+      }
+
+      if (!isBilet && finalExpiry) {
         setSaving(false);
         Alert.alert(
           'Adaugă în calendar?',
           `Vrei să adaugi un reminder pentru expirarea pe ${finalExpiry}?`,
           [
-            {
-              text: 'Nu',
-              style: 'cancel',
-              onPress: () => {
-                if (router.canGoBack()) router.back();
-                else router.replace('/(tabs)/documente');
-              },
-            },
+            { text: 'Nu', style: 'cancel', onPress: navigateBack },
             {
               text: 'Adaugă',
               onPress: async () => {
                 const calId = await addExpiryCalendarEvent({
                   docType: type,
                   expiryDate: finalExpiry,
-                  entityName: undefined,
+                  entityName: entityName ?? undefined,
                   documentId: doc.id,
                   note: note.trim() || undefined,
                 });
-                if (!calId) Alert.alert('Eroare', 'Nu s-a putut accesa calendarul.');
-                if (router.canGoBack()) router.back();
-                else router.replace('/(tabs)/documente');
+                if (calId) await setDocumentCalendarEventId(doc.id, calId);
+                else Alert.alert('Eroare', 'Nu s-a putut accesa calendarul.');
+                navigateBack();
               },
             },
           ]
@@ -661,27 +777,13 @@ export default function EditDocumentScreen() {
         return;
       }
 
-      if (router.canGoBack()) router.back();
-      else router.replace('/(tabs)/documente');
+      navigateBack();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
     } finally {
       setSaving(false);
     }
   };
-
-  // ── Entity display ────────────────────────────────────────────────────────
-
-  let entityName: string | null = null;
-  if (doc?.person_id) entityName = persons.find(p => p.id === doc.person_id)?.name ?? null;
-  else if (doc?.property_id)
-    entityName = properties.find(p => p.id === doc.property_id)?.name ?? null;
-  else if (doc?.vehicle_id) entityName = vehicles.find(v => v.id === doc.vehicle_id)?.name ?? null;
-  else if (doc?.card_id) {
-    const c = cards.find(c => c.id === doc.card_id);
-    entityName = c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
-  } else if (doc?.animal_id) entityName = animals.find(a => a.id === doc.animal_id)?.name ?? null;
-  else if (doc?.company_id) entityName = companies.find(c => c.id === doc.company_id)?.name ?? null;
 
   if (loadingDoc || !doc) {
     return (
@@ -1156,10 +1258,10 @@ export default function EditDocumentScreen() {
               )}
             </ScrollView>
             <Pressable
-              style={[styles.btnOutline, { marginTop: 12 }]}
+              style={[styles.btnPrimary, { marginTop: 12 }]}
               onPress={() => setLinkEntityVisible(false)}
             >
-              <Text style={styles.btnOutlineText}>Închide</Text>
+              <Text style={styles.btnPrimaryText}>Închide</Text>
             </Pressable>
           </View>
         </View>

@@ -711,6 +711,14 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
       });
       if (d.id) docIdMap.set(d.id as string, created.id);
       existingDocByKey.set(docKey, created.id);
+      // Propagăm flag-ul de orientare lock-uită pe pagina principală.
+      if (d.main_orientation_locked === true || d.main_orientation_locked === 1) {
+        await docs.lockMainOrientation(created.id);
+      }
+      // Propagăm ID-ul evenimentului de calendar (pentru dedupe la edit ulterior).
+      if (d.calendar_event_id) {
+        await docs.setDocumentCalendarEventId(created.id, d.calendar_event_id as string);
+      }
       imported++;
     } catch (e) {
       errors.push(`Document "${d.type}": ${e instanceof Error ? e.message : 'eroare'}`);
@@ -723,7 +731,10 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
       const newDocId = docIdMap.get(page.document_id as string);
       if (!newDocId) continue;
       const filePath = toRelativePath(page.file_path as string);
-      await docs.addDocumentPage(newDocId, filePath);
+      const newPageId = await docs.addDocumentPage(newDocId, filePath);
+      if (page.orientation_locked === true || page.orientation_locked === 1) {
+        await docs.lockPageOrientation(newPageId);
+      }
       imported++;
     } catch (e) {
       errors.push(`Pagina document: ${e instanceof Error ? e.message : 'eroare'}`);

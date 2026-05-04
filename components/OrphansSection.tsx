@@ -13,7 +13,7 @@ function navigateToFix(kind: OrphanFixKind, id: string): void {
   if (kind === 'document_edit') {
     router.push(`/(tabs)/documente/${id}?from=home`);
   } else {
-    router.push(`/(tabs)/entitati/${id}`);
+    router.push(`/(tabs)/entitati/${id}?edit=1`);
   }
 }
 

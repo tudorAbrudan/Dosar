@@ -41,6 +41,9 @@ import {
   reorderAllDocumentFiles,
   getDocumentEntityLinks,
   findDuplicatesOfDocument,
+  lockPageOrientation,
+  lockMainOrientation,
+  setDocumentCalendarEventId,
 } from '@/services/documents';
 import type { DocumentDuplicates } from '@/services/documents';
 import type { DocumentEntityLink, EntityType } from '@/types';
@@ -48,6 +51,8 @@ import { scheduleExpirationReminders } from '@/services/notifications';
 import {
   addExpiryCalendarEvent,
   addEventToCalendar,
+  updateExpiryCalendarEvent,
+  updateBiletCalendarEvent,
   isCalendarAvailable,
 } from '@/services/calendar';
 import {
@@ -167,8 +172,20 @@ export default function DocumentDetailScreen() {
 
   const allPages = useMemo(() => {
     if (!doc) return [];
-    const main = doc.file_path ? [{ id: '__main__', file_path: doc.file_path }] : [];
-    const extra = (doc.pages ?? []).map(p => ({ id: p.id, file_path: p.file_path }));
+    const main = doc.file_path
+      ? [
+          {
+            id: '__main__',
+            file_path: doc.file_path,
+            orientation_locked: doc.main_orientation_locked,
+          },
+        ]
+      : [];
+    const extra = (doc.pages ?? []).map(p => ({
+      id: p.id,
+      file_path: p.file_path,
+      orientation_locked: p.orientation_locked,
+    }));
     return [...main, ...extra];
   }, [doc]);
 
@@ -182,6 +199,7 @@ export default function DocumentDetailScreen() {
   );
 
   async function handleRotate(pageId: string, degrees: number) {
+    if (!doc) return;
     const page = allPages.find(p => p.id === pageId);
     if (!page) return;
     const sourceUri = rotatedUris[page.file_path] ?? toFileUri(page.file_path);
@@ -194,6 +212,14 @@ export default function DocumentDetailScreen() {
       const absoluteUri = toFileUri(page.file_path);
       const dest = absoluteUri.startsWith('file://') ? absoluteUri.slice(7) : absoluteUri;
       await FileSystem.copyAsync({ from: result.uri, to: dest });
+      // Lock orientarea — OCR-ul nu va mai încerca auto-rotire pe această pagină.
+      if (pageId === '__main__') {
+        await lockMainOrientation(doc.id);
+      } else {
+        await lockPageOrientation(pageId);
+      }
+      const updated = await getDocumentById(doc.id);
+      if (updated) setDoc(updated);
     } catch {
       Alert.alert('Eroare', 'Nu s-a putut roti imaginea.');
     }
@@ -295,14 +321,17 @@ export default function DocumentDetailScreen() {
   }
 
   // Încearcă să găsească orientarea corectă a imaginii via OCR.
-  // Dacă textul inițial e prea scurt, testează 90°/270°/180° și salvează versiunea cea mai bună.
-  // Returnează textul extras și dacă imaginea a fost rotită.
+  // Dacă pagina e lock-uită (userul a rotit-o manual), respectă orientarea
+  // curentă și nu mai încearcă rotații. Altfel, dacă textul inițial e prea scurt,
+  // testează 90°/270°/180° și salvează versiunea cea mai bună.
   async function ocrWithAutoRotate(
-    storedPath: string
+    storedPath: string,
+    isLocked: boolean
   ): Promise<{ text: string; rotated: boolean }> {
     const fileUri = toFileUri(storedPath);
     let { text } = await extractText(fileUri);
 
+    if (isLocked) return { text, rotated: false };
     if (text.trim().length >= 30) return { text, rotated: false };
 
     let bestText = text;
@@ -333,7 +362,8 @@ export default function DocumentDetailScreen() {
 
   async function runOcrOnNewPage(localPath: string, currentDoc: DocType) {
     try {
-      const { text, rotated } = await ocrWithAutoRotate(localPath);
+      // Pagină nou-adăugată — niciodată lock-uită; lăsăm auto-rotate să încerce
+      const { text, rotated } = await ocrWithAutoRotate(localPath, false);
 
       if (!text.trim()) return;
 
@@ -480,7 +510,10 @@ export default function DocumentDetailScreen() {
             const pdfText = await extractTextFromPdf(toFileUri(page.file_path));
             if (pdfText.trim()) texts.push(pdfText);
           } else {
-            const { text, rotated } = await ocrWithAutoRotate(page.file_path);
+            const { text, rotated } = await ocrWithAutoRotate(
+              page.file_path,
+              page.orientation_locked
+            );
             if (text.trim()) texts.push(text);
             if (rotated) anyRotated = true;
           }
@@ -584,30 +617,58 @@ export default function DocumentDetailScreen() {
       Alert.alert('Calendar indisponibil', 'Calendarul necesită un build nativ (expo run:ios).');
       return;
     }
-    if (doc.type === 'bilet' && doc.metadata?.event_date) {
+    const isBilet = doc.type === 'bilet' && !!doc.metadata?.event_date;
+    const existingId = doc.calendar_event_id;
+
+    if (isBilet) {
       const title =
         [doc.metadata?.categorie, doc.metadata?.venue].filter(Boolean).join(' – ') || 'Eveniment';
-      const calId = await addEventToCalendar({
+      const opts = {
         title,
         eventDate: doc.metadata!.event_date,
         venue: doc.metadata?.venue,
         note: doc.note,
         documentId: doc.id,
-      });
-      if (!calId)
+      };
+      const calId = existingId
+        ? await updateBiletCalendarEvent(existingId, opts)
+        : await addEventToCalendar(opts);
+      if (!calId) {
         Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
-      else Alert.alert('Calendar', 'Reminder adăugat! Vei fi notificat cu 1 zi și 2 ore înainte.');
-    } else if (doc.expiry_date) {
-      const calId = await addExpiryCalendarEvent({
+        return;
+      }
+      if (calId !== existingId) await setDocumentCalendarEventId(doc.id, calId);
+      Alert.alert(
+        'Calendar',
+        existingId ? 'Reminder actualizat în calendar.' : 'Reminder adăugat în calendar.'
+      );
+      const updated = await getDocumentById(doc.id);
+      if (updated) setDoc(updated);
+      return;
+    }
+
+    if (doc.expiry_date) {
+      const opts = {
         docType: doc.type,
         expiryDate: doc.expiry_date,
         entityName: undefined,
         documentId: doc.id,
         note: doc.note,
-      });
-      if (!calId)
+      };
+      const calId = existingId
+        ? await updateExpiryCalendarEvent(existingId, opts)
+        : await addExpiryCalendarEvent(opts);
+      if (!calId) {
         Alert.alert('Eroare', 'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.');
-      else Alert.alert('Calendar', 'Evenimentul a fost adăugat în calendar.');
+        return;
+      }
+      if (calId !== existingId) await setDocumentCalendarEventId(doc.id, calId);
+      Alert.alert(
+        'Calendar',
+        existingId ? 'Reminder actualizat în calendar.' : 'Reminder adăugat în calendar.'
+      );
+      const updated = await getDocumentById(doc.id);
+      if (updated) setDoc(updated);
     }
   };
 

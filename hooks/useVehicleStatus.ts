@@ -32,16 +32,14 @@ export function useVehicleStatus(vehicle: Vehicle | undefined): UseVehicleStatus
     setLoading(true);
     setError(null);
     try {
-      const [documents, fuelStats, visibleTypes, notifDays] = await Promise.all([
+      const [documents, fuelStats, notifDays] = await Promise.all([
         getDocumentsByEntity('vehicle_id', vehicle.id),
         computeFuelStats(vehicle.id),
-        settings.getVisibleDocTypes(),
         settings.getNotificationDays(),
       ]);
       const rawItems = buildVehicleStatusItems({
         documents,
         fuelStats,
-        itpEnabled: visibleTypes.includes('itp'),
         notificationDays: notifDays,
         today: new Date(),
         fuelType: vehicle.fuel_type,

@@ -121,6 +121,8 @@ export interface DocumentPage {
   page_order: number;
   file_path: string;
   created_at: string;
+  /** True după ce userul a rotit manual pagina; OCR sare auto-rotate-ul. */
+  orientation_locked: boolean;
 }
 
 export interface DocumentEntityLink {
@@ -130,6 +132,8 @@ export interface DocumentEntityLink {
 
 export interface Document {
   id: string;
+  /** True după ce userul a rotit manual pagina principală (doc.file_path); OCR sare auto-rotate-ul. */
+  main_orientation_locked: boolean;
   type: DocumentType;
   issue_date?: string;
   expiry_date?: string;
@@ -156,6 +160,8 @@ export interface Document {
    * `.claude/rules/ai-privacy.md`.
    */
   private_notes?: string;
+  /** ID-ul evenimentului din calendar (expirare sau bilet). Permite update silent / dedupe. */
+  calendar_event_id?: string;
   created_at: string;
   // Multi-entity links (din document_entities junction table)
   entity_links?: DocumentEntityLink[];

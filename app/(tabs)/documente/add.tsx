@@ -49,6 +49,7 @@ import {
   findDuplicateDocument,
   updateDocument,
   getVehicleIdentifiers,
+  setDocumentCalendarEventId,
 } from '@/services/documents';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { Document } from '@/types';
@@ -1054,11 +1055,14 @@ export default function AddDocumentScreen() {
                   documentId: newDoc.id,
                   note: note.trim() || undefined,
                 });
-                if (!id)
+                if (id) {
+                  await setDocumentCalendarEventId(newDoc.id, id);
+                } else {
                   Alert.alert(
                     'Eroare',
                     'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.'
                   );
+                }
                 router.replace('/(tabs)/documente');
               },
             },
@@ -1079,13 +1083,14 @@ export default function AddDocumentScreen() {
             {
               text: 'Adaugă',
               onPress: async () => {
-                await addEventToCalendar({
+                const id = await addEventToCalendar({
                   title,
                   eventDate: metadata.event_date,
                   venue: metadata.venue,
                   note: note.trim() || undefined,
                   documentId: newDoc.id,
                 });
+                if (id) await setDocumentCalendarEventId(newDoc.id, id);
                 router.replace('/(tabs)/documente');
               },
             },

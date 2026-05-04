@@ -19,7 +19,6 @@ export type StatusItemRaw = {
 type BuildArgs = {
   documents: Document[];
   fuelStats: FuelStats;
-  itpEnabled: boolean;
   notificationDays: number;
   today: Date;
   fuelType?: VehicleFuelType;
@@ -80,7 +79,7 @@ function buildDocItem(
 
 export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
   const items: StatusItemRaw[] = [];
-  const { documents, fuelStats, itpEnabled, notificationDays, today } = args;
+  const { documents, fuelStats, notificationDays, today } = args;
 
   const rca = pickLatestDocWithExpiry(documents, 'rca');
   if (rca) items.push(buildDocItem(rca, 'rca', 'RCA', notificationDays, today));
@@ -88,10 +87,13 @@ export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
   const casco = pickLatestDocWithExpiry(documents, 'casco');
   if (casco) items.push(buildDocItem(casco, 'casco', 'CASCO', notificationDays, today));
 
-  if (itpEnabled) {
-    const itp = pickLatestDocWithExpiry(documents, 'itp');
-    if (itp) items.push(buildDocItem(itp, 'itp', 'ITP', notificationDays, today));
-  }
+  // ITP: data e fie pe doc-ul ITP separat, fie pe talon (ștampila RAR).
+  // Dacă există în ambele, alegem expirarea cea mai târzie. Click pe brick → doc-sursă.
+  const itp = pickLatestDocWithExpiry(documents, 'itp');
+  const talon = pickLatestDocWithExpiry(documents, 'talon');
+  const itpSource =
+    itp && talon ? (itp.expiry_date! >= talon.expiry_date! ? itp : talon) : (itp ?? talon);
+  if (itpSource) items.push(buildDocItem(itpSource, 'itp', 'ITP', notificationDays, today));
 
   if (fuelStats.avgConsumptionL100 !== undefined) {
     items.push({
