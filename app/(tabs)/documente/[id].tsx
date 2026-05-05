@@ -1248,11 +1248,17 @@ export default function DocumentDetailScreen() {
               </View>
             }
           >
-            <Text style={styles.privateValue}>
-              {privateVisible
-                ? doc.private_notes
-                : '•'.repeat(Math.min(doc.private_notes.length, 16))}
-            </Text>
+            <Pressable
+              onLongPress={
+                privateVisible ? () => copyValue(doc.private_notes!, 'Nota privată') : undefined
+              }
+            >
+              <Text style={styles.privateValue}>
+                {privateVisible
+                  ? doc.private_notes
+                  : '•'.repeat(Math.min(doc.private_notes.length, 16))}
+              </Text>
+            </Pressable>
           </DocumentDetailCard>
         )}
 
