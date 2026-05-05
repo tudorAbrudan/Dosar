@@ -1173,6 +1173,8 @@ export default function DocumentDetailScreen() {
                     <Pressable
                       key={idx}
                       onLongPress={() => copyValue(entityLinkLabel(link), 'Numele entității')}
+                      accessibilityRole="button"
+                      accessibilityHint="Ține apăsat pentru a copia"
                       style={[
                         styles.entityChip,
                         { backgroundColor: palette.background, borderColor: palette.border },
@@ -1224,7 +1226,11 @@ export default function DocumentDetailScreen() {
 
         {doc.note && (
           <DocumentDetailCard title="Notă">
-            <Pressable onLongPress={() => copyValue(doc.note!, 'Nota')}>
+            <Pressable
+              onLongPress={() => copyValue(doc.note!, 'Nota')}
+              accessibilityRole="button"
+              accessibilityHint="Ține apăsat pentru a copia"
+            >
               <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
             </Pressable>
           </DocumentDetailCard>
@@ -1253,6 +1259,8 @@ export default function DocumentDetailScreen() {
               onLongPress={
                 privateVisible ? () => copyValue(doc.private_notes!, 'Nota privată') : undefined
               }
+              accessibilityRole="button"
+              accessibilityHint={privateVisible ? 'Ține apăsat pentru a copia' : undefined}
             >
               <Text style={styles.privateValue}>
                 {privateVisible

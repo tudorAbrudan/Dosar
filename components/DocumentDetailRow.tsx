@@ -70,6 +70,8 @@ export function DocumentDetailRow({
     return (
       <Pressable
         onLongPress={handleCopy}
+        accessibilityRole="button"
+        accessibilityHint="Ține apăsat pentru a copia"
         style={[styles.container, styles.inlineRow, separatorStyle]}
       >
         {inlineContent}
