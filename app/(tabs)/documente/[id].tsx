@@ -22,6 +22,7 @@ import * as Print from 'expo-print';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
 import { Share } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
@@ -952,6 +953,15 @@ export default function DocumentDetailScreen() {
       .replace(/"/g, '&quot;');
   }
 
+  async function copyValue(value: string, label: string) {
+    try {
+      await Clipboard.setStringAsync(value);
+      Alert.alert('Copiat', `${label} a fost copiat în clipboard.`);
+    } catch {
+      // Silent fail.
+    }
+  }
+
   function handleBack() {
     if (from === 'home') {
       // Resetăm stack-ul documente la index, apoi trecem pe home tab.
@@ -1213,7 +1223,9 @@ export default function DocumentDetailScreen() {
 
         {doc.note && (
           <DocumentDetailCard title="Notă">
-            <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
+            <Pressable onLongPress={() => copyValue(doc.note!, 'Nota')}>
+              <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
+            </Pressable>
           </DocumentDetailCard>
         )}
 
