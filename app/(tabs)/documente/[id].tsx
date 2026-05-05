@@ -1170,8 +1170,9 @@ export default function DocumentDetailScreen() {
                     </Text>
                   )}
                   {entityLinks.map((link, idx) => (
-                    <View
+                    <Pressable
                       key={idx}
+                      onLongPress={() => copyValue(entityLinkLabel(link), 'Numele entității')}
                       style={[
                         styles.entityChip,
                         { backgroundColor: palette.background, borderColor: palette.border },
@@ -1180,7 +1181,7 @@ export default function DocumentDetailScreen() {
                       <Text style={[styles.entityChipText, { color: palette.text }]}>
                         {ENTITY_TYPE_LABELS[link.entityType]} {entityLinkLabel(link)}
                       </Text>
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
               </DocumentDetailRow>
