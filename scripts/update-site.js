@@ -34,6 +34,12 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 
+// ─── Constante canonice (sursa unică pentru URL-uri externe) ─────────────────
+
+const APP_STORE_URL = 'https://apps.apple.com/ro/app/dosar-acte-documente/id6760576986';
+const APP_STORE_ID = '6760576986';
+const SITE_URL = 'https://tudorabrudan.github.io/Dosar';
+
 // ─── 1. EMOJI MAP — actualizat cu TOATE tipurile din types/index.ts ──────────
 
 const EMOJI_MAP = {
@@ -252,6 +258,41 @@ function extractAppVersion() {
   return appJson?.expo?.version ?? null;
 }
 
+/**
+ * Extrage LOCAL_MODEL_CATALOG din services/localModel.ts.
+ * Format întoarcere: array de obiecte { name, description, sizeLabel, qualityStars, minIphoneGen }.
+ */
+function extractLocalModels() {
+  const filePath = path.join(ROOT, 'services', 'localModel.ts');
+  const content = fs.readFileSync(filePath, 'utf8');
+  const blockMatch = content.match(/LOCAL_MODEL_CATALOG[^=]*=\s*\[([\s\S]*?)\n\];/);
+  if (!blockMatch) throw new Error('Nu am găsit LOCAL_MODEL_CATALOG în services/localModel.ts');
+  const block = blockMatch[1];
+  const entries = block.split(/\n\s*\{/).slice(1);
+  const models = [];
+  for (const raw of entries) {
+    const get = key => {
+      const m = raw.match(new RegExp(`${key}:\\s*'([^']+)'|${key}:\\s*"([^"]+)"`));
+      return m ? m[1] || m[2] : null;
+    };
+    const getNum = key => {
+      const m = raw.match(new RegExp(`${key}:\\s*(\\d+)`));
+      return m ? parseInt(m[1], 10) : null;
+    };
+    // description poate fi multi-line cu concatenare implicită; prinde primul string după "description:"
+    const descMatch = raw.match(/description:\s*\n?\s*'([^']+(?:'\s*\+\s*'[^']+)*)'/m);
+    const descriptionRaw = descMatch ? descMatch[1].replace(/'\s*\+\s*'/g, '') : '';
+    models.push({
+      name: get('name'),
+      description: descriptionRaw,
+      sizeLabel: get('sizeLabel'),
+      qualityStars: getNum('qualityStars'),
+      minIphoneGen: getNum('minIphoneGen'),
+    });
+  }
+  return models.filter(m => m.name);
+}
+
 // ─── 4. Generatori HTML/MD ──────────────────────────────────────────────────
 
 function generateChipsHtml(types) {
@@ -332,6 +373,50 @@ function generateReadmeFeatures() {
   return bullets.join('\n');
 }
 
+function generateLocalModelsTableHtml(models) {
+  const rows = models
+    .map((m, i) => {
+      const stars = '★'.repeat(m.qualityStars) + '☆'.repeat(5 - m.qualityStars);
+      const isLast = i === models.length - 1;
+      const cellBorder = isLast ? '' : ' border-bottom: 1px solid #f0f0f0;';
+      const shortDesc = m.description.length > 80 ? m.description.slice(0, 77) + '...' : m.description;
+      return `          <tr>
+            <td style="padding: 12px 16px;${cellBorder}">
+              <strong>${m.name}</strong><br>
+              <span style="color: #888; font-size: 12px;">${shortDesc}</span>
+            </td>
+            <td style="padding: 12px 16px;${cellBorder} color: #9EB567;">${stars}</td>
+            <td style="padding: 12px 16px;${cellBorder} color: #555;">${m.sizeLabel}</td>
+            <td style="padding: 12px 16px;${cellBorder} color: #555;">iPhone ${m.minIphoneGen}+</td>
+          </tr>`;
+    })
+    .join('\n');
+  return `      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <thead>
+          <tr style="background: #f8f8f8;">
+            <th style="text-align: left; padding: 12px 16px; border-bottom: 1px solid #e0e0e0; color: #1a1a1a; font-weight: 600;">Model</th>
+            <th style="text-align: left; padding: 12px 16px; border-bottom: 1px solid #e0e0e0; color: #1a1a1a; font-weight: 600;">Calitate</th>
+            <th style="text-align: left; padding: 12px 16px; border-bottom: 1px solid #e0e0e0; color: #1a1a1a; font-weight: 600;">Dimensiune</th>
+            <th style="text-align: left; padding: 12px 16px; border-bottom: 1px solid #e0e0e0; color: #1a1a1a; font-weight: 600;">Telefon minim</th>
+          </tr>
+        </thead>
+        <tbody>
+${rows}
+        </tbody>
+      </table>`;
+}
+
+/**
+ * Sincronizează URL-ul App Store oriunde apare în HTML — orice slug vechi
+ * (portofel-acte etc.) se rescrie la canonical.
+ */
+function syncAppStoreUrlInText(text) {
+  return text.replace(
+    /https:\/\/apps\.apple\.com\/[a-z]{2}\/app\/[a-z0-9-]+\/id6760576986/g,
+    APP_STORE_URL
+  );
+}
+
 // ─── 5. Utilitare markeri ───────────────────────────────────────────────────
 
 function replaceMarker(text, markerName, newContent, commentStyle = 'html') {
@@ -354,7 +439,7 @@ function replaceMarker(text, markerName, newContent, commentStyle = 'html') {
   return { text: updated, replaced: true };
 }
 
-function updateFile(relPath, updates) {
+function updateFile(relPath, updates, options = {}) {
   const abs = path.join(ROOT, relPath);
   let content = fs.readFileSync(abs, 'utf8');
   let anyReplaced = false;
@@ -362,6 +447,14 @@ function updateFile(relPath, updates) {
     const r = replaceMarker(content, marker, value);
     if (r.replaced) anyReplaced = true;
     content = r.text;
+  }
+  if (options.syncAppStoreUrl) {
+    const before = content;
+    content = syncAppStoreUrlInText(content);
+    if (before !== content) {
+      anyReplaced = true;
+      console.log(`  [URL] App Store URL canonicalizat în ${relPath}`);
+    }
   }
   fs.writeFileSync(abs, content, 'utf8');
   console.log(`  [${anyReplaced ? 'OK' : '·'}] ${relPath}`);
@@ -374,27 +467,42 @@ function main() {
 
   const types = extractDocumentTypes();
   const version = extractAppVersion();
+  const localModels = extractLocalModels();
   const standardCount = Object.keys(types).filter(k => k !== 'custom' && k !== 'altul').length;
 
   console.log(
-    `  Tipuri: ${Object.keys(types).length} total, ${standardCount} standard · versiune: ${version ?? '?'}`
+    `  Tipuri: ${Object.keys(types).length} total, ${standardCount} standard · modele locale: ${localModels.length} · versiune: ${version ?? '?'}`
   );
 
   // ── docs/index.html ───────────────────────────────────────────────────
-  updateFile('docs/index.html', [
-    { marker: 'DOC_COUNT', value: `${standardCount}+` },
-    {
-      marker: 'DOC_CHIPS',
-      value: `  <div class="chips-wrap">\n${generateChipsHtml(types)}\n  </div>`,
-    },
-    { marker: 'FEATURES', value: generateFeaturesGridHtml() },
-  ]);
+  updateFile(
+    'docs/index.html',
+    [
+      { marker: 'DOC_COUNT', value: `${standardCount}+` },
+      {
+        marker: 'DOC_CHIPS',
+        value: `  <div class="chips-wrap">\n${generateChipsHtml(types)}\n  </div>`,
+      },
+      { marker: 'FEATURES', value: generateFeaturesGridHtml() },
+      { marker: 'LOCAL_MODELS', value: generateLocalModelsTableHtml(localModels) },
+    ],
+    { syncAppStoreUrl: true }
+  );
 
   // ── docs/support.html ─────────────────────────────────────────────────
-  updateFile('docs/support.html', [
-    { marker: 'FAQ_DOC_TYPES', value: generateFaqDocTypesHtml(types) },
-    { marker: 'FAQ_EXTRAS', value: generateFaqExtrasHtml() },
-  ]);
+  updateFile(
+    'docs/support.html',
+    [
+      { marker: 'FAQ_DOC_TYPES', value: generateFaqDocTypesHtml(types) },
+      { marker: 'FAQ_EXTRAS', value: generateFaqExtrasHtml() },
+    ],
+    { syncAppStoreUrl: true }
+  );
+
+  // ── docs/gestiune-auto.html ───────────────────────────────────────────
+  if (fs.existsSync(path.join(ROOT, 'docs/gestiune-auto.html'))) {
+    updateFile('docs/gestiune-auto.html', [], { syncAppStoreUrl: true });
+  }
 
   // ── README.md ─────────────────────────────────────────────────────────
   updateFile('README.md', [{ marker: 'APP_FEATURES', value: generateReadmeFeatures() }]);

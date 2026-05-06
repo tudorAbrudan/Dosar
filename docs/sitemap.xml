@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://tudorabrudan.github.io/Dosar/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_home_dark.jpeg</image:loc>
+      <image:title>Dosar — dashboard cu documente și expirări</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_acte.jpeg</image:loc>
+      <image:title>Dosar — listă documente</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_entitati.jpeg</image:loc>
+      <image:title>Dosar — entități (persoane, vehicule, proprietăți)</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_expirari.jpeg</image:loc>
+      <image:title>Dosar — ecran expirări documente</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_vehicul_detaliu.jpeg</image:loc>
+      <image:title>Dosar — detaliu vehicul cu RCA, ITP și consum</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_document_ocr.jpeg</image:loc>
+      <image:title>Dosar — document scanat cu OCR automat</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://tudorabrudan.github.io/Dosar/screen_ai_chat.jpeg</image:loc>
+      <image:title>Dosar — asistent AI integrat</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://tudorabrudan.github.io/Dosar/support.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://tudorabrudan.github.io/Dosar/gestiune-auto.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://tudorabrudan.github.io/Dosar/legal/privacy_ro.html</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://tudorabrudan.github.io/Dosar/legal/terms_ro.html</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>
