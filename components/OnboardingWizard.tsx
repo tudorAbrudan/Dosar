@@ -309,7 +309,13 @@ export default function OnboardingWizard({ onComplete }: Props) {
   async function handleCloudRestore() {
     if (cloudCheck.status !== 'available' || !cloudCheck.meta) return;
     setCloudRestoring(true);
-    setCloudRestoreProgress({ phase: 'manifest', current: 0, total: 0 });
+    setCloudRestoreProgress({
+      phase: 'manifest',
+      current: 0,
+      total: 0,
+      bytesDone: 0,
+      bytesTotal: 0,
+    });
     try {
       await settings.setCloudBackupEnabled(true);
       await cloudSync.restoreFromCloud(p => setCloudRestoreProgress(p));

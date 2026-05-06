@@ -15,7 +15,13 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, onPrimary, statusColors } from '@/theme/colors';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
-import { restoreFromCloud, type RestoreProgress } from '@/services/cloudSync';
+import {
+  estimateRestoreSize,
+  formatBytes,
+  restoreFromCloud,
+  type RestoreEstimate,
+  type RestoreProgress,
+} from '@/services/cloudSync';
 import {
   getCloudSnapshotFrequency,
   setCloudSnapshotFrequency,
@@ -185,10 +191,16 @@ export default function CloudBackupScreen() {
   const cloudRefresh = cloud.refresh;
   // Rulează restore-ul efectiv (după ce userul a confirmat sau după unlock).
   const runRestore = useCallback(async () => {
-    safeSetRestoreProgress({ phase: 'manifest', current: 0, total: 1 });
+    safeSetRestoreProgress({
+      phase: 'manifest',
+      current: 0,
+      total: 1,
+      bytesDone: 0,
+      bytesTotal: 0,
+    });
     try {
       await restoreFromCloud(safeSetRestoreProgress);
-      safeSetRestoreProgress({ phase: 'done', current: 1, total: 1 });
+      safeSetRestoreProgress({ phase: 'done', current: 1, total: 1, bytesDone: 0, bytesTotal: 0 });
       Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
       await cloudRefresh();
     } catch (e) {
@@ -205,9 +217,26 @@ export default function CloudBackupScreen() {
   }, [cloudRefresh, safeSetRestoreProgress]);
 
   const handleRestore = useCallback(async () => {
+    let estimate: RestoreEstimate | null = null;
+    try {
+      estimate = await estimateRestoreSize();
+    } catch (e) {
+      if (e instanceof PasswordRequiredError) {
+        setPendingAfterUnlock('restore');
+        setPwModalMode('unlock');
+        return;
+      }
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
+      return;
+    }
+    const totalBytes = estimate.manifestBytes + estimate.filesBytes;
+    const sizeText =
+      estimate.fileCount > 0
+        ? `${estimate.fileCount} fișiere · ${formatBytes(totalBytes)}`
+        : `Doar manifestul (${formatBytes(totalBytes)})`;
     Alert.alert(
       'Restaurează din iCloud',
-      'Datele locale curente vor fi înlocuite cu cele din backup-ul iCloud. Continui?',
+      `Vei descărca ${sizeText}. Datele locale curente vor fi înlocuite cu cele din backup. Continui?`,
       [
         { text: 'Anulează', style: 'cancel' },
         {
@@ -343,9 +372,57 @@ export default function CloudBackupScreen() {
             <Text style={[styles.statValue, { color: palette.text }]}>{cloud.documentCount}</Text>
           </View>
           <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>În așteptare</Text>
-            <Text style={[styles.statValue, { color: palette.text }]}>{cloud.pendingCount}</Text>
+            <Text style={[styles.statLabel, { color: palette.textSecondary }]}>Bază de date</Text>
+            <Text style={[styles.statValue, { color: palette.text }]}>
+              {formatBytes(cloud.dbSizeBytes)}
+            </Text>
           </View>
+          {cloud.pendingCount > 0 ? (
+            <View style={styles.statRow}>
+              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>În așteptare</Text>
+              <Text style={[styles.statValue, { color: palette.text }]}>
+                {cloud.pendingCount} fișiere · {formatBytes(cloud.pendingBytes)}
+              </Text>
+            </View>
+          ) : null}
+          {cloud.backupProgress &&
+          cloud.backupProgress.phase === 'files' &&
+          cloud.backupProgress.total > 0 ? (
+            <View style={styles.progressWrap}>
+              <Text style={[styles.progressLabel, { color: palette.textSecondary }]}>
+                Trimit {cloud.backupProgress.current} / {cloud.backupProgress.total} fișiere ·{' '}
+                {formatBytes(cloud.backupProgress.bytesDone)} /{' '}
+                {formatBytes(cloud.backupProgress.bytesTotal)}
+              </Text>
+              <View style={[styles.progressBarWrap, { backgroundColor: palette.border }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      backgroundColor: primary,
+                      width: `${
+                        cloud.backupProgress.bytesTotal > 0
+                          ? Math.round(
+                              (cloud.backupProgress.bytesDone / cloud.backupProgress.bytesTotal) *
+                                100
+                            )
+                          : 0
+                      }%`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          ) : null}
+          {cloud.backupProgress &&
+          (cloud.backupProgress.phase === 'manifest' ||
+            cloud.backupProgress.phase === 'snapshot') ? (
+            <Text style={[styles.progressLabel, { color: palette.textSecondary }]}>
+              {cloud.backupProgress.phase === 'manifest'
+                ? 'Actualizez manifestul...'
+                : 'Salvez snapshot...'}
+            </Text>
+          ) : null}
         </View>
 
         {/* ── Toggle ── */}
@@ -680,4 +757,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
+
+  progressWrap: { marginTop: 12, gap: 6 },
+  progressLabel: { fontSize: 12, marginTop: 8 },
+  progressBarWrap: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressBarFill: { height: '100%' },
 });

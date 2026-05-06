@@ -244,6 +244,10 @@ export async function readCloudMeta(): Promise<CloudManifestMeta | null> {
 // Today file_path is `documents/<UUID>.<ext>` so basename is collision-safe.
 const FILES_PREFIX = `${CLOUD_ROOT}/files/`;
 const MAX_ATTEMPTS = 5;
+/** Numărul de fișiere procesate în paralel pentru upload și download. iCloud
+ * Drive serializează intern oricum la un anumit nivel, dar 4 e un compromis bun
+ * între latență și consum de memorie (4 × ~7MB base64 ~= 28MB la peak). */
+const PARALLELISM = 4;
 
 /**
  * Skip oversized files in upload (`processQueue`) AND download (`restoreFromCloud`).
@@ -255,6 +259,15 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function fileNameFromPath(relPath: string): string {
   return relPath.split('/').pop() ?? relPath;
+}
+
+/** Formatează bytes în KB/MB/GB cu 1 zecimală. Folosit în UI pentru progres
+ * upload/download și estimare mărime backup. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 /**
@@ -271,6 +284,8 @@ export async function enqueueFileUpload(filePath: string): Promise<void> {
      ON CONFLICT(file_path) DO UPDATE SET
        attempt_count = 0,
        last_error = NULL,
+       uploaded_at = NULL,
+       file_size = NULL,
        created_at = excluded.created_at`,
     [filePath, Date.now()]
   );
@@ -296,36 +311,135 @@ export async function dequeueFileDelete(filePath: string): Promise<void> {
 }
 
 /**
- * Procesează coada secvențial: citește pending rows cu `attempt_count < MAX_ATTEMPTS`,
- * urcă base64 în iCloud. Per-rând: succes → DELETE; eroare → bump `attempt_count` + `last_error`.
+ * Auto-vindecare: orice `file_path` referit din `documents`, `document_pages` sau
+ * `vehicles.photo_uri` care NU e deja în `pending_uploads` se adaugă cu
+ * `attempt_count = 0`. Apelată la începutul `processQueue` pentru a recupera
+ * fișiere care au „scăpat" la creare (cloud dezactivat la moment, bug istoric,
+ * import care nu re-enqueue-iește etc.).
  *
- * Apelată fire-and-forget din hooks `documents.ts`. Erorile per-fișier sunt
- * persistate în `pending_uploads.last_error` și nu sunt aruncate.
+ * `INSERT OR IGNORE` păstrează rândurile existente (UNIQUE pe file_path) —
+ * nu resetează attempt_count pentru cele deja procesate sau în retry.
+ *
+ * Erorile sunt înghițite (best-effort) — schimbări de schemă sau coloane
+ * lipsă nu trebuie să blocheze procesarea cozii existente.
+ */
+async function reconcilePendingUploads(): Promise<void> {
+  const sql = `
+    INSERT OR IGNORE INTO pending_uploads (file_path, attempt_count, created_at)
+    SELECT file_path, 0, ? FROM (
+      SELECT file_path FROM documents WHERE file_path IS NOT NULL AND file_path != ''
+      UNION
+      SELECT file_path FROM document_pages WHERE file_path IS NOT NULL AND file_path != ''
+      UNION
+      SELECT photo_uri AS file_path FROM vehicles WHERE photo_uri IS NOT NULL AND photo_uri != ''
+    )
+  `;
+  try {
+    await db.runAsync(sql, [Date.now()]);
+  } catch (e) {
+    console.warn('[cloudSync.reconcilePendingUploads] failed:', e instanceof Error ? e.message : e);
+  }
+}
+
+export interface BackupProgress {
+  phase: 'files' | 'manifest' | 'snapshot' | 'done';
+  /** Câte fișiere au fost procesate (urcate sau sărite). */
+  current: number;
+  /** Câte fișiere sunt în lot. 0 când nu sunt fișiere de procesat. */
+  total: number;
+  /** Bytes urcați (cumulat). */
+  bytesDone: number;
+  /** Bytes totali estimați (din `pending_uploads.file_size` + stat la nevoie). */
+  bytesTotal: number;
+}
+
+/**
+ * Procesează coada în paralel (chunk-uri de `PARALLELISM`): citește pending rows
+ * cu `uploaded_at IS NULL AND attempt_count < MAX_ATTEMPTS`, urcă base64 în iCloud.
+ * Per-rând: succes → `UPDATE uploaded_at = now`; eroare → bump `attempt_count` + `last_error`.
+ *
+ * **Important — fix root cause re-upload:** după upload reușit NU mai facem
+ * `DELETE`, ci păstrăm rândul cu `uploaded_at` setat. Reconcile (`INSERT OR IGNORE`)
+ * nu va re-adăuga rândul, deci fișierul nu se re-uploadează la următorul ciclu.
+ * Re-upload se întâmplă doar când fișierul e modificat (enqueueFileUpload resetează
+ * `uploaded_at = NULL`).
+ *
+ * Înainte de procesare apelează `reconcilePendingUploads` ca să recupereze
+ * fișiere care nu sunt în coadă dar sunt referite din DB.
+ *
+ * `onProgress` (opțional) e apelat după FIECARE fișier procesat, cu cumulative
+ * `current` și `bytesDone`. Eșecuri raportează cu fișierul numărat în `current`
+ * (nu rămân blocate pe progres).
  *
  * @throws când SELECT-ul inițial eșuează sau când UPDATE-ul de bookkeeping
  *   pentru un eșec nu poate fi scris (ambele indică o problemă cu SQLite).
  */
-export async function processQueue(): Promise<void> {
+export async function processQueue(onProgress?: (p: BackupProgress) => void): Promise<void> {
   if (!(await cloudStorage.isAvailable())) return;
 
+  await reconcilePendingUploads();
+
   const encryptionEnabled = await getCloudEncryptionEnabled();
-  const pending = await db.getAllAsync<{ id: number; file_path: string; attempt_count: number }>(
-    'SELECT id, file_path, attempt_count FROM pending_uploads WHERE attempt_count < ? ORDER BY id ASC',
+  const pending = await db.getAllAsync<{
+    id: number;
+    file_path: string;
+    attempt_count: number;
+    file_size: number | null;
+  }>(
+    `SELECT id, file_path, attempt_count, file_size FROM pending_uploads
+     WHERE uploaded_at IS NULL AND attempt_count < ?
+     ORDER BY id ASC`,
     [MAX_ATTEMPTS]
   );
 
-  for (const row of pending) {
+  if (pending.length === 0) {
+    onProgress?.({ phase: 'files', current: 0, total: 0, bytesDone: 0, bytesTotal: 0 });
+    return;
+  }
+
+  // Pre-stat fișierele care nu au file_size cache-uit, ca bytesTotal să fie
+  // realist de la primul tick. info.exists e cheap pe FS local.
+  const stats = await Promise.all(
+    pending.map(async row => {
+      if (typeof row.file_size === 'number' && row.file_size > 0) {
+        return { id: row.id, size: row.file_size };
+      }
+      try {
+        const info = await FileSystem.getInfoAsync(toFileUri(row.file_path));
+        const size = info.exists && 'size' in info && typeof info.size === 'number' ? info.size : 0;
+        if (size > 0) {
+          await db.runAsync('UPDATE pending_uploads SET file_size = ? WHERE id = ?', [
+            size,
+            row.id,
+          ]);
+        }
+        return { id: row.id, size };
+      } catch {
+        return { id: row.id, size: 0 };
+      }
+    })
+  );
+  const sizeById = new Map(stats.map(s => [s.id, s.size]));
+  const bytesTotal = stats.reduce((sum, s) => sum + s.size, 0);
+
+  let processed = 0;
+  let bytesDone = 0;
+  const total = pending.length;
+  const emitProgress = () =>
+    onProgress?.({ phase: 'files', current: processed, total, bytesDone, bytesTotal });
+  emitProgress();
+
+  const processOne = async (row: (typeof pending)[number]): Promise<void> => {
+    const fileSize = sizeById.get(row.id) ?? 0;
     try {
       const localUri = toFileUri(row.file_path);
       const info = await FileSystem.getInfoAsync(localUri);
       if (!info.exists) {
+        // Fișierul nu mai e pe disk — drop rândul (nu mai are sens să-l urcăm).
         await db.runAsync('DELETE FROM pending_uploads WHERE id = ?', [row.id]);
-        continue;
+        return;
       }
       if ('size' in info && typeof info.size === 'number' && info.size > MAX_FILE_BYTES) {
-        // Permanent skip — bump to MAX_ATTEMPTS so it stops being retried.
-        // Important: prioritate peste encriptare; nu vrem să încercăm să encriptăm
-        // un payload pe care oricum nu-l urcăm.
         await db.runAsync(
           'UPDATE pending_uploads SET attempt_count = ?, last_error = ? WHERE id = ?',
           [
@@ -334,24 +448,16 @@ export async function processQueue(): Promise<void> {
             row.id,
           ]
         );
-        continue;
+        return;
       }
-      // Per-file encryption e o setare GLOBALĂ — nu există marker per-fișier pe disc.
-      // Dacă userul toggle-uiește criptarea mid-flight, fișierele din coadă pot ajunge
-      // urcate sub setări diferite; restore cross-device se bazează pe `meta.encrypted`
-      // ca flag global pentru toate payload-urile.
-      // TODO(future): la toggle de criptare, considerează clear pe `pending_uploads`
-      // și re-enqueue, ca să garantezi consistența între queue și flag-ul global.
-      //
-      // Dacă encriptarea e activă dar sesiunea nu e deblocată, marchează rândul cu
-      // mesaj — DAR nu bump-uim attempt_count, ca să fie reprocesat la următorul
-      // tick AppState după ce userul deblochează.
       if (encryptionEnabled && !isSessionUnlocked()) {
-        await db.runAsync('UPDATE pending_uploads SET last_error = ? WHERE id = ?', [
-          'Parolă necesară',
-          row.id,
-        ]);
-        continue;
+        // BUG FIX: incrementăm attempt_count ca să nu rămână blocat în coadă
+        // la nesfârșit dacă userul nu deblochează niciodată sesiunea.
+        await db.runAsync(
+          'UPDATE pending_uploads SET attempt_count = attempt_count + 1, last_error = ? WHERE id = ?',
+          ['Parolă necesară', row.id]
+        );
+        return;
       }
       let base64 = await FileSystem.readAsStringAsync(localUri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -359,32 +465,45 @@ export async function processQueue(): Promise<void> {
       if (encryptionEnabled) {
         const key = getSessionKey();
         if (!key) {
-          // Defensive — isSessionUnlocked() era true mai sus, dar a flippat între timp.
-          await db.runAsync('UPDATE pending_uploads SET last_error = ? WHERE id = ?', [
-            'Parolă necesară',
-            row.id,
-          ]);
-          continue;
+          await db.runAsync(
+            'UPDATE pending_uploads SET attempt_count = attempt_count + 1, last_error = ? WHERE id = ?',
+            ['Parolă necesară', row.id]
+          );
+          return;
         }
         base64 = await encryptBase64(base64, key);
       }
       const remote = `${FILES_PREFIX}${fileNameFromPath(row.file_path)}`;
       await cloudStorage.writeFile(remote, base64, 'base64');
-      await db.runAsync('DELETE FROM pending_uploads WHERE id = ?', [row.id]);
+      await db.runAsync(
+        'UPDATE pending_uploads SET uploaded_at = ?, last_error = NULL, file_size = ? WHERE id = ?',
+        [Date.now(), fileSize || null, row.id]
+      );
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Eroare necunoscută';
       await db.runAsync(
         'UPDATE pending_uploads SET attempt_count = attempt_count + 1, last_error = ? WHERE id = ?',
         [message, row.id]
       );
+    } finally {
+      processed += 1;
+      bytesDone += fileSize;
+      emitProgress();
     }
+  };
+
+  // Procesare în chunk-uri paralele. Folosim allSettled ca un eșec într-un chunk
+  // să nu blocheze restul; oricum erorile sunt persistate în `last_error`.
+  for (let i = 0; i < pending.length; i += PARALLELISM) {
+    const chunk = pending.slice(i, i + PARALLELISM);
+    await Promise.allSettled(chunk.map(processOne));
   }
 }
 
-/** Numărul de fișiere în coadă active (`attempt_count < MAX_ATTEMPTS`). */
+/** Numărul de fișiere ne-sincronizate (`uploaded_at IS NULL` și `attempt_count < MAX`). */
 export async function getPendingCount(): Promise<number> {
   const row = await db.getFirstAsync<{ c: number }>(
-    'SELECT COUNT(*) as c FROM pending_uploads WHERE attempt_count < ?',
+    'SELECT COUNT(*) as c FROM pending_uploads WHERE uploaded_at IS NULL AND attempt_count < ?',
     [MAX_ATTEMPTS]
   );
   return row?.c ?? 0;
@@ -393,10 +512,33 @@ export async function getPendingCount(): Promise<number> {
 /** Numărul de fișiere care au atins `MAX_ATTEMPTS` și nu mai sunt re-încercate. */
 export async function getFailedCount(): Promise<number> {
   const row = await db.getFirstAsync<{ c: number }>(
-    'SELECT COUNT(*) as c FROM pending_uploads WHERE attempt_count >= ?',
+    'SELECT COUNT(*) as c FROM pending_uploads WHERE uploaded_at IS NULL AND attempt_count >= ?',
     [MAX_ATTEMPTS]
   );
   return row?.c ?? 0;
+}
+
+/** Mărime estimată a fișierelor ne-sincronizate (în bytes). Folosit de UI ca să
+ * afișeze cât are de urcat înainte și în timpul backup-ului. */
+export async function getPendingBytes(): Promise<number> {
+  const row = await db.getFirstAsync<{ s: number | null }>(
+    `SELECT COALESCE(SUM(file_size), 0) as s FROM pending_uploads
+     WHERE uploaded_at IS NULL AND attempt_count < ?`,
+    [MAX_ATTEMPTS]
+  );
+  return row?.s ?? 0;
+}
+
+/** Mărimea fișierului SQLite local. Nu include WAL-ul (rare > 1MB). */
+export async function getLocalDbSizeBytes(): Promise<number> {
+  try {
+    const info = await FileSystem.getInfoAsync(
+      `${FileSystem.documentDirectory}SQLite/documente.db`
+    );
+    return info.exists && 'size' in info && typeof info.size === 'number' ? info.size : 0;
+  } catch {
+    return 0;
+  }
 }
 
 const SNAPSHOTS_PREFIX = `${CLOUD_ROOT}/snapshots/`;
@@ -488,10 +630,86 @@ export interface RestoreProgress {
   phase: 'manifest' | 'files' | 'apply' | 'done';
   current: number;
   total: number;
+  /** Bytes descărcați (cumulat). 0 înainte de faza `files`. */
+  bytesDone: number;
+  /** Bytes totali estimați pentru faza `files`. */
+  bytesTotal: number;
+}
+
+export interface RestoreEstimate {
+  /** Mărimea manifestului în bytes (cca 1-10 KB pentru manifeste mici). */
+  manifestBytes: number;
+  /** Suma mărimilor fișierelor remote care vor fi descărcate. */
+  filesBytes: number;
+  /** Numărul de fișiere care vor fi descărcate. */
+  fileCount: number;
+  /** `true` dacă backup-ul e criptat. */
+  encrypted: boolean;
 }
 
 function asArray<T = unknown>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
+}
+
+/**
+ * Estimează mărimea backup-ului din iCloud înainte de restore. Citește meta +
+ * manifest, apoi face `stat` paralel pentru toate fișierele remote.
+ *
+ * @throws când iCloud e indisponibil sau manifestul lipsește.
+ * @throws `PasswordRequiredError` dacă backup-ul e criptat și sesiunea blocată.
+ */
+export async function estimateRestoreSize(): Promise<RestoreEstimate> {
+  if (!(await cloudStorage.isAvailable())) {
+    throw new Error('iCloud nu este disponibil');
+  }
+  if (!(await cloudStorage.exists(MANIFEST_PATH))) {
+    throw new Error('Nu există backup în iCloud');
+  }
+
+  const meta = await readCloudMeta();
+  const isEncrypted = meta?.encrypted === true;
+  if (isEncrypted && !isSessionUnlocked()) {
+    throw new PasswordRequiredError('Parolă necesară pentru restaurare backup criptat');
+  }
+  const sessionKey = isEncrypted ? getSessionKey() : null;
+
+  const manifestBytes = await cloudStorage.fileSize(MANIFEST_PATH);
+  const manifestRaw = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
+  let manifestText = manifestRaw;
+  if (isEncrypted && sessionKey) {
+    try {
+      manifestText = await decryptString(manifestRaw, sessionKey);
+    } catch {
+      throw new PasswordRequiredError('Parola pare incorectă. Manifestul nu poate fi decriptat.');
+    }
+  }
+  const payload = JSON.parse(manifestText) as Record<string, unknown>;
+  const fileNames = collectFileNamesFromPayload(payload);
+
+  // Paralelizăm stat-urile în chunk-uri ca să nu trimitem zeci de cereri concurent.
+  let filesBytes = 0;
+  for (let i = 0; i < fileNames.length; i += PARALLELISM) {
+    const chunk = fileNames.slice(i, i + PARALLELISM);
+    const sizes = await Promise.all(
+      chunk.map(async f => {
+        try {
+          const remote = `${FILES_PREFIX}${fileNameFromPath(f)}`;
+          if (!(await cloudStorage.exists(remote))) return 0;
+          return await cloudStorage.fileSize(remote);
+        } catch {
+          return 0;
+        }
+      })
+    );
+    filesBytes += sizes.reduce((sum, s) => sum + s, 0);
+  }
+
+  return {
+    manifestBytes,
+    filesBytes,
+    fileCount: fileNames.length,
+    encrypted: isEncrypted,
+  };
 }
 
 // Set deduplicates because a document and its page may legitimately share
@@ -553,7 +771,7 @@ export async function restoreFromCloud(
   }
   const sessionKey = isEncrypted ? getSessionKey() : null;
 
-  onProgress?.({ phase: 'manifest', current: 0, total: 1 });
+  onProgress?.({ phase: 'manifest', current: 0, total: 1, bytesDone: 0, bytesTotal: 0 });
   if (!(await cloudStorage.exists(MANIFEST_PATH))) {
     throw new Error('Nu există backup în iCloud');
   }
@@ -574,57 +792,100 @@ export async function restoreFromCloud(
   if (version > MANIFEST_VERSION) {
     throw new Error('Backup-ul a fost creat cu o versiune mai nouă a aplicației');
   }
-  onProgress?.({ phase: 'manifest', current: 1, total: 1 });
+  onProgress?.({ phase: 'manifest', current: 1, total: 1, bytesDone: 0, bytesTotal: 0 });
 
   const fileNames = collectFileNamesFromPayload(payload);
+
+  // Pre-stat pentru bytesTotal — același truc ca la upload, ca progresul să fie
+  // realist de la primul tick în loc să crească treptat în timpul descărcării.
+  const remoteSizes = new Map<string, number>();
+  for (let i = 0; i < fileNames.length; i += PARALLELISM) {
+    const chunk = fileNames.slice(i, i + PARALLELISM);
+    await Promise.all(
+      chunk.map(async f => {
+        try {
+          const remote = `${FILES_PREFIX}${fileNameFromPath(f)}`;
+          if (await cloudStorage.exists(remote)) {
+            remoteSizes.set(f, await cloudStorage.fileSize(remote));
+          } else {
+            remoteSizes.set(f, 0);
+          }
+        } catch {
+          remoteSizes.set(f, 0);
+        }
+      })
+    );
+  }
+  const bytesTotal = Array.from(remoteSizes.values()).reduce((s, n) => s + n, 0);
+
   let downloaded = 0;
-  for (const fileRel of fileNames) {
+  let bytesDone = 0;
+  const total = fileNames.length;
+  const emitFiles = () =>
+    onProgress?.({ phase: 'files', current: downloaded, total, bytesDone, bytesTotal });
+  emitFiles();
+
+  // Listă cu fișierele pentru care download-ul a reușit — folosită mai jos ca să
+  // populăm `pending_uploads` cu `uploaded_at` setat (= deja sincronizate, nu
+  // re-uploadează la următorul reconcile).
+  const restoredFiles: { file_path: string; size: number }[] = [];
+
+  const downloadOne = async (fileRel: string): Promise<void> => {
+    const remoteSize = remoteSizes.get(fileRel) ?? 0;
     try {
       const localUri = `${FileSystem.documentDirectory}${fileRel}`;
       const localInfo = await FileSystem.getInfoAsync(localUri);
-      if (!localInfo.exists) {
-        const remote = `${FILES_PREFIX}${fileNameFromPath(fileRel)}`;
-        if (await cloudStorage.exists(remote)) {
-          const remoteSize = await cloudStorage.fileSize(remote);
-          if (remoteSize > MAX_FILE_BYTES) {
-            console.warn(
-              `[cloudSync.restore] skip oversized file "${fileRel}" (${Math.round(remoteSize / 1024 / 1024)} MB > limită ${MAX_FILE_BYTES / 1024 / 1024} MB)`
-            );
-          } else {
-            let base64 = await cloudStorage.readFile(remote, 'base64');
-            if (isEncrypted && sessionKey) {
-              try {
-                base64 = await decryptToBase64(base64, sessionKey);
-              } catch (e) {
-                // Per-fișier: nu blocăm restore-ul; logăm și sărim.
-                console.warn(
-                  `[cloudSync.restore] skip file "${fileRel}" (decrypt failed):`,
-                  e instanceof Error ? e.message : e
-                );
-                downloaded++;
-                onProgress?.({ phase: 'files', current: downloaded, total: fileNames.length });
-                continue;
-              }
-            }
-            const dir = localUri.substring(0, localUri.lastIndexOf('/'));
-            await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-            await FileSystem.writeAsStringAsync(localUri, base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-          }
+      if (localInfo.exists) {
+        // Fișierul există local — îl considerăm sincronizat (skip download).
+        const localSize =
+          'size' in localInfo && typeof localInfo.size === 'number' ? localInfo.size : remoteSize;
+        restoredFiles.push({ file_path: fileRel, size: localSize });
+        return;
+      }
+      const remote = `${FILES_PREFIX}${fileNameFromPath(fileRel)}`;
+      if (!(await cloudStorage.exists(remote))) return;
+      if (remoteSize > MAX_FILE_BYTES) {
+        console.warn(
+          `[cloudSync.restore] skip oversized file "${fileRel}" (${Math.round(remoteSize / 1024 / 1024)} MB > limită ${MAX_FILE_BYTES / 1024 / 1024} MB)`
+        );
+        return;
+      }
+      let base64 = await cloudStorage.readFile(remote, 'base64');
+      if (isEncrypted && sessionKey) {
+        try {
+          base64 = await decryptToBase64(base64, sessionKey);
+        } catch (e) {
+          console.warn(
+            `[cloudSync.restore] skip file "${fileRel}" (decrypt failed):`,
+            e instanceof Error ? e.message : e
+          );
+          return;
         }
       }
+      const dir = localUri.substring(0, localUri.lastIndexOf('/'));
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      await FileSystem.writeAsStringAsync(localUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      restoredFiles.push({ file_path: fileRel, size: remoteSize });
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Eroare necunoscută';
       console.warn(`[cloudSync.restore] skip file "${fileRel}":`, message);
+    } finally {
+      downloaded += 1;
+      bytesDone += remoteSize;
+      emitFiles();
     }
-    downloaded++;
-    onProgress?.({ phase: 'files', current: downloaded, total: fileNames.length });
+  };
+
+  for (let i = 0; i < fileNames.length; i += PARALLELISM) {
+    const chunk = fileNames.slice(i, i + PARALLELISM);
+    await Promise.allSettled(chunk.map(downloadOne));
   }
 
-  onProgress?.({ phase: 'apply', current: 0, total: 1 });
+  onProgress?.({ phase: 'apply', current: 0, total: 1, bytesDone, bytesTotal });
   await applyManifest(payload, { wipeFirst: true });
-  onProgress?.({ phase: 'apply', current: 1, total: 1 });
+  onProgress?.({ phase: 'apply', current: 1, total: 1, bytesDone, bytesTotal });
 
   const meta = await readCloudMeta();
   if (meta) {
@@ -634,11 +895,25 @@ export async function restoreFromCloud(
     });
   }
 
-  // Restore is authoritative — drop any pending uploads (pre-restore staleness
-  // or in-flight rows that beat the import-in-progress guard).
+  // FIX root cause re-upload: după restore, fișierele sunt deja în iCloud (le-am
+  // descărcat de acolo). Le marcăm în `pending_uploads` cu `uploaded_at` setat
+  // pentru ca reconcile-ul să nu le re-adauge ca pending la următorul ciclu.
+  // Începem cu DELETE pentru a curăța eventuale rânduri pre-restore stale.
   await db.runAsync('DELETE FROM pending_uploads');
+  const now = Date.now();
+  for (const f of restoredFiles) {
+    try {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at, file_size)
+         VALUES (?, 0, ?, ?, ?)`,
+        [f.file_path, now, now, f.size || null]
+      );
+    } catch {
+      // best-effort — un rând lipsă duce doar la re-upload (nu la pierdere de date).
+    }
+  }
 
-  onProgress?.({ phase: 'done', current: 1, total: 1 });
+  onProgress?.({ phase: 'done', current: 1, total: 1, bytesDone, bytesTotal });
 
   return {
     documentCount: asArray(payload.documents).length,

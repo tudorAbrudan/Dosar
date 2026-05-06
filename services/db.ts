@@ -367,6 +367,33 @@ try {
   // best-effort — coloanele lipsă fac SELECT-ul să eșueze, sărim
 }
 
+// Backfill: fișierele documentelor existente (și ale paginilor lor) nu au fost
+// enqueue-uite la creare dacă cloud backup era dezactivat la momentul respectiv.
+// Pe restore cross-device, `Dosar/files/` lipsește binarul → DB are file_path,
+// disk-ul nu — vizualizarea PDF/JPG eșuează cu NSURLErrorDomain -1100.
+// Idempotent (UNIQUE pe file_path); re-rularea pentru fișiere deja urcate
+// repune-l rândul în coadă, fiind reprocesat (writeFile suprascrie remote-ul).
+try {
+  db.execSync(`
+    INSERT OR IGNORE INTO pending_uploads (file_path, attempt_count, created_at)
+    SELECT file_path, 0, CAST(strftime('%s','now') AS INTEGER) * 1000
+    FROM documents
+    WHERE file_path IS NOT NULL AND file_path != ''
+  `);
+} catch {
+  // best-effort
+}
+try {
+  db.execSync(`
+    INSERT OR IGNORE INTO pending_uploads (file_path, attempt_count, created_at)
+    SELECT file_path, 0, CAST(strftime('%s','now') AS INTEGER) * 1000
+    FROM document_pages
+    WHERE file_path IS NOT NULL AND file_path != ''
+  `);
+} catch {
+  // best-effort
+}
+
 // Migrare: adaugă fuel_type la vehicles
 try {
   db.execSync("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT DEFAULT 'diesel'");
@@ -551,4 +578,26 @@ try {
   db.execSync('ALTER TABLE documents ADD COLUMN calendar_event_id TEXT');
 } catch {
   // coloana există deja
+}
+
+// Migrare: pending_uploads.uploaded_at + file_size — păstrăm rândurile după
+// upload reușit cu uploaded_at setat, ca reconcile-ul să NU re-uploadeze fișiere
+// deja sincronizate. file_size e cache-uit la primul stat, ca să putem afișa
+// progres în bytes fără să stat-uim fiecare fișier la fiecare refresh.
+try {
+  db.execSync('ALTER TABLE pending_uploads ADD COLUMN uploaded_at INTEGER');
+} catch {
+  // coloana există deja
+}
+try {
+  db.execSync('ALTER TABLE pending_uploads ADD COLUMN file_size INTEGER');
+} catch {
+  // coloana există deja
+}
+try {
+  db.execSync(
+    'CREATE INDEX IF NOT EXISTS idx_pending_uploads_uploaded ON pending_uploads(uploaded_at)'
+  );
+} catch {
+  // indexul există deja
 }

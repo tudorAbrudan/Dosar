@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary } from '@/theme/colors';
-import type { RestoreProgress } from '@/services/cloudSync';
+import { formatBytes, type RestoreProgress } from '@/services/cloudSync';
 
 interface Props {
   progress: RestoreProgress | null;
@@ -21,8 +21,21 @@ export function CloudRestoreProgress({ progress }: Props) {
 
   if (!progress) return null;
 
-  const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
-  const detail = progress.phase === 'files' ? `${progress.current} / ${progress.total}` : '';
+  // Pentru faza `files` preferăm progresul în bytes — userul vrea să vadă cât a
+  // descărcat din total. Cădem pe count dacă bytesTotal = 0 (manifest gol sau
+  // toate fișierele deja existente local).
+  const useBytes = progress.phase === 'files' && progress.bytesTotal > 0;
+  const pct = useBytes
+    ? Math.round((progress.bytesDone / progress.bytesTotal) * 100)
+    : progress.total > 0
+      ? Math.round((progress.current / progress.total) * 100)
+      : 0;
+  const detail =
+    progress.phase === 'files'
+      ? useBytes
+        ? `${progress.current} / ${progress.total} fișiere · ${formatBytes(progress.bytesDone)} / ${formatBytes(progress.bytesTotal)}`
+        : `${progress.current} / ${progress.total} fișiere`
+      : '';
 
   return (
     <View style={[styles.wrap, { backgroundColor: palette.surface }]}>

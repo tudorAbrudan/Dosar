@@ -6,6 +6,9 @@ import {
   maybeSnapshot,
   readCloudMeta,
   getPendingCount,
+  getPendingBytes,
+  getLocalDbSizeBytes,
+  type BackupProgress,
 } from '@/services/cloudSync';
 import { isAvailable } from '@/services/cloudStorage';
 import {
@@ -23,10 +26,16 @@ interface State {
   available: boolean;
   lastUploadedAt: number | null;
   pendingCount: number;
+  /** Bytes ne-sincronizați (estimat din `pending_uploads.file_size`). */
+  pendingBytes: number;
+  /** Mărimea fișierului SQLite local. */
+  dbSizeBytes: number;
   documentCount: number;
   fileCountMb: number;
   loading: boolean;
   error: string | null;
+  /** Progres viu cât rulează `backupNow` (null altfel). */
+  backupProgress: BackupProgress | null;
 }
 
 const INITIAL: State = {
@@ -35,11 +44,18 @@ const INITIAL: State = {
   available: false,
   lastUploadedAt: null,
   pendingCount: 0,
+  pendingBytes: 0,
+  dbSizeBytes: 0,
   documentCount: 0,
   fileCountMb: 0,
   loading: true,
   error: null,
+  backupProgress: null,
 };
+
+/** Interval poll cât status === 'uploading'. La 3s e suficient ca UI-ul să
+ * reflecte progresul fără să încarce DB-ul cu queries. */
+const UPLOADING_POLL_MS = 3000;
 
 /**
  * Hook global pentru cloud backup. Mount-at o singură dată în `RootLayoutNav`,
@@ -70,24 +86,28 @@ export function useCloudBackup() {
       const available = await isAvailable();
       const meta = enabled && available ? await readCloudMeta() : null;
       const pendingCount = enabled ? await getPendingCount() : 0;
+      const pendingBytes = enabled ? await getPendingBytes() : 0;
+      const dbSizeBytes = await getLocalDbSizeBytes();
       let status: CloudStatus = 'idle';
       if (!available) status = 'unavailable';
       else if (!enabled) status = 'paused';
       else if (pendingCount > 0) status = 'uploading';
 
       if (mountedRef.current) {
-        setState({
+        setState(s => ({
+          ...s,
           status,
           enabled,
           available,
           lastUploadedAt: meta?.uploadedAt ?? null,
           pendingCount,
+          pendingBytes,
+          dbSizeBytes,
           documentCount: meta?.documentCount ?? 0,
-          // TODO(task-12): compute from cloudStorage.listDir(FILES_PREFIX) sum.
           fileCountMb: 0,
           loading: false,
           error: null,
-        });
+        }));
       }
     } catch (e) {
       if (mountedRef.current) {
@@ -142,6 +162,17 @@ export function useCloudBackup() {
     };
   }, [refresh, onAppStateChange]);
 
+  // Poll periodic cât status === 'uploading' — UI-ul reflectă pendingCount /
+  // pendingBytes care scad pe măsură ce processQueue rulează (din altă parte:
+  // documents.ts fire-and-forget, sau backupNow de aici).
+  useEffect(() => {
+    if (state.status !== 'uploading') return;
+    const id = setInterval(() => {
+      if (mountedRef.current) void refresh();
+    }, UPLOADING_POLL_MS);
+    return () => clearInterval(id);
+  }, [state.status, refresh]);
+
   const setEnabled = useCallback(
     async (v: boolean) => {
       await setCloudBackupEnabled(v);
@@ -154,13 +185,37 @@ export function useCloudBackup() {
     if (inFlightBackupRef.current) return;
     inFlightBackupRef.current = true;
     if (mountedRef.current) {
-      setState(s => ({ ...s, status: 'uploading' }));
+      setState(s => ({
+        ...s,
+        status: 'uploading',
+        backupProgress: { phase: 'files', current: 0, total: 0, bytesDone: 0, bytesTotal: 0 },
+      }));
     }
     try {
-      await processQueue();
+      await processQueue(p => {
+        if (mountedRef.current) {
+          setState(s => ({ ...s, backupProgress: p }));
+        }
+      });
+      if (mountedRef.current) {
+        setState(s => ({
+          ...s,
+          backupProgress: s.backupProgress
+            ? { ...s.backupProgress, phase: 'manifest' }
+            : { phase: 'manifest', current: 0, total: 1, bytesDone: 0, bytesTotal: 0 },
+        }));
+      }
       await uploadManifestIfChanged();
       const freq = await getCloudSnapshotFrequency();
       const retention = await getCloudSnapshotRetention();
+      if (mountedRef.current) {
+        setState(s => ({
+          ...s,
+          backupProgress: s.backupProgress
+            ? { ...s.backupProgress, phase: 'snapshot' }
+            : { phase: 'snapshot', current: 0, total: 1, bytesDone: 0, bytesTotal: 0 },
+        }));
+      }
       await maybeSnapshot(freq, retention);
     } catch (e) {
       if (mountedRef.current) {
@@ -168,12 +223,16 @@ export function useCloudBackup() {
           ...s,
           status: 'error',
           error: e instanceof Error ? e.message : 'Eroare necunoscută',
+          backupProgress: null,
         }));
       }
       inFlightBackupRef.current = false;
       return;
     }
     inFlightBackupRef.current = false;
+    if (mountedRef.current) {
+      setState(s => ({ ...s, backupProgress: null }));
+    }
     await refresh();
   }, [refresh]);
 
