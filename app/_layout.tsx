@@ -156,6 +156,7 @@ function RootLayoutNav() {
       <ThemeProvider value={effectiveScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="cloud-backup" options={{ headerShown: true, headerBackTitle: 'Înapoi' }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
         {updateInfo && onboardingDone === true && updateInfo.mandatory && (

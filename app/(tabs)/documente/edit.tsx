@@ -357,8 +357,8 @@ export default function EditDocumentScreen() {
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
         intermediates: true,
       });
-      const normalized = await ImageManipulator.manipulateAsync(uri, [], {
-        compress: 0.92,
+      const normalized = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 2048 } }], {
+        compress: 0.82,
         format: ImageManipulator.SaveFormat.JPEG,
       });
       await FileSystem.copyAsync({ from: normalized.uri, to: dest });

@@ -515,10 +515,10 @@ try {
       );
       INSERT INTO fuel_records_v2 (id, vehicle_id, date, liters, km_total, price, currency, fuel_type, is_full, station, pump_number, created_at)
       SELECT id, vehicle_id, date, liters, km_total, price,
-             COALESCE(currency, 'RON'),
+             ${cols.some(c => c.name === 'currency') ? "COALESCE(currency, 'RON')" : "'RON'"},
              ${cols.some(c => c.name === 'fuel_type') ? 'fuel_type' : 'NULL'},
-             COALESCE(is_full, 1),
-             station,
+             ${cols.some(c => c.name === 'is_full') ? 'COALESCE(is_full, 1)' : '1'},
+             ${cols.some(c => c.name === 'station') ? 'station' : 'NULL'},
              ${cols.some(c => c.name === 'pump_number') ? 'pump_number' : 'NULL'},
              created_at
       FROM fuel_records;

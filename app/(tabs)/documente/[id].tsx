@@ -295,8 +295,8 @@ export default function DocumentDetailScreen() {
         intermediates: true,
       });
       // Normalizează EXIF (bake-in rotația) înainte de salvare
-      const normalized = await ImageManipulator.manipulateAsync(uri, [], {
-        compress: 0.92,
+      const normalized = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 2048 } }], {
+        compress: 0.82,
         format: ImageManipulator.SaveFormat.JPEG,
       });
       await FileSystem.copyAsync({ from: normalized.uri, to: dest });

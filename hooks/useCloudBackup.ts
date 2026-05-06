@@ -7,6 +7,7 @@ import {
   readCloudMeta,
   getPendingCount,
   getPendingBytes,
+  getFailedCount,
   getLocalDbSizeBytes,
   type BackupProgress,
 } from '@/services/cloudSync';
@@ -26,6 +27,8 @@ interface State {
   available: boolean;
   lastUploadedAt: number | null;
   pendingCount: number;
+  /** Fișiere blocate permanent (prea mari sau lipsă de pe disk). */
+  failedCount: number;
   /** Bytes ne-sincronizați (estimat din `pending_uploads.file_size`). */
   pendingBytes: number;
   /** Mărimea fișierului SQLite local. */
@@ -44,6 +47,7 @@ const INITIAL: State = {
   available: false,
   lastUploadedAt: null,
   pendingCount: 0,
+  failedCount: 0,
   pendingBytes: 0,
   dbSizeBytes: 0,
   documentCount: 0,
@@ -86,6 +90,7 @@ export function useCloudBackup() {
       const available = await isAvailable();
       const meta = enabled && available ? await readCloudMeta() : null;
       const pendingCount = enabled ? await getPendingCount() : 0;
+      const failedCount = enabled ? await getFailedCount() : 0;
       const pendingBytes = enabled ? await getPendingBytes() : 0;
       const dbSizeBytes = await getLocalDbSizeBytes();
       let status: CloudStatus = 'idle';
@@ -101,6 +106,7 @@ export function useCloudBackup() {
           available,
           lastUploadedAt: meta?.uploadedAt ?? null,
           pendingCount,
+          failedCount,
           pendingBytes,
           dbSizeBytes,
           documentCount: meta?.documentCount ?? 0,

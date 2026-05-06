@@ -821,23 +821,21 @@ export default function AddDocumentScreen() {
 
   async function processAndSaveImage(uri: string, exifOrientation?: number) {
     try {
-      let finalUri = uri;
-
+      const actions: ImageManipulator.Action[] = [];
       if (exifOrientation && exifOrientation !== 1) {
-        let rotationDegrees = 0;
-        if (exifOrientation === 3) rotationDegrees = 180;
-        else if (exifOrientation === 6) rotationDegrees = 90;
-        else if (exifOrientation === 8) rotationDegrees = -90;
-
-        if (rotationDegrees !== 0) {
-          const rotated = await ImageManipulator.manipulateAsync(
-            finalUri,
-            [{ rotate: rotationDegrees }],
-            { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
-          );
-          finalUri = rotated.uri;
-        }
+        let deg = 0;
+        if (exifOrientation === 3) deg = 180;
+        else if (exifOrientation === 6) deg = 90;
+        else if (exifOrientation === 8) deg = -90;
+        if (deg !== 0) actions.push({ rotate: deg });
       }
+      actions.push({ resize: { width: 2048 } });
+
+      const compressed = await ImageManipulator.manipulateAsync(uri, actions, {
+        compress: 0.82,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+      const finalUri = compressed.uri;
 
       const filename = `doc_${Date.now()}.jpg`;
       const dir = `${FileSystem.documentDirectory}documents`;

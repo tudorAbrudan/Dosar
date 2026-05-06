@@ -339,6 +339,19 @@ async function reconcilePendingUploads(): Promise<void> {
   } catch (e) {
     console.warn('[cloudSync.reconcilePendingUploads] failed:', e instanceof Error ? e.message : e);
   }
+  try {
+    await db.runAsync(
+      `UPDATE pending_uploads SET attempt_count = 0
+       WHERE uploaded_at IS NULL
+         AND attempt_count >= ?
+         AND (last_error IS NULL
+              OR (last_error NOT LIKE 'Fișier prea mare%'
+                  AND last_error NOT LIKE 'Fișier lipsă%'))`,
+      [MAX_ATTEMPTS]
+    );
+  } catch (e) {
+    console.warn('[cloudSync.reconcilePendingUploads] reset stuck failed:', e instanceof Error ? e.message : e);
+  }
 }
 
 export interface BackupProgress {
@@ -435,8 +448,10 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
       const localUri = toFileUri(row.file_path);
       const info = await FileSystem.getInfoAsync(localUri);
       if (!info.exists) {
-        // Fișierul nu mai e pe disk — drop rândul (nu mai are sens să-l urcăm).
-        await db.runAsync('DELETE FROM pending_uploads WHERE id = ?', [row.id]);
+        await db.runAsync(
+          'UPDATE pending_uploads SET attempt_count = ?, last_error = ? WHERE id = ?',
+          [MAX_ATTEMPTS, 'Fișier lipsă de pe disk', row.id]
+        );
         return;
       }
       if ('size' in info && typeof info.size === 'number' && info.size > MAX_FILE_BYTES) {
@@ -799,6 +814,7 @@ export async function restoreFromCloud(
   // Pre-stat pentru bytesTotal — același truc ca la upload, ca progresul să fie
   // realist de la primul tick în loc să crească treptat în timpul descărcării.
   const remoteSizes = new Map<string, number>();
+  const remoteExists = new Set<string>();
   for (let i = 0; i < fileNames.length; i += PARALLELISM) {
     const chunk = fileNames.slice(i, i + PARALLELISM);
     await Promise.all(
@@ -806,6 +822,7 @@ export async function restoreFromCloud(
         try {
           const remote = `${FILES_PREFIX}${fileNameFromPath(f)}`;
           if (await cloudStorage.exists(remote)) {
+            remoteExists.add(f);
             remoteSizes.set(f, await cloudStorage.fileSize(remote));
           } else {
             remoteSizes.set(f, 0);
@@ -843,7 +860,7 @@ export async function restoreFromCloud(
         return;
       }
       const remote = `${FILES_PREFIX}${fileNameFromPath(fileRel)}`;
-      if (!(await cloudStorage.exists(remote))) return;
+      if (!remoteExists.has(fileRel)) return;
       if (remoteSize > MAX_FILE_BYTES) {
         console.warn(
           `[cloudSync.restore] skip oversized file "${fileRel}" (${Math.round(remoteSize / 1024 / 1024)} MB > limită ${MAX_FILE_BYTES / 1024 / 1024} MB)`

@@ -385,6 +385,13 @@ export default function CloudBackupScreen() {
               </Text>
             </View>
           ) : null}
+          {cloud.failedCount > 0 ? (
+            <View style={styles.statRow}>
+              <Text style={[styles.statLabel, { color: statusColors.critical }]}>
+                {cloud.failedCount} {cloud.failedCount === 1 ? 'fișier nu a putut fi sincronizat' : 'fișiere nu au putut fi sincronizate'}
+              </Text>
+            </View>
+          ) : null}
           {cloud.backupProgress &&
           cloud.backupProgress.phase === 'files' &&
           cloud.backupProgress.total > 0 ? (
