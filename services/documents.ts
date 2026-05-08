@@ -5,6 +5,7 @@ import { onDocumentCreated, onDocumentRenewed } from './reviewPrompt';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
 import { isImportInProgress } from './backup';
+import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
 
@@ -392,10 +393,10 @@ export async function setDocumentCalendarEventId(
 }
 
 export async function deleteDocument(id: string): Promise<void> {
-  const mainRow = await db.getFirstAsync<{ file_path: string | null }>(
-    'SELECT file_path FROM documents WHERE id = ?',
-    [id]
-  );
+  const mainRow = await db.getFirstAsync<{
+    file_path: string | null;
+    calendar_event_id: string | null;
+  }>('SELECT file_path, calendar_event_id FROM documents WHERE id = ?', [id]);
   const pageRows = await db.getAllAsync<{ file_path: string | null }>(
     'SELECT file_path FROM document_pages WHERE document_id = ?',
     [id]
@@ -404,6 +405,13 @@ export async function deleteDocument(id: string): Promise<void> {
   if (mainRow?.file_path) deletedFilePaths.push(mainRow.file_path);
   for (const row of pageRows) {
     if (row.file_path) deletedFilePaths.push(row.file_path);
+  }
+
+  // Șterge evenimentul de calendar asociat (dacă există) ÎNAINTE de DELETE-ul din DB,
+  // ca să nu rămână orphan în Calendar.app. Operație silentă — eșecul nu blochează
+  // ștergerea documentului (ex. permisiune calendar revocată ulterior).
+  if (mainRow?.calendar_event_id) {
+    await deleteCalendarEvent(mainRow.calendar_event_id);
   }
 
   await db.runAsync('DELETE FROM documents WHERE id = ?', [id]);
