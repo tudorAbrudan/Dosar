@@ -270,6 +270,12 @@ export default function SetariScreen() {
   const [aiProviderUrl, setAiProviderUrl] = useState('');
   const [aiProviderModel, setAiProviderModel] = useState('');
   const [aiApiKey, setAiApiKey] = useState('');
+  // Provider OCR / vision separat (opțional). Dacă userul nu vrea provider separat,
+  // toate cele 3 câmpuri rămân goale și la save se persistă goale = fallback la chat.
+  const [aiSeparateVision, setAiSeparateVision] = useState(false);
+  const [aiVisionUrl, setAiVisionUrl] = useState('');
+  const [aiVisionModel, setAiVisionModel] = useState('');
+  const [aiVisionApiKey, setAiVisionApiKey] = useState('');
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [aiTestMessage, setAiTestMessage] = useState('');
   const [aiModalConsentChecked, setAiModalConsentChecked] = useState(false);
@@ -281,10 +287,18 @@ export default function SetariScreen() {
   const [downloadedMb, setDownloadedMb] = useState(0);
   const [downloadTotalMb, setDownloadTotalMb] = useState(0);
   const [selectedLocalModelId, setSelectedLocalModelId] = useState<string | null>(null);
+  const [orphanModels, setOrphanModels] = useState<localModel.OrphanModelFile[]>([]);
   const downloadResumableRef = useRef<ReturnType<typeof localModel.createModelDownload> | null>(
     null
   );
-  const savedExternalRef = useRef({ url: '', model: '', apiKey: '' });
+  const savedExternalRef = useRef({
+    url: '',
+    model: '',
+    apiKey: '',
+    visionUrl: '',
+    visionModel: '',
+    visionApiKey: '',
+  });
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
   const [backupCollapsed, setBackupCollapsed] = useState(true);
@@ -305,8 +319,25 @@ export default function SetariScreen() {
       setAiProviderUrl(cfg.url);
       setAiProviderModel(cfg.model);
       setAiApiKey(cfg.apiKey);
+      setAiVisionUrl(cfg.visionUrl);
+      setAiVisionModel(cfg.visionModel);
+      setAiVisionApiKey(cfg.visionApiKey);
+      // Toggle „provider OCR diferit" e pornit dacă oricare din cele 3 câmpuri vision
+      // a fost completat anterior; altfel oprit (default = același provider ca chat).
+      const hasSeparate =
+        cfg.visionUrl.trim() !== '' ||
+        cfg.visionModel.trim() !== '' ||
+        cfg.visionApiKey.trim() !== '';
+      setAiSeparateVision(hasSeparate);
       if (cfg.type === 'external') {
-        savedExternalRef.current = { url: cfg.url, model: cfg.model, apiKey: cfg.apiKey };
+        savedExternalRef.current = {
+          url: cfg.url,
+          model: cfg.model,
+          apiKey: cfg.apiKey,
+          visionUrl: cfg.visionUrl,
+          visionModel: cfg.visionModel,
+          visionApiKey: cfg.visionApiKey,
+        };
       }
     });
     // Modele locale
@@ -319,6 +350,12 @@ export default function SetariScreen() {
       }
       setDownloadedModelIds(downloaded);
       localModel.getSelectedModelId().then(setSelectedLocalModelId);
+      try {
+        const orphans = await localModel.listOrphanModels();
+        setOrphanModels(orphans);
+      } catch {
+        // best-effort
+      }
     })();
     getLastCrash().then(setLastCrash);
   }, []);
@@ -489,7 +526,14 @@ export default function SetariScreen() {
   // ── AI Provider ─────────────────────────────────────────────────────────────
   const handleAiProviderSelect = async (type: AiProviderType) => {
     if (aiProviderType === 'external') {
-      savedExternalRef.current = { url: aiProviderUrl, model: aiProviderModel, apiKey: aiApiKey };
+      savedExternalRef.current = {
+        url: aiProviderUrl,
+        model: aiProviderModel,
+        apiKey: aiApiKey,
+        visionUrl: aiVisionUrl,
+        visionModel: aiVisionModel,
+        visionApiKey: aiVisionApiKey,
+      };
     }
     if (aiProviderType === 'local' && type !== 'local') {
       await localModel.disposeLocalModel().catch(() => {});
@@ -499,10 +543,22 @@ export default function SetariScreen() {
       setAiProviderUrl(savedExternalRef.current.url);
       setAiProviderModel(savedExternalRef.current.model);
       setAiApiKey(savedExternalRef.current.apiKey);
+      setAiVisionUrl(savedExternalRef.current.visionUrl);
+      setAiVisionModel(savedExternalRef.current.visionModel);
+      setAiVisionApiKey(savedExternalRef.current.visionApiKey);
+      const hasSeparate =
+        savedExternalRef.current.visionUrl.trim() !== '' ||
+        savedExternalRef.current.visionModel.trim() !== '' ||
+        savedExternalRef.current.visionApiKey.trim() !== '';
+      setAiSeparateVision(hasSeparate);
     } else {
       const defaults = aiProvider.PROVIDER_DEFAULTS[type];
       setAiProviderUrl(defaults.url);
       setAiProviderModel(defaults.model);
+      setAiVisionUrl('');
+      setAiVisionModel('');
+      setAiVisionApiKey('');
+      setAiSeparateVision(false);
     }
     setAiTestStatus('idle');
     setAiTestMessage('');
@@ -546,7 +602,7 @@ export default function SetariScreen() {
               await localModel.setSelectedModelId(modelId);
               setSelectedLocalModelId(modelId);
               setAiProviderType('local');
-              await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId });
+              await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId, visionUrl: '', visionModel: '' });
             } catch (e) {
               await localModel.deleteModel(modelId);
               Alert.alert('Eroare', e instanceof Error ? e.message : 'Descărcarea a eșuat.');
@@ -593,6 +649,8 @@ export default function SetariScreen() {
                 type: 'builtin',
                 url: aiProvider.PROVIDER_DEFAULTS.builtin.url,
                 model: aiProvider.PROVIDER_DEFAULTS.builtin.model,
+                visionUrl: '',
+                visionModel: '',
               });
             }
           },
@@ -605,7 +663,36 @@ export default function SetariScreen() {
     await localModel.setSelectedModelId(modelId);
     setSelectedLocalModelId(modelId);
     setAiProviderType('local');
-    await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId });
+    await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId, visionUrl: '', visionModel: '' });
+  };
+
+  const handleDeleteOrphanModels = () => {
+    if (orphanModels.length === 0) return;
+    const totalMb = orphanModels.reduce((s, o) => s + o.sizeBytes, 0) / (1024 * 1024);
+    Alert.alert(
+      'Șterge modele AI vechi',
+      `${orphanModels.length} fișier${orphanModels.length === 1 ? '' : 'e'} (~${totalMb.toFixed(0)} MB) rămase de la versiuni anterioare. Continui?`,
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Șterge',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { deletedCount, freedBytes } = await localModel.deleteOrphanModels();
+              setOrphanModels([]);
+              const freedMb = (freedBytes / (1024 * 1024)).toFixed(0);
+              Alert.alert(
+                'Spațiu eliberat',
+                `${deletedCount} fișier${deletedCount === 1 ? '' : 'e'} șterse, ~${freedMb} MB eliberați.`
+              );
+            } catch (e) {
+              Alert.alert('Eroare', e instanceof Error ? e.message : 'Ștergerea a eșuat.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSaveAiConfig = async () => {
@@ -615,12 +702,16 @@ export default function SetariScreen() {
         Alert.alert('Acord necesar', 'Bifează acordul de utilizare AI pentru a continua.');
         return;
       }
+      const usesSeparateVision = aiProviderType === 'external' && aiSeparateVision;
       await aiProvider.saveAiConfig({
         type: aiProviderType,
         url: aiProviderUrl,
         model: aiProviderModel,
+        visionUrl: usesSeparateVision ? aiVisionUrl.trim() : '',
+        visionModel: usesSeparateVision ? aiVisionModel.trim() : '',
       });
       await aiProvider.saveAiApiKey(aiApiKey);
+      await aiProvider.saveAiVisionApiKey(usesSeparateVision ? aiVisionApiKey : '');
       if (isRemote && aiModalConsentChecked) {
         await AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
         setAiConsentGiven(true);
@@ -645,6 +736,48 @@ export default function SetariScreen() {
     }
   };
 
+  /**
+   * Trimite un POST minimal către `<url>/chat/completions` cu `messages: [{ user: 'test' }]`
+   * și returnează un mesaj scurt de status. Folosit pentru testarea ambelor provider-e
+   * (chat și OCR) în `handleTestAiConnection`.
+   */
+  const probeOpenAiCompatible = async (
+    url: string,
+    apiKey: string,
+    model: string
+  ): Promise<{ ok: boolean; message: string }> => {
+    if (!url) return { ok: false, message: 'URL lipsă' };
+    if (!/^https?:\/\//i.test(url)) return { ok: false, message: 'URL invalid (trebuie http/https)' };
+    if (!apiKey) return { ok: false, message: 'cheie API lipsă' };
+    if (!model) return { ok: false, message: 'model lipsă' };
+
+    const baseUrl = url.replace(/\/$/, '');
+    const endpoint = `${baseUrl}/chat/completions`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'test' }],
+          max_tokens: 10,
+          temperature: 0.3,
+        }),
+      });
+      if (response.ok) return { ok: true, message: `${model} — conexiune OK` };
+      const errText = await response.text().catch(() => '');
+      return {
+        ok: false,
+        message: `Eroare ${response.status}: ${errText.slice(0, 220) || 'răspuns invalid'}`,
+      };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : 'eroare rețea' };
+    }
+  };
+
   const handleTestAiConnection = async () => {
     setAiTestStatus('loading');
     setAiTestMessage('');
@@ -665,72 +798,56 @@ export default function SetariScreen() {
         return;
       }
 
-      // builtin sau external — facem test real la endpoint
-      const url =
+      // ─── Test 1: provider chat ────────────────────────────────────────────
+      const chatUrl =
         aiProviderType === 'builtin'
           ? aiProvider.PROVIDER_DEFAULTS.builtin.url
           : aiProviderUrl.trim();
-      const model =
+      const chatModel =
         aiProviderType === 'builtin'
           ? aiProvider.PROVIDER_DEFAULTS.builtin.model
           : aiProviderModel.trim();
-      const key =
+      const chatKey =
         aiProviderType === 'builtin'
           ? (process.env.EXPO_PUBLIC_MISTRAL_API_KEY ?? '')
           : aiApiKey.trim();
 
-      if (aiProviderType === 'external') {
-        if (!url) {
-          setAiTestStatus('error');
-          setAiTestMessage('Completează URL-ul API.');
-          return;
-        }
-        if (!/^https?:\/\//i.test(url)) {
-          setAiTestStatus('error');
-          setAiTestMessage('URL-ul trebuie să înceapă cu http:// sau https://.');
-          return;
-        }
-        if (!key) {
-          setAiTestStatus('error');
-          setAiTestMessage('Completează cheia API.');
-          return;
-        }
-        if (!model) {
-          setAiTestStatus('error');
-          setAiTestMessage('Completează numele modelului.');
-          return;
-        }
-      } else if (!key) {
+      if (aiProviderType === 'builtin' && !chatKey) {
         setAiTestStatus('error');
         setAiTestMessage('Cheia AI inclusă lipsește din build. Folosește „Cheie API proprie".');
         return;
       }
 
-      const baseUrl = url.replace(/\/$/, '');
-      const endpoint = `${baseUrl}/chat/completions`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: 'test' }],
-          max_tokens: 10,
-          temperature: 0.3,
-        }),
-      });
-      if (response.ok) {
-        setAiTestStatus('ok');
-        setAiTestMessage('Conexiunea funcționează corect.');
-      } else {
-        const errText = await response.text().catch(() => '');
-        setAiTestStatus('error');
-        setAiTestMessage(
-          `Eroare (${response.status}): ${errText || 'Răspuns invalid de la server'}`
+      const chatResult = await probeOpenAiCompatible(chatUrl, chatKey, chatModel);
+      const lines: string[] = [
+        `${chatResult.ok ? '✓' : '✗'} Chat: ${chatResult.message}`,
+      ];
+
+      // ─── Test 2: provider OCR (doar dacă e configurat separat) ────────────
+      let ocrOk = true;
+      if (aiProviderType === 'external' && aiSeparateVision) {
+        const ocrResult = await probeOpenAiCompatible(
+          aiVisionUrl.trim(),
+          aiVisionApiKey.trim(),
+          aiVisionModel.trim()
         );
+        ocrOk = ocrResult.ok;
+        lines.push(`${ocrResult.ok ? '✓' : '✗'} OCR: ${ocrResult.message}`);
+
+        // Hint specific Anthropic — endpoint-ul lor nativ nu e exact OpenAI-compat
+        if (/anthropic\.com/i.test(aiVisionUrl)) {
+          lines.push(
+            'ℹ Anthropic folosește un layer OpenAI-compatible cu limitări posibile la vision. ' +
+              'Dacă OCR cade aici dar cheia e validă, încearcă alt model (claude-sonnet-4-6) sau alt provider.'
+          );
+        }
+      } else {
+        lines.push('• OCR: folosește același provider ca chat.');
       }
+
+      const allOk = chatResult.ok && ocrOk;
+      setAiTestStatus(allOk ? 'ok' : 'error');
+      setAiTestMessage(lines.join('\n'));
     } catch (e) {
       setAiTestStatus('error');
       setAiTestMessage(e instanceof Error ? e.message : 'Eroare de rețea');
@@ -1721,7 +1838,9 @@ export default function SetariScreen() {
                     />
                   </RNView>
                   <RNView>
-                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model</RNText>
+                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
+                      Model chat
+                    </RNText>
                     <TextInput
                       style={[
                         styles.aiInput,
@@ -1738,6 +1857,111 @@ export default function SetariScreen() {
                       autoCorrect={false}
                     />
                   </RNView>
+                  <Pressable
+                    style={[
+                      styles.aiVisionToggleRow,
+                      { borderColor: C.border, backgroundColor: C.card },
+                    ]}
+                    onPress={() => {
+                      setAiSeparateVision(v => !v);
+                      setAiTestStatus('idle');
+                    }}
+                  >
+                    <RNView style={{ flex: 1, backgroundColor: 'transparent' }}>
+                      <RNText style={[styles.aiVisionToggleTitle, { color: C.text }]}>
+                        Provider OCR diferit
+                      </RNText>
+                      <RNText style={[styles.aiHint, { color: C.textSecondary }]}>
+                        {aiSeparateVision
+                          ? 'OCR / vision folosește alt provider decât chat-ul.'
+                          : 'OCR și chat folosesc același provider (de mai sus).'}
+                      </RNText>
+                    </RNView>
+                    <Switch
+                      value={aiSeparateVision}
+                      onValueChange={v => {
+                        setAiSeparateVision(v);
+                        setAiTestStatus('idle');
+                      }}
+                      trackColor={{ false: C.border, true: primary }}
+                    />
+                  </Pressable>
+                  {aiSeparateVision && (
+                    <RNView style={styles.aiVisionGroup}>
+                      <RNText style={[styles.aiVisionGroupTitle, { color: C.textSecondary }]}>
+                        Provider OCR / vision
+                      </RNText>
+                      <RNView>
+                        <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>URL</RNText>
+                        <TextInput
+                          style={[
+                            styles.aiInput,
+                            { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                          ]}
+                          value={aiVisionUrl}
+                          onChangeText={text => {
+                            setAiVisionUrl(text);
+                            setAiTestStatus('idle');
+                          }}
+                          placeholder="ex: https://api.anthropic.com/v1"
+                          placeholderTextColor={C.textSecondary}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="url"
+                        />
+                      </RNView>
+                      <RNView>
+                        <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
+                          Cheie API
+                        </RNText>
+                        <TextInput
+                          style={[
+                            styles.aiInput,
+                            { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                          ]}
+                          value={aiVisionApiKey}
+                          onChangeText={text => {
+                            setAiVisionApiKey(text);
+                            setAiTestStatus('idle');
+                          }}
+                          placeholder="••••••••••"
+                          placeholderTextColor={C.textSecondary}
+                          secureTextEntry
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                      </RNView>
+                      <RNView>
+                        <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model</RNText>
+                        <TextInput
+                          style={[
+                            styles.aiInput,
+                            { color: C.text, borderColor: C.border, backgroundColor: C.card },
+                          ]}
+                          value={aiVisionModel}
+                          onChangeText={text => {
+                            setAiVisionModel(text);
+                            setAiTestStatus('idle');
+                          }}
+                          placeholder="ex: claude-haiku-4-5"
+                          placeholderTextColor={C.textSecondary}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                        <RNText style={[styles.aiHint, { color: C.textSecondary, marginTop: 4 }]}>
+                          Modelul TREBUIE să suporte imagini (vision). Recomandat:{' '}
+                          <RNText style={{ fontWeight: '600' }}>claude-haiku-4-5</RNText> sau{' '}
+                          <RNText style={{ fontWeight: '600' }}>claude-sonnet-4-6</RNText>{' '}
+                          (Anthropic, $5 credit gratuit la cont nou),{' '}
+                          <RNText style={{ fontWeight: '600' }}>gpt-4o</RNText> (OpenAI),{' '}
+                          <RNText style={{ fontWeight: '600' }}>pixtral-large-latest</RNText>{' '}
+                          (Mistral, plătit) sau{' '}
+                          <RNText style={{ fontWeight: '600' }}>pixtral-12b-2409</RNText>{' '}
+                          (Mistral, free tier).
+                        </RNText>
+                      </RNView>
+                    </RNView>
+                  )}
                 </RNView>
               )}
               {downloadedModelIds.length > 0 && (
@@ -1917,6 +2141,41 @@ export default function SetariScreen() {
                     </RNView>
                   );
                 })}
+              </RNView>
+            )}
+
+            {/* Banner modele AI orphan (rămase de la versiuni vechi) */}
+            {orphanModels.length > 0 && (
+              <RNView
+                style={[
+                  styles.modelCard,
+                  {
+                    backgroundColor: C.card,
+                    borderColor: statusColors.warning,
+                    marginTop: 12,
+                  },
+                ]}
+              >
+                <RNView style={styles.modelCardHeader}>
+                  <RNView style={{ flex: 1 }}>
+                    <RNText style={[styles.aiToggleLabel, { color: C.text }]}>
+                      Modele AI vechi
+                    </RNText>
+                    <RNText style={[styles.aiToggleSub, { color: C.textSecondary, marginTop: 2 }]}>
+                      {orphanModels.length} fișier{orphanModels.length === 1 ? '' : 'e'} (~
+                      {Math.round(
+                        orphanModels.reduce((s, o) => s + o.sizeBytes, 0) / (1024 * 1024)
+                      )}{' '}
+                      MB) rămase de la versiuni anterioare. Nu mai sunt folosite.
+                    </RNText>
+                  </RNView>
+                  <Pressable
+                    onPress={handleDeleteOrphanModels}
+                    style={[styles.downloadBtn, { backgroundColor: statusColors.critical }]}
+                  >
+                    <RNText style={styles.downloadBtnText}>Eliberează</RNText>
+                  </Pressable>
+                </RNView>
               </RNView>
             )}
 
@@ -2189,6 +2448,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
+  },
+  aiVisionToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 12,
+    gap: 12,
+  },
+  aiVisionToggleTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  aiVisionGroup: {
+    marginTop: 8,
+    gap: 12,
+  },
+  aiVisionGroupTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 0,
   },
   aiRadioRow: {
     flexDirection: 'row',

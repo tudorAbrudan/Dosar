@@ -21,6 +21,15 @@ function tempUri(): string {
   return `${FileSystem.cacheDirectory}cloudStorage-tmp-${Date.now()}-${rand}.bin`;
 }
 
+// Native iOS uploadFile/downloadFile așteaptă POSIX path în `localPath`
+// (`URL(fileURLWithPath:)`), NU URI cu schemă `file://` cum returnează
+// `FileSystem.cacheDirectory` din Expo. Fără strip, `URL(fileURLWithPath:)`
+// produce o cale invalidă și `checkFileExists` aruncă `fileNotFound` —
+// niciun fișier binar nu ajunge în iCloud.
+function uriToNativePath(uri: string): string {
+  return uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
+}
+
 export async function isAvailable(): Promise<boolean> {
   try {
     return await cs.isCloudAvailable();
@@ -44,7 +53,9 @@ export async function writeFile(
     await FileSystem.writeAsStringAsync(tmp, data, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    await cs.uploadFile(remotePath, tmp, { mimeType: 'application/octet-stream' });
+    await cs.uploadFile(remotePath, uriToNativePath(tmp), {
+      mimeType: 'application/octet-stream',
+    });
   } finally {
     await FileSystem.deleteAsync(tmp, { idempotent: true });
   }
@@ -59,7 +70,7 @@ export async function readFile(
   }
   const tmp = tempUri();
   try {
-    await cs.downloadFile(remotePath, tmp);
+    await cs.downloadFile(remotePath, uriToNativePath(tmp));
     return await FileSystem.readAsStringAsync(tmp, {
       encoding: FileSystem.EncodingType.Base64,
     });

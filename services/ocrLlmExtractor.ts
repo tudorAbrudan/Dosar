@@ -8,9 +8,43 @@ const MAX_OCR_CHARS = 3000;
 interface TypeConfig {
   fieldsHint: string;
   noteInstruction: string;
+  /** Regulă specială pentru expiryDate, prepended la „Reguli" în prompt. */
+  expiryRule?: string;
 }
 
+const TALON_EXPIRY_RULE = `expiry_date pentru "talon" = data ULTIMEI inspecții ITP, citită EXCLUSIV de pe ȘTAMPILA CEA MAI DE JOS din tabelul „INSPECȚII TEHNICE PERIODICE" (anexă, partea dreaptă a talonului).
+
+  PROCEDURĂ:
+  1. Localizează tabelul ITP. Are 4-5 rânduri: primul TIPĂRIT (mașina nouă), restul completate la fiecare inspecție prin ȘTAMPILĂ + DATĂ SCRISĂ DE MÂNĂ.
+  2. Mergi de SUS în JOS și identifică ULTIMUL rând cu ștampilă RAR aplicată.
+  3. Citește data DE PE ACEA ȘTAMPILĂ (cea mai de jos). Toate ștampilele de deasupra sunt expirate, IGNORĂ-LE.
+  4. Format dată ștampilă: "ZZ.LL.AA" (an cu 2 cifre → adaugă "20" în față, ex: "15.04.28" → 2028) sau "ZZ.LL.AAAA".
+
+  REASAMBLARE FRAGMENTATĂ: data e FRECVENT scrisă VERTICAL pe 2-3 linii în interiorul ștampilei (ex: "15." sus, "04." mijloc, "28" jos = 15.04.2028). Reasamblează cifrele aliniate vertical din aceeași ștampilă într-o singură dată.
+
+  HOLOGRAMĂ: ștampila cea mai recentă e adesea peste o hologramă reflexivă. Descifrează cifrele scrise PESTE ea — au prioritate față de orice altă dată din document.
+
+  NULL OBLIGATORIU dacă ștampila cea mai de jos există dar NU poți citi cu CERTITUDINE data:
+  → expiry_date: null
+  → în metadata pune: "itp_warning": "Nu am putut citi cu certitudine data ITP de pe ștampila cea mai de jos. Verifică talonul și completează manual data expirării ITP."
+
+  INTERZIS:
+  - NU folosi câmpul I sau I.1 (data primei înmatriculări — din TRECUT).
+  - NU folosi câmpul B (emitere talon).
+  - NU folosi data tipărită din rând 1 dacă există ștampile pe rândurile următoare.
+  - NU folosi o ștampilă mai veche dacă cea mai de jos e ilizibilă — pune null.
+  - NU ghici. Null > dată inventată.
+
+  Confuzii uzuale OCR: 0↔6, 0↔8, 1↔7, 2↔7. Dacă o dată pare în trecut pe o ștampilă recentă, recheck anul (ex. "2028" citit "2023").`;
+
 const TYPE_CONFIG: Partial<Record<DocumentType, TypeConfig>> = {
+  talon: {
+    fieldsHint:
+      'plate (nr. înmatriculare format "B 123 ABC"), marca (VW/Dacia etc.), model, vin (17 caractere, fără I/O/Q), itp_expiry_date (formatul ZZ.LL.AAAA, DOAR dacă expiry_date e completat — vezi regula de mai jos despre ștampila ITP)',
+    noteInstruction:
+      'Listează: marca/model, plate, VIN, capacitate cilindrică, propietar (C.2.1, C.2.2), data primei înmatriculări (câmpul I), număr certificat. NU include date ITP în notă — sunt în expiry_date.',
+    expiryRule: TALON_EXPIRY_RULE,
+  },
   analize_medicale: {
     fieldsHint:
       'lab (laboratorul: Synevo/MedLife/Regina Maria etc.), doctor (medic solicitant — "Dr.", "Medic solicitant", "Solicitat de"), pacient (numele pacientului — "Pacient:", "Nume:")',
@@ -59,8 +93,10 @@ function buildPrompt(typeLabel: string, config: TypeConfig | undefined, ocrText:
     ? `\nText OCR (referință secundară):\n---\n${ocrText.slice(0, MAX_OCR_CHARS)}\n---`
     : '';
 
+  const expirySection = config?.expiryRule ? `\n\n━━━ REGULĂ SPECIALĂ EXPIRY ━━━\n${config.expiryRule}` : '';
+
   return `Extrage câmpurile structurate din acest document românesc.
-Tip document: ${typeLabel}${textSection}
+Tip document: ${typeLabel}${textSection}${expirySection}
 
 Returnează DOAR JSON valid, fără text suplimentar:
 {
@@ -132,7 +168,8 @@ export async function extractFieldsWithLlm(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
       ],
-      1000
+      1000,
+      'extraction'
     );
   }
 

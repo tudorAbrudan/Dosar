@@ -8,6 +8,21 @@ export interface FieldDef {
 }
 
 /**
+ * Label personalizat pentru câmpul `expiry_date` per tip de document.
+ * Folosit în add.tsx, edit.tsx și [id].tsx pentru a păstra consistența peste cele 3 ecrane.
+ *
+ * Exemple:
+ * - talon: nu există „expirare talon"; câmpul stochează scadența ITP.
+ * - factura: scadența la plată.
+ *
+ * Tipurile fără intrare aici primesc label-ul implicit „Data expirare".
+ */
+export const EXPIRY_FIELD_LABEL: Partial<Record<DocumentType, string>> = {
+  talon: 'Scadență ITP',
+  factura: 'Scadență',
+};
+
+/**
  * Câmpuri structurate per tip de document.
  *
  * PRINCIPIU: maxim 3-5 câmpuri per tip — doar ce e necesar pentru:

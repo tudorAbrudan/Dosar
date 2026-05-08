@@ -61,6 +61,8 @@ import { toFileUri } from '@/services/fileUtils';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
+import { scanDocumentPages } from '@/services/documentScanner';
+import { processDocumentImage } from '@/services/imageProcessing';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import * as ocrConsent from '@/services/ocrConsent';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
@@ -68,7 +70,7 @@ import type { Document as DocType, DocumentType, DocumentEntityLink, EntityType 
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useEntities } from '@/hooks/useEntities';
-import { DOCUMENT_FIELDS } from '@/types/documentFields';
+import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 
 const DELETE_OPTIONS: { label: string; value: string | null }[] = [
@@ -339,10 +341,25 @@ export default function EditDocumentScreen() {
       if (extracted.issue_date) setIssueDate(extracted.issue_date);
       if (extracted.note) setNote(extracted.note);
       setAiOcrApplied(true);
+
+      // Talon fără expiry detectat → AI n-a putut citi sigur ștampila ITP.
+      // Avertizează userul să completeze manual.
+      if (type === 'talon' && !extracted.expiry_date) {
+        const warning =
+          extracted.metadata.itp_warning ??
+          'Nu am putut detecta cu certitudine data expirării ITP de pe ștampila talonului. Verifică talonul și completează manual data în câmpul „Expiră".';
+        Alert.alert('Data ITP necesită completare manuală', warning);
+      }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
-      if (msg.includes('limita')) Alert.alert('Limită AI atinsă', msg);
-      // alte erori (JSON parse, rețea temporară) sunt silențioase
+      const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+      if (msg.includes('limita')) {
+        Alert.alert('Limită AI atinsă', msg);
+      } else {
+        Alert.alert(
+          'AI nu a putut analiza documentul',
+          `${msg}\n\nVerifică conexiunea la internet și reîncearcă. Dacă persistă, completează manual câmpurile.`
+        );
+      }
     } finally {
       setLlmFieldLoading(false);
     }
@@ -357,11 +374,8 @@ export default function EditDocumentScreen() {
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
         intermediates: true,
       });
-      const normalized = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 2048 } }], {
-        compress: 0.82,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      await FileSystem.copyAsync({ from: normalized.uri, to: dest });
+      const processedUri = await processDocumentImage(uri, doc.type);
+      await FileSystem.copyAsync({ from: processedUri, to: dest });
       if (!doc.file_path) {
         await updateDocument(doc.id, {
           type: doc.type,
@@ -379,6 +393,19 @@ export default function EditDocumentScreen() {
       if (updated) runOcrOnNewPage(relativePath, updated);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut adăuga pagina');
+    }
+  }
+
+  async function scanAndAddPages() {
+    if (!doc) return;
+    try {
+      const uris = await scanDocumentPages();
+      if (!uris) return;
+      for (const uri of uris) {
+        await saveAndAddPage(uri);
+      }
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Scanarea a eșuat');
     }
   }
 
@@ -413,21 +440,7 @@ export default function EditDocumentScreen() {
 
   function handleAddPage() {
     Alert.alert('Adaugă pagină', '', [
-      {
-        text: 'Cameră',
-        onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') {
-            Alert.alert('Permisiune', 'Este nevoie de acces la cameră.');
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 1,
-          });
-          if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
-        },
-      },
+      { text: 'Scanează document', onPress: scanAndAddPages },
       {
         text: 'Galerie',
         onPress: async () => {
@@ -1008,7 +1021,7 @@ export default function EditDocumentScreen() {
           disabled={saving}
         />
         <DatePickerField
-          label="Data expirare (opțional)"
+          label={EXPIRY_FIELD_LABEL[type] ?? 'Data expirare (opțional)'}
           value={expiryDate}
           onChange={v => {
             expiryDateRef.current = v;

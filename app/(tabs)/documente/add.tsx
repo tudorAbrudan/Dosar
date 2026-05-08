@@ -55,7 +55,7 @@ import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
 import { DatePickerField } from '@/components/DatePickerField';
-import { DOCUMENT_FIELDS } from '@/types/documentFields';
+import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
@@ -67,6 +67,7 @@ import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import * as ocrConsent from '@/services/ocrConsent';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { scanDocumentPages } from '@/services/documentScanner';
+import { processDocumentImage } from '@/services/imageProcessing';
 
 const DELETE_OPTIONS: { label: string; value: string | null }[] = [
   { label: 'Niciodată', value: null },
@@ -94,11 +95,6 @@ const HIDE_EXPIRY_TYPES: DocumentType[] = [
   'cadastru',
   'act_proprietate',
 ];
-
-const CUSTOM_EXPIRY_LABEL: Partial<Record<DocumentType, string>> = {
-  talon: 'Scadență ITP (pentru reminder)',
-  factura: 'Scadență (pentru reminder)',
-};
 
 const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
   { key: 'person', label: 'Persoană' },
@@ -618,12 +614,28 @@ export default function AddDocumentScreen() {
         if (extracted.note) {
           fileNotes.push(extracted.note);
         }
+
+        // Talon fără expiry → ștampilă ITP ilizibilă, cere completare manuală
+        if (type === 'talon' && !extracted.expiry_date && !expiryDateRef.current) {
+          const warning =
+            extracted.metadata.itp_warning ??
+            'Nu am putut detecta cu certitudine data expirării ITP de pe ștampila talonului. Verifică talonul și completează manual data în câmpul „Expiră".';
+          Alert.alert('Data ITP necesită completare manuală', warning);
+        }
       }
 
       const combined = fileNotes.join('\n___________\n');
       if (combined) setNote(combined);
-    } catch {
-      // LLM field extraction e opțional
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+      if (msg.includes('limita')) {
+        Alert.alert('Limită AI atinsă', msg);
+      } else {
+        Alert.alert(
+          'AI nu a putut analiza documentul',
+          `${msg}\n\nVerifică conexiunea la internet și reîncearcă. Dacă persistă, completează manual câmpurile.`
+        );
+      }
     } finally {
       setLlmFieldLoading(false);
     }
@@ -812,7 +824,6 @@ export default function AddDocumentScreen() {
   function handleAddPage() {
     Alert.alert('Adaugă atașament', '', [
       { text: 'Scanează document', onPress: scanDocumentHandler },
-      { text: 'Cameră (poză brută)', onPress: takePhoto },
       { text: 'Galerie', onPress: pickImage },
       { text: 'Adaugă PDF', onPress: pickPdf },
       { text: 'Anulare', style: 'cancel' },
@@ -821,21 +832,7 @@ export default function AddDocumentScreen() {
 
   async function processAndSaveImage(uri: string, exifOrientation?: number) {
     try {
-      const actions: ImageManipulator.Action[] = [];
-      if (exifOrientation && exifOrientation !== 1) {
-        let deg = 0;
-        if (exifOrientation === 3) deg = 180;
-        else if (exifOrientation === 6) deg = 90;
-        else if (exifOrientation === 8) deg = -90;
-        if (deg !== 0) actions.push({ rotate: deg });
-      }
-      actions.push({ resize: { width: 2048 } });
-
-      const compressed = await ImageManipulator.manipulateAsync(uri, actions, {
-        compress: 0.82,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      const finalUri = compressed.uri;
+      const finalUri = await processDocumentImage(uri, type, exifOrientation);
 
       const filename = `doc_${Date.now()}.jpg`;
       const dir = `${FileSystem.documentDirectory}documents`;
@@ -858,9 +855,10 @@ export default function AddDocumentScreen() {
       const batchTs = Date.now();
       const newPages: { uri: string; localPath: string }[] = [];
       for (let i = 0; i < uris.length; i++) {
+        const processed = await processDocumentImage(uris[i], type);
         const filename = `doc_${batchTs}_${i}.jpg`;
         const dest = `${dir}/${filename}`;
-        await FileSystem.copyAsync({ from: uris[i], to: dest });
+        await FileSystem.copyAsync({ from: processed, to: dest });
         newPages.push({ uri: dest, localPath: dest });
       }
 
@@ -891,23 +889,6 @@ export default function AddDocumentScreen() {
     if (!result.canceled && result.assets[0]) {
       const exifOrientation = result.assets[0].exif?.Orientation as number | undefined;
       await processAndSaveImage(result.assets[0].uri, exifOrientation);
-    }
-  }
-
-  async function takePhoto() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permisiune', 'Este nevoie de acces la cameră.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 1,
-      exif: true,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      const exifOrientation = result.assets[0].exif?.Orientation as number | undefined;
-      await processAndSaveImage(uri, exifOrientation);
     }
   }
 
@@ -1395,7 +1376,7 @@ export default function AddDocumentScreen() {
         />
         {!HIDE_EXPIRY_TYPES.includes(type) && (
           <DatePickerField
-            label={CUSTOM_EXPIRY_LABEL[type] ?? 'Data expirare (opțional)'}
+            label={EXPIRY_FIELD_LABEL[type] ?? 'Data expirare (opțional)'}
             value={expiryDate}
             onChange={v => {
               expiryDateRef.current = v;

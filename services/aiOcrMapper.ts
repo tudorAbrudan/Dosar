@@ -267,7 +267,8 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
         { role: 'system' as const, content: systemMessage },
         { role: 'user' as const, content: prompt },
       ],
-      400
+      400,
+      'extraction'
     );
   }
 
@@ -346,7 +347,7 @@ FACTURI (utilități și servicii):
 
 ━━━ CÂMPURI EXACTE PER TIP (folosește EXACT aceste chei în "fields") ━━━
 
-talon: plate="B 123 ABC", marca="VW", model="Golf", vin="VIN17CARACTERE", itp_expiry_date="ZZ.LL.AAAA" (data din ștampila ITP/RAR sau din "Data urmatoarei inspectii tehnice")
+talon: plate="B 123 ABC", marca="VW", model="Golf", vin="VIN17CARACTERE", itp_expiry_date="ZZ.LL.AAAA" (data ITP cea mai recentă din tabelul "INSPECȚII TEHNICE PERIODICE" — vezi regulile de la "REGULI DATE")
 carte_auto: vin="VIN17CARACTERE" (CIV NU conține nr. de înmatriculare — nu-l include chiar dacă apare)
 itp: plate="B 123 ABC"
 rca: policy_number="RO32V32LM1100745021", insurer="Groupama", plate="B 123 ABC", prima="850.00", valid_from="01.04.2024", marca_model="Dacia Logan"
@@ -373,7 +374,34 @@ bilet: categorie="Avion", venue="OTP→LHR", eveniment_artist="RO123"
 
 - issueDate: data emiterii/eliberării documentului (YYYY-MM-DD). null dacă nu există. NU folosi date de încetare contract, date de valabilitate perpetuă (ex: 31.12.2999) sau alte date administrative — doar data efectivă a documentului.
 - expiryDate: data expirării documentului (YYYY-MM-DD). EXCEPȚII — pune null pentru: carte_auto, analize_medicale, buletin (expiryDate e separat), cadastru, act_proprietate.
-- Pentru "talon": expiryDate = data ITP din ștampila RAR sau din "Data urmatoarei inspectii tehnice" (YYYY-MM-DD). Pune și în fields.itp_expiry_date (ZZ.LL.AAAA). NU pune data emiterii talonului în expiryDate.
+- Pentru "talon": expiryDate = data ULTIMEI inspecții tehnice efectuate, citită de pe ȘTAMPILA CEA MAI DE JOS DIN TABEL.
+  ━━━ REGULĂ FUNDAMENTALĂ ITP — STRICT ━━━
+  Pe un talon există: câmpul B (emitere talon), câmpurile I/I.1 (data primei înmatriculări), tabel ITP cu 4-5 rânduri (primul tipărit, restul completate manual la fiecare inspecție prin ȘTAMPILĂ + dată scrisă de mână de la stația RAR).
+  **Sursa CORECTĂ pentru expiryDate este EXCLUSIV ștampila CEA MAI DE JOS din tabelul ITP** (ultimul rând completat). Asta e cea mai recentă inspecție efectuată; toate ștampilele de deasupra sunt expirate. Dacă tabelul are doar rând 1 tipărit (mașină nouă, fără ITP încă), folosește acea dată tipărită.
+  ━━━ PROCEDURĂ OBLIGATORIE ━━━
+  1. Localizează tabelul „INSPECȚII TEHNICE PERIODICE" (în partea dreaptă a talonului, anexă).
+  2. Scanează rândurile de SUS în JOS și identifică ULTIMUL rând care are ștampilă RAR aplicată (cu dată scrisă de mână peste/lângă ștampilă). Asta e ștampila care contează.
+  3. Citește data de pe acea ștampilă. Ignoră toate ștampilele de deasupra ei (sunt din inspecții vechi, expirate).
+  4. expiryDate = data acelei ștampile, în format YYYY-MM-DD. Dacă ștampila are formatul "ZZ.LL.AA" (an cu 2 cifre), adaugă "20" în față (ex: "15.04.28" → 2028).
+  ━━━ REASAMBLARE DATĂ DIN ȘTAMPILĂ FRAGMENTATĂ ━━━
+  Pe ștampila RAR, data este FRECVENT scrisă de mână fragmentată pe 2 sau 3 LINII VERTICALE (una sub alta), nu pe o singură linie orizontală. Exemplu real:
+    Linia 1 sus:    "15."
+    Linia 2 mijloc: "04."
+    Linia 3 jos:    "28"
+  Aceste 3 fragmente aliniate vertical în interiorul aceleiași ștampile reprezintă O SINGURĂ DATĂ: 15.04.2028.
+  REGULĂ: când vezi cifre/secvențe scurte aliniate vertical într-o ștampilă (sau în interiorul aceluiași contur dreptunghiular), reasamblează-le top-to-bottom în formatul ZZ.LL.AA(AA). Nu le trata ca date separate, nu le ignora pentru că „nu sunt pe o linie completă".
+  Dacă ștampila e parțial acoperită de hologramă reflexivă, încearcă totuși să descifrezi cifrele scrise peste — au prioritate față de orice altă dată din document.
+  ━━━ NULL E OBLIGATORIU DACĂ NU ȘTII SIGUR ━━━
+  Dacă ștampila cea mai de jos există dar **nu poți citi cu CERTITUDINE** data de pe ea (e ilizibilă, parțial acoperită, scrisul de mână e ambiguu, hologramă prea reflexivă, lipsesc cifre):
+  → expiryDate: **null** (NU ghici, NU folosi ștampila precedentă, NU folosi data tipărită din rând 1, NU folosi câmpul I/I.1)
+  → în "fields" adaugă: **"itp_warning": "Nu am putut citi cu certitudine data ITP de pe ștampila cea mai de jos. Verifică talonul și completează manual data expirării ITP."**
+  ━━━ INTERZIS ABSOLUT ━━━
+  - NU folosi NICIODATĂ câmpul I sau I.1 (data primei înmatriculări) ca expiryDate.
+  - NU folosi data emiterii talonului (câmpul B) în expiryDate.
+  - NU folosi o ștampilă mai veche dacă cea mai de jos există dar e ilizibilă — preferă null.
+  - NU presupune o dată dacă nu o vezi clar; null e mereu preferat unei date inventate.
+  Confuzii uzuale OCR: 0↔6, 0↔8, 1↔7, 2↔7. Dacă o dată pare în trecut pentru o ștampilă recentă, verifică dacă nu cumva ai citit greșit anul (ex. "2028" citit "2023").
+  Format final expiryDate: YYYY-MM-DD. Pune și în fields.itp_expiry_date (ZZ.LL.AAAA) DOAR dacă expiryDate nu e null.
 - Pentru "factura": expiryDate = data scadenței/limita de plată (YYYY-MM-DD). Pune și în fields.due_date (ZZ.LL.AAAA). NU pune data emiterii facturii în expiryDate.
 - Pentru "rca" și "casco": expiryDate = data expirării poliței (YYYY-MM-DD). issueDate = data emiterii poliței. Pune data intrării în vigoare în fields.valid_from (ZZ.LL.AAAA) — poate fi diferită de issueDate.
 - Nr. înmatriculare românesc: format "B 123 ABC" sau "CJ 01 XYZ" etc.
@@ -411,7 +439,8 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
         { role: 'system' as const, content: systemMessage },
         { role: 'user' as const, content: prompt },
       ],
-      1200
+      1200,
+      'extraction'
     );
   }
 

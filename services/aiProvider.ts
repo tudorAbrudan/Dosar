@@ -35,16 +35,35 @@ export type AiProviderType = 'none' | 'builtin' | 'external' | 'local';
 
 export interface AiProviderConfig {
   type: AiProviderType;
+  // Provider chat (text-only): chatbot, extracție text-only fallback.
   url: string;
   apiKey: string;
   model: string;
+  /**
+   * Provider OCR / vision (cereri cu imagine) — doar pentru `external`.
+   * Permite folosirea unui provider COMPLET diferit pentru OCR (ex. chat pe Mistral
+   * free + OCR pe Claude Haiku cu credit gratuit Anthropic). Dacă oricare din cele
+   * 3 câmpuri (`visionUrl`, `visionApiKey`, `visionModel`) e gol, fallback complet
+   * la provider-ul de chat (URL + key + model). Asta înseamnă că „lasă gol" =
+   * „folosește același provider ca pentru chat".
+   */
+  visionUrl: string;
+  visionApiKey: string;
+  visionModel: string;
 }
 
 // ─── Cheie inclusă în aplicație ───────────────────────────────────────────────
 
 const BUILTIN_API_KEY = process.env.EXPO_PUBLIC_MISTRAL_API_KEY ?? '';
 const BUILTIN_URL = 'https://api.mistral.ai/v1';
+// Pe canalul Dosar AI rulăm 3 modele Mistral, alese după sarcină:
+// - chat conversațional (chatbot) → small (rapid, ieftin, suficient)
+// - extracție de date din text (OCR JSON, fallback fără imagine) → large (precizie pe câmpuri/date)
+// - extracție vision (document scanat / poză) → pixtral large (text + scris de mână)
+// Userii cu cheie proprie (`external`) sau model local folosesc modelul ales de ei.
 const BUILTIN_MODEL = 'mistral-small-latest';
+const BUILTIN_EXTRACTION_MODEL = 'mistral-large-latest';
+const BUILTIN_VISION_MODEL = 'pixtral-large-latest';
 
 // ─── Default-uri per provider ─────────────────────────────────────────────────
 
@@ -81,17 +100,24 @@ const VALID_PROVIDER_TYPES = new Set<string>(Object.keys(PROVIDER_DEFAULTS));
 const KEY_PROVIDER_TYPE = 'ai_provider_type';
 const KEY_PROVIDER_URL = 'ai_provider_url';
 const KEY_PROVIDER_MODEL = 'ai_provider_model';
+const KEY_PROVIDER_VISION_URL = 'ai_provider_vision_url';
+const KEY_PROVIDER_VISION_MODEL = 'ai_provider_vision_model';
 const SECURE_KEY_API_KEY = 'ai_provider_api_key';
+const SECURE_KEY_VISION_API_KEY = 'ai_provider_vision_api_key';
 
 // ─── Citire / scriere config ──────────────────────────────────────────────────
 
 export async function getAiConfig(): Promise<AiProviderConfig> {
-  const [typeRaw, urlRaw, modelRaw, apiKey] = await Promise.all([
-    AsyncStorage.getItem(KEY_PROVIDER_TYPE),
-    AsyncStorage.getItem(KEY_PROVIDER_URL),
-    AsyncStorage.getItem(KEY_PROVIDER_MODEL),
-    getAiApiKey(),
-  ]);
+  const [typeRaw, urlRaw, modelRaw, visionUrlRaw, visionModelRaw, apiKey, visionApiKey] =
+    await Promise.all([
+      AsyncStorage.getItem(KEY_PROVIDER_TYPE),
+      AsyncStorage.getItem(KEY_PROVIDER_URL),
+      AsyncStorage.getItem(KEY_PROVIDER_MODEL),
+      AsyncStorage.getItem(KEY_PROVIDER_VISION_URL),
+      AsyncStorage.getItem(KEY_PROVIDER_VISION_MODEL),
+      getAiApiKey(),
+      getAiVisionApiKey(),
+    ]);
 
   // Migrare valori vechi → external
   const legacyMap: Record<string, AiProviderType> = {
@@ -115,17 +141,22 @@ export async function getAiConfig(): Promise<AiProviderConfig> {
     type,
     url: urlRaw ?? defaults.url,
     model: modelRaw ?? defaults.model,
+    visionUrl: visionUrlRaw ?? '',
+    visionModel: visionModelRaw ?? '',
     apiKey,
+    visionApiKey,
   };
 }
 
 export async function saveAiConfig(
-  config: Pick<AiProviderConfig, 'type' | 'url' | 'model'>
+  config: Pick<AiProviderConfig, 'type' | 'url' | 'model' | 'visionUrl' | 'visionModel'>
 ): Promise<void> {
   await AsyncStorage.multiSet([
     [KEY_PROVIDER_TYPE, config.type],
     [KEY_PROVIDER_URL, config.url],
     [KEY_PROVIDER_MODEL, config.model],
+    [KEY_PROVIDER_VISION_URL, config.visionUrl],
+    [KEY_PROVIDER_VISION_MODEL, config.visionModel],
   ]);
 }
 
@@ -139,6 +170,19 @@ export async function saveAiApiKey(key: string): Promise<void> {
     await SecureStore.setItemAsync(SECURE_KEY_API_KEY, key);
   } else {
     await SecureStore.deleteItemAsync(SECURE_KEY_API_KEY);
+  }
+}
+
+export async function getAiVisionApiKey(): Promise<string> {
+  const key = await SecureStore.getItemAsync(SECURE_KEY_VISION_API_KEY);
+  return key ?? '';
+}
+
+export async function saveAiVisionApiKey(key: string): Promise<void> {
+  if (key) {
+    await SecureStore.setItemAsync(SECURE_KEY_VISION_API_KEY, key);
+  } else {
+    await SecureStore.deleteItemAsync(SECURE_KEY_VISION_API_KEY);
   }
 }
 
@@ -284,8 +328,6 @@ export async function sendAiRequestWithImage(
     );
   }
 
-  const apiKey = config.type === 'builtin' ? BUILTIN_API_KEY : config.apiKey;
-
   if (config.type === 'builtin') {
     const used = await getAiUsageToday();
     if (used >= DAILY_AI_LIMIT) {
@@ -295,8 +337,35 @@ export async function sendAiRequestWithImage(
     }
   }
 
-  const baseUrl = (config.type === 'builtin' ? BUILTIN_URL : config.url).replace(/\/$/, '');
-  const model = config.type === 'builtin' ? BUILTIN_MODEL : config.model;
+  // Pe `external`, dacă userul a configurat un provider OCR complet separat (URL + cheie
+  // + model TOATE completate), îl folosim pentru cererile cu imagine. Permite scenarii
+  // gen chat pe Mistral free + OCR pe Anthropic free. Dacă oricare câmp e gol, fallback
+  // complet la provider-ul de chat (URL + cheie + model).
+  const useSeparateVisionProvider =
+    config.type === 'external' &&
+    config.visionUrl.trim() !== '' &&
+    config.visionApiKey.trim() !== '' &&
+    config.visionModel.trim() !== '';
+
+  const apiKey = config.type === 'builtin'
+    ? BUILTIN_API_KEY
+    : useSeparateVisionProvider
+      ? config.visionApiKey
+      : config.apiKey;
+
+  const baseUrl = (config.type === 'builtin'
+    ? BUILTIN_URL
+    : useSeparateVisionProvider
+      ? config.visionUrl
+      : config.url
+  ).replace(/\/$/, '');
+
+  const model =
+    config.type === 'builtin'
+      ? BUILTIN_VISION_MODEL
+      : useSeparateVisionProvider
+        ? config.visionModel
+        : config.model;
   const endpoint = `${baseUrl}/chat/completions`;
 
   const images = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
@@ -346,7 +415,13 @@ export async function sendAiRequestWithImage(
 
 // ─── Trimitere cerere AI (OpenAI-compatible) ──────────────────────────────────
 
-export async function sendAiRequest(messages: AiMessage[], maxTokens = 500): Promise<string> {
+export type AiRequestPurpose = 'chat' | 'extraction';
+
+export async function sendAiRequest(
+  messages: AiMessage[],
+  maxTokens = 500,
+  purpose: AiRequestPurpose = 'chat'
+): Promise<string> {
   const config = await getAiConfig();
 
   const validationError = validateConfig(config);
@@ -371,7 +446,12 @@ export async function sendAiRequest(messages: AiMessage[], maxTokens = 500): Pro
   }
 
   const baseUrl = (config.type === 'builtin' ? BUILTIN_URL : config.url).replace(/\/$/, '');
-  const model = config.type === 'builtin' ? BUILTIN_MODEL : config.model;
+  const model =
+    config.type === 'builtin'
+      ? purpose === 'extraction'
+        ? BUILTIN_EXTRACTION_MODEL
+        : BUILTIN_MODEL
+      : config.model;
   const endpoint = `${baseUrl}/chat/completions`;
 
   const headers: Record<string, string> = {

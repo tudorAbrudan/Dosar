@@ -41,6 +41,42 @@ const MANIFEST_PATH = `${CLOUD_ROOT}/manifest.json`;
 const META_PATH = `${CLOUD_ROOT}/manifest.meta.json`;
 const MANIFEST_VERSION = 1;
 
+/**
+ * Aruncată când iCloud Drive refuză scrierea fiindcă quota contului e plină.
+ * Detectată din mesajul nativ (vezi `detectQuotaError`) și transformată în
+ * eroare tipată pentru ca UI-ul să afișeze banner specific cu CTA către Setări iCloud.
+ */
+export class CloudQuotaError extends Error {
+  constructor(
+    message = 'iCloud-ul tău nu mai are spațiu liber. Eliberează spațiu sau extinde planul iCloud și încearcă din nou.'
+  ) {
+    super(message);
+    this.name = 'CloudQuotaError';
+  }
+}
+
+/**
+ * Heuristică pentru a recunoaște erorile de quota plină din `react-native-cloud-storage`.
+ * iOS poate raporta în mai multe moduri: `NSFileWriteOutOfSpaceError` (cod 640),
+ * mesaj URLSession ("not enough space"), POSIX `ENOSPC`, sau text generic „quota".
+ * Match-ul pe string e fragil între versiuni iOS — actualizează lista când apare alt mesaj.
+ */
+export function detectQuotaError(e: unknown): boolean {
+  if (!e) return false;
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  if (!msg) return false;
+  if (msg.includes('quota')) return true;
+  if (msg.includes('not enough space')) return true;
+  if (msg.includes('insufficient') && msg.includes('space')) return true;
+  if (msg.includes('no space left')) return true;
+  if (msg.includes('out of space')) return true;
+  if (msg.includes('storage is full') || msg.includes('storage full')) return true;
+  if (msg.includes('nsfilewriteoutofspaceerror')) return true;
+  if (msg.includes('enospc')) return true;
+  if (/\bcode\s*=?\s*640\b/.test(msg)) return true;
+  return false;
+}
+
 interface CloudState {
   last_manifest_hash: string | null;
   last_manifest_uploaded_at: number | null;
@@ -201,7 +237,14 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   // Scriem META PRIMUL — mic, rapid, mai puțin probabil să eșueze. Dacă manifestul
   // eșuează după, alt device care citește în interval vede meta cu hash nou + manifest
   // vechi (inconsistent dar recuperabil la următorul refresh).
-  await cloudStorage.writeFile(META_PATH, JSON.stringify(meta), 'utf8');
+  try {
+    await cloudStorage.writeFile(META_PATH, JSON.stringify(meta), 'utf8');
+  } catch (e) {
+    if (detectQuotaError(e)) {
+      throw new CloudQuotaError();
+    }
+    throw e;
+  }
 
   try {
     await cloudStorage.writeFile(MANIFEST_PATH, payloadToWrite, 'utf8');
@@ -217,6 +260,9 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
           rollbackErr instanceof Error ? rollbackErr.message : rollbackErr
         );
       }
+    }
+    if (detectQuotaError(e)) {
+      throw new CloudQuotaError();
     }
     throw e;
   }
@@ -292,20 +338,78 @@ export async function enqueueFileUpload(filePath: string): Promise<void> {
 }
 
 /**
- * Scoate un fișier din coadă (dacă era pending) și încearcă să-l șteargă din cloud
- * (dacă era deja uploadat). Erorile remote sunt înghițite (eventual consistency).
+ * Numărul de snapshot-uri ulterioare pentru care păstrăm un fișier în iCloud
+ * după ce a fost șters din aplicație. Permite recovery dintr-un snapshot mai vechi
+ * (care încă referă fișierul). Ștergerea efectivă se face în `maybeSnapshot`.
+ */
+const DELETE_GRACE_SNAPSHOTS = 2;
+
+/**
+ * Scoate un fișier din coada de upload și amână ștergerea din iCloud cu
+ * `DELETE_GRACE_SNAPSHOTS` snapshot-uri. Fișierul e adăugat în
+ * `cloud_pending_deletes`; ștergerea efectivă se face când contorul ajunge la 0
+ * (vezi `maybeSnapshot`). Astfel un snapshot care referă fișierul rămâne
+ * recuperabil pentru încă 2 cicluri de snapshot.
+ *
+ * Excepție: dacă cloud-ul e momentan indisponibil sau nu există manifest cloud,
+ * doar dequeue local — fișierul nu există încă remote.
  *
  * @throws când scrierea în SQLite eșuează.
  */
 export async function dequeueFileDelete(filePath: string): Promise<void> {
   if (!filePath) return;
   await db.runAsync('DELETE FROM pending_uploads WHERE file_path = ?', [filePath]);
-  if (await cloudStorage.isAvailable()) {
-    const remote = `${FILES_PREFIX}${fileNameFromPath(filePath)}`;
+  if (!(await cloudStorage.isAvailable())) return;
+  const remote = `${FILES_PREFIX}${fileNameFromPath(filePath)}`;
+  try {
+    if (!(await cloudStorage.exists(remote))) return;
+  } catch {
+    return;
+  }
+  // Marcăm pentru ștergere amânată. ON CONFLICT resetează contorul ca să oferim
+  // grace period proaspăt pentru fiecare ciclu nou de ștergere (rar — același
+  // file_path nu se șterge de mai multe ori în practică, fiindcă file_path-ul
+  // e per-document UUID).
+  await db.runAsync(
+    `INSERT INTO cloud_pending_deletes (file_path, queued_at, snapshots_remaining)
+     VALUES (?, ?, ?)
+     ON CONFLICT(file_path) DO UPDATE SET
+       queued_at = excluded.queued_at,
+       snapshots_remaining = excluded.snapshots_remaining`,
+    [filePath, Date.now(), DELETE_GRACE_SNAPSHOTS]
+  );
+}
+
+/**
+ * Decrementează contorul pentru toate fișierele aflate în grace period și șterge
+ * efectiv din iCloud cele care au atins 0. Apelată după fiecare snapshot reușit.
+ *
+ * Erorile per-fișier (ex. iCloud temporar indisponibil) sunt înghițite — rândul
+ * rămâne în tabel cu contor 0 și va fi reîncercat la următorul snapshot. Nu
+ * decrementăm sub 0 ca să nu acumulăm valori negative dacă cleanup-ul eșuează
+ * repetitiv.
+ */
+async function processPendingDeletes(): Promise<void> {
+  if (!(await cloudStorage.isAvailable())) return;
+  await db.runAsync(
+    `UPDATE cloud_pending_deletes
+     SET snapshots_remaining = snapshots_remaining - 1
+     WHERE snapshots_remaining > 0`
+  );
+  const due = await db.getAllAsync<{ file_path: string }>(
+    'SELECT file_path FROM cloud_pending_deletes WHERE snapshots_remaining <= 0'
+  );
+  for (const row of due) {
+    const remote = `${FILES_PREFIX}${fileNameFromPath(row.file_path)}`;
     try {
       await cloudStorage.deleteFile(remote);
-    } catch {
-      // ignore — eventual consistency
+      await db.runAsync('DELETE FROM cloud_pending_deletes WHERE file_path = ?', [row.file_path]);
+    } catch (e) {
+      console.warn(
+        '[cloudSync.processPendingDeletes] delete failed:',
+        row.file_path,
+        e instanceof Error ? e.message : e
+      );
     }
   }
 }
@@ -495,11 +599,21 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
         [Date.now(), fileSize || null, row.id]
       );
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Eroare necunoscută';
+      const isQuota = detectQuotaError(e);
+      const message = isQuota
+        ? 'iCloud plin — fișierul nu a putut fi sincronizat'
+        : e instanceof Error
+          ? e.message
+          : 'Eroare necunoscută';
       await db.runAsync(
         'UPDATE pending_uploads SET attempt_count = attempt_count + 1, last_error = ? WHERE id = ?',
         [message, row.id]
       );
+      if (isQuota) {
+        // Re-aruncăm ca să oprim restul lotului — orice fișier următor va eșua oricum.
+        // Apelantul (backupNow / hook) prinde și convertește la CloudQuotaError.
+        throw e;
+      }
     } finally {
       processed += 1;
       bytesDone += fileSize;
@@ -509,9 +623,16 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
 
   // Procesare în chunk-uri paralele. Folosim allSettled ca un eșec într-un chunk
   // să nu blocheze restul; oricum erorile sunt persistate în `last_error`.
+  // Excepție: dacă apare o eroare de quota plină într-un chunk, abandonăm tot
+  // lotul și aruncăm CloudQuotaError ca apelantul să afișeze banner-ul.
   for (let i = 0; i < pending.length; i += PARALLELISM) {
     const chunk = pending.slice(i, i + PARALLELISM);
-    await Promise.allSettled(chunk.map(processOne));
+    const results = await Promise.allSettled(chunk.map(processOne));
+    for (const r of results) {
+      if (r.status === 'rejected' && detectQuotaError(r.reason)) {
+        throw new CloudQuotaError();
+      }
+    }
   }
 }
 
@@ -611,6 +732,11 @@ export async function maybeSnapshot(
   await setCloudState({ last_snapshot_at: now });
 
   await cleanupSnapshots(retention);
+
+  // Ștergerile amânate (vezi dequeueFileDelete) se procesează după ce snapshot-ul
+  // tocmai luat e persistat — astfel fișierele dintr-un document șters azi rămân
+  // disponibile pentru încă DELETE_GRACE_SNAPSHOTS cicluri.
+  await processPendingDeletes();
 
   return true;
 }

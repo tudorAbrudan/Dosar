@@ -154,6 +154,16 @@ db.execSync(`
     created_at INTEGER NOT NULL
   );
 
+  -- Grace period pentru fișiere șterse din app: ștergerea efectivă din iCloud se
+  -- amână până când N snapshot-uri ulterioare au fost luate, ca să poți restaura
+  -- documentele dintr-un snapshot anterior. Vezi cloudSync.dequeueFileDelete +
+  -- maybeSnapshot.
+  CREATE TABLE IF NOT EXISTS cloud_pending_deletes (
+    file_path TEXT PRIMARY KEY,
+    queued_at INTEGER NOT NULL,
+    snapshots_remaining INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_docs_expiry ON documents(expiry_date);
   CREATE INDEX IF NOT EXISTS idx_docs_person ON documents(person_id);
   CREATE INDEX IF NOT EXISTS idx_docs_vehicle ON documents(vehicle_id);
@@ -394,6 +404,22 @@ try {
   // best-effort
 }
 
+// Cleanup: rânduri blocate de bug-ul cloudStorage cu URI `file://` trimis nativ.
+// Înainte de fix, `cs.uploadFile`/`downloadFile` primea URI cu schemă, iar Swift
+// `URL(fileURLWithPath:)` îl interpreta ca POSIX path → `fileNotFound`.
+// Mesajul stocat în `last_error` e de forma `File not found at path: file:/…`.
+// Resetăm rândurile ca processQueue să le reîncerce cu codul corect. Idempotent.
+try {
+  db.execSync(`
+    UPDATE pending_uploads
+    SET attempt_count = 0, last_error = NULL
+    WHERE uploaded_at IS NULL
+      AND last_error LIKE 'File not found at path: file:%'
+  `);
+} catch {
+  // best-effort
+}
+
 // Migrare: adaugă fuel_type la vehicles
 try {
   db.execSync("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT DEFAULT 'diesel'");
@@ -550,6 +576,32 @@ try {
   `);
 } catch {
   // best-effort: dacă migrarea eșuează, app-ul continuă cu schema existentă
+}
+
+// Backstop fuel_records: garantăm explicit toate coloanele așteptate de cod.
+// Pe device-uri unde migrarea istorică a eșuat silent (catch înghite eroarea
+// fără retry), schema rămânea incompletă și INSERT-urile picau cu „no column".
+// PRAGMA citește schema curentă reală; ALTER rulează doar pentru ce lipsește.
+try {
+  const fuelCols = db.getAllSync<{ name: string }>("PRAGMA table_info('fuel_records')");
+  const names = new Set(fuelCols.map(c => c.name));
+  if (!names.has('currency')) {
+    db.execSync("ALTER TABLE fuel_records ADD COLUMN currency TEXT NOT NULL DEFAULT 'RON'");
+  }
+  if (!names.has('fuel_type')) {
+    db.execSync('ALTER TABLE fuel_records ADD COLUMN fuel_type TEXT');
+  }
+  if (!names.has('pump_number')) {
+    db.execSync('ALTER TABLE fuel_records ADD COLUMN pump_number TEXT');
+  }
+  if (!names.has('is_full')) {
+    db.execSync('ALTER TABLE fuel_records ADD COLUMN is_full INTEGER NOT NULL DEFAULT 1');
+  }
+  if (!names.has('station')) {
+    db.execSync('ALTER TABLE fuel_records ADD COLUMN station TEXT');
+  }
+} catch {
+  // best-effort
 }
 
 // Migrare: orientation_locked pe document_pages — devine 1 după ce userul rotește

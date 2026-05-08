@@ -59,19 +59,48 @@ function pickLatestDocWithExpiry(docs: Document[], type: Document['type']): Docu
   );
 }
 
+/**
+ * Pentru talon: returnează data ITP efectivă, fie din `expiry_date` (când OCR a
+ * setat-o direct), fie din `metadata.itp_expiry_date` (format DD.MM.YYYY) ca
+ * fallback pentru taloane create manual sau importate fără expiry_date.
+ * Garantează că brick-ul ITP se actualizează imediat după upload-ul talonului,
+ * indiferent de calea OCR/manuală.
+ */
+function getTalonItpIso(doc: Document): string | undefined {
+  if (doc.expiry_date) return doc.expiry_date;
+  const meta = doc.metadata?.itp_expiry_date;
+  if (!meta) return undefined;
+  const m = meta.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) return undefined;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+function pickLatestTalonItp(docs: Document[]): { doc: Document; iso: string } | undefined {
+  let best: { doc: Document; iso: string } | undefined;
+  for (const d of docs) {
+    if (d.type !== 'talon') continue;
+    const iso = getTalonItpIso(d);
+    if (!iso) continue;
+    if (!best || iso > best.iso) best = { doc: d, iso };
+  }
+  return best;
+}
+
 function buildDocItem(
   doc: Document,
   key: 'rca' | 'casco' | 'itp',
   label: string,
   notificationDays: number,
-  today: Date
+  today: Date,
+  expiryIso?: string
 ): StatusItemRaw {
-  const days = daysBetween(doc.expiry_date!, today);
+  const iso = expiryIso ?? doc.expiry_date!;
+  const days = daysBetween(iso, today);
   return {
     key,
     label,
     value: formatDaysRemaining(days),
-    subValue: formatIsoDateRo(doc.expiry_date!),
+    subValue: formatIsoDateRo(iso),
     severity: severityFromDays(days, notificationDays),
     docId: doc.id,
   };
@@ -88,12 +117,30 @@ export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
   if (casco) items.push(buildDocItem(casco, 'casco', 'CASCO', notificationDays, today));
 
   // ITP: data e fie pe doc-ul ITP separat, fie pe talon (ștampila RAR).
+  // Pentru talon acceptăm și `metadata.itp_expiry_date` ca fallback pentru cazurile
+  // în care OCR-ul nu a populat `expiry_date` direct (intrare manuală, import).
   // Dacă există în ambele, alegem expirarea cea mai târzie. Click pe brick → doc-sursă.
   const itp = pickLatestDocWithExpiry(documents, 'itp');
-  const talon = pickLatestDocWithExpiry(documents, 'talon');
-  const itpSource =
-    itp && talon ? (itp.expiry_date! >= talon.expiry_date! ? itp : talon) : (itp ?? talon);
-  if (itpSource) items.push(buildDocItem(itpSource, 'itp', 'ITP', notificationDays, today));
+  const talonPick = pickLatestTalonItp(documents);
+  let itpSource: Document | undefined;
+  let itpIso: string | undefined;
+  if (itp && talonPick) {
+    if (itp.expiry_date! >= talonPick.iso) {
+      itpSource = itp;
+      itpIso = itp.expiry_date;
+    } else {
+      itpSource = talonPick.doc;
+      itpIso = talonPick.iso;
+    }
+  } else if (itp) {
+    itpSource = itp;
+    itpIso = itp.expiry_date;
+  } else if (talonPick) {
+    itpSource = talonPick.doc;
+    itpIso = talonPick.iso;
+  }
+  if (itpSource && itpIso)
+    items.push(buildDocItem(itpSource, 'itp', 'ITP', notificationDays, today, itpIso));
 
   if (fuelStats.avgConsumptionL100 !== undefined) {
     items.push({

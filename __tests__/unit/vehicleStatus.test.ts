@@ -164,6 +164,78 @@ describe('buildVehicleStatusItems', () => {
     expect(items.find(i => i.key === 'itp')).toBeUndefined();
   });
 
+  it('ITP slot falls back to talon metadata.itp_expiry_date when expiry_date missing', () => {
+    const items = buildVehicleStatusItems({
+      documents: [
+        doc({
+          id: 'tl1',
+          type: 'talon',
+          metadata: { itp_expiry_date: '26.04.2026' },
+        }),
+      ],
+      fuelStats: emptyStats(),
+      notificationDays: 30,
+      today,
+    });
+    const itp = items.find(i => i.key === 'itp');
+    expect(itp).toBeDefined();
+    expect(itp?.docId).toBe('tl1');
+    expect(itp?.subValue).toBe('26.04.2026');
+    expect(itp?.severity).toBe('critical');
+  });
+
+  it('ITP slot picks ITP doc over talon metadata when ITP doc is later', () => {
+    const items = buildVehicleStatusItems({
+      documents: [
+        doc({
+          id: 'tl1',
+          type: 'talon',
+          metadata: { itp_expiry_date: '01.05.2026' },
+        }),
+        doc({ id: 't1', type: 'itp', expiry_date: '2027-04-26' }),
+      ],
+      fuelStats: emptyStats(),
+      notificationDays: 30,
+      today,
+    });
+    expect(items.find(i => i.key === 'itp')?.docId).toBe('t1');
+  });
+
+  it('ITP slot picks talon metadata over ITP doc when talon date is later', () => {
+    const items = buildVehicleStatusItems({
+      documents: [
+        doc({ id: 't1', type: 'itp', expiry_date: '2026-04-26' }),
+        doc({
+          id: 'tl1',
+          type: 'talon',
+          metadata: { itp_expiry_date: '15.10.2027' },
+        }),
+      ],
+      fuelStats: emptyStats(),
+      notificationDays: 30,
+      today,
+    });
+    const itp = items.find(i => i.key === 'itp');
+    expect(itp?.docId).toBe('tl1');
+    expect(itp?.subValue).toBe('15.10.2027');
+  });
+
+  it('ITP slot ignores invalid talon metadata.itp_expiry_date format', () => {
+    const items = buildVehicleStatusItems({
+      documents: [
+        doc({
+          id: 'tl1',
+          type: 'talon',
+          metadata: { itp_expiry_date: 'invalid' },
+        }),
+      ],
+      fuelStats: emptyStats(),
+      notificationDays: 30,
+      today,
+    });
+    expect(items.find(i => i.key === 'itp')).toBeUndefined();
+  });
+
   it('includes CASCO slot with same rules as RCA', () => {
     const items = buildVehicleStatusItems({
       documents: [doc({ id: 'c1', type: 'casco', expiry_date: '2026-04-26' })],

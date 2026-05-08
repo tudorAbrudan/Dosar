@@ -9,6 +9,7 @@ import {
   getPendingBytes,
   getFailedCount,
   getLocalDbSizeBytes,
+  CloudQuotaError,
   type BackupProgress,
 } from '@/services/cloudSync';
 import { isAvailable } from '@/services/cloudStorage';
@@ -37,6 +38,8 @@ interface State {
   fileCountMb: number;
   loading: boolean;
   error: string | null;
+  /** True dacă ultima încercare a eșuat fiindcă iCloud-ul e plin. UI afișează banner. */
+  quotaExceeded: boolean;
   /** Progres viu cât rulează `backupNow` (null altfel). */
   backupProgress: BackupProgress | null;
 }
@@ -54,6 +57,7 @@ const INITIAL: State = {
   fileCountMb: 0,
   loading: true,
   error: null,
+  quotaExceeded: false,
   backupProgress: null,
 };
 
@@ -113,6 +117,8 @@ export function useCloudBackup() {
           fileCountMb: 0,
           loading: false,
           error: null,
+          // quotaExceeded e flag sticky — rămâne setat până la următorul backup reușit.
+          // Nu îl resetăm aici (refresh-ul rulează des, banner-ul ar dispărea instant).
         }));
       }
     } catch (e) {
@@ -145,12 +151,18 @@ export function useCloudBackup() {
             '[useCloudBackup] background sync failed:',
             e instanceof Error ? e.message : e
           );
+          if (e instanceof CloudQuotaError && mountedRef.current) {
+            setState(st => ({ ...st, quotaExceeded: true, error: e.message, status: 'error' }));
+          }
         }
       } else if (s === 'active') {
         try {
           await processQueue();
         } catch (e) {
           console.warn('[useCloudBackup] processQueue failed:', e instanceof Error ? e.message : e);
+          if (e instanceof CloudQuotaError && mountedRef.current) {
+            setState(st => ({ ...st, quotaExceeded: true, error: e.message, status: 'error' }));
+          }
         }
         await refresh();
       }
@@ -194,6 +206,8 @@ export function useCloudBackup() {
       setState(s => ({
         ...s,
         status: 'uploading',
+        // Resetăm banner-ul la noua încercare; va fi re-setat în catch dacă e tot quota plină.
+        quotaExceeded: false,
         backupProgress: { phase: 'files', current: 0, total: 0, bytesDone: 0, bytesTotal: 0 },
       }));
     }
@@ -229,6 +243,7 @@ export function useCloudBackup() {
           ...s,
           status: 'error',
           error: e instanceof Error ? e.message : 'Eroare necunoscută',
+          quotaExceeded: e instanceof CloudQuotaError,
           backupProgress: null,
         }));
       }

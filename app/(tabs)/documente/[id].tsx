@@ -66,11 +66,13 @@ import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderAllPdfPagesAsBase64 } from '@/services/pdfOcr';
+import { scanDocumentPages } from '@/services/documentScanner';
+import { processDocumentImage } from '@/services/imageProcessing';
 import { getDocumentLabel } from '@/types';
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
-import { DOCUMENT_FIELDS } from '@/types/documentFields';
+import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 
 function slugify(s: string): string {
@@ -294,12 +296,8 @@ export default function DocumentDetailScreen() {
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
         intermediates: true,
       });
-      // Normalizează EXIF (bake-in rotația) înainte de salvare
-      const normalized = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 2048 } }], {
-        compress: 0.82,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      await FileSystem.copyAsync({ from: normalized.uri, to: dest });
+      const processedUri = await processDocumentImage(uri, doc.type);
+      await FileSystem.copyAsync({ from: processedUri, to: dest });
       if (!doc.file_path) {
         await updateDocument(doc.id, {
           type: doc.type,
@@ -442,23 +440,22 @@ export default function DocumentDetailScreen() {
     }
   }
 
+  async function scanAndAddPages() {
+    if (!doc) return;
+    try {
+      const uris = await scanDocumentPages();
+      if (!uris) return;
+      for (const uri of uris) {
+        await saveAndAddPage(uri);
+      }
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Scanarea a eșuat');
+    }
+  }
+
   function handleAddPage() {
     Alert.alert('Adaugă atașament', '', [
-      {
-        text: 'Cameră',
-        onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') {
-            Alert.alert('Permisiune', 'Este nevoie de acces la cameră.');
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 1,
-          });
-          if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
-        },
-      },
+      { text: 'Scanează document', onPress: scanAndAddPages },
       {
         text: 'Galerie',
         onPress: async () => {
@@ -1190,7 +1187,7 @@ export default function DocumentDetailScreen() {
               {doc.issue_date && <DocumentDetailRow label="Data emisiune" value={doc.issue_date} />}
               {doc.expiry_date && (
                 <DocumentDetailRow
-                  label={doc.type === 'factura' ? 'Scadență' : 'Data expirare'}
+                  label={EXPIRY_FIELD_LABEL[doc.type] ?? 'Data expirare'}
                   value={doc.expiry_date}
                 />
               )}
@@ -1205,7 +1202,9 @@ export default function DocumentDetailScreen() {
                   >
                     <Text style={{ fontSize: 18 }}>📅</Text>
                     <Text style={[styles.calendarBtnLabel, { color: primary }]}>
-                      Adaugă reminder în calendar
+                      {doc.calendar_event_id
+                        ? 'Actualizare reminder în calendar'
+                        : 'Adaugă reminder în calendar'}
                     </Text>
                   </Pressable>
                 </DocumentDetailRow>
@@ -1281,7 +1280,9 @@ export default function DocumentDetailScreen() {
           >
             <Text style={{ fontSize: 18 }}>📅</Text>
             <Text style={[styles.calendarBtnLabel, { color: primary }]}>
-              Reminder eveniment în calendar
+              {doc.calendar_event_id
+                ? 'Actualizare reminder în calendar'
+                : 'Adaugă reminder în calendar'}
             </Text>
           </Pressable>
         )}

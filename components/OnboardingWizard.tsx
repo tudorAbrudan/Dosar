@@ -351,6 +351,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
         aiProviderChoice === 'external'
           ? aiExternalModel
           : (aiProvider.PROVIDER_DEFAULTS[aiProviderChoice]?.model ?? ''),
+      // Onboarding nu cere provider OCR separat — userul îl poate configura din
+      // Setări → AI după onboarding. Toate goale = fallback la provider-ul de chat
+      // pentru cereri vision.
+      visionUrl: '',
+      visionModel: '',
     });
     if (aiProviderChoice === 'external') {
       await aiProvider.saveAiApiKey(aiExternalApiKey);

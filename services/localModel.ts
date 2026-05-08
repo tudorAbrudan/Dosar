@@ -209,6 +209,69 @@ export async function deleteModel(modelId: string): Promise<void> {
   }
 }
 
+export interface OrphanModelFile {
+  /** Nume fișier (ex: "gemma-e2b.gguf") */
+  name: string;
+  sizeBytes: number;
+}
+
+/**
+ * Listează fișierele `.gguf` din folderul `models/` care NU corespund unui id
+ * din catalogul curent. Apar când catalogul s-a schimbat în timp (modele
+ * scoase, redenumite) iar fișierele descărcate de versiuni vechi rămân pe disc
+ * fără să mai fie referite de UI. Pot ocupa câțiva GB.
+ */
+export async function listOrphanModels(): Promise<OrphanModelFile[]> {
+  const dir = getModelsDir();
+  const dirInfo = await FileSystem.getInfoAsync(dir);
+  if (!dirInfo.exists) return [];
+  let files: string[];
+  try {
+    files = await FileSystem.readDirectoryAsync(dir);
+  } catch {
+    return [];
+  }
+  const knownFiles = new Set(LOCAL_MODEL_CATALOG.map(m => `${m.id}.gguf`));
+  const orphans: OrphanModelFile[] = [];
+  for (const name of files) {
+    if (!name.endsWith('.gguf')) continue;
+    if (knownFiles.has(name)) continue;
+    try {
+      const info = await FileSystem.getInfoAsync(dir + name);
+      const size = info.exists && 'size' in info && typeof info.size === 'number' ? info.size : 0;
+      orphans.push({ name, sizeBytes: size });
+    } catch {
+      // skip — nu blochează lista pentru un singur fișier corupt
+    }
+  }
+  return orphans;
+}
+
+/**
+ * Șterge toate fișierele orphan returnate de `listOrphanModels`. Returnează
+ * câți au fost șterși și câți bytes s-au eliberat (best-effort — un fișier
+ * care nu poate fi șters nu blochează restul).
+ */
+export async function deleteOrphanModels(): Promise<{
+  deletedCount: number;
+  freedBytes: number;
+}> {
+  const dir = getModelsDir();
+  const orphans = await listOrphanModels();
+  let deletedCount = 0;
+  let freedBytes = 0;
+  for (const o of orphans) {
+    try {
+      await FileSystem.deleteAsync(dir + o.name, { idempotent: true });
+      deletedCount++;
+      freedBytes += o.sizeBytes;
+    } catch {
+      // skip — best-effort
+    }
+  }
+  return { deletedCount, freedBytes };
+}
+
 // ─── Inferență ───────────────────────────────────────────────────────────────
 
 let _llamaContext: LlamaContext | null = null;

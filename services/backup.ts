@@ -772,6 +772,7 @@ async function wipeUserData(): Promise<void> {
     DELETE FROM entity_order;
     DELETE FROM chat_messages;
     DELETE FROM chat_threads;
+    DELETE FROM cloud_pending_deletes;
   `);
 }
 
