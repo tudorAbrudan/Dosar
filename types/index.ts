@@ -31,6 +31,7 @@ export type DocumentType =
   | 'act_constitutiv'
   | 'certificat_tva'
   | 'asigurare_profesionala'
+  | 'asigurare_personala'
   | 'diploma'
   | 'foaie_matricola'
   | 'certificat_absolvire'
@@ -262,6 +263,7 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'certificat_absolvire',
   'certificat_curs',
   'adeverinta_studii',
+  'asigurare_personala',
   'altul',
 ];
 
@@ -283,6 +285,7 @@ export const DEFAULT_VISIBLE_DOC_TYPES: DocumentType[] = [
   'card',
   'garantie',
   'abonament',
+  'asigurare_personala',
   // Medical — toată lumea
   'reteta_medicala',
   'analize_medicale',
@@ -323,6 +326,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   act_constitutiv: 'Act constitutiv',
   certificat_tva: 'Certificat TVA',
   asigurare_profesionala: 'Asigurare profesională',
+  asigurare_personala: 'Asigurare personală',
   diploma: 'Diplomă',
   foaie_matricola: 'Foaie matricolă',
   certificat_absolvire: 'Certificat absolvire',
@@ -340,6 +344,7 @@ export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
     'card',
     'reteta_medicala',
     'analize_medicale',
+    'asigurare_personala',
     'diploma',
     'foaie_matricola',
     'certificat_absolvire',
