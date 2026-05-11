@@ -294,7 +294,7 @@ export function buildClassifierCatalog(candidates: DocumentType[]): string {
   for (const type of candidates) {
     const entry = DOC_TYPE_AI_REGISTRY[type];
     if (!entry) continue;
-    const aliases = entry.aliases.slice(0, 6).join(', ');
+    const aliases = entry.aliases.join(', ');
     const marks = entry.distinguishingMarks?.length
       ? ` Semne distinctive: ${entry.distinguishingMarks.join('; ')}.`
       : '';
