@@ -223,10 +223,10 @@ export default function AddDocumentScreen() {
       setDuplicateDoc(null);
       return;
     }
-    findDuplicateDocument(type, customTypeId ?? undefined, entityLinks)
+    findDuplicateDocument(type, customTypeId ?? undefined, entityLinks, issueDate || undefined)
       .then(setDuplicateDoc)
       .catch(() => setDuplicateDoc(null));
-  }, [type, customTypeId, entityLinks]);
+  }, [type, customTypeId, entityLinks, issueDate]);
 
   // Pre-completează data expirării ITP din talonul vehiculului (dacă există)
   useEffect(() => {
@@ -1368,7 +1368,8 @@ export default function AddDocumentScreen() {
             </Text>
             <Text style={[styles.duplicateBannerBody, { color: C.text }]}>
               Există deja un document de tip „
-              {DOCUMENT_TYPE_LABELS[duplicateDoc.type] ?? duplicateDoc.type}" pentru această
+              {DOCUMENT_TYPE_LABELS[duplicateDoc.type] ?? duplicateDoc.type}"
+              {duplicateDoc.issue_date ? ` din ${duplicateDoc.issue_date}` : ''} pentru această
               entitate.
             </Text>
             <Text style={[styles.duplicateBannerLink, { color: statusColors.warning }]}>

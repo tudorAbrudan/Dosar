@@ -8,6 +8,7 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
+import { REPEATABLE_DOC_TYPES } from '@/types';
 
 export interface CreateDocumentInput {
   type: DocumentType;
@@ -663,22 +664,40 @@ export async function reorderAllDocumentFiles(
   emit('documents:changed');
 }
 
+/**
+ * Caută un document existent care ar putea fi duplicatul celui în curs de adăugare.
+ *
+ * Pentru tipuri **non-repetabile** (buletin, talon, card etc.) — match pe (type + entity).
+ *
+ * Pentru tipuri **repetabile** (analize, facturi, RCA, asigurări, bilete etc.) —
+ * match DOAR dacă `issueDate` e furnizat și există un document existent cu același
+ * `issue_date`. Fără dată → nu raportăm duplicat (n-avem destulă informație ca să fim siguri).
+ */
 export async function findDuplicateDocument(
   type: DocumentType,
   customTypeId: string | undefined,
-  entityLinks: DocumentEntityLink[]
+  entityLinks: DocumentEntityLink[],
+  issueDate?: string
 ): Promise<Document | null> {
   if (entityLinks.length === 0) return null;
 
+  const isRepeatable = REPEATABLE_DOC_TYPES.has(type);
+  // Pentru tipuri repetabile, fără dată de emitere nu avem cum decide dacă e duplicat.
+  if (isRepeatable && !issueDate?.trim()) return null;
+
   const customFilter =
     type === 'custom' && customTypeId ? 'AND d.custom_type_id = ?' : type === 'custom' ? '' : '';
-  const params: (string | null)[] = type === 'custom' && customTypeId ? [customTypeId] : [];
+  const customParams: (string | null)[] = type === 'custom' && customTypeId ? [customTypeId] : [];
+
+  const issueDateFilter = isRepeatable ? 'AND d.issue_date = ?' : '';
+  const issueDateParams: string[] = isRepeatable && issueDate ? [issueDate.trim()] : [];
 
   for (const link of entityLinks) {
     const row = await db.getFirstAsync<Row>(
       `SELECT d.* FROM documents d
        WHERE d.type = ?
        ${customFilter}
+       ${issueDateFilter}
        AND EXISTS (
          SELECT 1 FROM document_entities de
          WHERE de.document_id = d.id
@@ -686,7 +705,7 @@ export async function findDuplicateDocument(
          AND de.entity_id = ?
        )
        LIMIT 1`,
-      [type, ...params, link.entityType, link.entityId]
+      [type, ...customParams, ...issueDateParams, link.entityType, link.entityId]
     );
     if (row) return mapRow(row);
   }

@@ -267,6 +267,48 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'altul',
 ];
 
+/**
+ * Tipuri de documente care, inerent, se repetă peste timp pentru aceeași entitate.
+ *
+ * Pentru ele, un al doilea document de același tip + entitate NU e duplicat —
+ * e o intrare nouă (analiză nouă, factură lună nouă, asigurare reînnoită etc.).
+ * Detecția de duplicat trebuie să folosească un câmp distinctiv suplimentar
+ * (în primul rând `issue_date`).
+ *
+ * Tipurile care NU sunt aici (buletin, pasaport, talon, card, act_proprietate,
+ * cadastru, diplomă, etc.) sunt considerate unice per entitate la un moment dat
+ * și păstrează detecția simplă de duplicat pe (type + entity).
+ */
+export const REPEATABLE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
+  // Medical — repetabile (analize lunare, rețete frecvente, vizite vet)
+  'analize_medicale',
+  'reteta_medicala',
+  'vizita_vet',
+  'vaccin_animal',
+  'deparazitare',
+  // Financiar — facturi/bonuri/abonamente recurente, contracte separate
+  'factura',
+  'bon_cumparaturi',
+  'bon_parcare',
+  'abonament',
+  'garantie',
+  'contract',
+  'impozit_proprietate',
+  // Asigurări — reînnoiri anuale; istoricul rămâne valid
+  'asigurare_personala',
+  'asigurare_profesionala',
+  'rca',
+  'casco',
+  'pad',
+  // Auto — reînnoiri periodice
+  'itp',
+  'vigneta',
+  // Diverse — bilete sunt unice per eveniment, dar multiple per persoană
+  'bilet',
+  // Curs — se pot face multiple
+  'certificat_curs',
+]);
+
 // Tipuri active implicit pentru utilizatori noi — doar ce folosesc cei mai mulți
 export const DEFAULT_VISIBLE_DOC_TYPES: DocumentType[] = [
   // Identitate — toată lumea
