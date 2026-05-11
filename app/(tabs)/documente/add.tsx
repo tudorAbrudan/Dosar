@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Pressable,
@@ -59,6 +59,7 @@ import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
+import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
@@ -133,7 +134,7 @@ export default function AddDocumentScreen() {
   const { persons, properties, vehicles, cards, animals, companies } = useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const { visibleDocTypes, visibleEntityTypes } = useVisibilitySettings();
+  const { visibleEntityTypes } = useVisibilitySettings();
 
   const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'altul');
   // Marker: utilizatorul a fixat manual tipul (din params sau din picker).
@@ -197,6 +198,20 @@ export default function AddDocumentScreen() {
   });
   const [pickerCategory, setPickerCategory] = useState<EntityType>(
     () => entityLinks[0]?.entityType ?? 'person'
+  );
+
+  // Tipurile de entități atașate documentului — folosite ca să arătăm doar
+  // tipurile relevante în picker-ul de document (Option B din spec).
+  const attachedEntityTypes = useMemo<EntityType[]>(
+    () => Array.from(new Set(entityLinks.map(l => l.entityType))),
+    [entityLinks]
+  );
+
+  // Override entitate-aware: dacă există entități atașate, picker-ul afișează
+  // tipurile relevante (ENTITY_DOCUMENT_TYPES[entity]) indiferent de setări;
+  // altfel, comportament clasic filtrat pe setări.
+  const { visibleDocTypes: contextVisibleDocTypes } = useFilteredDocTypes(
+    attachedEntityTypes.length > 0 ? { entityTypes: attachedEntityTypes } : undefined
   );
 
   // Auto-comută tab-ul picker-ului pe primul tip de entitate legat, dacă tab-ul
@@ -396,7 +411,7 @@ export default function AddDocumentScreen() {
         detectedType &&
         detectedType !== 'altul' &&
         detectedType !== 'custom' &&
-        visibleDocTypes.includes(detectedType)
+        contextVisibleDocTypes.includes(detectedType)
       ) {
         setType(detectedType);
         setCustomTypeId(null);
@@ -514,7 +529,7 @@ export default function AddDocumentScreen() {
         result.documentType !== 'altul' &&
         result.documentType !== 'custom'
       ) {
-        if (visibleDocTypes.includes(result.documentType)) {
+        if (contextVisibleDocTypes.includes(result.documentType)) {
           setType(result.documentType);
           setCustomTypeId(null);
           setMetadata({});
@@ -887,7 +902,7 @@ export default function AddDocumentScreen() {
             detectedType &&
             detectedType !== 'altul' &&
             detectedType !== 'custom' &&
-            visibleDocTypes.includes(detectedType)
+            contextVisibleDocTypes.includes(detectedType)
           ) {
             setType(detectedType);
             setCustomTypeId(null);
@@ -1253,7 +1268,7 @@ export default function AddDocumentScreen() {
   const anyEntitySelected = entityLinks.length > 0;
 
   const visibleStandardTypes = ALL_STANDARD_TYPES.filter(({ value }) =>
-    visibleDocTypes.includes(value)
+    contextVisibleDocTypes.includes(value)
   );
 
   const hasHiddenTypes = ALL_STANDARD_TYPES.length > visibleStandardTypes.length;

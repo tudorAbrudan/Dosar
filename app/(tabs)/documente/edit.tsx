@@ -94,7 +94,6 @@ export default function EditDocumentScreen() {
   const { colors } = useTheme();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const { docTypeOptions: standardTypes } = useFilteredDocTypes();
   const { companies, persons, properties, vehicles, cards, animals } = useEntities();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -115,6 +114,16 @@ export default function EditDocumentScreen() {
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
+
+  // Picker entitate-aware (Option B): dacă documentul e atașat la entități,
+  // afișează tipurile relevante pentru acele entități, ignorând setările globale.
+  const attachedEntityTypes = useMemo<EntityType[]>(
+    () => Array.from(new Set(entityLinks.map(l => l.entityType))),
+    [entityLinks]
+  );
+  const { docTypeOptions: standardTypes } = useFilteredDocTypes(
+    attachedEntityTypes.length > 0 ? { entityTypes: attachedEntityTypes } : undefined
+  );
 
   // Form state — populated when doc loads
   const [type, setType] = useState<DocumentType>('buletin');
