@@ -258,12 +258,12 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'act_constitutiv',
   'certificat_tva',
   'asigurare_profesionala',
+  'asigurare_personala',
   'diploma',
   'foaie_matricola',
   'certificat_absolvire',
   'certificat_curs',
   'adeverinta_studii',
-  'asigurare_personala',
   'altul',
 ];
 
