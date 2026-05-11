@@ -1209,8 +1209,9 @@ export default function SetariScreen() {
           <>
             <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
               <RNText style={[styles.hint, { color: C.textSecondary }]}>
-                Alege ce tipuri de documente să apară în formulare. Tipurile dezactivate nu vor
-                apărea la adăugarea documentelor.
+                Alege ce tipuri de documente să apară în lista globală de adăugare. Când adaugi un
+                document direct pe o entitate (mașină, casă, persoană…), tipurile relevante pentru
+                acea entitate sunt mereu vizibile, indiferent de selecția de aici.
               </RNText>
               <RNView style={styles.chipRow}>
                 {STANDARD_DOC_TYPES.map(docType => {

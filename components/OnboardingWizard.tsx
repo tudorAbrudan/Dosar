@@ -132,7 +132,7 @@ function stepSubtitle(step: number): string {
     case VEHICLE_MGMT:
       return 'Talon, RCA, ITP, alimentări, statistici de consum — într-un singur loc.';
     case DOCS:
-      return 'Am preselectat documentele aferente entităților alese. Ajustează după nevoie.';
+      return 'Am preselectat documentele aferente entităților alese. Aici alegi doar lista globală — când adaugi un document direct pe o entitate, toate tipurile relevante apar oricum.';
     case NOTIFICATIONS:
       return 'Primești remindere locale pe telefon — fără server, fără cont online.';
     case BACKUP:
