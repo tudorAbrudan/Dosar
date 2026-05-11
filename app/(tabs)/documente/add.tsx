@@ -51,7 +51,7 @@ import {
   getVehicleIdentifiers,
   setDocumentCalendarEventId,
 } from '@/services/documents';
-import { DOCUMENT_TYPE_LABELS, ENTITY_DOCUMENT_TYPES } from '@/types';
+import { DOCUMENT_TYPE_LABELS, ENTITY_DOCUMENT_TYPES, ALL_ENTITY_TYPES } from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
 import { DatePickerField } from '@/components/DatePickerField';
@@ -71,6 +71,10 @@ import type { ClassifyCandidate } from '@/services/aiClassifier';
 import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
+
+function isValidEntityType(v: string | undefined): v is EntityType {
+  return typeof v === 'string' && (ALL_ENTITY_TYPES as string[]).includes(v);
+}
 
 const DELETE_OPTIONS: { label: string; value: string | null }[] = [
   { label: 'Niciodată', value: null },
@@ -253,6 +257,11 @@ export default function AddDocumentScreen() {
   // Deschide ClassifyConfirmSheet și returnează tipul confirmat sau null la anulare.
   function openClassifyConfirmSheet(top3: ClassifyCandidate[]): Promise<DocumentType | null> {
     return new Promise(resolve => {
+      // Defensiv: dacă un resolver anterior e pending (re-entrancy), îl rezolvăm
+      // cu null ca să nu rămână orphan și să blocheze flow-ul anterior.
+      if (classifyResolverRef.current) {
+        classifyResolverRef.current(null);
+      }
       setClassifySheetTop3(top3);
       setClassifySheetVisible(true);
       classifyResolverRef.current = resolve;
@@ -632,7 +641,7 @@ export default function AddDocumentScreen() {
           }
         } catch {}
 
-        const entityType = (params.entityType as EntityType | undefined) ?? undefined;
+        const entityType = isValidEntityType(params.entityType) ? params.entityType : undefined;
         const candidates = entityType ? ENTITY_DOCUMENT_TYPES[entityType] : undefined;
 
         let classifyResult;
@@ -1669,7 +1678,9 @@ export default function AddDocumentScreen() {
         visible={classifySheetVisible}
         top3={classifySheetTop3}
         allowedTypes={
-          params.entityType ? ENTITY_DOCUMENT_TYPES[params.entityType as EntityType] : undefined
+          isValidEntityType(params.entityType)
+            ? ENTITY_DOCUMENT_TYPES[params.entityType]
+            : undefined
         }
         onCancel={() => resolveClassifySheet(null)}
         onConfirm={t => resolveClassifySheet(t)}
