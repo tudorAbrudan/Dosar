@@ -78,6 +78,12 @@ const TYPE_CONFIG: Partial<Record<DocumentType, TypeConfig>> = {
     noteInstruction:
       'Serviciu, Sumă, Periodicitate, Data reînnoire, Nr. cont/abonat, Beneficii incluse. Include toate detaliile găsite.',
   },
+  asigurare_personala: {
+    fieldsHint:
+      'tip_asigurare ("viata" | "sanatate" | "calatorie" — alege pe baza obiectului poliței), asigurator (Allianz/NN/Generali/Signal Iduna/Mondial Assistance etc.), policy_number (numărul poliței), prima (sumă + frecvență, ex "250 RON/lună"), suma_asigurata, beneficiar (DOAR pentru viață), tip_eveniment (DOAR pentru viață: deces/invaliditate/boli grave), pachet (DOAR pentru sănătate), spitale_partenere (DOAR pentru sănătate), plafon_anual (DOAR pentru sănătate), destinatie (DOAR pentru călătorie), perioada_voiaj (DOAR pentru călătorie), acoperiri (DOAR pentru călătorie)',
+    noteInstruction:
+      'Listează: Tip asigurare (viață/sănătate/călătorie), Asigurat, Asigurator, Nr. poliță, Sumă asigurată/plafon, Primă (sumă + frecvență), Perioadă valabilitate. Pentru viață adaugă: Beneficiar, Tip eveniment acoperit. Pentru sănătate: Pachet servicii, Spitale partenere, Plafon anual. Pentru călătorie: Destinație, Perioadă voiaj, Acoperiri (medical/bagaje/anulare). Max 20 rânduri.',
+  },
 };
 
 function buildPrompt(typeLabel: string, config: TypeConfig | undefined, ocrText: string): string {
