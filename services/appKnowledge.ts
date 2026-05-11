@@ -50,6 +50,7 @@ const DOC_CATEGORIES: { label: string; types: string[] }[] = [
       'bon_parcare',
       'abonament',
       'garantie',
+      'asigurare_personala',
     ],
   },
   {
