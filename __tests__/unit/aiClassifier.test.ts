@@ -60,4 +60,61 @@ describe('parseClassifyResponse', () => {
     expect(result.top3.length).toBeLessThanOrEqual(3);
     expect(result.top3.every(c => (c.type as string) !== 'bad_type')).toBe(true);
   });
+
+  it('sorts top3 by confidence descending', () => {
+    const raw = JSON.stringify({
+      type: 'pad',
+      confidence: 0.6,
+      top3: [
+        { type: 'rca', confidence: 0.3 },
+        { type: 'pad', confidence: 0.6 },
+        { type: 'factura', confidence: 0.1 },
+      ],
+    });
+    const result = parseClassifyResponse(raw);
+    expect(result.top3.map(c => c.type)).toEqual(['pad', 'rca', 'factura']);
+  });
+
+  it('dedupes top3 entries with the same type', () => {
+    const raw = JSON.stringify({
+      type: 'pad',
+      confidence: 0.9,
+      top3: [
+        { type: 'pad', confidence: 0.9 },
+        { type: 'pad', confidence: 0.5 },
+        { type: 'rca', confidence: 0.05 },
+      ],
+    });
+    const result = parseClassifyResponse(raw);
+    const padEntries = result.top3.filter(c => c.type === 'pad');
+    expect(padEntries).toHaveLength(1);
+    expect(padEntries[0].confidence).toBeCloseTo(0.9);
+  });
+
+  it('auto-seeds top3 with primary type when top3 is empty', () => {
+    const raw = JSON.stringify({ type: 'factura', confidence: 0.88, top3: [] });
+    const result = parseClassifyResponse(raw);
+    expect(result.top3).toHaveLength(1);
+    expect(result.top3[0].type).toBe('factura');
+    expect(result.top3[0].confidence).toBeCloseTo(0.88);
+  });
+
+  it('does not auto-seed top3 when primary is altul', () => {
+    const raw = JSON.stringify({ type: 'altul', confidence: 0, top3: [] });
+    const result = parseClassifyResponse(raw);
+    expect(result.top3).toHaveLength(0);
+  });
+
+  it('truncates reasoning to 300 chars', () => {
+    const longReasoning = 'A'.repeat(500);
+    const raw = JSON.stringify({
+      type: 'pad',
+      confidence: 0.9,
+      top3: [{ type: 'pad', confidence: 0.9 }],
+      reasoning: longReasoning,
+    });
+    const result = parseClassifyResponse(raw);
+    expect(result.reasoning).toBeDefined();
+    expect(result.reasoning!.length).toBe(300);
+  });
 });

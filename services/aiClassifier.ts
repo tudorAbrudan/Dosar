@@ -30,6 +30,22 @@ function isValidType(v: unknown): v is DocumentType {
   return typeof v === 'string' && VALID_TYPES.has(v as DocumentType);
 }
 
+const MAX_REASONING_CHARS = 300;
+
+/**
+ * Parsează răspunsul AI brut într-un ClassifyResult.
+ *
+ * Niciodată nu aruncă; pe orice problemă de parsare returnează
+ * `{ type: 'altul', confidence: 0, top3: [] }`.
+ *
+ * Robustețe:
+ * - acceptă JSON în mijlocul textului (prose-wrapped)
+ * - filtrează tipuri invalide din `top3` (necunoscute pentru app)
+ * - dedup top3 după tip
+ * - sortează top3 descrescător după confidence
+ * - dacă top3 e gol dar avem un `type` valid, îl auto-populează ca primary
+ * - tronchează `reasoning` la MAX_REASONING_CHARS ca să nu sufoce UI-ul
+ */
 export function parseClassifyResponse(raw: string): ClassifyResult {
   const fallback: ClassifyResult = { type: 'altul', confidence: 0, top3: [] };
   const match = raw.match(/\{[\s\S]*\}/);
@@ -48,22 +64,28 @@ export function parseClassifyResponse(raw: string): ClassifyResult {
   const confidence = clamp01(obj.confidence);
 
   const top3Raw = Array.isArray(obj.top3) ? obj.top3 : [];
+  const seen = new Set<DocumentType>();
   const top3: ClassifyCandidate[] = [];
   for (const item of top3Raw) {
-    if (top3.length >= 3) break;
     if (!item || typeof item !== 'object') continue;
     const t = (item as Record<string, unknown>).type;
     const c = (item as Record<string, unknown>).confidence;
     if (!isValidType(t)) continue;
-    top3.push({ type: t as DocumentType, confidence: clamp01(c) });
+    if (seen.has(t)) continue;
+    seen.add(t);
+    top3.push({ type: t, confidence: clamp01(c) });
   }
+  top3.sort((a, b) => b.confidence - a.confidence);
+  if (top3.length === 0 && type !== 'altul') {
+    top3.push({ type, confidence });
+    seen.add(type);
+  }
+  const trimmedTop3 = top3.slice(0, 3);
 
-  return {
-    type,
-    confidence,
-    top3,
-    reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : undefined,
-  };
+  const reasoningRaw = typeof obj.reasoning === 'string' ? obj.reasoning : undefined;
+  const reasoning = reasoningRaw ? reasoningRaw.slice(0, MAX_REASONING_CHARS) : undefined;
+
+  return { type, confidence, top3: trimmedTop3, reasoning };
 }
 
 function buildPrompt(ocrText: string, candidates: DocumentType[]): string {
@@ -95,7 +117,10 @@ Reguli:
 
 /**
  * Clasifică un document înainte de extragerea câmpurilor.
- * Folosește vision când imageBase64 e furnizat, altfel text-only.
+ * Folosește vision când `imageBase64` e furnizat, altfel text-only.
+ *
+ * @throws Eroare de transport (rețea/AI provider) — apelantul afișează
+ * fallback UI (ex. Alert + tip default) și continuă fluxul.
  */
 export async function classifyDocument(
   ocrText: string,
