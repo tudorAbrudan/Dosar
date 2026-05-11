@@ -68,7 +68,7 @@ import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderAllPdfPagesAsBase64 } from '@/services/pdfOcr';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
-import { getDocumentLabel } from '@/types';
+import { getDocumentLabel, REPEATABLE_DOC_TYPES } from '@/types';
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
@@ -1095,7 +1095,9 @@ export default function DocumentDetailScreen() {
             {duplicates.byTypeAndEntity.length > 0 && (
               <View style={styles.dupSection}>
                 <Text style={styles.dupSectionLabel}>
-                  Același tip și entitate ({duplicates.byTypeAndEntity.length})
+                  {doc && REPEATABLE_DOC_TYPES.has(doc.type)
+                    ? `Același tip + aceeași dată de emitere (${duplicates.byTypeAndEntity.length})`
+                    : `Același tip și entitate (${duplicates.byTypeAndEntity.length})`}
                 </Text>
                 {duplicates.byTypeAndEntity.map(d => (
                   <Pressable

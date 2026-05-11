@@ -738,20 +738,30 @@ export async function findDuplicatesOfDocument(docId: string): Promise<DocumentD
     byHash = rows.map(r => mapRow(r));
   }
 
-  // ── byTypeAndEntity ── același tip + cel puțin o entitate legată comună
+  // ── byTypeAndEntity ── același tip + cel puțin o entitate legată comună.
+  // Pentru tipuri repetabile (analize, facturi, asigurări reînnoite, etc.) cerem
+  // **și aceeași `issue_date`** ca să fim siguri că e duplicat real, nu doar
+  // o intrare nouă din serie. Fără issue_date pe documentul curent → nu raportăm.
   const links = await getEntityLinks(docId);
   let byTypeAndEntity: Document[] = [];
-  if (links.length > 0) {
+  const isRepeatable = REPEATABLE_DOC_TYPES.has(current.type);
+  const canCheckRepeatable = !isRepeatable || Boolean(current.issue_date?.trim());
+
+  if (links.length > 0 && canCheckRepeatable) {
     const seen = new Set<string>();
     for (const link of links) {
       const customFilter =
         current.type === 'custom' && current.custom_type_id ? 'AND d.custom_type_id = ?' : '';
-      const params: (string | null)[] =
+      const customParams: (string | null)[] =
         current.type === 'custom' && current.custom_type_id ? [current.custom_type_id] : [];
+      const issueDateFilter = isRepeatable ? 'AND d.issue_date = ?' : '';
+      const issueDateParams: string[] =
+        isRepeatable && current.issue_date ? [current.issue_date.trim()] : [];
       const rows = await db.getAllAsync<Row>(
         `SELECT d.* FROM documents d
          WHERE d.type = ?
          ${customFilter}
+         ${issueDateFilter}
          AND d.id != ?
          AND EXISTS (
            SELECT 1 FROM document_entities de
@@ -760,7 +770,14 @@ export async function findDuplicatesOfDocument(docId: string): Promise<DocumentD
            AND de.entity_id = ?
          )
          ORDER BY d.created_at ASC`,
-        [current.type, ...params, docId, link.entityType, link.entityId]
+        [
+          current.type,
+          ...customParams,
+          ...issueDateParams,
+          docId,
+          link.entityType,
+          link.entityId,
+        ]
       );
       for (const r of rows) {
         if (!seen.has(r.id)) {
