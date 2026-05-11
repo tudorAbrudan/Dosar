@@ -51,7 +51,7 @@ import {
   getVehicleIdentifiers,
   setDocumentCalendarEventId,
 } from '@/services/documents';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { DOCUMENT_TYPE_LABELS, ENTITY_DOCUMENT_TYPES } from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
 import { DatePickerField } from '@/components/DatePickerField';
@@ -66,6 +66,9 @@ import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import * as ocrConsent from '@/services/ocrConsent';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
+import { classifyDocument } from '@/services/aiClassifier';
+import type { ClassifyCandidate } from '@/services/aiClassifier';
+import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 
@@ -117,6 +120,7 @@ export default function AddDocumentScreen() {
     animal_id?: string;
     company_id?: string;
     type?: string;
+    entityType?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
   const { persons, properties, vehicles, cards, animals, companies } = useEntities();
@@ -125,6 +129,11 @@ export default function AddDocumentScreen() {
   const { visibleDocTypes, visibleEntityTypes } = useVisibilitySettings();
 
   const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'altul');
+  // Marker: utilizatorul a fixat manual tipul (din params sau din picker).
+  const userManuallySetTypeRef = useRef<boolean>(Boolean(params.type));
+  const [classifySheetVisible, setClassifySheetVisible] = useState(false);
+  const [classifySheetTop3, setClassifySheetTop3] = useState<ClassifyCandidate[]>([]);
+  const classifyResolverRef = useRef<((type: DocumentType | null) => void) | null>(null);
   const [customTypeId, setCustomTypeId] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, string>>({});
   const [issueDate, setIssueDate] = useState('');
@@ -233,6 +242,29 @@ export default function AddDocumentScreen() {
 
   // PhotoPage array for DocumentPhotoSection (uses localPath as id)
   const photoPages: PhotoPage[] = pages.map(p => ({ id: p.localPath, uri: p.uri }));
+
+  // Marchează tipul ca fiind setat manual de utilizator (din picker)
+  // și actualizează state-ul. Folosit la handler-ele picker-ului de tip.
+  function setTypeManual(t: DocumentType) {
+    userManuallySetTypeRef.current = true;
+    setType(t);
+  }
+
+  // Deschide ClassifyConfirmSheet și returnează tipul confirmat sau null la anulare.
+  function openClassifyConfirmSheet(top3: ClassifyCandidate[]): Promise<DocumentType | null> {
+    return new Promise(resolve => {
+      setClassifySheetTop3(top3);
+      setClassifySheetVisible(true);
+      classifyResolverRef.current = resolve;
+    });
+  }
+
+  function resolveClassifySheet(t: DocumentType | null) {
+    setClassifySheetVisible(false);
+    const resolve = classifyResolverRef.current;
+    classifyResolverRef.current = null;
+    if (resolve) resolve(t);
+  }
 
   // ── Entity fuzzy match local ──────────────────────────────────────────────
   // Fallback când AI-ul nu sugerează nicio entitate: caută simplul subșir al
@@ -583,6 +615,55 @@ export default function AddDocumentScreen() {
 
     setLlmFieldLoading(true);
     try {
+      // ─── Classify step (doar dacă utilizatorul NU a ales manual tipul) ────────
+      let resolvedType: DocumentType = type;
+      if (!userManuallySetTypeRef.current) {
+        const firstPage = pages[0];
+        const firstOcrText = ocrTextsRef.current.get(firstPage.localPath) ?? '';
+        let firstImageBase64: string | undefined;
+        try {
+          if (isPdfFile(firstPage.localPath)) {
+            firstImageBase64 =
+              (await renderPdfFirstPageForVision(firstPage.localPath)) ?? undefined;
+          } else {
+            firstImageBase64 = await FileSystem.readAsStringAsync(firstPage.localPath, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          }
+        } catch {}
+
+        const entityType = (params.entityType as EntityType | undefined) ?? undefined;
+        const candidates = entityType ? ENTITY_DOCUMENT_TYPES[entityType] : undefined;
+
+        let classifyResult;
+        try {
+          classifyResult = await classifyDocument(firstOcrText, firstImageBase64, candidates);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+          Alert.alert(
+            'Detectare tip indisponibilă',
+            `${msg}\n\nContinuă cu tipul curent: ${DOCUMENT_TYPE_LABELS[type] ?? type}.`
+          );
+          classifyResult = null;
+        }
+
+        if (classifyResult) {
+          if (classifyResult.confidence >= 0.75 && classifyResult.type !== 'altul') {
+            resolvedType = classifyResult.type;
+            setType(classifyResult.type);
+          } else {
+            const confirmed = await openClassifyConfirmSheet(classifyResult.top3);
+            if (!confirmed) {
+              setLlmFieldLoading(false);
+              return;
+            }
+            resolvedType = confirmed;
+            setType(confirmed);
+          }
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────────────
+
       const fileNotes: string[] = [];
       const pagesToProcess = pages.slice(0, 5); // max 5 fișiere per analiză AI
       for (const page of pagesToProcess) {
@@ -598,7 +679,7 @@ export default function AddDocumentScreen() {
           }
         } catch {}
 
-        const extracted = await extractFieldsWithLlm(type, ocrText, imageBase64);
+        const extracted = await extractFieldsWithLlm(resolvedType, ocrText, imageBase64);
 
         if (Object.keys(extracted.metadata).length > 0) {
           setMetadata(prev => ({ ...extracted.metadata, ...prev }));
@@ -616,7 +697,7 @@ export default function AddDocumentScreen() {
         }
 
         // Talon fără expiry → ștampilă ITP ilizibilă, cere completare manuală
-        if (type === 'talon' && !extracted.expiry_date && !expiryDateRef.current) {
+        if (resolvedType === 'talon' && !extracted.expiry_date && !expiryDateRef.current) {
           const warning =
             extracted.metadata.itp_warning ??
             'Nu am putut detecta cu certitudine data expirării ITP de pe ștampila talonului. Verifică talonul și completează manual data în câmpul „Expiră".';
@@ -1292,7 +1373,7 @@ export default function AddDocumentScreen() {
                       const combinedText = Array.from(ocrTextsRef.current.values()).join(
                         '\n\n---\n\n'
                       );
-                      setType(value);
+                      setTypeManual(value);
                       setCustomTypeId(null);
                       setMetadata({});
                       if (combinedText.trim().length > 0) {
@@ -1327,7 +1408,7 @@ export default function AddDocumentScreen() {
                       active && styles.typeChipActive,
                     ]}
                     onPress={() => {
-                      setType('custom');
+                      setTypeManual('custom');
                       setCustomTypeId(ct.id);
                       setMetadata({});
                       setTypePickerVisible(false);
@@ -1583,6 +1664,16 @@ export default function AddDocumentScreen() {
           )}
         </>
       </FormPageScreen>
+
+      <ClassifyConfirmSheet
+        visible={classifySheetVisible}
+        top3={classifySheetTop3}
+        allowedTypes={
+          params.entityType ? ENTITY_DOCUMENT_TYPES[params.entityType as EntityType] : undefined
+        }
+        onCancel={() => resolveClassifySheet(null)}
+        onConfirm={t => resolveClassifySheet(t)}
+      />
 
       <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.fsOverlay}>
