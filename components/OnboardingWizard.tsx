@@ -436,6 +436,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
         'card',
         'garantie',
         'abonament',
+        'asigurare_personala',
         'bon_cumparaturi',
         'bon_parcare',
       ],

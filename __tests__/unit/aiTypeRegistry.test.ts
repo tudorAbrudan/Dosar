@@ -1,4 +1,8 @@
-import { DOC_TYPE_AI_REGISTRY, getRegistryEntry, buildClassifierCatalog } from '@/services/aiTypeRegistry';
+import {
+  DOC_TYPE_AI_REGISTRY,
+  getRegistryEntry,
+  buildClassifierCatalog,
+} from '@/services/aiTypeRegistry';
 import { STANDARD_DOC_TYPES } from '@/types';
 
 describe('aiTypeRegistry', () => {

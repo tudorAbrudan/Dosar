@@ -44,7 +44,8 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
   carte_auto: {
     label: DOCUMENT_TYPE_LABELS.carte_auto,
     aliases: ['carte auto', 'carte de identitate vehicul', 'CIV format vechi'],
-    description: 'Carte de identitate a vehiculului (document complementar talonului, format vechi).',
+    description:
+      'Carte de identitate a vehiculului (document complementar talonului, format vechi).',
   },
   rca: {
     label: DOCUMENT_TYPE_LABELS.rca,
@@ -159,7 +160,8 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
   analize_medicale: {
     label: DOCUMENT_TYPE_LABELS.analize_medicale,
     aliases: ['analize medicale', 'rezultate laborator', 'buletin analize'],
-    description: 'Buletin de analize medicale eliberat de un laborator (Synevo/MedLife/Regina Maria etc.).',
+    description:
+      'Buletin de analize medicale eliberat de un laborator (Synevo/MedLife/Regina Maria etc.).',
     distinguishingMarks: ['Antet laborator', 'Tabel cu analize și valori de referință'],
   },
   stingator_incendiu: {
@@ -298,7 +300,9 @@ export function buildClassifierCatalog(candidates: DocumentType[]): string {
     const marks = entry.distinguishingMarks?.length
       ? ` Semne distinctive: ${entry.distinguishingMarks.join('; ')}.`
       : '';
-    lines.push(`- "${type}" — ${entry.label}. ${entry.description} Cuvinte cheie: ${aliases}.${marks}`);
+    lines.push(
+      `- "${type}" — ${entry.label}. ${entry.description} Cuvinte cheie: ${aliases}.${marks}`
+    );
   }
   return lines.join('\n');
 }

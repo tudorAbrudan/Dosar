@@ -76,6 +76,9 @@ function isValidEntityType(v: string | undefined): v is EntityType {
   return typeof v === 'string' && (ALL_ENTITY_TYPES as string[]).includes(v);
 }
 
+/** Prag confidence pentru auto-set tip după AI classify. Sub valoare → întrebăm userul. */
+const CLASSIFY_CONFIDENCE_AUTO_THRESHOLD = 0.75;
+
 const DELETE_OPTIONS: { label: string; value: string | null }[] = [
   { label: 'Niciodată', value: null },
   { label: '30 zile', value: '30d' },
@@ -657,7 +660,10 @@ export default function AddDocumentScreen() {
         }
 
         if (classifyResult) {
-          if (classifyResult.confidence >= 0.75 && classifyResult.type !== 'altul') {
+          if (
+            classifyResult.confidence >= CLASSIFY_CONFIDENCE_AUTO_THRESHOLD &&
+            classifyResult.type !== 'altul'
+          ) {
             resolvedType = classifyResult.type;
             setType(classifyResult.type);
           } else {
@@ -669,6 +675,32 @@ export default function AddDocumentScreen() {
             resolvedType = confirmed;
             setType(confirmed);
           }
+        }
+      }
+
+      // GDPR Art. 9: dacă classify a detectat un tip medical pe care userul nu
+      // l-a confirmat înainte (tipul curent NU era medical), cere consent
+      // suplimentar înainte de extract. Acoperă cazul: user scanează un document
+      // medical fără să fi setat tipul, classify îl identifică, extract-ul ar
+      // trimite din nou imaginea spre AI cu prompt extins.
+      if (
+        resolvedType !== type &&
+        ocrConsent.getDocTypeSensitivity(resolvedType) === 'medical' &&
+        ocrConsent.getDocTypeSensitivity(type) !== 'medical'
+      ) {
+        const confirmed = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Date medicale (GDPR Art. 9)',
+            `AI a detectat tipul „${DOCUMENT_TYPE_LABELS[resolvedType] ?? resolvedType}". Imaginea va fi trimisă la AI pentru extragerea câmpurilor.\n\nPreferința nu se salvează.\n\nEști de acord?`,
+            [
+              { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'De acord', onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!confirmed) {
+          setLlmFieldLoading(false);
+          return;
         }
       }
       // ──────────────────────────────────────────────────────────────────────────

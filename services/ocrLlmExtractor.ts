@@ -99,7 +99,9 @@ function buildPrompt(typeLabel: string, config: TypeConfig | undefined, ocrText:
     ? `\nText OCR (referință secundară):\n---\n${ocrText.slice(0, MAX_OCR_CHARS)}\n---`
     : '';
 
-  const expirySection = config?.expiryRule ? `\n\n━━━ REGULĂ SPECIALĂ EXPIRY ━━━\n${config.expiryRule}` : '';
+  const expirySection = config?.expiryRule
+    ? `\n\n━━━ REGULĂ SPECIALĂ EXPIRY ━━━\n${config.expiryRule}`
+    : '';
 
   return `Extrage câmpurile structurate din acest document românesc.
 Tip document: ${typeLabel}${textSection}${expirySection}

@@ -187,6 +187,30 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     { key: 'amount', label: 'Sumă', placeholder: '55.99', keyboardType: 'decimal-pad' },
   ],
 
+  asigurare_personala: [
+    {
+      key: 'tip_asigurare',
+      label: 'Tip asigurare',
+      placeholder: 'viață / sănătate / călătorie',
+    },
+    {
+      key: 'insurer',
+      label: 'Asigurator',
+      placeholder: 'NN / Allianz / Signal Iduna / Mondial...',
+    },
+    { key: 'policy_number', label: 'Nr. poliță', placeholder: 'XXXXXXXXXX' },
+    {
+      key: 'prima',
+      label: 'Primă (sumă + frecvență)',
+      placeholder: '250 RON/lună',
+    },
+    {
+      key: 'suma_asigurata',
+      label: 'Sumă asigurată / plafon',
+      placeholder: '50000 RON',
+    },
+  ],
+
   card: [
     // NICIODATĂ: nr. complet card, CVV, PIN!
     { key: 'last4', label: 'Ultimele 4 cifre', placeholder: '1234', keyboardType: 'numeric' },
