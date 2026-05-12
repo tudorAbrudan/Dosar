@@ -14,9 +14,11 @@ export type DocumentType =
   | 'impozit_proprietate'
   | 'contract'
   | 'card'
+  | 'card_sanatate'
   | 'garantie'
-  | 'reteta_medicala'
-  | 'analize_medicale'
+  | 'certificat_nastere'
+  | 'certificat_casatorie'
+  | 'certificat_botez'
   | 'bon_cumparaturi'
   | 'bon_parcare'
   | 'pad'
@@ -37,10 +39,6 @@ export type DocumentType =
   | 'certificat_absolvire'
   | 'certificat_curs'
   | 'adeverinta_studii'
-  | 'scrisoare_medicala'
-  | 'bilet_externare'
-  | 'imagistica'
-  | 'vaccin_persoana'
   | 'altul'
   | 'custom';
 
@@ -221,8 +219,7 @@ export type EntityType =
   | 'vehicle'
   | 'card'
   | 'animal'
-  | 'company'
-  | 'medical_record';
+  | 'company';
 
 // Tipurile de entități pe care utilizatorul le poate activa/dezactiva din
 // Setări → Vizibilitate sau adăuga din ecranul „Adaugă entitate".
@@ -233,7 +230,6 @@ export const ALL_ENTITY_TYPES: EntityType[] = [
   'card',
   'animal',
   'company',
-  'medical_record',
 ];
 
 /**
@@ -248,7 +244,6 @@ export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   card: 'Card',
   animal: 'Animal',
   company: 'Firmă',
-  medical_record: 'Dosar medical',
 };
 
 /**
@@ -262,7 +257,6 @@ export const ENTITY_TYPE_EMOJI: Record<EntityType, string> = {
   card: '💳',
   animal: '🐾',
   company: '🏢',
-  medical_record: '🩺',
 };
 
 // Lista completă a tipurilor standard (fără 'custom') — apare în Setări
@@ -270,6 +264,10 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'buletin',
   'pasaport',
   'permis_auto',
+  'certificat_nastere',
+  'certificat_casatorie',
+  'certificat_botez',
+  'card_sanatate',
   'talon',
   'carte_auto',
   'rca',
@@ -287,12 +285,6 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'abonament',
   'bon_cumparaturi',
   'bon_parcare',
-  'reteta_medicala',
-  'analize_medicale',
-  'scrisoare_medicala',
-  'bilet_externare',
-  'imagistica',
-  'vaccin_persoana',
   'stingator_incendiu',
   'vaccin_animal',
   'deparazitare',
@@ -325,13 +317,7 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
  * și păstrează detecția simplă de duplicat pe (type + entity).
  */
 export const REPEATABLE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
-  // Medical — repetabile (analize lunare, rețete frecvente, vizite vet)
-  'analize_medicale',
-  'reteta_medicala',
-  'scrisoare_medicala',
-  'bilet_externare',
-  'imagistica',
-  'vaccin_persoana',
+  // Veterinar — repetabile (vaccinuri anuale, deparazitări lunare, controale)
   'vizita_vet',
   'vaccin_animal',
   'deparazitare',
@@ -364,6 +350,8 @@ export const DEFAULT_VISIBLE_DOC_TYPES: DocumentType[] = [
   'buletin',
   'pasaport',
   'permis_auto',
+  'certificat_nastere',
+  'card_sanatate',
   // Vehicule — cei mai mulți adulți
   'talon',
   'carte_auto',
@@ -377,12 +365,47 @@ export const DEFAULT_VISIBLE_DOC_TYPES: DocumentType[] = [
   'garantie',
   'abonament',
   'asigurare_personala',
-  // Medical — toată lumea
-  'reteta_medicala',
-  'analize_medicale',
   // Fallback
   'altul',
 ];
+
+/**
+ * Tipuri de documente care **nu au termen de expirare**. UI-ul nu afișează
+ * câmpul „Data expirare" pentru ele, AI nu extrage `expiryDate`, și nu se
+ * oferă reminder de expirare în calendar.
+ *
+ * Diplomele, certificatele de stare civilă și actele de proprietate sunt
+ * valabile permanent. Bonurile/parcările/vizitele sunt evenimente trecute.
+ *
+ * NOTĂ:
+ * - `talon` NU este aici — câmpul `expiry_date` pentru talon stochează
+ *   scadența ITP (vezi `EXPIRY_FIELD_LABEL`).
+ * - `buletin` NU este aici — buletinul are dată de expirare (5-10 ani),
+ *   extrasă din MRZ separat de fluxul AI generic.
+ */
+export const NO_EXPIRY_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
+  // Acte fundamentale — valabile permanent
+  'certificat_nastere',
+  'certificat_casatorie',
+  'certificat_botez',
+  // Proprietate — nu expiră (drepturi permanente)
+  'act_proprietate',
+  'cadastru',
+  // Vehicul — CIV nu expiră (doar talonul are ITP)
+  'carte_auto',
+  // Firmă — acte constitutive permanente
+  'certificat_inregistrare',
+  'act_constitutiv',
+  'certificat_tva',
+  // Studii — diplomele și certificatele de absolvire sunt permanente
+  'diploma',
+  'foaie_matricola',
+  'certificat_absolvire',
+  // Bonuri și vizite — evenimente trecute, fără expirare
+  'bon_cumparaturi',
+  'bon_parcare',
+  'vizita_vet',
+]);
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   buletin: 'Buletin',
@@ -400,9 +423,11 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   impozit_proprietate: 'Impozit proprietate',
   contract: 'Contract',
   card: 'Card',
+  card_sanatate: 'Card de sănătate',
   garantie: 'Garanție produs',
-  reteta_medicala: 'Rețetă medicală',
-  analize_medicale: 'Analize medicale',
+  certificat_nastere: 'Certificat naștere',
+  certificat_casatorie: 'Certificat căsătorie',
+  certificat_botez: 'Certificat botez',
   bon_cumparaturi: 'Bon cumpărături',
   bon_parcare: 'Bon parcare',
   pad: 'PAD Asigurare Locuință',
@@ -423,10 +448,6 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   certificat_absolvire: 'Certificat absolvire',
   certificat_curs: 'Certificat curs',
   adeverinta_studii: 'Adeverință studii',
-  scrisoare_medicala: 'Scrisoare medicală',
-  bilet_externare: 'Bilet de externare',
-  imagistica: 'Imagistică (RMN/CT/Eco)',
-  vaccin_persoana: 'Vaccin (persoană)',
   altul: 'Altele',
   custom: 'Tip personalizat',
 };
@@ -436,13 +457,11 @@ export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
     'buletin',
     'pasaport',
     'permis_auto',
+    'certificat_nastere',
+    'certificat_casatorie',
+    'certificat_botez',
+    'card_sanatate',
     'card',
-    'reteta_medicala',
-    'analize_medicale',
-    'scrisoare_medicala',
-    'bilet_externare',
-    'imagistica',
-    'vaccin_persoana',
     'asigurare_personala',
     'diploma',
     'foaie_matricola',
@@ -496,16 +515,6 @@ export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
     'altul',
     'custom',
   ],
-  medical_record: [
-    'analize_medicale',
-    'reteta_medicala',
-    'scrisoare_medicala',
-    'bilet_externare',
-    'imagistica',
-    'vaccin_persoana',
-    'altul',
-    'custom',
-  ],
 };
 
 /**
@@ -518,12 +527,10 @@ export const DOC_PRIMARY_ENTITY: Partial<Record<DocumentType, EntityType>> = {
   buletin: 'person',
   pasaport: 'person',
   permis_auto: 'person',
-  reteta_medicala: 'person',
-  analize_medicale: 'person',
-  scrisoare_medicala: 'person',
-  bilet_externare: 'person',
-  imagistica: 'person',
-  vaccin_persoana: 'person',
+  certificat_nastere: 'person',
+  certificat_casatorie: 'person',
+  certificat_botez: 'person',
+  card_sanatate: 'person',
   diploma: 'person',
   foaie_matricola: 'person',
   certificat_absolvire: 'person',
@@ -552,99 +559,6 @@ export const DOC_PRIMARY_ENTITY: Partial<Record<DocumentType, EntityType>> = {
   certificat_tva: 'company',
   asigurare_profesionala: 'company',
 };
-
-export interface MedicalRecord {
-  id: string;
-  person_id: string;
-  name: string;
-  ai_consent_at: string | null;
-  ai_consent_version: number;
-  encryption_key_ref: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export type ObservationCategory =
-  | 'hematologie'
-  | 'biochimie'
-  | 'lipide'
-  | 'tiroidiene'
-  | 'hormonal'
-  | 'hepatice'
-  | 'renale'
-  | 'urinare'
-  | 'microbiologie'
-  | 'imunologie'
-  | 'altele';
-
-export const OBSERVATION_CATEGORIES: ObservationCategory[] = [
-  'hematologie',
-  'biochimie',
-  'lipide',
-  'tiroidiene',
-  'hormonal',
-  'hepatice',
-  'renale',
-  'urinare',
-  'microbiologie',
-  'imunologie',
-  'altele',
-];
-
-export interface MedicalObservation {
-  id: string;
-  medical_record_id: string;
-  source_document_id: string | null;
-  /** Decriptat în memorie — niciodată stocat plain. */
-  name: string;
-  /** Decriptat. Poate fi null pentru observații fără valoare (ex: vaccin). */
-  value: string | null;
-  unit: string | null;
-  /** Decriptat. */
-  ref_min: string | null;
-  /** Decriptat. */
-  ref_max: string | null;
-  observed_at: string | null;
-  category: ObservationCategory;
-  confidence: number;
-  needs_review: boolean;
-  user_corrected: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MedicalChatThread {
-  id: string;
-  medical_record_id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export type MedicalChatRole = 'user' | 'assistant';
-
-export type MedicalChatCitation =
-  | { type: 'observation'; id: string }
-  | { type: 'document'; id: string; label: string };
-
-export interface MedicalChatMessage {
-  id: string;
-  thread_id: string;
-  role: MedicalChatRole;
-  /** Decriptat. */
-  content: string;
-  citations: MedicalChatCitation[];
-  created_at: string;
-}
-
-export const MEDICAL_DOC_TYPES: DocumentType[] = [
-  'analize_medicale',
-  'reteta_medicala',
-  'scrisoare_medicala',
-  'bilet_externare',
-  'imagistica',
-  'vaccin_persoana',
-];
 
 export function getDocumentLabel(
   doc: { type: DocumentType; custom_type_id?: string },

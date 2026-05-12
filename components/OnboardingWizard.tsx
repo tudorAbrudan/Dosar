@@ -65,13 +65,12 @@ const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
 
 const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
-  person: 'Buletin, pașaport, permis, rețete',
+  person: 'Buletin, pașaport, permis',
   vehicle: 'Talon, RCA, ITP, CASCO, vignetă',
   property: 'Acte proprietate, facturi, PAD',
   card: 'Carduri bancare, abonamente',
   animal: 'Vaccinuri, deparazitare, vizite vet',
   company: 'Certificat înregistrare, acte constitutive, TVA',
-  medical_record: 'Analize, rețete, scrisori medicale, imagistică',
 };
 
 interface Props {
@@ -406,7 +405,15 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const DOC_GROUPS: { label: string; types: DocumentType[] }[] = [
     {
       label: 'Identitate',
-      types: ['buletin', 'pasaport', 'permis_auto'],
+      types: [
+        'buletin',
+        'pasaport',
+        'permis_auto',
+        'certificat_nastere',
+        'certificat_casatorie',
+        'certificat_botez',
+        'card_sanatate',
+      ],
     },
     {
       label: 'Vehicule',
@@ -428,10 +435,6 @@ export default function OnboardingWizard({ onComplete }: Props) {
         'bon_cumparaturi',
         'bon_parcare',
       ],
-    },
-    {
-      label: 'Medical',
-      types: ['reteta_medicala', 'analize_medicale'],
     },
     {
       label: 'Animale',

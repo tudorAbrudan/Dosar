@@ -131,6 +131,64 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     description: 'Card bancar (debit, credit, prepaid).',
     distinguishingMarks: ['16 cifre vizibile', 'Logo Visa/Mastercard', 'Data expirării MM/AA'],
   },
+  card_sanatate: {
+    label: DOCUMENT_TYPE_LABELS.card_sanatate,
+    aliases: [
+      'card de sănătate',
+      'card sănătate',
+      'card sanatate',
+      'CNAS',
+      'card asigurat',
+      'card european de sănătate',
+      'CEASS',
+    ],
+    description:
+      'Card de sănătate emis de CNAS (Casa Națională de Asigurări de Sănătate) sau cardul european (CEASS).',
+    distinguishingMarks: [
+      'Sigla CNAS / „Casa Națională de Asigurări de Sănătate"',
+      'CNP-ul asiguratului',
+      'Dată valabilitate (poate să apară sau nu)',
+    ],
+  },
+  certificat_nastere: {
+    label: DOCUMENT_TYPE_LABELS.certificat_nastere,
+    aliases: [
+      'certificat de naștere',
+      'certificat nastere',
+      'extras nastere',
+      'extras de naștere',
+    ],
+    description:
+      'Certificat de naștere emis de starea civilă. NU are termen de expirare — valabil permanent.',
+    distinguishingMarks: [
+      'Cuvântul „NAȘTERE" / „CERTIFICAT DE NAȘTERE"',
+      'CNP-ul născutului',
+      'Numele părinților',
+    ],
+  },
+  certificat_casatorie: {
+    label: DOCUMENT_TYPE_LABELS.certificat_casatorie,
+    aliases: [
+      'certificat de căsătorie',
+      'certificat casatorie',
+      'act căsătorie',
+      'extras căsătorie',
+    ],
+    description:
+      'Certificat de căsătorie emis de starea civilă. NU are termen de expirare — valabil permanent.',
+    distinguishingMarks: [
+      'Cuvântul „CĂSĂTORIE" / „CERTIFICAT DE CĂSĂTORIE"',
+      'Numele soților',
+      'Data și locul căsătoriei',
+    ],
+  },
+  certificat_botez: {
+    label: DOCUMENT_TYPE_LABELS.certificat_botez,
+    aliases: ['certificat de botez', 'certificat botez', 'act botez'],
+    description:
+      'Certificat de botez emis de biserică. NU are termen de expirare — valabil permanent.',
+    distinguishingMarks: ['Cuvântul „BOTEZ"', 'Numele preotului', 'Numele nașilor'],
+  },
   garantie: {
     label: DOCUMENT_TYPE_LABELS.garantie,
     aliases: ['certificat de garanție', 'garanție produs', 'bon de garanție'],
@@ -150,19 +208,6 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     label: DOCUMENT_TYPE_LABELS.bon_parcare,
     aliases: ['bon parcare', 'ticket parcare', 'taxă parcare'],
     description: 'Bon sau ticket de parcare cu plată.',
-  },
-  reteta_medicala: {
-    label: DOCUMENT_TYPE_LABELS.reteta_medicala,
-    aliases: ['rețetă', 'prescripție medicală', 'Rp.'],
-    description: 'Rețetă medicală cu medicamente prescrise de un medic.',
-    distinguishingMarks: ['„Rp." sau lista de medicamente', 'Semnătură + parafă medic'],
-  },
-  analize_medicale: {
-    label: DOCUMENT_TYPE_LABELS.analize_medicale,
-    aliases: ['analize medicale', 'rezultate laborator', 'buletin analize'],
-    description:
-      'Buletin de analize medicale eliberat de un laborator (Synevo/MedLife/Regina Maria etc.).',
-    distinguishingMarks: ['Antet laborator', 'Tabel cu analize și valori de referință'],
   },
   stingator_incendiu: {
     label: DOCUMENT_TYPE_LABELS.stingator_incendiu,
@@ -274,31 +319,6 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     label: DOCUMENT_TYPE_LABELS.adeverinta_studii,
     aliases: ['adeverință studii', 'adeverință student'],
     description: 'Adeverință de la o instituție de învățământ.',
-  },
-  scrisoare_medicala: {
-    label: DOCUMENT_TYPE_LABELS.scrisoare_medicala,
-    aliases: [
-      'scrisoare medicală',
-      'scrisoare medicala',
-      'concluzie medicală',
-      'recomandare medic',
-    ],
-    description: 'Scrisoare/concluzie scrisă de un medic specialist către pacient.',
-  },
-  bilet_externare: {
-    label: DOCUMENT_TYPE_LABELS.bilet_externare,
-    aliases: ['bilet externare', 'bilet de externare', 'epicriza', 'externare spital'],
-    description: 'Bilet emis la externarea din spital cu diagnostic și recomandări.',
-  },
-  imagistica: {
-    label: DOCUMENT_TYPE_LABELS.imagistica,
-    aliases: ['RMN', 'CT', 'tomografie', 'ecografie', 'ecograf', 'radiografie', 'imagistică'],
-    description: 'Concluzie examen imagistic (RMN, CT, ecografie, radiografie).',
-  },
-  vaccin_persoana: {
-    label: DOCUMENT_TYPE_LABELS.vaccin_persoana,
-    aliases: ['vaccin', 'vaccinare', 'imunizare', 'adeverință vaccin'],
-    description: 'Adeverință sau dovadă de vaccinare a unei persoane.',
   },
 };
 

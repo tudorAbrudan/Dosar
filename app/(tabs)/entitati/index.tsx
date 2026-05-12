@@ -31,10 +31,9 @@ import type {
   Card,
   Animal,
   Company,
-  MedicalRecord,
 } from '@/types';
 
-type AnyEntity = Person | Property | Vehicle | Card | Animal | Company | MedicalRecord;
+type AnyEntity = Person | Property | Vehicle | Card | Animal | Company;
 type EntityTab = EntityType | 'all';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 type TypedEntity = { item: AnyEntity; entityType: EntityType };
@@ -47,7 +46,6 @@ const ALL_TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
   { key: 'card', label: 'Carduri', icon: 'card-outline' },
   { key: 'animal', label: 'Animale', icon: 'paw-outline' },
   { key: 'company', label: 'Firme', icon: 'business-outline' },
-  { key: 'medical_record', label: 'Dosare medicale', icon: 'medkit-outline' },
 ];
 
 const ENTITY_ICON: Record<EntityType, IoniconName> = {
@@ -57,7 +55,6 @@ const ENTITY_ICON: Record<EntityType, IoniconName> = {
   card: 'card',
   animal: 'paw',
   company: 'business',
-  medical_record: 'medkit',
 };
 
 const ENTITY_ICON_BG: Record<EntityType, string> = {
@@ -67,7 +64,6 @@ const ENTITY_ICON_BG: Record<EntityType, string> = {
   card: '#F3E5F5',
   animal: '#FFF3E0',
   company: '#E8EAF6',
-  medical_record: '#FCE4EC',
 };
 
 const ENTITY_ICON_COLOR: Record<EntityType, string> = {
@@ -77,7 +73,6 @@ const ENTITY_ICON_COLOR: Record<EntityType, string> = {
   card: '#7B1FA2',
   animal: '#E65100',
   company: '#283593',
-  medical_record: '#C2185B',
 };
 
 export default function EntitatiListScreen() {
@@ -99,7 +94,6 @@ export default function EntitatiListScreen() {
     cards,
     animals,
     companies,
-    medicalRecords,
     globalOrderMap,
     loading,
     error,
@@ -122,7 +116,6 @@ export default function EntitatiListScreen() {
       card: 4,
       animal: 5,
       company: 6,
-      medical_record: 7,
     };
     const combined: TypedEntity[] = [
       ...persons.map(e => ({ item: e as AnyEntity, entityType: 'person' as EntityType })),
@@ -131,10 +124,6 @@ export default function EntitatiListScreen() {
       ...cards.map(e => ({ item: e as AnyEntity, entityType: 'card' as EntityType })),
       ...animals.map(e => ({ item: e as AnyEntity, entityType: 'animal' as EntityType })),
       ...companies.map(e => ({ item: e as AnyEntity, entityType: 'company' as EntityType })),
-      ...medicalRecords.map(e => ({
-        item: e as AnyEntity,
-        entityType: 'medical_record' as EntityType,
-      })),
     ];
     return combined.sort((a, b) => {
       const sa = globalOrderMap.get(`${a.entityType}:${a.item.id}`);
@@ -151,7 +140,6 @@ export default function EntitatiListScreen() {
     cards,
     animals,
     companies,
-    medicalRecords,
     globalOrderMap,
   ]);
 
@@ -184,12 +172,6 @@ export default function EntitatiListScreen() {
     if (entityType === 'vehicle' && 'type' in item && item.type) return item.type as string;
     if (entityType === 'animal' && 'species' in item && item.species) return item.species as string;
     if (entityType === 'company' && 'cui' in item && item.cui) return `CUI: ${item.cui}`;
-    if (entityType === 'medical_record' && 'person_id' in item) {
-      const rec = item as MedicalRecord;
-      const personName = persons.find(p => p.id === rec.person_id)?.name ?? '—';
-      const ai = rec.ai_consent_at ? ' · AI activ' : '';
-      return `${personName}${ai}`;
-    }
     return null;
   };
 
@@ -207,9 +189,7 @@ export default function EntitatiListScreen() {
               ? 'animale'
               : tab === 'company'
                 ? 'firme'
-                : tab === 'medical_record'
-                  ? 'dosare medicale'
-                  : 'carduri'
+                : 'carduri'
   }`;
 
   const emptyIconName: IoniconName =
@@ -292,11 +272,7 @@ export default function EntitatiListScreen() {
       );
     }
 
-    // medical_record are detail propriu (3 tab-uri) — restul folosesc detailul generic.
-    const targetRoute =
-      entityType === 'medical_record'
-        ? (`/(tabs)/entitati/medical/${item.id}` as const)
-        : (`/(tabs)/entitati/${item.id}` as const);
+    const targetRoute = `/(tabs)/entitati/${item.id}` as const;
 
     return (
       <Pressable

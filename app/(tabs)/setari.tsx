@@ -1242,7 +1242,7 @@ export default function SetariScreen() {
             </RNText>
             <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
               <RNText style={[styles.hint, { color: C.textSecondary }]}>
-                Adaugă tipuri proprii de documente (ex: „Asigurare viață", „Dosar medical").
+                Adaugă tipuri proprii de documente (ex: „Asigurare viață", „Concediu medical").
                 Tipurile de entități (Persoană, Vehicul, Proprietate etc.) sunt fixe și nu pot fi
                 modificate.
               </RNText>
@@ -1380,15 +1380,6 @@ export default function SetariScreen() {
               setAiModalConsentChecked(aiConsentGiven);
               setAiModalVisible(true);
             }}
-            scheme={scheme}
-          />
-          <InfoRow
-            icon="medkit-outline"
-            iconBg="#FCE4EC"
-            iconColor="#C2185B"
-            label="Date medicale"
-            sub="Toggle AI medical + management cheie criptare"
-            onPress={() => router.push('/setari/medical-ai')}
             isLast
             scheme={scheme}
           />

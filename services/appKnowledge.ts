@@ -15,8 +15,16 @@ import { DOCUMENT_TYPE_LABELS } from '@/types';
 
 const DOC_CATEGORIES: { label: string; types: string[] }[] = [
   {
-    label: 'Identitate',
-    types: ['buletin', 'pasaport', 'permis_auto'],
+    label: 'Identitate și stare civilă',
+    types: [
+      'buletin',
+      'pasaport',
+      'permis_auto',
+      'certificat_nastere',
+      'certificat_casatorie',
+      'certificat_botez',
+      'card_sanatate',
+    ],
   },
   {
     label: 'Vehicule',
@@ -25,17 +33,6 @@ const DOC_CATEGORIES: { label: string; types: string[] }[] = [
   {
     label: 'Proprietăți',
     types: ['act_proprietate', 'cadastru', 'pad', 'impozit_proprietate'],
-  },
-  {
-    label: 'Medicale',
-    types: [
-      'reteta_medicala',
-      'analize_medicale',
-      'scrisoare_medicala',
-      'bilet_externare',
-      'imagistica',
-      'vaccin_persoana',
-    ],
   },
   {
     label: 'Studii',
@@ -175,28 +172,9 @@ Pe ecranul Home, sub statisticile principale, apare o secțiune „DE COMPLETAT"
 
 Tap pe item navighează direct la edit-ul documentului sau la detaliul entității pentru completare. Badge cu total în antet. Toggle on/off din **Setări → Notificări → „Sugestii pe Acasă"** (default activ).
 
-## Dosar medical (entitate dedicată)
+## Asistent AI
 
-Dosarul medical e o entitate 1:1 cu o persoană, sub Entități → Dosare medicale. Agregă toate documentele medicale ale acelei persoane (analize, rețete, scrisori, bilet externare, imagistică, vaccinuri) și are 3 tab-uri:
-
-- **Timeline** — group-by valoare (HDL, TSH etc.) cu mini-grafic (sparkline) al evoluției, ultima valoare, intervalul de referință și banner „Verifică observații" când extracția AI are confidence < 70%. Filtre pe categorie (lipide, hematologie, tiroidiene, hormonal, hepatice, renale, urinare, microbiologie, imunologie, biochimie).
-- **Documente** — listă de documente medicale legate de persoana respectivă, buton „Adaugă document medical" (cu tipul restrâns la cele medicale), buton „Re-extrage din toate documentele" (batch AI cu estimate de cost + progress bar anulabil).
-- **Chat** — asistent AI specializat pe acel dosar, cu citații obligatorii la observații (chip-uri marcate cu OBS:id) și documente (chip-uri marcate cu DOC:tip|id). NU dă diagnostic sau interpretare clinică — răspunde doar pe baza datelor extrase și redirecționează spre medic pentru întrebări clinice.
-
-**Funcționalități tehnice (informativ):**
-- Extracție AI automată la upload: documentele medicale sunt parsate cu un prompt strict per tip (analize → JSON cu name/value/unit/ref_min/ref_max/observed_at/category/confidence). Confidence < 0.5 → drop. 0.5–0.7 → flag „needs_review". ≥0.7 → afișat fără banner.
-- Date criptate AES-256-GCM cu cheie 256-bit stocată în Keychain (iOS) / Keystore (Android). AAD = ID-ul dosarului — blob-urile nu pot fi mutate între dosare.
-- Chat-ul folosește retrieval hibrid: căutare structurată în observații extrase + FTS5 pe text OCR + rezumat AI per document (câmpul „Notă", concentrat) + observații canonice, prune pe intent (trend / latest / general).
-- Consimțământ GDPR Art. 9 obligatoriu (categorie specială de date) — toggle global din Setări → Asistent AI → Date medicale + acceptare per dosar la activare.
-- App Lock cu timeout 5 min pentru chat și ecran detail (independent de timeout-ul global).
-- Backup: tabelele criptate intră în ZIP-ul local / iCloud manifest. Cheia AES NU intră în backup decât dacă userul activează explicit „Include cheia în backup cloud" (Setări → AI medical).
-
-**Navigare:** Entități → Dosare medicale → [tap card] → tab Timeline/Documente/Chat.
-**Privacy:** câmpul „Notă privată" de pe documente NU este trimis niciodată la AI medical.
-
-## Review observații
-
-Tab-ul de review (din Dosare medicale → tap dosar → buton „Verifică observații", apare doar dacă există valori marcate needs_review) afișează observațiile cu confidence scăzut (0.5–0.7) extrase de AI. Utilizatorul confirmă/corectează manual fiecare valoare; observațiile rămân ascunse din timeline până la confirmare.
+Din Setări → Asistent AI, utilizatorul alege provider-ul: Dosar AI (cloud built-in, 20 interogări/zi gratuit), Cheie API proprie (orice provider compatibil OpenAI — Mistral, OpenAI etc.), Model local (rulează pe device, offline, nelimitat) sau Fără AI. Acordul GDPR pentru transmiterea datelor către provider e cerut explicit la prima activare cloud și e revocabil oricând.
 
 ## Actualizări aplicație
 

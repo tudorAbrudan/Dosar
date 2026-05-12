@@ -164,53 +164,6 @@ db.execSync(`
     snapshots_remaining INTEGER NOT NULL
   );
 
-  -- ── Dosar medical (entitate derivată 1:1 cu Person) ───────────────────────
-  CREATE TABLE IF NOT EXISTS medical_record (
-    id TEXT PRIMARY KEY,
-    person_id TEXT NOT NULL UNIQUE REFERENCES persons(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    ai_consent_at TEXT,
-    ai_consent_version INTEGER NOT NULL DEFAULT 1,
-    encryption_key_ref TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS medical_observations (
-    id TEXT PRIMARY KEY,
-    medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
-    source_document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
-    name_enc BLOB NOT NULL,
-    value_enc BLOB,
-    unit TEXT,
-    ref_min_enc BLOB,
-    ref_max_enc BLOB,
-    observed_at TEXT,
-    category TEXT NOT NULL DEFAULT 'altele',
-    confidence REAL NOT NULL,
-    needs_review INTEGER NOT NULL DEFAULT 0,
-    user_corrected INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS medical_chat_threads (
-    id TEXT PRIMARY KEY,
-    medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
-    title TEXT NOT NULL DEFAULT 'Conversație',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS medical_chat_messages (
-    id TEXT PRIMARY KEY,
-    thread_id TEXT NOT NULL REFERENCES medical_chat_threads(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN ('user','assistant')),
-    content_enc BLOB NOT NULL,
-    citations_json TEXT,
-    created_at TEXT NOT NULL
-  );
-
   CREATE INDEX IF NOT EXISTS idx_docs_expiry ON documents(expiry_date);
   CREATE INDEX IF NOT EXISTS idx_docs_person ON documents(person_id);
   CREATE INDEX IF NOT EXISTS idx_docs_vehicle ON documents(vehicle_id);
@@ -221,31 +174,20 @@ db.execSync(`
   CREATE INDEX IF NOT EXISTS idx_chat_threads_updated ON chat_threads(updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_maintenance_vehicle ON vehicle_maintenance_tasks(vehicle_id);
   CREATE INDEX IF NOT EXISTS idx_pending_uploads_attempts ON pending_uploads(attempt_count);
-  CREATE INDEX IF NOT EXISTS idx_medrec_person ON medical_record(person_id);
-  CREATE INDEX IF NOT EXISTS idx_medobs_record ON medical_observations(medical_record_id);
-  CREATE INDEX IF NOT EXISTS idx_medobs_date ON medical_observations(medical_record_id, observed_at);
-  CREATE INDEX IF NOT EXISTS idx_medobs_review ON medical_observations(medical_record_id, needs_review);
-  CREATE INDEX IF NOT EXISTS idx_medobs_source ON medical_observations(source_document_id);
-  CREATE INDEX IF NOT EXISTS idx_medth_record ON medical_chat_threads(medical_record_id, updated_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_medmsg_thread ON medical_chat_messages(thread_id, created_at);
 `);
 
-// FTS5 virtual table — rulat separat ca să prindem eroarea „no such module: fts5"
-// la build și să continuăm fără să spargem aplicația. La pornire pe expo-sqlite
-// recent, FTS5 e disponibil by default.
+// Cleanup: tabele medical din versiunile 3.3.0–3.5.0 (entitatea „Dosar medical")
+// au fost migrate într-o aplicație separată. Le ștergem pentru a curăța DB-ul.
 try {
   db.execSync(`
-    CREATE VIRTUAL TABLE IF NOT EXISTS medical_chunks_fts USING fts5(
-      medical_record_id UNINDEXED,
-      source_type UNINDEXED,
-      source_id UNINDEXED,
-      observed_at UNINDEXED,
-      chunk_text,
-      tokenize='unicode61 remove_diacritics 2'
-    );
+    DROP TABLE IF EXISTS medical_chat_messages;
+    DROP TABLE IF EXISTS medical_chat_threads;
+    DROP TABLE IF EXISTS medical_observations;
+    DROP TABLE IF EXISTS medical_record;
+    DROP TABLE IF EXISTS medical_chunks_fts;
   `);
-} catch (e) {
-  console.warn('[db] FTS5 unavailable for medical_chunks_fts:', e);
+} catch {
+  // best-effort — tabele lipsă sau drop refuzat din alt motiv nu blochează pornirea
 }
 
 // Inițializare cloud_state single-row (idempotent)

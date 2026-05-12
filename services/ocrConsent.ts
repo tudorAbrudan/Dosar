@@ -1,11 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { DocumentType } from '@/types';
 
-export type OcrSensitivity = 'general' | 'sensitive' | 'medical';
+export type OcrSensitivity = 'general' | 'sensitive';
 export type OcrConsentChoice = 'allow' | 'deny';
-
-// GDPR Art. 9 – categorie specială: niciodată persistat, ask every time
-const MEDICAL_TYPES = new Set<DocumentType>(['reteta_medicala', 'analize_medicale']);
 
 // Date personale identificabile – necesită confirmare explicită la prima utilizare
 const SENSITIVE_TYPES = new Set<DocumentType>([
@@ -29,12 +26,7 @@ export function getSensitiveDocTypes(): DocumentType[] {
   return [...SENSITIVE_TYPES] as DocumentType[];
 }
 
-export function getMedicalDocTypes(): DocumentType[] {
-  return [...MEDICAL_TYPES] as DocumentType[];
-}
-
 export function getDocTypeSensitivity(type: DocumentType): OcrSensitivity {
-  if (MEDICAL_TYPES.has(type)) return 'medical';
   if (SENSITIVE_TYPES.has(type)) return 'sensitive';
   return 'general';
 }

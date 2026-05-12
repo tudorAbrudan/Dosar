@@ -24,8 +24,6 @@ export async function getDocumentsForAI(): Promise<Document[]>
 - **Construiești context pentru chatbot / LLM?** → folosește `getDocumentsForAI()`, NU `getDocuments()`.
 - **Ai deja un `Document` în mână și vrei să-l trimiți la AI?** → treci-l prin `sanitizeDocumentForAI(doc)` înainte.
 - **Serializezi un `Document` în system prompt / user message / tool input trimis la AI?** → întâi sanitizează.
-- **`services/medicalExtractor.ts`** și **`services/medicalChat.ts`** trebuie să trimită la AI doar `Document` sanitizate cu `getDocumentsForAI()` / `sanitizeDocumentForAI()`. Nicio referință directă la `doc.private_notes`.
-- **FTS5 chunks** din `services/medicalFts.ts` (`chunk_text`) sunt plaintext (acceptat în spec §7.2: FTS5 nu poate căuta în date criptate). NU include `private_notes` în chunks — la extracție folosește OCR-ul sanitizat (`sanitizeDocumentForAI`), iar la rebuild FTS folosește doar `documents.ocr_text` și observații decriptate.
 
 ### 3. Unde NU pleacă la AI (OK să rămână câmpul)
 

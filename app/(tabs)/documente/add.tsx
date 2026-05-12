@@ -56,6 +56,7 @@ import {
   ENTITY_DOCUMENT_TYPES,
   ALL_ENTITY_TYPES,
   ENTITY_TYPE_LABELS,
+  NO_EXPIRY_DOC_TYPES,
 } from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
@@ -70,7 +71,6 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
-import * as ocrConsent from '@/services/ocrConsent';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
@@ -105,15 +105,14 @@ const ALL_STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
   .filter(([value]) => value !== 'custom')
   .map(([value, label]) => ({ value: value as DocumentType, label }));
 
-const HIDE_EXPIRY_TYPES: DocumentType[] = [
-  'analize_medicale',
-  'carte_auto',
-  'cadastru',
-  'act_proprietate',
-];
+// Helper centralizat — folosește sursa unică NO_EXPIRY_DOC_TYPES din types.
+// Acoperă certificate stare civilă, diplome, acte de proprietate, bonuri etc.
+function isNoExpiryType(t: DocumentType): boolean {
+  return NO_EXPIRY_DOC_TYPES.has(t);
+}
 
 // Sursa unică: ALL_ENTITY_TYPES din types/index.ts. Adăugarea unui tip nou
-// (ex: medical_record) e automată — apar tab-uri filtrate prin Vizibilitate.
+// e automată — apar tab-uri filtrate prin Vizibilitate.
 const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = ALL_ENTITY_TYPES.map(t => ({
   key: t,
   label: ENTITY_TYPE_LABELS[t],
@@ -141,12 +140,11 @@ export default function AddDocumentScreen() {
     cards,
     animals,
     companies,
-    medicalRecords,
     resolveEntityName,
   } = useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const { visibleEntityTypes } = useVisibilitySettings();
+  const { visibleEntityTypes, visibleDocTypes, updateVisibleDocTypes } = useVisibilitySettings();
 
   const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'altul');
   // Marker: utilizatorul a fixat manual tipul (din params sau din picker).
@@ -175,13 +173,20 @@ export default function AddDocumentScreen() {
   const lastAiTextLengthRef = useRef(0);
   const [textAiConsentAvailable, setTextAiConsentAvailable] = useState(false);
   const [duplicateDoc, setDuplicateDoc] = useState<Document | null>(null);
-  const [suggestedInactiveType, setSuggestedInactiveType] = useState<DocumentType | null>(null);
+  const [autoActivatedType, setAutoActivatedType] = useState<DocumentType | null>(null);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const hasMountedRef = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setTextAiConsentAvailable(v === 'true'));
   }, []);
+
+  // Auto-dismiss banner-ul de „tip activat automat" după 5s.
+  useEffect(() => {
+    if (!autoActivatedType) return;
+    const id = setTimeout(() => setAutoActivatedType(null), 5000);
+    return () => clearTimeout(id);
+  }, [autoActivatedType]);
 
   useFocusEffect(
     useCallback(() => {
@@ -444,16 +449,19 @@ export default function AddDocumentScreen() {
       if (Object.keys(finalMeta).length > 0) {
         setMetadata(prev => ({ ...finalMeta, ...prev }));
       }
-      if (extracted.expiry_date) {
+      // Pentru tipuri permanente (certificate stare civilă, diplome, acte
+      // proprietate etc.) NU completăm expiry_date — chiar dacă OCR găsește
+      // o dată în document, e probabil data emiterii, nu o expirare reală.
+      const allowExpiryHere = !isNoExpiryType(docType);
+      if (extracted.expiry_date && allowExpiryHere) {
         setExpiryDate(extracted.expiry_date);
         expiryDateRef.current = extracted.expiry_date;
       } else if (
         info.expiry_date &&
         !expiryDateRef.current &&
-        docType !== 'talon' &&
-        docType !== 'carte_auto'
+        allowExpiryHere &&
+        docType !== 'talon'
       ) {
-        // talon și carte_auto nu au dată de expirare proprie — evităm să punem data greșită
         setExpiryDate(info.expiry_date);
         expiryDateRef.current = info.expiry_date;
       }
@@ -496,7 +504,6 @@ export default function AddDocumentScreen() {
   async function runAiOcrMapper(combinedOcrText: string) {
     const consent = await AsyncStorage.getItem(AI_CONSENT_KEY);
     if (consent !== 'true') return;
-    if (ocrConsent.getDocTypeSensitivity(type) === 'medical') return;
 
     setAiOcrLoading(true);
     try {
@@ -535,19 +542,32 @@ export default function AddDocumentScreen() {
 
       const result = await mapOcrWithAi(combinedOcrText, availableEntities, firstImageBase64);
 
-      // Aplică tipul documentului dacă AI-ul l-a detectat și e vizibil
+      // Aplică tipul documentului dacă AI-ul l-a detectat
       if (
         result.documentType &&
         result.documentType !== 'altul' &&
         result.documentType !== 'custom'
       ) {
-        if (contextVisibleDocTypes.includes(result.documentType)) {
-          setType(result.documentType);
-          setCustomTypeId(null);
-          setMetadata({});
-          setSuggestedInactiveType(null);
+        const detectedType = result.documentType;
+        setType(detectedType);
+        setCustomTypeId(null);
+        setMetadata({});
+
+        // Dacă tipul nu e activat în Setări, activează-l automat și anunță userul.
+        if (!contextVisibleDocTypes.includes(detectedType)) {
+          try {
+            const next = visibleDocTypes.includes(detectedType)
+              ? visibleDocTypes
+              : [...visibleDocTypes, detectedType];
+            if (next !== visibleDocTypes) {
+              await updateVisibleDocTypes(next);
+            }
+            setAutoActivatedType(detectedType);
+          } catch {
+            /* dacă persistarea setărilor eșuează, păstrăm tipul setat local */
+          }
         } else {
-          setSuggestedInactiveType(result.documentType);
+          setAutoActivatedType(null);
         }
       }
 
@@ -562,14 +582,8 @@ export default function AddDocumentScreen() {
       }
 
       // Aplică datele — AI-ul are prioritate față de extracția locală
-      const noExpiryTypes: string[] = [
-        'carte_auto',
-        'analize_medicale',
-        'cadastru',
-        'act_proprietate',
-      ];
       const effectiveType = result.documentType ?? type;
-      if (result.expiryDate && !noExpiryTypes.includes(effectiveType)) {
+      if (result.expiryDate && !isNoExpiryType(effectiveType)) {
         setExpiryDate(result.expiryDate);
         expiryDateRef.current = result.expiryDate;
       } else if (effectiveType === 'talon' && result.fields.itp_expiry_date && !result.expiryDate) {
@@ -638,20 +652,6 @@ export default function AddDocumentScreen() {
       return;
     }
 
-    if (ocrConsent.getDocTypeSensitivity(type) === 'medical') {
-      const confirmed = await new Promise<boolean>(resolve => {
-        Alert.alert(
-          'Date medicale (GDPR Art. 9)',
-          `Imaginea documentului „${DOCUMENT_TYPE_LABELS[type]}" va fi trimisă la AI.\n\nPreferința nu se salvează.\n\nEști de acord?`,
-          [
-            { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'De acord', onPress: () => resolve(true) },
-          ]
-        );
-      });
-      if (!confirmed) return;
-    }
-
     setLlmFieldLoading(true);
     try {
       // ─── Classify step (doar dacă utilizatorul NU a ales manual tipul) ────────
@@ -704,33 +704,6 @@ export default function AddDocumentScreen() {
           }
         }
       }
-
-      // GDPR Art. 9: dacă classify a detectat un tip medical pe care userul nu
-      // l-a confirmat înainte (tipul curent NU era medical), cere consent
-      // suplimentar înainte de extract. Acoperă cazul: user scanează un document
-      // medical fără să fi setat tipul, classify îl identifică, extract-ul ar
-      // trimite din nou imaginea spre AI cu prompt extins.
-      if (
-        resolvedType !== type &&
-        ocrConsent.getDocTypeSensitivity(resolvedType) === 'medical' &&
-        ocrConsent.getDocTypeSensitivity(type) !== 'medical'
-      ) {
-        const confirmed = await new Promise<boolean>(resolve => {
-          Alert.alert(
-            'Date medicale (GDPR Art. 9)',
-            `AI a detectat tipul „${DOCUMENT_TYPE_LABELS[resolvedType] ?? resolvedType}". Imaginea va fi trimisă la AI pentru extragerea câmpurilor.\n\nPreferința nu se salvează.\n\nEști de acord?`,
-            [
-              { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
-              { text: 'De acord', onPress: () => resolve(true) },
-            ]
-          );
-        });
-        if (!confirmed) {
-          setLlmFieldLoading(false);
-          return;
-        }
-      }
-      // ──────────────────────────────────────────────────────────────────────────
 
       const fileNotes: string[] = [];
       const pagesToProcess = pages.slice(0, 5); // max 5 fișiere per analiză AI
@@ -931,14 +904,16 @@ export default function AddDocumentScreen() {
             setMetadata({});
           }
           const info = extractDocumentInfo(text);
-          const fields = extractFieldsForType(detectedType ?? type, text);
+          const effectiveType = detectedType ?? type;
+          const fields = extractFieldsForType(effectiveType, text);
           if (Object.keys(fields.metadata).length > 0) {
             setMetadata(prev => ({ ...fields.metadata, ...prev }));
           }
-          if (fields.expiry_date && !expiryDateRef.current) {
+          const allowExpiryScan = !isNoExpiryType(effectiveType);
+          if (fields.expiry_date && !expiryDateRef.current && allowExpiryScan) {
             setExpiryDate(fields.expiry_date);
             expiryDateRef.current = fields.expiry_date;
-          } else if (info.expiry_date && !expiryDateRef.current) {
+          } else if (info.expiry_date && !expiryDateRef.current && allowExpiryScan) {
             setExpiryDate(info.expiry_date);
             expiryDateRef.current = info.expiry_date;
           }
@@ -1103,7 +1078,7 @@ export default function AddDocumentScreen() {
           await updateDocument(duplicateDoc.id, {
             type: duplicateDoc.type,
             issue_date: issueDate.trim() || duplicateDoc.issue_date || undefined,
-            expiry_date: !HIDE_EXPIRY_TYPES.includes(duplicateDoc.type)
+            expiry_date: !isNoExpiryType(duplicateDoc.type)
               ? expiryDate.trim() || duplicateDoc.expiry_date || undefined
               : undefined,
             note: note.trim() || duplicateDoc.note || undefined,
@@ -1141,7 +1116,7 @@ export default function AddDocumentScreen() {
         type,
         custom_type_id: type === 'custom' ? (customTypeId ?? undefined) : undefined,
         issue_date: issueDateRef.current.trim() || undefined,
-        expiry_date: !HIDE_EXPIRY_TYPES.includes(type)
+        expiry_date: !isNoExpiryType(type)
           ? expiryDateRef.current.trim() || undefined
           : undefined,
         note: note.trim() || undefined,
@@ -1258,12 +1233,7 @@ export default function AddDocumentScreen() {
             ? animals.map(a => ({ id: a.id, label: a.name }))
             : pickerCategory === 'company'
               ? companies.map(c => ({ id: c.id, label: c.name }))
-              : pickerCategory === 'medical_record'
-                ? medicalRecords.map(m => {
-                    const personName = persons.find(p => p.id === m.person_id)?.name;
-                    return { id: m.id, label: personName ? `${m.name} · ${personName}` : m.name };
-                  })
-                : cards.map(c => ({ id: c.id, label: c.nickname }));
+              : cards.map(c => ({ id: c.id, label: c.nickname }));
 
   function toggleEntityLink(id: string) {
     setEntityLinks(prev => {
@@ -1349,29 +1319,34 @@ export default function AddDocumentScreen() {
           </View>
         )}
 
-        {/* TIP INACTIV DETECTAT DE AI */}
-        {suggestedInactiveType && (
-          <View style={styles.inactiveBanner}>
+        {/* TIP AUTO-ACTIVAT DUPĂ DETECȚIE AI */}
+        {autoActivatedType && (
+          <View
+            style={[
+              styles.autoActivatedBanner,
+              {
+                backgroundColor: C.primaryMuted,
+                borderColor: statusColors.ok,
+              },
+            ]}
+          >
             <Ionicons
-              name="information-circle-outline"
+              name="checkmark-circle"
               size={18}
-              color="#E65100"
+              color={statusColors.ok}
               style={{ marginRight: 8, marginTop: 1 }}
             />
             <View style={{ flex: 1 }}>
-              <Text style={styles.inactiveBannerTitle}>
-                AI-ul a detectat tipul „
-                {DOCUMENT_TYPE_LABELS[suggestedInactiveType] ?? suggestedInactiveType}"
+              <Text style={[styles.autoActivatedBannerTitle, { color: C.text }]}>
+                Tipul „{DOCUMENT_TYPE_LABELS[autoActivatedType] ?? autoActivatedType}" a fost
+                activat automat
               </Text>
-              <Text style={styles.inactiveBannerBody}>
-                Acest tip nu e activat. Activează-l din Setări → Tipuri de documente vizibile.
+              <Text style={[styles.autoActivatedBannerBody, { color: C.textSecondary }]}>
+                Apare acum în Setări → Tipuri de documente vizibile.
               </Text>
-              <Pressable onPress={() => router.push('/(tabs)/setari')}>
-                <Text style={styles.inactiveBannerLink}>Deschide Setările →</Text>
-              </Pressable>
             </View>
-            <Pressable onPress={() => setSuggestedInactiveType(null)} hitSlop={8}>
-              <Ionicons name="close" size={16} color="#999" />
+            <Pressable onPress={() => setAutoActivatedType(null)} hitSlop={8}>
+              <Ionicons name="close" size={16} color={C.textSecondary} />
             </Pressable>
           </View>
         )}
@@ -1523,7 +1498,7 @@ export default function AddDocumentScreen() {
           }}
           disabled={loading}
         />
-        {!HIDE_EXPIRY_TYPES.includes(type) && (
+        {!isNoExpiryType(type) && (
           <DatePickerField
             label={EXPIRY_FIELD_LABEL[type] ?? 'Data expirare (opțional)'}
             value={expiryDate}
@@ -1534,7 +1509,7 @@ export default function AddDocumentScreen() {
             disabled={loading}
           />
         )}
-        {expiryDate && !HIDE_EXPIRY_TYPES.includes(type) ? (
+        {expiryDate && !isNoExpiryType(type) ? (
           <Pressable
             style={styles.calendarInlineBtn}
             onPress={async () => {
@@ -1899,19 +1874,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
-  inactiveBanner: {
+  autoActivatedBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#FFF3E0',
-    borderColor: '#FF9800',
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
     marginBottom: 16,
   },
-  inactiveBannerTitle: { fontSize: 13, fontWeight: '700', color: '#E65100', marginBottom: 3 },
-  inactiveBannerBody: { fontSize: 12, color: '#BF360C', marginBottom: 4, lineHeight: 17 },
-  inactiveBannerLink: { fontSize: 12, fontWeight: '600', color: '#E65100' },
+  autoActivatedBannerTitle: { fontSize: 13, fontWeight: '700', marginBottom: 3 },
+  autoActivatedBannerBody: { fontSize: 12, lineHeight: 17 },
   duplicateBanner: {
     borderWidth: 1,
     borderRadius: 10,

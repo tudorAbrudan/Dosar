@@ -152,15 +152,7 @@ export default function AddEntityScreen() {
             <Pressable
               key={key}
               style={({ pressed }) => [styles.typeButton, pressed && styles.buttonPressed]}
-              onPress={() => {
-                // Dosar medical are flow propriu (Person picker 1:1) — redirect
-                // la lista dedicată, ecranul deschide modalul de creare.
-                if (key === 'medical_record') {
-                  router.replace('/(tabs)/entitati/medical?create=1');
-                  return;
-                }
-                setChosenType(key);
-              }}
+              onPress={() => setChosenType(key)}
             >
               <Text style={styles.typeButtonText}>{label}</Text>
             </Pressable>

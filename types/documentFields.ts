@@ -218,18 +218,6 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     // tip_card: omis — rar relevant pentru stocare structurată
   ],
 
-  // ─── MEDICAL ─────────────────────────────────────────────────────────────
-
-  reteta_medicala: [
-    { key: 'doctor', label: 'Medic prescriptor', placeholder: 'Dr. Ionescu Maria' },
-    { key: 'medication_1', label: 'Medicament', placeholder: 'Amoxicilinum 500mg – 20 caps.' },
-  ],
-
-  analize_medicale: [
-    { key: 'lab', label: 'Laborator', placeholder: 'Synevo / MedLife / Regina Maria' },
-    { key: 'doctor', label: 'Medic solicitant', placeholder: 'Dr. Ionescu Maria' },
-  ],
-
   // ─── ANIMALE ─────────────────────────────────────────────────────────────
 
   vaccin_animal: [

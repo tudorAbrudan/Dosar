@@ -47,8 +47,6 @@ const KEYWORD_TO_TYPES: { keywords: string[]; types: DocumentType[] }[] = [
   { keywords: ['factura', 'factură', 'invoice'], types: ['factura'] },
   { keywords: ['contract'], types: ['contract'] },
   { keywords: ['garantie', 'garanție', 'warranty'], types: ['garantie'] },
-  { keywords: ['reteta', 'rețetă', 'prescriptie', 'prescripție'], types: ['reteta_medicala'] },
-  { keywords: ['analize', 'laborator', 'rezultate'], types: ['analize_medicale'] },
   { keywords: ['pad', 'asigurare locuinta', 'asigurare locuință'], types: ['pad'] },
   { keywords: ['vaccin', 'vaccinare'], types: ['vaccin_animal'] },
   { keywords: ['deparazitare', 'antiparazitar'], types: ['deparazitare'] },

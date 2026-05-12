@@ -25,7 +25,7 @@ describe('aiTypeRegistry', () => {
     const ap = getRegistryEntry('asigurare_personala');
     const blob = ap.aliases.join(' ').toLowerCase();
     expect(blob).toMatch(/viață|viata/);
-    expect(blob).toMatch(/sănătate|sanatate|medical/);
+    expect(blob).toMatch(/sănătate|sanatate/);
     expect(blob).toMatch(/călătorie|calatorie|voiaj/);
   });
 

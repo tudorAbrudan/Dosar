@@ -11,6 +11,7 @@
  */
 import { extractPlateNumber, extractDobFromCnp } from './ocr';
 import type { DocumentType } from '@/types';
+import { NO_EXPIRY_DOC_TYPES } from '@/types';
 
 export interface ExtractResult {
   metadata: Record<string, string>;
@@ -19,9 +20,9 @@ export interface ExtractResult {
   note?: string; // rezumat structurat generat de AI
   /**
    * Transcriere structurată a conținutului documentului produsă de AI vision.
-   * Salvată în `documents.ocr_text` — folosită de medical extractor, chatbot
-   * și afișată în UI ca „Text complet (OCR)". Suprascrie OCR-ul on-device
-   * (AI vision are acuratețe mai mare pe scris de mână și layout complex).
+   * Salvată în `documents.ocr_text` — folosită de chatbot și afișată în UI ca
+   * „Text complet (OCR)". Suprascrie OCR-ul on-device (AI vision are acuratețe
+   * mai mare pe scris de mână și layout complex).
    */
   ocr_text?: string;
 }
@@ -786,61 +787,6 @@ function extractAbonament(text: string): ExtractResult {
   return { metadata: meta, expiry_date: expiry };
 }
 
-// ─── REȚETĂ MEDICALĂ ─────────────────────────────────────────────────────────
-
-function extractReteta(text: string): ExtractResult {
-  const meta: Record<string, string> = {};
-
-  const medic = text.match(
-    /(?:Dr\.?|doctor|medic\s*prescriptor)[:\s.]+([A-ZĂÂÎȘȚ][a-zăâîșțA-Z\s\-\.]{3,50})/i
-  );
-  if (medic) meta['doctor'] = medic[1].trim();
-
-  // Medicament: după "Rp:" sau "1." sau primul rând cu doze
-  const med = text.match(/(?:Rp[:\s]|^\s*1\.[:\s])([^\n]{10,80})/im);
-  if (med) meta['medication_1'] = med[1].trim();
-
-  const issue = findDateNear(text, /data\s*prescri[ep]|data\s*emiter/i) ?? firstDate(text);
-  // Rețetă expiră: 30 zile standard, 90 zile boli cronice
-  let expiry: string | undefined;
-  if (issue) {
-    const d = new Date(issue);
-    const isCronic = /cronic|permanent|DCI\s+nr\.?\s*3/i.test(text);
-    d.setDate(d.getDate() + (isCronic ? 90 : 30));
-    expiry = d.toISOString().slice(0, 10);
-  }
-
-  return { metadata: meta, issue_date: issue, expiry_date: expiry };
-}
-
-// ─── ANALIZE MEDICALE ────────────────────────────────────────────────────────
-
-function extractAnalize(text: string): ExtractResult {
-  const meta: Record<string, string> = {};
-
-  const lab = text.match(/(?:laborator|clinica|spital)[:\s]+([^\n]{5,60})/i);
-  if (lab) meta['lab'] = lab[1].trim();
-  else {
-    const knownLabs = ['SYNEVO', 'MEDLIFE', 'REGINA MARIA', 'MEDICOVER', 'BIOCLINICA', 'PONDERAS'];
-    const tu = text.toUpperCase();
-    for (const l of knownLabs) {
-      if (tu.includes(l)) {
-        meta['lab'] = l;
-        break;
-      }
-    }
-  }
-
-  const doctorMatch = text.match(
-    /(?:medic\s*(?:solicitant|prescriptor|de\s*familie|specialist)|solicitat\s*de|dr\.?)[:\s.]+([A-ZĂÂÎȘȚ][a-zăâîșțA-Z\s\-\.]{3,50})/i
-  );
-  if (doctorMatch) meta['doctor'] = doctorMatch[1].trim();
-
-  const issue = findDateNear(text, /data\s*(?:recolt|eliber|rezult)/i) ?? firstDate(text);
-
-  return { metadata: meta, issue_date: issue };
-}
-
 // ─── VACCIN ANIMAL ───────────────────────────────────────────────────────────
 
 function extractVaccinAnimal(text: string): ExtractResult {
@@ -1104,6 +1050,16 @@ function extractGeneric(text: string): ExtractResult {
 // ─── DISPATCHER ──────────────────────────────────────────────────────────────
 
 export function extractFieldsForType(type: DocumentType | string, text: string): ExtractResult {
+  const result = extractFieldsForTypeInner(type, text);
+  // Safety net: tipurile fără expirare nu trebuie să capete expiry_date —
+  // chiar dacă regex-ul a prins o dată în document (de obicei data emiterii).
+  if (NO_EXPIRY_DOC_TYPES.has(type as DocumentType)) {
+    delete result.expiry_date;
+  }
+  return result;
+}
+
+function extractFieldsForTypeInner(type: DocumentType | string, text: string): ExtractResult {
   switch (type) {
     case 'buletin':
       return extractBuletin(text);
@@ -1145,10 +1101,6 @@ export function extractFieldsForType(type: DocumentType | string, text: string):
       return extractAbonament(text);
     case 'stingator_incendiu':
       return extractStingator(text);
-    case 'reteta_medicala':
-      return extractReteta(text);
-    case 'analize_medicale':
-      return extractAnalize(text);
     case 'vaccin_animal':
       return extractVaccinAnimal(text);
     case 'deparazitare':

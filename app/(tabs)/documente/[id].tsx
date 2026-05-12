@@ -951,10 +951,6 @@ export default function DocumentDetailScreen() {
       // La fel: curățăm stack-ul documente, apoi mergem la entitate.
       router.navigate('/(tabs)/documente');
       router.navigate(`/(tabs)/entitati/${entityId}`);
-    } else if (from === 'medical' && entityId) {
-      // Document deschis din tabul „Documente" al dosarului medical.
-      router.navigate('/(tabs)/documente');
-      router.navigate(`/(tabs)/entitati/medical/${entityId}`);
     } else {
       router.canGoBack() ? router.back() : router.navigate('/(tabs)/documente');
     }

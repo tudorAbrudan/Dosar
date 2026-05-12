@@ -1,7 +1,7 @@
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
 import type { ExtractResult } from './ocrExtractors';
 import type { DocumentType } from '@/types';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES } from '@/types';
 
 const MAX_OCR_CHARS = 3000;
 
@@ -45,18 +45,6 @@ const TYPE_CONFIG: Partial<Record<DocumentType, TypeConfig>> = {
       'Listează: marca/model, plate, VIN, capacitate cilindrică, propietar (C.2.1, C.2.2), data primei înmatriculări (câmpul I), număr certificat. NU include date ITP în notă — sunt în expiry_date.',
     expiryRule: TALON_EXPIRY_RULE,
   },
-  analize_medicale: {
-    fieldsHint:
-      'lab (laboratorul: Synevo/MedLife/Regina Maria etc.), doctor (medic solicitant — "Dr.", "Medic solicitant", "Solicitat de"), pacient (numele pacientului — "Pacient:", "Nume:")',
-    noteInstruction:
-      'Listează TOATE analizele găsite, câte una pe rând, format: "Nume analiză: Valoare Unitate (ref: Min-Max)" sau "Nume analiză: Valoare Unitate". Adaugă la început: Pacient, Laborator, Medic, Data recoltare (dacă le găsești). Max 40 rânduri.',
-  },
-  reteta_medicala: {
-    fieldsHint:
-      'doctor (medic prescriptor — "Dr.", "Medic"), medication_1 (primul medicament după "Rp:" sau "1.")',
-    noteInstruction:
-      'Listează medicamentele prescrise cu doze, frecvență și durată. Adaugă: Medic, Data, Diagnostic, Unitate medicală (dacă apar). Include orice alte informații relevante din document.',
-  },
   factura: {
     fieldsHint:
       'supplier (furnizor — din antet), invoice_number (numărul facturii), amount (total de plată), due_date (scadență ZZ.LL.AAAA), period (perioada de facturare)',
@@ -90,7 +78,8 @@ function buildPrompt(
   typeLabel: string,
   config: TypeConfig | undefined,
   ocrText: string,
-  hasImage: boolean
+  hasImage: boolean,
+  docType: DocumentType
 ): string {
   const fieldsInstruction = config?.fieldsHint
     ? `Câmpuri specifice pentru „${typeLabel}": ${config.fieldsHint}`
@@ -108,9 +97,16 @@ function buildPrompt(
       ? `\nText OCR (referință primară — sursa pe care lucrezi):\n---\n${ocrText.slice(0, MAX_OCR_CHARS)}\n---`
       : '';
 
+  // Pentru tipuri permanente (certificate stare civilă, diplome, acte
+  // proprietate etc.) instruim AI să nu inventeze o dată de expirare.
+  // Documentele acestea NU expiră — orice dată găsită e data emiterii.
+  const noExpiryRule = NO_EXPIRY_DOC_TYPES.has(docType)
+    ? `\n\n━━━ DOCUMENT FĂRĂ EXPIRARE ━━━\nAcest tip de document NU are termen de expirare (e valabil permanent). PUNE OBLIGATORIU expiry_date: null în JSON. Dacă găsești o dată în document, e data emiterii sau o altă dată informativă — pune-o în issue_date sau în note, NICIODATĂ în expiry_date.`
+    : '';
+
   const expirySection = config?.expiryRule
     ? `\n\n━━━ REGULĂ SPECIALĂ EXPIRY ━━━\n${config.expiryRule}`
-    : '';
+    : noExpiryRule;
 
   const visionInstruction = hasImage
     ? `\n\nIMPORTANT: documentul îți este furnizat ca IMAGINE. Trebuie să CITEȘTI imaginea direct prin vision și să produci O TRANSCRIERE PROPRIE (secțiunea ===OCR===). NU presupune că ai deja OCR — citește pixel cu pixel din imagine. Acoperă tot conținutul vizibil al documentului, nu doar un rezumat.`
@@ -373,7 +369,7 @@ export async function extractFieldsWithLlm(
   const typeLabel = DOCUMENT_TYPE_LABELS[type] ?? type;
   const config = TYPE_CONFIG[type];
   const hasImage = !!imageBase64;
-  const prompt = buildPrompt(typeLabel, config, ocrText, hasImage);
+  const prompt = buildPrompt(typeLabel, config, ocrText, hasImage, type);
 
   const systemPrompt = `Ești un expert care procesează documente românești. Răspunzi EXACT în formatul cerut, cu marker-ii ===OCR=== și ===META=== pe linii separate. Secțiunea OCR este OBLIGATORIE și trebuie să conțină transcrierea completă a documentului în plain text (fără JSON). Secțiunea META conține JSON-ul cu câmpurile structurate.`;
 
@@ -392,6 +388,11 @@ export async function extractFieldsWithLlm(
   }
 
   const result = parseResponse(response);
+  // Safety net: dacă tipul nu are expirare, ignorăm orice expiry_date pe care
+  // AI l-ar fi returnat (în ciuda instrucțiunilor din prompt).
+  if (NO_EXPIRY_DOC_TYPES.has(type)) {
+    result.expiry_date = undefined;
+  }
   if (!result.ocr_text) {
     console.warn(
       `[ocrLlmExtractor] AI nu a returnat ocr_text. Tip=${type}, response.length=${response.length}, response[0..400]=${response.slice(0, 400)}`

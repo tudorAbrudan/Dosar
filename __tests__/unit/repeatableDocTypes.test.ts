@@ -2,10 +2,10 @@ import { REPEATABLE_DOC_TYPES, STANDARD_DOC_TYPES } from '@/types';
 import type { DocumentType } from '@/types';
 
 describe('REPEATABLE_DOC_TYPES', () => {
-  it('contains medical types that repeat naturally', () => {
-    expect(REPEATABLE_DOC_TYPES.has('analize_medicale')).toBe(true);
-    expect(REPEATABLE_DOC_TYPES.has('reteta_medicala')).toBe(true);
+  it('contains veterinary types that repeat naturally', () => {
     expect(REPEATABLE_DOC_TYPES.has('vizita_vet')).toBe(true);
+    expect(REPEATABLE_DOC_TYPES.has('vaccin_animal')).toBe(true);
+    expect(REPEATABLE_DOC_TYPES.has('deparazitare')).toBe(true);
   });
 
   it('contains financial types that recur', () => {

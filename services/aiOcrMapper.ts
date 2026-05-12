@@ -11,7 +11,7 @@
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
 import { extractPlateNumber } from './ocr';
 import type { DocumentType, EntityType } from '@/types';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES } from '@/types';
 
 // ─── Tipuri rezultat ──────────────────────────────────────────────────────────
 
@@ -330,13 +330,6 @@ IDENTITATE:
 - "pasaport" = pașaport, conține MRZ, nr. pașaport (ex: 05123456).
 - "permis_auto" = permis de conducere, conține categorii (A, B, C...), nr. permis.
 
-MEDICAL:
-- "analize_medicale" = buletin analize laborator: hemogramă, biochimie, urină etc. NU are dată de expirare.
-  - lab: numele laboratorului (Synevo, MedLife, Regina Maria, Medicover, Bioclinica etc.)
-  - doctor: medicul solicitant/prescriptor (poate apărea ca "Medic prescriptor", "Dr.", "Solicitat de")
-  - pacient: numele pacientului (poate apărea ca "Pacient", "Numele pacientului", "Nume:")
-- "reteta_medicala" = rețetă medicală cu medicamente prescrise. Are dată expirare (valabilitate rețetă).
-
 FACTURI (utilități și servicii):
 - "factura" = orice factură emisă de furnizori de servicii: curent electric (E.ON, Electrica, CEZ, Enel, DEER), gaz (Engie, Distrigaz, Romgaz), internet/TV (Digi/RCS&RDS, UPC/Vodafone, Orange, Telekom), apă (Apă Nova, Aquatim, Apa Canal), termoficare (Termoenergetica, RADET), etc.
   - supplier: numele companiei furnizoare (caută în header/antet, chiar dacă nu e precedat de "Furnizor:")
@@ -356,8 +349,6 @@ vigneta: plate="B 123 ABC"
 buletin: series="RX 123456", cnp="1234567890123", birth_date="28.09.1985" (derivă din CNP: cifra 1=sex/secol, pozițiile 2-3=an, 4-5=lună, 6-7=zi; S∈{1,2}→1900+AA, S∈{5,6}→2000+AA), address="Str. Exemplu nr. 1, Cluj-Napoca" (doar dacă apare în text)
 pasaport: series="05123456"
 permis_auto: series="12345678", categories="B"
-analize_medicale: lab="Synevo", doctor="Dr. Ionescu Maria", pacient="Popescu Ion"
-reteta_medicala: doctor="Dr. Ionescu", medication_1="Amoxicilina 500mg"
 factura: invoice_number="FAC-001", supplier="E.ON Energie România", amount="225.06", due_date="15.04.2024", period="01.03.2024 - 31.03.2024"
 garantie: product_name="iPhone 15", serie_produs="SN123"
 contract: tip_contract="Chirie"
@@ -373,7 +364,7 @@ bilet: categorie="Avion", venue="OTP→LHR", eveniment_artist="RO123"
 ━━━ REGULI DATE ━━━
 
 - issueDate: data emiterii/eliberării documentului (YYYY-MM-DD). null dacă nu există. NU folosi date de încetare contract, date de valabilitate perpetuă (ex: 31.12.2999) sau alte date administrative — doar data efectivă a documentului.
-- expiryDate: data expirării documentului (YYYY-MM-DD). EXCEPȚII — pune null pentru: carte_auto, analize_medicale, buletin (expiryDate e separat), cadastru, act_proprietate.
+- expiryDate: data expirării documentului (YYYY-MM-DD). PUNE OBLIGATORIU null pentru documentele care NU expiră niciodată: ${Array.from(NO_EXPIRY_DOC_TYPES).join(', ')}, buletin (expiryDate e separat, extras din MRZ). Pentru aceste tipuri, chiar dacă găsești o dată în document (de obicei data emiterii), NU o pune în expiryDate.
 - Pentru "talon": expiryDate = data ULTIMEI inspecții tehnice efectuate, citită de pe ȘTAMPILA CEA MAI DE JOS DIN TABEL.
   ━━━ REGULĂ FUNDAMENTALĂ ITP — STRICT ━━━
   Pe un talon există: câmpul B (emitere talon), câmpurile I/I.1 (data primei înmatriculări), tabel ITP cu 4-5 rânduri (primul tipărit, restul completate manual la fiecare inspecție prin ȘTAMPILĂ + dată scrisă de mână de la stația RAR).
@@ -419,7 +410,7 @@ Returnează EXCLUSIV JSON valid:
   "entitySuggestions": [
     { "entityType": "person|vehicle|property|card|animal|company", "entityId": "<id exact>", "entityName": "<nume>", "confidence": "high|medium|low" }
   ],
-  "structuredNote": "<rezumat structurat al TUTUROR fișierelor din textul OCR (separate prin '---'):\n- Dacă există mai multe fișiere diferite: secțiune separată pentru FIECARE cu header clar (ex: 'RCA:', 'Factură:')\n- analize_medicale: toate analizele format 'Nume: Valoare Unitate (ref: Min-Max)'; Pacient, Laborator, Medic, Data recoltare\n- reteta_medicala: medicamente cu doze și durată; Medic, Data, Diagnostic, Unitate medicală\n- factura: Furnizor, Nr. factură, Sumă totală, Scadență, Perioadă facturare, Adresă livrare/consum, Nr. client/contract, detalii consum (kWh, m³, Gcal etc. dacă apar). Include toate valorile și identificatorii găsiți.\n- rca/casco: Nr. poliță, Asigurator, Vehicul, Perioadă valabilitate, Primă\n- contract: Tip, Valoare, Toate părțile (nume, CNP/CUI), Durată, Obiect\n- garantie: Produs, Serie, Perioadă garanție, Vânzător, Data cumpărare\n- alte tipuri: câmpurile cheie — identificatori, date, sume, părți implicate — format 'Câmp: Valoare'. Omite texte administrative și informații redundante.\nMax 40 rânduri pentru analize, 20 pentru restul. null dacă OCR-ul nu conține nimic util.>"
+  "structuredNote": "<rezumat structurat al TUTUROR fișierelor din textul OCR (separate prin '---'):\n- Dacă există mai multe fișiere diferite: secțiune separată pentru FIECARE cu header clar (ex: 'RCA:', 'Factură:')\n- factura: Furnizor, Nr. factură, Sumă totală, Scadență, Perioadă facturare, Adresă livrare/consum, Nr. client/contract, detalii consum (kWh, m³, Gcal etc. dacă apar). Include toate valorile și identificatorii găsiți.\n- rca/casco: Nr. poliță, Asigurator, Vehicul, Perioadă valabilitate, Primă\n- contract: Tip, Valoare, Toate părțile (nume, CNP/CUI), Durată, Obiect\n- garantie: Produs, Serie, Perioadă garanție, Vânzător, Data cumpărare\n- alte tipuri: câmpurile cheie — identificatori, date, sume, părți implicate — format 'Câmp: Valoare'. Omite texte administrative și informații redundante.\nMax 20 rânduri. null dacă OCR-ul nu conține nimic util.>"
 }
 
 Răspunde DOAR cu JSON, fără text suplimentar.`;

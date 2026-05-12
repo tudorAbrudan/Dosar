@@ -8,12 +8,10 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
-import { REPEATABLE_DOC_TYPES, MEDICAL_DOC_TYPES } from '@/types';
+import { REPEATABLE_DOC_TYPES } from '@/types';
 
 /**
- * Coloana legacy din tabelul `documents` corespunzătoare fiecărui tip de
- * entitate. `medical_record` e o entitate derivată (1:1 cu Person, n-are
- * coloană proprie) — toate legăturile la documente se fac prin `person_id`.
+ * Coloana legacy din tabelul `documents` corespunzătoare fiecărui tip de entitate.
  */
 const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   person: 'person_id',
@@ -22,7 +20,6 @@ const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   card: 'card_id',
   animal: 'animal_id',
   company: 'company_id',
-  medical_record: null,
 };
 
 export interface CreateDocumentInput {
@@ -366,17 +363,6 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   emit('documents:changed');
   emit('links:changed');
 
-  // Trigger extracție medical dacă tipul e medical și e atașat la o persoană.
-  // Extragerea verifică intern existența dosarului medical activ + consent AI.
-  if (input.person_id && (MEDICAL_DOC_TYPES as string[]).includes(input.type)) {
-    // Dynamic import: evităm cycle de import documents.ts → medicalExtractor.ts → documents.ts.
-    import('./medicalExtractor')
-      .then(m => m.extractAsync(id))
-      .catch(() => {
-        /* logged in module */
-      });
-  }
-
   return {
     id,
     main_orientation_locked: false,
@@ -442,19 +428,6 @@ export async function deleteDocument(id: string): Promise<void> {
   }
 
   await db.runAsync('DELETE FROM documents WHERE id = ?', [id]);
-
-  // Cleanup explicit medical: șterge observații și chunks asociate (mai
-  // deterministic decât ON DELETE SET NULL). Dynamic import previne cycle.
-  try {
-    const [{ deleteObservationsBySourceDocument }, { deleteChunksBySource }] = await Promise.all([
-      import('./medicalObservations'),
-      import('./medicalFts'),
-    ]);
-    await deleteObservationsBySourceDocument(id);
-    await deleteChunksBySource('document', id);
-  } catch {
-    /* nu blochează ștergerea documentului */
-  }
 
   if (deletedFilePaths.length > 0) {
     const cloudEnabled = await getCloudBackupEnabled();
@@ -618,7 +591,6 @@ export async function addEntityLinkToDocument(
     [generateId(), documentId, link.entityType, link.entityId]
   );
   // Actualizăm și coloana legacy dacă e prima entitate de acel tip.
-  // medical_record nu are coloană legacy (e o entitate derivată din person).
   const col = LEGACY_ENTITY_COLUMN[link.entityType];
   if (col) {
     const current = await db.getFirstAsync<Record<string, string | null>>(
@@ -645,7 +617,6 @@ export async function removeEntityLinkFromDocument(
     [documentId, link.entityType, link.entityId]
   );
   // Actualizăm coloana legacy cu primul link rămas (sau null).
-  // medical_record nu are coloană legacy.
   const col = LEGACY_ENTITY_COLUMN[link.entityType];
   if (col) {
     const remaining = await db.getFirstAsync<{ entity_id: string } | null>(

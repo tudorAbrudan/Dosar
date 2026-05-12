@@ -646,8 +646,6 @@ export function detectDocumentType(text: string): DocumentType | null {
   if (/impozit.*proprietate|tax.*property/.test(t)) return 'impozit_proprietate';
   if (/contract/.test(t)) return 'contract';
   if (/garantie|garan[tț]ie|warranty|certificat de garan[tț]ie/.test(t)) return 'garantie';
-  if (/re[tț]et[aă] medical[aă]|re[tț]et[aă]/.test(t)) return 'reteta_medicala';
-  if (/analize|laborator|rezultate.*analize/.test(t)) return 'analize_medicale';
   if (/bon fiscal|chitant[aă]|receipt/.test(t)) return 'bon_cumparaturi';
   if (/bilet|ticket|boarding pass/.test(t)) return 'bilet';
   if (/abonament|subscri/.test(t)) return 'abonament';

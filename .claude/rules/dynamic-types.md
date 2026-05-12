@@ -13,11 +13,9 @@
 | Eticheta documentului (RO) | `DOCUMENT_TYPE_LABELS[type]` |
 | Tipuri document per entitate | `ENTITY_DOCUMENT_TYPES[entityType]` |
 | Primary entity per tip document | `DOC_PRIMARY_ENTITY[docType]` |
-| Tipuri medicale | `MEDICAL_DOC_TYPES` |
 | Tipuri repetabile | `REPEATABLE_DOC_TYPES` |
-| Categorii observații medicale | `OBSERVATION_CATEGORIES` |
 
-**Rezolvare nume entitate dintr-un link → `useEntities().resolveEntityName(link)`** (singura funcție; auto-include `medical_record`, format compus pentru carduri).
+**Rezolvare nume entitate dintr-un link → `useEntities().resolveEntityName(link)`** (singura funcție; format compus pentru carduri).
 
 Filtrare prin vizibilitate → `useVisibilitySettings().visibleEntityTypes` / `visibleDocTypes`.
 
@@ -26,7 +24,7 @@ Filtrare prin vizibilitate → `useVisibilitySettings().visibleEntityTypes` / `v
 ### ❌ Array hardcodat de entități
 
 ```ts
-// GREȘIT — pierde medical_record și orice tip viitor
+// GREȘIT — pierde orice tip viitor de entitate
 const TABS = [
   { key: 'person', label: 'Persoană' },
   { key: 'vehicle', label: 'Vehicul' },
@@ -43,7 +41,7 @@ const TABS = ALL_ENTITY_TYPES.map(t => ({ key: t, label: ENTITY_TYPE_LABELS[t] }
 ### ❌ Switch hardcodat pentru name lookup
 
 ```ts
-// GREȘIT — duplicare în 3+ ecrane, lipsește medical_record
+// GREȘIT — duplicare în 3+ ecrane
 switch (link.entityType) {
   case 'person': return persons.find(...)?.name ?? link.entityId;
   case 'vehicle': return vehicles.find(...)?.name ?? link.entityId;
@@ -97,7 +95,7 @@ const { docTypeOptions } = useFilteredDocTypes(/* opțional: { entityTypes } */)
 ### ❌ Câmpuri legacy în loc de entity_links
 
 ```ts
-// GREȘIT — ratează multi-link + medical_record (care n-are coloană legacy)
+// GREȘIT — ratează multi-link (entitățile pot avea mai multe legături prin junction table)
 const personDocs = documents.filter(d => d.person_id === personId);
 ```
 
@@ -139,7 +137,7 @@ Singurele locuri unde adăugarea trebuie făcută manual:
    - `ENTITY_DOCUMENT_TYPES[<entitate>]` — la ce entități e relevant
    - `DOC_PRIMARY_ENTITY` (entitatea principală)
    - Opțional: `REPEATABLE_DOC_TYPES` dacă se repetă (ex: facturi lunare)
-   - Opțional: `MEDICAL_DOC_TYPES` / `DEFAULT_VISIBLE_DOC_TYPES`
+   - Opțional: `DEFAULT_VISIBLE_DOC_TYPES`
 2. `services/aiTypeRegistry.ts` — `DOC_TYPE_AI_REGISTRY[<tip>]` cu aliases + description
 3. `scripts/update-site.js` — `EMOJI_MAP[<tip>]` (opțional, default 📄)
 4. `app/(tabs)/documente/index.tsx` și `app/(tabs)/expirari.tsx` — adaugă în `DOC_ICON`, `DOC_ICON_BG`, `DOC_ICON_COLOR` (Ionicons + culoare custom — singurul caz unde nu putem evita)
@@ -165,14 +163,3 @@ Script-ul raportează:
 - Array-uri `[{ key: 'person', label }, ...]` care ar trebui generate din `ALL_ENTITY_TYPES`
 
 Exit code 0 = curat, exit code 1 = discrepanțe. Folosit în pre-commit + CI.
-
-## Lecția din practică (Dosar medical, 2026-05-11)
-
-La adăugarea `medical_record` ca `EntityType` nou, am descoperit **5 locuri** unde lista entităților era hardcodată:
-- `app/(tabs)/entitati/add.tsx` — `MANUAL_ENTITY_TYPES`
-- `app/(tabs)/entitati/index.tsx` — `ALL_TABS`, `TYPE_RANK`, `ENTITY_ICON*`
-- `app/(tabs)/documente/add.tsx` — `ENTITY_CATEGORIES`, `pickerEntities`, `getEntityDisplayName`
-- `app/(tabs)/documente/edit.tsx` — picker entități + `entityLinkLabel`
-- `app/(tabs)/documente/[id].tsx` — `entityLinkLabel` + PDF filename switch
-
-**Toate au fost convertite** la sursa unică. Pentru viitor: rulează `check-hardcoded-entities.js` și nu duplica.

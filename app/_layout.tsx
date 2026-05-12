@@ -22,7 +22,6 @@ import { useReviewPrompt } from '@/hooks/useReviewPrompt';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
 import { db } from '@/services/db';
 import * as settings from '@/services/settings';
-import { ensureFtsIndexUpToDate } from '@/services/medicalFts';
 
 export const ONBOARDING_RESET_EVENT = 'onboarding_reset';
 
@@ -152,12 +151,6 @@ function RootLayoutNav() {
     });
   }, []);
 
-  // Migrare FTS5 medical pentru versiuni anterioare (idempotent — fără efect
-  // dacă indexul e deja la versiunea curentă). Fire-and-forget.
-  useEffect(() => {
-    void ensureFtsIndexUpToDate();
-  }, []);
-
   return (
     <ThemePreferenceContext.Provider value={{ preference: themePreference, setPreference }}>
       <ThemeProvider value={effectiveScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
@@ -165,10 +158,6 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
             name="cloud-backup"
-            options={{ headerShown: true, headerBackTitle: 'Înapoi' }}
-          />
-          <Stack.Screen
-            name="setari/medical-ai"
             options={{ headerShown: true, headerBackTitle: 'Înapoi' }}
           />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

@@ -65,8 +65,12 @@ import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
-import * as ocrConsent from '@/services/ocrConsent';
-import { DOCUMENT_TYPE_LABELS, getDocumentLabel, ENTITY_TYPE_EMOJI } from '@/types';
+import {
+  DOCUMENT_TYPE_LABELS,
+  getDocumentLabel,
+  ENTITY_TYPE_EMOJI,
+  NO_EXPIRY_DOC_TYPES,
+} from '@/types';
 import type { Document as DocType, DocumentType, DocumentEntityLink, EntityType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
@@ -102,7 +106,6 @@ export default function EditDocumentScreen() {
     vehicles,
     cards,
     animals,
-    medicalRecords,
     resolveEntityName,
   } = useEntities();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -324,19 +327,6 @@ export default function EditDocumentScreen() {
       Alert.alert('Fără imagini', 'Nu există imagini atașate documentului.');
       return;
     }
-    if (ocrConsent.getDocTypeSensitivity(type) === 'medical') {
-      const confirmed = await new Promise<boolean>(resolve => {
-        Alert.alert(
-          'Date medicale (GDPR Art. 9)',
-          `Imaginea documentului „${DOCUMENT_TYPE_LABELS[type]}" va fi trimisă la AI.\n\nPreferința nu se salvează.\n\nEști de acord?`,
-          [
-            { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'De acord', onPress: () => resolve(true) },
-          ]
-        );
-      });
-      if (!confirmed) return;
-    }
     setLlmFieldLoading(true);
     try {
       const firstPage = allPages[0];
@@ -379,8 +369,6 @@ export default function EditDocumentScreen() {
           if (confirmed) {
             resolvedType = classify.type;
             setType(classify.type);
-            // Persistă tipul nou imediat — altfel extractia medicală post-save
-            // ar folosi tot tipul vechi.
             if (doc) {
               await updateDocument(doc.id, { type: classify.type });
               const refreshed = await getDocumentById(doc.id);
@@ -396,7 +384,10 @@ export default function EditDocumentScreen() {
       const extracted = await extractFieldsWithLlm(resolvedType, ocrText, imageBase64);
       if (Object.keys(extracted.metadata).length > 0)
         setMetadata(prev => ({ ...extracted.metadata, ...prev }));
-      if (extracted.expiry_date) {
+      // Pentru tipuri fără expirare (certificate stare civilă, diplome, acte
+      // proprietate, etc.) ignorăm orice expiry_date pe care AI l-ar fi
+      // extras — nu vrem reminder fals pe documente permanente.
+      if (extracted.expiry_date && !NO_EXPIRY_DOC_TYPES.has(resolvedType)) {
         setExpiryDate(extracted.expiry_date);
         expiryDateRef.current = extracted.expiry_date;
       }
@@ -415,19 +406,6 @@ export default function EditDocumentScreen() {
         );
       }
       setAiOcrApplied(true);
-
-      // Auto-trigger extracție medicală dacă tipul rezultat e medical.
-      // Userul a apăsat „Trimite la AI" → vrea TOATE informațiile extrase, nu
-      // doar metadata. Pentru analize/scrisori/imagistică/etc., extragem și
-      // observații în medical_observations → chatbot medical + timeline funcționează.
-      if (doc && ocrConsent.getDocTypeSensitivity(resolvedType) === 'medical') {
-        try {
-          const { extractAsync } = await import('@/services/medicalExtractor');
-          extractAsync(doc.id);
-        } catch (e) {
-          console.warn('[runAiImageAnalysis] medical extract trigger failed:', e);
-        }
-      }
 
       // Talon fără expiry detectat → AI n-a putut citi sigur ștampila ITP.
       // Avertizează userul să completeze manual.
@@ -608,13 +586,18 @@ export default function EditDocumentScreen() {
       const detectedType = detectDocumentType(text);
       const info = extractDocumentInfo(text);
       const summary = formatOcrSummary(text, info);
+      const finalType =
+        detectedType && detectedType !== 'altul' && detectedType !== 'custom'
+          ? detectedType
+          : currentDoc.type;
+      // Pentru tipuri permanente (certificate stare civilă, diplome etc.),
+      // nu scriem niciodată expiry_date — chiar dacă OCR găsește o dată,
+      // probabil e data emiterii, nu o expirare reală.
+      const allowExpiry = !NO_EXPIRY_DOC_TYPES.has(finalType);
       const updates: Parameters<typeof updateDocument>[1] = {
-        type:
-          detectedType && detectedType !== 'altul' && detectedType !== 'custom'
-            ? detectedType
-            : currentDoc.type,
+        type: finalType,
         issue_date: info.issue_date ?? currentDoc.issue_date,
-        expiry_date: info.expiry_date ?? currentDoc.expiry_date,
+        expiry_date: allowExpiry ? (info.expiry_date ?? currentDoc.expiry_date) : undefined,
         note: !currentDoc.note && summary ? summary : currentDoc.note,
         file_path: currentDoc.file_path,
         auto_delete: currentDoc.auto_delete,
@@ -687,7 +670,8 @@ export default function EditDocumentScreen() {
         detectedType !== doc?.type;
       const effectiveType = (typeChanged ? detectedType : doc?.type) ?? 'altul';
       const extracted = extractFieldsForType(effectiveType, combinedText);
-      const newExpiry = extracted.expiry_date ?? info.expiry_date;
+      const allowExpiry = !NO_EXPIRY_DOC_TYPES.has(effectiveType as DocumentType);
+      const newExpiry = allowExpiry ? (extracted.expiry_date ?? info.expiry_date) : undefined;
       const newIssue = extracted.issue_date ?? info.issue_date;
 
       const found: string[] = [];
@@ -1083,15 +1067,17 @@ export default function EditDocumentScreen() {
           onChange={setIssueDate}
           disabled={saving}
         />
-        <DatePickerField
-          label={EXPIRY_FIELD_LABEL[type] ?? 'Data expirare (opțional)'}
-          value={expiryDate}
-          onChange={v => {
-            expiryDateRef.current = v;
-            setExpiryDate(v);
-          }}
-          disabled={saving}
-        />
+        {!NO_EXPIRY_DOC_TYPES.has(type) && (
+          <DatePickerField
+            label={EXPIRY_FIELD_LABEL[type] ?? 'Data expirare (opțional)'}
+            value={expiryDate}
+            onChange={v => {
+              expiryDateRef.current = v;
+              setExpiryDate(v);
+            }}
+            disabled={saving}
+          />
+        )}
 
         {/* 6. AUTO-ȘTERGERE */}
         <Text style={styles.label}>
@@ -1326,30 +1312,6 @@ export default function EditDocumentScreen() {
                         }
                       >
                         <Text style={styles.entityPickerText}>{c.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {medicalRecords.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Dosare medicale</Text>
-                  {medicalRecords.map(m => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'medical_record' && l.entityId === m.id
-                    );
-                    const personName = persons.find(p => p.id === m.person_id)?.name;
-                    const label = personName ? `${m.name} · ${personName}` : m.name;
-                    return (
-                      <Pressable
-                        key={m.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'medical_record', entityId: m.id })
-                        }
-                      >
-                        <Text style={styles.entityPickerText}>{label}</Text>
                         {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
                       </Pressable>
                     );
