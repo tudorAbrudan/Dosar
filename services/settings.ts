@@ -14,6 +14,9 @@ const KEY_CLOUD_IGNORED_UPLOADED_AT = 'cloud_ignored_uploaded_at';
 const KEY_CLOUD_SNAPSHOT_FREQUENCY = 'cloud_snapshot_frequency';
 const KEY_CLOUD_SNAPSHOT_RETENTION = 'cloud_snapshot_retention';
 const KEY_CLOUD_ENCRYPTION_ENABLED = 'cloud_encryption_enabled';
+const KEY_AI_MEDICAL_ALLOWED = 'ai_medical_allowed';
+const KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY = 'cloud_backup_includes_medical_key';
+const KEY_MEDICAL_FTS_VERSION = 'medical_fts_version';
 
 const VALID_FREQUENCIES: readonly SnapshotFrequency[] = [
   'off',
@@ -93,6 +96,34 @@ export async function getCloudEncryptionEnabled(): Promise<boolean> {
 
 export async function setCloudEncryptionEnabled(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEY_CLOUD_ENCRYPTION_ENABLED, enabled ? 'true' : 'false');
+}
+
+/**
+ * Toggle global pentru asistentul AI medical. Dezactivat = chat-ul medical e
+ * inaccesibil pe orice dosar (override la `medical_record.ai_consent_at`).
+ */
+export async function getAiMedicalAllowed(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_AI_MEDICAL_ALLOWED);
+  return v === 'true';
+}
+
+export async function setAiMedicalAllowed(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_AI_MEDICAL_ALLOWED, enabled ? 'true' : 'false');
+  emit('settings:changed');
+}
+
+/**
+ * Dacă true, cheia master AES medicală e inclusă în manifest-ul cloud (criptat
+ * apoi cu parola cloud). Default OFF — user trebuie să accepte explicit.
+ */
+export async function getCloudBackupIncludesMedicalKey(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY);
+  return v === 'true';
+}
+
+export async function setCloudBackupIncludesMedicalKey(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY, enabled ? 'true' : 'false');
+  emit('settings:changed');
 }
 
 export async function getAppLockEnabled(): Promise<boolean> {
@@ -206,4 +237,21 @@ export async function getThemePreference(): Promise<ThemePreference> {
 
 export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await AsyncStorage.setItem(KEY_THEME_PREFERENCE, pref);
+}
+
+/**
+ * Versiunea curentă a indexului FTS5 medical. Incrementată când schimbăm
+ * structura chunks-urilor (ex: adăugare chunks pentru `doc.note` = v2).
+ * `ensureFtsIndexUpToDate` din `medicalFts` rebuild-uiește dacă versiunea
+ * stocată e mai mică.
+ */
+export async function getMedicalFtsVersion(): Promise<number> {
+  const v = await AsyncStorage.getItem(KEY_MEDICAL_FTS_VERSION);
+  if (v == null) return 0;
+  const n = parseInt(v, 10);
+  return isNaN(n) ? 0 : n;
+}
+
+export async function setMedicalFtsVersion(version: number): Promise<void> {
+  await AsyncStorage.setItem(KEY_MEDICAL_FTS_VERSION, String(version));
 }

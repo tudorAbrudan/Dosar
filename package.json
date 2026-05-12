@@ -19,7 +19,9 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json}\"",
     "prebuild": "expo prebuild --clean",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "setup-hooks": "git config core.hooksPath scripts/hooks && echo '✓ Pre-commit hook activ. Skip o singură dată: git commit --no-verify'",
+    "audit": "npm run type-check && node scripts/backup-audit.js --strict && node scripts/check-hardcoded-entities.js && node scripts/knowledge-audit.js --strict"
   },
   "jest": {
     "preset": "jest-expo",

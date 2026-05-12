@@ -79,9 +79,7 @@ export function DocumentDetailRow({
     );
   }
 
-  return (
-    <View style={[styles.container, styles.inlineRow, separatorStyle]}>{inlineContent}</View>
-  );
+  return <View style={[styles.container, styles.inlineRow, separatorStyle]}>{inlineContent}</View>;
 }
 
 const styles = StyleSheet.create({

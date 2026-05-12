@@ -68,7 +68,7 @@ import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderAllPdfPagesAsBase64 } from '@/services/pdfOcr';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
-import { getDocumentLabel, REPEATABLE_DOC_TYPES } from '@/types';
+import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
@@ -108,7 +108,8 @@ export default function DocumentDetailScreen() {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
   const { customTypes } = useCustomTypes();
-  const { companies, persons, properties, vehicles, cards, animals } = useEntities();
+  const { companies, persons, properties, vehicles, cards, animals, resolveEntityName } =
+    useEntities();
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -900,26 +901,7 @@ export default function DocumentDetailScreen() {
 
       // Construiește numele fișierului: entitate-tip_document.pdf
       const firstLink = entityLinks[0];
-      let entityName = '';
-      if (firstLink) {
-        switch (firstLink.entityType) {
-          case 'person':
-            entityName = persons.find(p => p.id === firstLink.entityId)?.name ?? '';
-            break;
-          case 'vehicle':
-            entityName = vehicles.find(v => v.id === firstLink.entityId)?.name ?? '';
-            break;
-          case 'property':
-            entityName = properties.find(p => p.id === firstLink.entityId)?.name ?? '';
-            break;
-          case 'animal':
-            entityName = animals.find(a => a.id === firstLink.entityId)?.name ?? '';
-            break;
-          case 'company':
-            entityName = companies.find(c => c.id === firstLink.entityId)?.name ?? '';
-            break;
-        }
-      }
+      const entityName = firstLink ? resolveEntityName(firstLink) : '';
       const docTypeSlug = slugify(getDocumentLabel(doc, customTypes));
       const parts = [slugify(entityName), docTypeSlug].filter(Boolean);
       const pdfFilename = parts.join('-') + '.pdf';
@@ -969,6 +951,10 @@ export default function DocumentDetailScreen() {
       // La fel: curățăm stack-ul documente, apoi mergem la entitate.
       router.navigate('/(tabs)/documente');
       router.navigate(`/(tabs)/entitati/${entityId}`);
+    } else if (from === 'medical' && entityId) {
+      // Document deschis din tabul „Documente" al dosarului medical.
+      router.navigate('/(tabs)/documente');
+      router.navigate(`/(tabs)/entitati/medical/${entityId}`);
     } else {
       router.canGoBack() ? router.back() : router.navigate('/(tabs)/documente');
     }
@@ -1123,34 +1109,8 @@ export default function DocumentDetailScreen() {
 
         {(() => {
           // Helper pentru numele entității
-          function entityLinkLabel(link: DocumentEntityLink): string {
-            switch (link.entityType) {
-              case 'person':
-                return persons.find(p => p.id === link.entityId)?.name ?? link.entityId;
-              case 'vehicle':
-                return vehicles.find(v => v.id === link.entityId)?.name ?? link.entityId;
-              case 'property':
-                return properties.find(p => p.id === link.entityId)?.name ?? link.entityId;
-              case 'card': {
-                const c = cards.find(c => c.id === link.entityId);
-                return c ? `${c.nickname} ····${c.last4}` : link.entityId;
-              }
-              case 'animal':
-                return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
-              case 'company':
-                return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
-              default:
-                return link.entityId;
-            }
-          }
-          const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
-            person: '👤',
-            vehicle: '🚗',
-            property: '🏠',
-            card: '💳',
-            animal: '🐾',
-            company: '🏢',
-          };
+          const entityLinkLabel = resolveEntityName;
+          const ENTITY_TYPE_LABELS = ENTITY_TYPE_EMOJI;
 
           // Filtrează DOCUMENT_FIELDS — doar cele cu valoare nenulă/non-empty.
           const filteredFields = (DOCUMENT_FIELDS[doc.type] ?? []).filter((f: FieldDef) => {
@@ -1225,8 +1185,8 @@ export default function DocumentDetailScreen() {
           );
         })()}
 
-        {doc.note && (
-          <DocumentDetailCard title="Notă">
+        <DocumentDetailCard title="Notă (rezumat)">
+          {doc.note ? (
             <Pressable
               onLongPress={() => copyValue(doc.note!, 'Nota')}
               accessibilityRole="button"
@@ -1234,16 +1194,25 @@ export default function DocumentDetailScreen() {
             >
               <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
             </Pressable>
-          </DocumentDetailCard>
-        )}
+          ) : (
+            <Pressable
+              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
+                Niciun rezumat. Apasă ✏️ sus pentru a adăuga.
+              </Text>
+            </Pressable>
+          )}
+        </DocumentDetailCard>
 
-        {doc.private_notes && (
-          <DocumentDetailCard
-            tone="sensitive"
-            header={
-              <View style={styles.privateHeader}>
-                <Ionicons name="lock-closed" size={13} color={sensitive} />
-                <Text style={styles.privateLabel}>Notă privată · nu se trimite la AI</Text>
+        <DocumentDetailCard
+          tone="sensitive"
+          header={
+            <View style={styles.privateHeader}>
+              <Ionicons name="lock-closed" size={13} color={sensitive} />
+              <Text style={styles.privateLabel}>Notă privată · nu se trimite la AI</Text>
+              {doc.private_notes ? (
                 <Pressable
                   onPress={() => setPrivateVisible(v => !v)}
                   hitSlop={8}
@@ -1253,9 +1222,11 @@ export default function DocumentDetailScreen() {
                     {privateVisible ? 'Ascunde' : 'Arată'}
                   </Text>
                 </Pressable>
-              </View>
-            }
-          >
+              ) : null}
+            </View>
+          }
+        >
+          {doc.private_notes ? (
             <Pressable
               onLongPress={
                 privateVisible ? () => copyValue(doc.private_notes!, 'Nota privată') : undefined
@@ -1269,8 +1240,17 @@ export default function DocumentDetailScreen() {
                   : '•'.repeat(Math.min(doc.private_notes.length, 16))}
               </Text>
             </Pressable>
-          </DocumentDetailCard>
-        )}
+          ) : (
+            <Pressable
+              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
+                Adaugă date sensibile (CVV, PIN, parole). Apasă ✏️ sus pentru a edita.
+              </Text>
+            </Pressable>
+          )}
+        </DocumentDetailCard>
 
         {doc.type === 'bilet' && doc.metadata?.event_date && (
           <Pressable
@@ -1463,6 +1443,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  emptyHint: { fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
   entityPlaceholder: { opacity: 0.6, fontSize: 14, fontStyle: 'italic' },
   entityLinksRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 4 },
   entityChip: {

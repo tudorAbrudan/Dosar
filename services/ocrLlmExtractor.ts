@@ -86,7 +86,12 @@ const TYPE_CONFIG: Partial<Record<DocumentType, TypeConfig>> = {
   },
 };
 
-function buildPrompt(typeLabel: string, config: TypeConfig | undefined, ocrText: string): string {
+function buildPrompt(
+  typeLabel: string,
+  config: TypeConfig | undefined,
+  ocrText: string,
+  hasImage: boolean
+): string {
   const fieldsInstruction = config?.fieldsHint
     ? `Câmpuri specifice pentru „${typeLabel}": ${config.fieldsHint}`
     : `Câmpuri utile în metadata: supplier, amount, invoice_number, tip_contract, policy_number, plate, vin, cnp, series, marca, model, due_date, period, insurer, bank, last4, lab, doctor, product_name — DOAR dacă le găsești`;
@@ -95,59 +100,263 @@ function buildPrompt(typeLabel: string, config: TypeConfig | undefined, ocrText:
     config?.noteInstruction ??
     'Rezumat structurat cu informațiile cheie: identificatori (nr. document, serie, cod, poliță, VIN etc.), date importante, sume, nume și firme relevante. Format "Câmp: Valoare", câte un câmp pe rând. Max 15 rânduri. Omite informații administrative sau redundante.';
 
-  const textSection = ocrText.trim()
-    ? `\nText OCR (referință secundară):\n---\n${ocrText.slice(0, MAX_OCR_CHARS)}\n---`
-    : '';
+  // Când avem imagine (AI vision), NU mai injectăm OCR-ul existent — altfel AI
+  // crede că OCR-ul e deja făcut și sare peste transcrierea în secțiunea OCR.
+  // Pentru text-only (fallback fără vision), păstrăm referința.
+  const textSection =
+    !hasImage && ocrText.trim()
+      ? `\nText OCR (referință primară — sursa pe care lucrezi):\n---\n${ocrText.slice(0, MAX_OCR_CHARS)}\n---`
+      : '';
 
   const expirySection = config?.expiryRule
     ? `\n\n━━━ REGULĂ SPECIALĂ EXPIRY ━━━\n${config.expiryRule}`
     : '';
 
-  return `Extrage câmpurile structurate din acest document românesc.
-Tip document: ${typeLabel}${textSection}${expirySection}
+  const visionInstruction = hasImage
+    ? `\n\nIMPORTANT: documentul îți este furnizat ca IMAGINE. Trebuie să CITEȘTI imaginea direct prin vision și să produci O TRANSCRIERE PROPRIE (secțiunea ===OCR===). NU presupune că ai deja OCR — citește pixel cu pixel din imagine. Acoperă tot conținutul vizibil al documentului, nu doar un rezumat.`
+    : '';
 
-Returnează DOAR JSON valid, fără text suplimentar:
+  return `Procesează acest document românesc.
+Tip document: ${typeLabel}${textSection}${expirySection}${visionInstruction}
+
+Răspunsul TĂU trebuie să conțină AMBELE secțiuni de mai jos, în această ORDINE EXACTĂ. Folosește marker-ii pe linii separate, fără indentare:
+
+===OCR===
+[Antet]
+Synevo - Laborator Bucuresti
+[Pacient]
+Ion Popescu, CNP 1234567890123
+[Rezultate]
+Hemoglobina: 14.5 g/dL (ref: 12.0-16.0)
+Glucoza: 95 mg/dL (ref: 70-110)
+[Concluzii]
+Valori normale
+===META===
 {
-  "issue_date": "YYYY-MM-DD sau null",
-  "expiry_date": "YYYY-MM-DD sau null",
-  "note": "...",
-  "metadata": { "cheie": "valoare" }
+  "issue_date": "2024-03-15",
+  "expiry_date": null,
+  "note": "rezumat scurt structurat",
+  "metadata": { "lab": "Synevo" }
 }
 
-Reguli:
+(exemplul de mai sus e doar formatul — înlocuiește cu datele reale din documentul curent)
+
+REGULI OCR (după ===OCR===, ÎNAINTE de ===META===):
+- OBLIGATORIU prezentă. Nu sări această secțiune.
+- Transcrie TOT conținutul vizibil al documentului ca PLAIN TEXT (nu JSON, fără escape \\n, fără ghilimele wrapping). Linii noi normale.
+- Păstrează ordinea naturală a citirii (sus → jos, stânga → dreapta).
+- Grupează pe secțiuni cu titluri între paranteze pătrate când e relevant: [Antet], [Pacient], [Medic], [Date examen], [Rezultate], [Valori normale], [Concluzii], [Recomandări], [Diagnostic], [Tratament], [Semnătură], [Ștampilă]. Sări secțiunile care nu apar.
+- Pentru tabele de analize: o linie per analiză, format „Nume analiză: Valoare Unitate (ref: Min–Max)".
+- Pentru rețete: o linie per medicament, format „Denumire concentrație — doză, frecvență, durată".
+- Pentru facturi/contracte/utilitare: liste linie cu linie, perechi „Câmp: Valoare".
+- Include numere, coduri, CNP, serii, ștampile, semnături lizibile. Marchează pasajele ilizibile cu „[ilizibil]".
+- NU rezuma. NU interpreta clinic. NU sări peste informații. Transcriere COMPLETĂ, structurată dar fidelă.
+- Dacă documentul e gol/ilegibil complet → scrie doar: „[document gol sau ilegibil]".
+- Fără markdown (**bold**, # heading). Doar text simplu cu marker-i "[Secțiune]".
+
+REGULI META (după ===META===, până la sfârșit):
+- JSON strict valid, toate cele 4 chei (issue_date, expiry_date, note, metadata) prezente.
 - ${fieldsInstruction}
 - note: ${noteInstruction}
-- Nu inventa valori. Dacă nu găsești o informație, omite câmpul sau pune null
-- Datele în format YYYY-MM-DD
-- amount cu punct zecimal (ex: "123.45")`;
+- Nu inventa valori. Dacă nu găsești o informație, pune null sau omite cheia din metadata.
+- Datele în format YYYY-MM-DD.
+- amount cu punct zecimal (ex: "123.45").`;
 }
 
-function parseResponse(response: string): ExtractResult {
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return { metadata: {} };
-
-  let parsed: {
-    issue_date?: string | null;
-    expiry_date?: string | null;
-    note?: string | null;
-    metadata?: Record<string, unknown>;
-  };
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    return { metadata: {} };
+/**
+ * Extrage valoarea unui string JSON dintr-un text potențial truncat, fără
+ * a folosi `JSON.parse`. Suportă escape-uri standard (\\n, \\", \\\\, etc.)
+ * și se oprește la prima ghilimea neescapată sau la sfârșitul stringului
+ * dacă răspunsul a fost cut mid-value (response-ul lui Mistral cu max_tokens
+ * atins). Returnează `undefined` dacă cheia nu apare în text.
+ */
+function extractJsonStringField(text: string, key: string): string | undefined {
+  const keyRe = new RegExp(`"${key}"\\s*:\\s*"`);
+  const m = keyRe.exec(text);
+  if (!m) return undefined;
+  let i = m.index + m[0].length;
+  let out = '';
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') {
+      const next = text[i + 1];
+      if (next === undefined) break; // truncat mid-escape
+      if (next === 'n') out += '\n';
+      else if (next === 't') out += '\t';
+      else if (next === 'r') out += '\r';
+      else if (next === '"') out += '"';
+      else if (next === '\\') out += '\\';
+      else if (next === '/') out += '/';
+      else if (next === 'u') {
+        const hex = text.slice(i + 2, i + 6);
+        if (hex.length < 4) break;
+        const code = parseInt(hex, 16);
+        if (!Number.isNaN(code)) out += String.fromCharCode(code);
+        i += 6;
+        continue;
+      } else {
+        out += next;
+      }
+      i += 2;
+      continue;
+    }
+    if (ch === '"') return out;
+    out += ch;
+    i += 1;
   }
+  // String truncat — întoarcem ce am acumulat, e mai bine decât nimic.
+  return out;
+}
 
+interface ParsedMeta {
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+  ocr_text?: string | null;
+}
+
+function tryParseJson(text: string): ParsedMeta | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[0]) as ParsedMeta;
+  } catch {
+    return null;
+  }
+}
+
+function buildResultFromParsed(parsed: ParsedMeta, ocrFallback?: string): ExtractResult {
   const metadata: Record<string, string> = {};
   for (const [k, v] of Object.entries(parsed.metadata ?? {})) {
     if (typeof v === 'string' && v.trim()) metadata[k] = v.trim();
   }
-
+  const ocrFromJson =
+    typeof parsed.ocr_text === 'string' && parsed.ocr_text.trim()
+      ? parsed.ocr_text.trim()
+      : undefined;
   return {
     metadata,
     issue_date: typeof parsed.issue_date === 'string' ? parsed.issue_date : undefined,
     expiry_date: typeof parsed.expiry_date === 'string' ? parsed.expiry_date : undefined,
     note: typeof parsed.note === 'string' && parsed.note.trim() ? parsed.note.trim() : undefined,
+    ocr_text: ocrFromJson ?? (ocrFallback?.trim() ? ocrFallback.trim() : undefined),
+  };
+}
+
+interface MarkerMatch {
+  name: 'OCR' | 'META';
+  start: number; // index în response unde începe linia marker-ului
+  end: number; // index după ultima literă a marker-ului (linia consumată)
+}
+
+const MARKER_RE = /^[ \t]*={3,}[ \t]*(OCR|META)[ \t]*={3,}[ \t]*$/gim;
+
+function findAllMarkers(response: string): MarkerMatch[] {
+  const out: MarkerMatch[] = [];
+  MARKER_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = MARKER_RE.exec(response)) !== null) {
+    out.push({
+      name: m[1].toUpperCase() as 'OCR' | 'META',
+      start: m.index,
+      end: m.index + m[0].length,
+    });
+  }
+  return out;
+}
+
+/**
+ * Parsează răspunsul AI. Format așteptat:
+ *
+ *   ===OCR===
+ *   ...transcriere plain text cu marker-i [Secțiune]...
+ *   ===META===
+ *   {...JSON cu issue_date, expiry_date, note, metadata...}
+ *
+ * Parser-ul e tolerant la ordinea marker-ilor: META poate veni înainte de OCR.
+ *
+ * Fallback-uri (în ordinea încercată):
+ *   1. Un singur marker găsit → restul răspunsului e secțiunea complementară.
+ *   2. Niciun marker, dar JSON pur cu cheie `ocr_text` inline (compat vechi).
+ *   3. JSON parțial + regex extracție pentru ocr_text/note (response truncat).
+ */
+function parseResponse(response: string): ExtractResult {
+  const markers = findAllMarkers(response);
+
+  if (markers.length >= 2) {
+    // Două (sau mai multe) marker-e: extragem secțiunea fiecăruia până la
+    // următorul marker (sau EOF pentru ultimul).
+    const sections: Partial<Record<'OCR' | 'META', string>> = {};
+    for (let i = 0; i < markers.length; i++) {
+      const cur = markers[i];
+      const next = markers[i + 1];
+      const sliceEnd = next ? next.start : response.length;
+      const body = response
+        .slice(cur.end, sliceEnd)
+        .replace(/^[\r\n]+/, '')
+        .replace(/[\r\n]+$/, '')
+        .trim();
+      // Dacă marker-ul apare de mai multe ori, păstrează ultima secțiune nevidă.
+      if (body) sections[cur.name] = body;
+    }
+
+    const metaPart = sections.META ?? '';
+    const ocrPart = sections.OCR ?? '';
+    const parsed = tryParseJson(metaPart);
+    if (parsed) {
+      return buildResultFromParsed(parsed, ocrPart);
+    }
+    const issueDate = extractJsonStringField(metaPart, 'issue_date');
+    const expiryDate = extractJsonStringField(metaPart, 'expiry_date');
+    const note = extractJsonStringField(metaPart, 'note');
+    return {
+      metadata: {},
+      ocr_text: ocrPart || undefined,
+      note: note && note.trim() ? note.trim() : undefined,
+      issue_date: issueDate || undefined,
+      expiry_date: expiryDate || undefined,
+    };
+  }
+
+  if (markers.length === 1) {
+    // Un singur marker: secțiunea găsită e după marker; restul (înainte) e
+    // probabil secțiunea complementară. Pentru OCR-only response, considerăm
+    // că tot ce e după marker e OCR și tot ce e înainte încercăm JSON.
+    const m = markers[0];
+    const before = response.slice(0, m.start).trim();
+    const after = response
+      .slice(m.end)
+      .replace(/^[\r\n]+/, '')
+      .replace(/[\r\n]+$/, '')
+      .trim();
+    if (m.name === 'OCR') {
+      const parsed = tryParseJson(before);
+      if (parsed) return buildResultFromParsed(parsed, after);
+      return { metadata: {}, ocr_text: after || undefined };
+    }
+    // META primary
+    const parsed = tryParseJson(after) ?? tryParseJson(before);
+    return buildResultFromParsed(parsed ?? { metadata: {} }, before || after);
+  }
+
+  // Niciun marker — compatibilitate cu format vechi (JSON pur).
+  const parsed = tryParseJson(response);
+  if (parsed) return buildResultFromParsed(parsed);
+
+  // JSON truncat — extragere regex best-effort.
+  const jsonMatch = response.match(/\{[\s\S]*/);
+  const rawText = jsonMatch ? jsonMatch[0] : response;
+  const ocrText = extractJsonStringField(rawText, 'ocr_text');
+  const noteField = extractJsonStringField(rawText, 'note');
+  const issueDate = extractJsonStringField(rawText, 'issue_date');
+  const expiryDate = extractJsonStringField(rawText, 'expiry_date');
+  return {
+    metadata: {},
+    ocr_text: ocrText && ocrText.trim() ? ocrText.trim() : undefined,
+    note: noteField && noteField.trim() ? noteField.trim() : undefined,
+    issue_date: issueDate || undefined,
+    expiry_date: expiryDate || undefined,
   };
 }
 
@@ -163,23 +372,34 @@ export async function extractFieldsWithLlm(
 ): Promise<ExtractResult> {
   const typeLabel = DOCUMENT_TYPE_LABELS[type] ?? type;
   const config = TYPE_CONFIG[type];
-  const prompt = buildPrompt(typeLabel, config, ocrText);
+  const hasImage = !!imageBase64;
+  const prompt = buildPrompt(typeLabel, config, ocrText, hasImage);
 
-  const systemPrompt = `Ești un expert în extragerea datelor structurate din documente românești. Returnezi EXCLUSIV JSON valid.`;
+  const systemPrompt = `Ești un expert care procesează documente românești. Răspunzi EXACT în formatul cerut, cu marker-ii ===OCR=== și ===META=== pe linii separate. Secțiunea OCR este OBLIGATORIE și trebuie să conțină transcrierea completă a documentului în plain text (fără JSON). Secțiunea META conține JSON-ul cu câmpurile structurate.`;
 
   let response: string;
   if (imageBase64) {
-    response = await sendAiRequestWithImage(systemPrompt, prompt, imageBase64, 'image/jpeg', 1200);
+    response = await sendAiRequestWithImage(systemPrompt, prompt, imageBase64, 'image/jpeg', 3500);
   } else {
     response = await sendAiRequest(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
       ],
-      1000,
+      3000,
       'extraction'
     );
   }
 
-  return parseResponse(response);
+  const result = parseResponse(response);
+  if (!result.ocr_text) {
+    console.warn(
+      `[ocrLlmExtractor] AI nu a returnat ocr_text. Tip=${type}, response.length=${response.length}, response[0..400]=${response.slice(0, 400)}`
+    );
+  } else {
+    console.warn(
+      `[ocrLlmExtractor] AI a returnat ocr_text (${result.ocr_text.length} char), note=${result.note?.length ?? 0} char, response.length=${response.length}`
+    );
+  }
+  return result;
 }

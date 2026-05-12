@@ -27,6 +27,8 @@ import {
   DEFAULT_VISIBLE_DOC_TYPES,
   ENTITY_DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
+  ENTITY_TYPE_LABELS,
+  ENTITY_TYPE_EMOJI,
 } from '@/types';
 import type { EntityType, DocumentType } from '@/types';
 import * as settings from '@/services/settings';
@@ -59,23 +61,8 @@ const SUMMARY = 10;
 
 const NOTIF_DAY_OPTIONS = [7, 14, 30] as const;
 
-const ENTITY_LABELS: Record<EntityType, string> = {
-  person: 'Persoană',
-  vehicle: 'Vehicul',
-  property: 'Proprietate',
-  card: 'Card',
-  animal: 'Animal',
-  company: 'Firmă',
-};
-
-const ENTITY_ICONS: Record<EntityType, string> = {
-  person: '👤',
-  vehicle: '🚗',
-  property: '🏠',
-  card: '💳',
-  animal: '🐾',
-  company: '🏢',
-};
+const ENTITY_LABELS = ENTITY_TYPE_LABELS;
+const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
 
 const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   person: 'Buletin, pașaport, permis, rețete',
@@ -84,6 +71,7 @@ const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   card: 'Carduri bancare, abonamente',
   animal: 'Vaccinuri, deparazitare, vizite vet',
   company: 'Certificat înregistrare, acte constitutive, TVA',
+  medical_record: 'Analize, rețete, scrisori medicale, imagistică',
 };
 
 interface Props {

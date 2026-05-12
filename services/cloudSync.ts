@@ -9,7 +9,8 @@ import * as fuel from './fuel';
 import * as maintenance from './maintenance';
 import { getCustomTypes } from './customTypes';
 import { toFileUri } from './fileUtils';
-import { getCloudEncryptionEnabled } from './settings';
+import { getCloudEncryptionEnabled, getCloudBackupIncludesMedicalKey } from './settings';
+import { exportMasterKeyBase64, importMasterKeyBase64, hasMedicalMasterKey } from './medicalCrypto';
 import {
   PasswordRequiredError,
   decryptString,
@@ -120,6 +121,109 @@ interface ManifestPayload {
   documents: Document[];
   documentPages: DocumentPage[];
   entityOrder: { entity_type: EntityType; entity_id: string; sort_order: number }[];
+  /** Tabelele dosarului medical — vezi `services/backup.ts` pentru format. */
+  medical_record?: unknown[];
+  medical_observations?: unknown[];
+  medical_chat_threads?: unknown[];
+  medical_chat_messages?: unknown[];
+  /** Date sensibile transportate doar dacă userul a optat (Setări → AI medical). */
+  _security?: {
+    medical_key?: string;
+  };
+}
+
+// ── Helpers BLOB → base64 pentru medical (Uint8Array fără Buffer) ────────────
+const _CS_B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function csBytesToBase64(bytes: Uint8Array): string {
+  if (typeof globalThis.btoa === 'function') {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return globalThis.btoa(bin);
+  }
+  let out = '';
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    out +=
+      _CS_B64[(n >> 18) & 63] + _CS_B64[(n >> 12) & 63] + _CS_B64[(n >> 6) & 63] + _CS_B64[n & 63];
+  }
+  if (i < bytes.length) {
+    const rem = bytes.length - i;
+    const n = rem === 2 ? (bytes[i] << 16) | (bytes[i + 1] << 8) : bytes[i] << 16;
+    out += _CS_B64[(n >> 18) & 63] + _CS_B64[(n >> 12) & 63];
+    out += rem === 2 ? _CS_B64[(n >> 6) & 63] + '=' : '==';
+  }
+  return out;
+}
+function csBlobToB64(v: Uint8Array | ArrayBuffer | null | undefined): string | null {
+  if (!v) return null;
+  return csBytesToBase64(v instanceof Uint8Array ? v : new Uint8Array(v));
+}
+
+async function collectMedicalForManifest(): Promise<{
+  medical_record: unknown[];
+  medical_observations: unknown[];
+  medical_chat_threads: unknown[];
+  medical_chat_messages: unknown[];
+}> {
+  const records = await db.getAllAsync('SELECT * FROM medical_record');
+  const obsRows = await db.getAllAsync<{
+    id: string;
+    medical_record_id: string;
+    source_document_id: string | null;
+    name_enc: Uint8Array | null;
+    value_enc: Uint8Array | null;
+    unit: string | null;
+    ref_min_enc: Uint8Array | null;
+    ref_max_enc: Uint8Array | null;
+    observed_at: string | null;
+    category: string;
+    confidence: number;
+    needs_review: number;
+    user_corrected: number;
+    created_at: string;
+    updated_at: string;
+  }>('SELECT * FROM medical_observations');
+  const observations = obsRows.map(r => ({
+    id: r.id,
+    medical_record_id: r.medical_record_id,
+    source_document_id: r.source_document_id,
+    name_enc: csBlobToB64(r.name_enc),
+    value_enc: csBlobToB64(r.value_enc),
+    unit: r.unit,
+    ref_min_enc: csBlobToB64(r.ref_min_enc),
+    ref_max_enc: csBlobToB64(r.ref_max_enc),
+    observed_at: r.observed_at,
+    category: r.category,
+    confidence: r.confidence,
+    needs_review: r.needs_review,
+    user_corrected: r.user_corrected,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+  const threads = await db.getAllAsync('SELECT * FROM medical_chat_threads');
+  const msgRows = await db.getAllAsync<{
+    id: string;
+    thread_id: string;
+    role: string;
+    content_enc: Uint8Array;
+    citations_json: string | null;
+    created_at: string;
+  }>('SELECT * FROM medical_chat_messages');
+  const messages = msgRows.map(r => ({
+    id: r.id,
+    thread_id: r.thread_id,
+    role: r.role,
+    content_enc: csBlobToB64(r.content_enc) ?? '',
+    citations_json: r.citations_json,
+    created_at: r.created_at,
+  }));
+  return {
+    medical_record: records,
+    medical_observations: observations,
+    medical_chat_threads: threads,
+    medical_chat_messages: messages,
+  };
 }
 
 async function buildManifestPayload(): Promise<ManifestPayload> {
@@ -153,6 +257,19 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     ),
   ]);
 
+  const medical = await collectMedicalForManifest();
+
+  // _security: include cheia AES medicală doar dacă userul a optat.
+  let security: ManifestPayload['_security'];
+  try {
+    const includeMedKey = await getCloudBackupIncludesMedicalKey();
+    if (includeMedKey && (await hasMedicalMasterKey())) {
+      security = { medical_key: await exportMasterKeyBase64() };
+    }
+  } catch (e) {
+    console.warn('[cloudSync] could not include medical key in manifest:', e);
+  }
+
   return {
     version: MANIFEST_VERSION,
     exportDate: new Date().toISOString(),
@@ -168,6 +285,11 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     documents,
     documentPages: allPages,
     entityOrder,
+    medical_record: medical.medical_record,
+    medical_observations: medical.medical_observations,
+    medical_chat_threads: medical.medical_chat_threads,
+    medical_chat_messages: medical.medical_chat_messages,
+    ...(security ? { _security: security } : {}),
   };
 }
 
@@ -454,7 +576,10 @@ async function reconcilePendingUploads(): Promise<void> {
       [MAX_ATTEMPTS]
     );
   } catch (e) {
-    console.warn('[cloudSync.reconcilePendingUploads] reset stuck failed:', e instanceof Error ? e.message : e);
+    console.warn(
+      '[cloudSync.reconcilePendingUploads] reset stuck failed:',
+      e instanceof Error ? e.message : e
+    );
   }
 }
 
@@ -1027,6 +1152,21 @@ export async function restoreFromCloud(
   }
 
   onProgress?.({ phase: 'apply', current: 0, total: 1, bytesDone, bytesTotal });
+
+  // Dacă manifest conține cheia medicală (opt-in user) — importăm înainte de
+  // applyManifest ca să poată decripta observațiile și să reconstruim FTS la
+  // restore. La eroare (cheie invalidă) doar logăm — restul restore-ului
+  // continuă; userul va vedea „[indisponibil]" pe câmpuri și poate șterge
+  // dosarul medical sau re-importa cheia manual.
+  const securityBlock = (payload as { _security?: { medical_key?: string } })._security;
+  if (securityBlock?.medical_key) {
+    try {
+      await importMasterKeyBase64(securityBlock.medical_key);
+    } catch (e) {
+      console.warn('[cloudSync.restore] could not import medical key:', e);
+    }
+  }
+
   await applyManifest(payload, { wipeFirst: true });
   onProgress?.({ phase: 'apply', current: 1, total: 1, bytesDone, bytesTotal });
 

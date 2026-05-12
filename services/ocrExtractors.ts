@@ -17,6 +17,13 @@ export interface ExtractResult {
   expiry_date?: string; // YYYY-MM-DD
   issue_date?: string; // YYYY-MM-DD
   note?: string; // rezumat structurat generat de AI
+  /**
+   * Transcriere structurată a conținutului documentului produsă de AI vision.
+   * Salvată în `documents.ocr_text` — folosită de medical extractor, chatbot
+   * și afișată în UI ca „Text complet (OCR)". Suprascrie OCR-ul on-device
+   * (AI vision are acuratețe mai mare pe scris de mână și layout complex).
+   */
+  ocr_text?: string;
 }
 
 // ─── Utilități ───────────────────────────────────────────────────────────────

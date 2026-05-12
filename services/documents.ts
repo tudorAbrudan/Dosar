@@ -8,7 +8,22 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
-import { REPEATABLE_DOC_TYPES } from '@/types';
+import { REPEATABLE_DOC_TYPES, MEDICAL_DOC_TYPES } from '@/types';
+
+/**
+ * Coloana legacy din tabelul `documents` corespunzătoare fiecărui tip de
+ * entitate. `medical_record` e o entitate derivată (1:1 cu Person, n-are
+ * coloană proprie) — toate legăturile la documente se fac prin `person_id`.
+ */
+const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
+  person: 'person_id',
+  vehicle: 'vehicle_id',
+  property: 'property_id',
+  card: 'card_id',
+  animal: 'animal_id',
+  company: 'company_id',
+  medical_record: null,
+};
 
 export interface CreateDocumentInput {
   type: DocumentType;
@@ -351,6 +366,17 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   emit('documents:changed');
   emit('links:changed');
 
+  // Trigger extracție medical dacă tipul e medical și e atașat la o persoană.
+  // Extragerea verifică intern existența dosarului medical activ + consent AI.
+  if (input.person_id && (MEDICAL_DOC_TYPES as string[]).includes(input.type)) {
+    // Dynamic import: evităm cycle de import documents.ts → medicalExtractor.ts → documents.ts.
+    import('./medicalExtractor')
+      .then(m => m.extractAsync(id))
+      .catch(() => {
+        /* logged in module */
+      });
+  }
+
   return {
     id,
     main_orientation_locked: false,
@@ -417,6 +443,19 @@ export async function deleteDocument(id: string): Promise<void> {
 
   await db.runAsync('DELETE FROM documents WHERE id = ?', [id]);
 
+  // Cleanup explicit medical: șterge observații și chunks asociate (mai
+  // deterministic decât ON DELETE SET NULL). Dynamic import previne cycle.
+  try {
+    const [{ deleteObservationsBySourceDocument }, { deleteChunksBySource }] = await Promise.all([
+      import('./medicalObservations'),
+      import('./medicalFts'),
+    ]);
+    await deleteObservationsBySourceDocument(id);
+    await deleteChunksBySource('document', id);
+  } catch {
+    /* nu blochează ștergerea documentului */
+  }
+
   if (deletedFilePaths.length > 0) {
     const cloudEnabled = await getCloudBackupEnabled();
     if (cloudEnabled) {
@@ -454,23 +493,56 @@ export async function updateDocument(id: string, input: UpdateDocumentInput): Pr
   );
   const oldExpiry = prev?.expiry_date ?? null;
 
-  await db.runAsync(
-    'UPDATE documents SET type=?, custom_type_id=?, issue_date=?, expiry_date=?, note=?, file_path=?, animal_id=?, metadata=?, auto_delete=?, ocr_text=?, private_notes=? WHERE id=?',
-    [
-      input.type,
-      input.custom_type_id ?? null,
-      input.issue_date ?? null,
-      input.expiry_date ?? null,
-      input.note ?? null,
-      input.file_path ?? null,
-      input.animal_id ?? null,
-      input.metadata ? JSON.stringify(input.metadata) : null,
-      input.auto_delete ?? null,
-      input.ocr_text ?? null,
-      input.private_notes ?? null,
-      id,
-    ]
-  );
+  // UPDATE parțial: atinge doar coloanele prezente explicit în `input`.
+  // Distincția key-prezentă-cu-undefined vs key-lipsă e făcută prin `in`:
+  //   { note: undefined } → clear note (SET note = NULL)
+  //   {} (fără cheie note) → note rămâne neschimbat
+  // Asta previne wipe accidental al ocr_text / metadata / private_notes când
+  // caller-ul nu vrea să le atingă.
+  const sets: string[] = ['type = ?'];
+  const values: (string | number | null)[] = [input.type];
+  if ('custom_type_id' in input) {
+    sets.push('custom_type_id = ?');
+    values.push(input.custom_type_id ?? null);
+  }
+  if ('issue_date' in input) {
+    sets.push('issue_date = ?');
+    values.push(input.issue_date ?? null);
+  }
+  if ('expiry_date' in input) {
+    sets.push('expiry_date = ?');
+    values.push(input.expiry_date ?? null);
+  }
+  if ('note' in input) {
+    sets.push('note = ?');
+    values.push(input.note ?? null);
+  }
+  if ('file_path' in input) {
+    sets.push('file_path = ?');
+    values.push(input.file_path ?? null);
+  }
+  if ('animal_id' in input) {
+    sets.push('animal_id = ?');
+    values.push(input.animal_id ?? null);
+  }
+  if ('metadata' in input) {
+    sets.push('metadata = ?');
+    values.push(input.metadata ? JSON.stringify(input.metadata) : null);
+  }
+  if ('auto_delete' in input) {
+    sets.push('auto_delete = ?');
+    values.push(input.auto_delete ?? null);
+  }
+  if ('ocr_text' in input) {
+    sets.push('ocr_text = ?');
+    values.push(input.ocr_text ?? null);
+  }
+  if ('private_notes' in input) {
+    sets.push('private_notes = ?');
+    values.push(input.private_notes ?? null);
+  }
+  values.push(id);
+  await db.runAsync(`UPDATE documents SET ${sets.join(', ')} WHERE id = ?`, values);
 
   if (oldExpiry && input.expiry_date && oldExpiry !== input.expiry_date) {
     try {
@@ -545,22 +617,20 @@ export async function addEntityLinkToDocument(
     'INSERT INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)',
     [generateId(), documentId, link.entityType, link.entityId]
   );
-  // Actualizăm și coloana legacy dacă e prima entitate de acel tip
-  const colMap: Record<EntityType, string> = {
-    person: 'person_id',
-    vehicle: 'vehicle_id',
-    property: 'property_id',
-    card: 'card_id',
-    animal: 'animal_id',
-    company: 'company_id',
-  };
-  const col = colMap[link.entityType];
-  const current = await db.getFirstAsync<Record<string, string | null>>(
-    `SELECT ${col} FROM documents WHERE id = ?`,
-    [documentId]
-  );
-  if (current && current[col] === null) {
-    await db.runAsync(`UPDATE documents SET ${col} = ? WHERE id = ?`, [link.entityId, documentId]);
+  // Actualizăm și coloana legacy dacă e prima entitate de acel tip.
+  // medical_record nu are coloană legacy (e o entitate derivată din person).
+  const col = LEGACY_ENTITY_COLUMN[link.entityType];
+  if (col) {
+    const current = await db.getFirstAsync<Record<string, string | null>>(
+      `SELECT ${col} FROM documents WHERE id = ?`,
+      [documentId]
+    );
+    if (current && current[col] === null) {
+      await db.runAsync(`UPDATE documents SET ${col} = ? WHERE id = ?`, [
+        link.entityId,
+        documentId,
+      ]);
+    }
   }
   emit('documents:changed');
   emit('links:changed');
@@ -574,24 +644,19 @@ export async function removeEntityLinkFromDocument(
     'DELETE FROM document_entities WHERE document_id = ? AND entity_type = ? AND entity_id = ?',
     [documentId, link.entityType, link.entityId]
   );
-  // Actualizăm coloana legacy cu primul link rămas (sau null)
-  const remaining = await db.getFirstAsync<{ entity_id: string } | null>(
-    'SELECT entity_id FROM document_entities WHERE document_id = ? AND entity_type = ? LIMIT 1',
-    [documentId, link.entityType]
-  );
-  const colMap: Record<EntityType, string> = {
-    person: 'person_id',
-    vehicle: 'vehicle_id',
-    property: 'property_id',
-    card: 'card_id',
-    animal: 'animal_id',
-    company: 'company_id',
-  };
-  const col = colMap[link.entityType];
-  await db.runAsync(`UPDATE documents SET ${col} = ? WHERE id = ?`, [
-    remaining?.entity_id ?? null,
-    documentId,
-  ]);
+  // Actualizăm coloana legacy cu primul link rămas (sau null).
+  // medical_record nu are coloană legacy.
+  const col = LEGACY_ENTITY_COLUMN[link.entityType];
+  if (col) {
+    const remaining = await db.getFirstAsync<{ entity_id: string } | null>(
+      'SELECT entity_id FROM document_entities WHERE document_id = ? AND entity_type = ? LIMIT 1',
+      [documentId, link.entityType]
+    );
+    await db.runAsync(`UPDATE documents SET ${col} = ? WHERE id = ?`, [
+      remaining?.entity_id ?? null,
+      documentId,
+    ]);
+  }
   emit('documents:changed');
   emit('links:changed');
 }
@@ -770,14 +835,7 @@ export async function findDuplicatesOfDocument(docId: string): Promise<DocumentD
            AND de.entity_id = ?
          )
          ORDER BY d.created_at ASC`,
-        [
-          current.type,
-          ...customParams,
-          ...issueDateParams,
-          docId,
-          link.entityType,
-          link.entityId,
-        ]
+        [current.type, ...customParams, ...issueDateParams, docId, link.entityType, link.entityId]
       );
       for (const r of rows) {
         if (!seen.has(r.id)) {

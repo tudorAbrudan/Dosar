@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook pentru Dosar.
+#
+# Activează prin: npm run setup-hooks   (rulează `git config core.hooksPath scripts/hooks`)
+# Skip o singură dată: git commit --no-verify
+#
+# Rulează în ordinea:
+#   1. TypeScript type-check
+#   2. backup-audit (--strict)         — tabele SQLite ↔ backup/cloud
+#   3. check-hardcoded-entities (--strict) — anti-hardcode EntityType
+#   4. knowledge-audit (--strict)      — appKnowledge.ts ↔ services/screens
+#   5. update-site                     — regenerează docs/ + README din types
+#   6. Stage docs/README dacă au fost modificate de regenerare.
+#
+# La eșec, abort și raportează prima eroare.
+
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "▸ TypeScript type-check..."
+npm run -s type-check
+
+echo "▸ Backup audit (strict)..."
+node scripts/backup-audit.js --strict
+
+echo "▸ Hardcoded entities check (warning-only)..."
+# Rulează fără --strict cât timp există violări preexistente. După cleanup
+# (vezi .claude/rules/dynamic-types.md), schimbă la --strict pentru a bloca
+# violări noi.
+node scripts/check-hardcoded-entities.js || true
+
+echo "▸ Knowledge audit (strict)..."
+node scripts/knowledge-audit.js --strict
+
+echo "▸ Site / docs / README regen..."
+node scripts/update-site.js
+
+# Dacă regenerarea a produs schimbări reale, stage-uiește-le ca să intre în
+# același commit (consistență cod ↔ docs garantată).
+CHANGED=$(git diff --name-only docs/ README.md 2>/dev/null || true)
+if [ -n "$CHANGED" ]; then
+  echo "  [stage] $(echo "$CHANGED" | wc -l | tr -d ' ') fișier(e) regenerat(e) → adăugate la commit"
+  echo "$CHANGED" | xargs git add
+fi
+
+echo "✓ pre-commit OK"

@@ -1,7 +1,5 @@
 import { scanDocumentPages } from '@/services/documentScanner';
-import DocumentScanner, {
-  ScanDocumentResponseStatus,
-} from 'react-native-document-scanner-plugin';
+import DocumentScanner, { ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
 
 jest.mock('react-native-document-scanner-plugin');
 

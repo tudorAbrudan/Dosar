@@ -51,7 +51,12 @@ import {
   getVehicleIdentifiers,
   setDocumentCalendarEventId,
 } from '@/services/documents';
-import { DOCUMENT_TYPE_LABELS, ENTITY_DOCUMENT_TYPES, ALL_ENTITY_TYPES } from '@/types';
+import {
+  DOCUMENT_TYPE_LABELS,
+  ENTITY_DOCUMENT_TYPES,
+  ALL_ENTITY_TYPES,
+  ENTITY_TYPE_LABELS,
+} from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
 import { DatePickerField } from '@/components/DatePickerField';
@@ -107,14 +112,12 @@ const HIDE_EXPIRY_TYPES: DocumentType[] = [
   'act_proprietate',
 ];
 
-const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = [
-  { key: 'person', label: 'Persoană' },
-  { key: 'property', label: 'Proprietate' },
-  { key: 'vehicle', label: 'Vehicul' },
-  { key: 'card', label: 'Card' },
-  { key: 'animal', label: 'Animal' },
-  { key: 'company', label: 'Firmă' },
-];
+// Sursa unică: ALL_ENTITY_TYPES din types/index.ts. Adăugarea unui tip nou
+// (ex: medical_record) e automată — apar tab-uri filtrate prin Vizibilitate.
+const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = ALL_ENTITY_TYPES.map(t => ({
+  key: t,
+  label: ENTITY_TYPE_LABELS[t],
+}));
 
 export default function AddDocumentScreen() {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -131,7 +134,16 @@ export default function AddDocumentScreen() {
     entityType?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards, animals, companies } = useEntities();
+  const {
+    persons,
+    properties,
+    vehicles,
+    cards,
+    animals,
+    companies,
+    medicalRecords,
+    resolveEntityName,
+  } = useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes } = useVisibilitySettings();
@@ -752,6 +764,11 @@ export default function AddDocumentScreen() {
           fileNotes.push(extracted.note);
         }
 
+        if (extracted.ocr_text) {
+          ocrTextsRef.current.set(page.localPath, extracted.ocr_text);
+          ocrStructuredTextsRef.current.set(page.localPath, extracted.ocr_text);
+        }
+
         // Talon fără expiry → ștampilă ITP ilizibilă, cere completare manuală
         if (resolvedType === 'talon' && !extracted.expiry_date && !expiryDateRef.current) {
           const warning =
@@ -760,6 +777,11 @@ export default function AddDocumentScreen() {
           Alert.alert('Data ITP necesită completare manuală', warning);
         }
       }
+
+      const combinedAiOcr = Array.from(ocrStructuredTextsRef.current.values())
+        .filter(Boolean)
+        .join('\n\n---\n\n');
+      if (combinedAiOcr) setLiveOcrText(combinedAiOcr);
 
       const combined = fileNotes.join('\n___________\n');
       if (combined) setNote(combined);
@@ -1236,7 +1258,12 @@ export default function AddDocumentScreen() {
             ? animals.map(a => ({ id: a.id, label: a.name }))
             : pickerCategory === 'company'
               ? companies.map(c => ({ id: c.id, label: c.name }))
-              : cards.map(c => ({ id: c.id, label: c.nickname }));
+              : pickerCategory === 'medical_record'
+                ? medicalRecords.map(m => {
+                    const personName = persons.find(p => p.id === m.person_id)?.name;
+                    return { id: m.id, label: personName ? `${m.name} · ${personName}` : m.name };
+                  })
+                : cards.map(c => ({ id: c.id, label: c.nickname }));
 
   function toggleEntityLink(id: string) {
     setEntityLinks(prev => {
@@ -1246,24 +1273,8 @@ export default function AddDocumentScreen() {
     });
   }
 
-  function getEntityDisplayName(link: DocumentEntityLink): string {
-    switch (link.entityType) {
-      case 'person':
-        return persons.find(p => p.id === link.entityId)?.name ?? link.entityId;
-      case 'vehicle':
-        return vehicles.find(v => v.id === link.entityId)?.name ?? link.entityId;
-      case 'property':
-        return properties.find(p => p.id === link.entityId)?.name ?? link.entityId;
-      case 'card':
-        return cards.find(c => c.id === link.entityId)?.nickname ?? link.entityId;
-      case 'animal':
-        return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
-      case 'company':
-        return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
-      default:
-        return link.entityId;
-    }
-  }
+  // Sursa unică pentru afișarea entității — vezi useEntities.resolveEntityName.
+  const getEntityDisplayName = resolveEntityName;
 
   const anyEntitySelected = entityLinks.length > 0;
 

@@ -61,11 +61,12 @@ import { toFileUri } from '@/services/fileUtils';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
+import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import * as ocrConsent from '@/services/ocrConsent';
-import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
+import { DOCUMENT_TYPE_LABELS, getDocumentLabel, ENTITY_TYPE_EMOJI } from '@/types';
 import type { Document as DocType, DocumentType, DocumentEntityLink, EntityType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
@@ -94,7 +95,16 @@ export default function EditDocumentScreen() {
   const { colors } = useTheme();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const { companies, persons, properties, vehicles, cards, animals } = useEntities();
+  const {
+    companies,
+    persons,
+    properties,
+    vehicles,
+    cards,
+    animals,
+    medicalRecords,
+    resolveEntityName,
+  } = useEntities();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const [doc, setDoc] = useState<DocType | null>(null);
@@ -339,8 +349,51 @@ export default function EditDocumentScreen() {
           encoding: FileSystem.EncodingType.Base64,
         });
       }
+
+      // Re-classify documentul cu AI vision + textul OCR existent (dacă există).
+      // Trimitem și textul ca semnal suplimentar — pixtral-large bias spre
+      // header-ul vizual al documentului, dar textul OCR are deja structurarea
+      // [Concluzii]/[Diagnostic final] care identifică clar tipul.
+      // Pragul de auto-prompt 0.5 (sub el oricum nu confirmăm) — useful pentru
+      // cazuri în care classifier-ul e neîncrezător dar oferă semnal direcțional.
+      let resolvedType: DocumentType = type;
+      try {
+        const classify = await classifyDocument(doc?.ocr_text ?? '', imageBase64);
+        console.warn(
+          `[runAiImageAnalysis] classify: type=${classify.type} conf=${classify.confidence.toFixed(2)} current=${type} top3=${classify.top3.map(t => `${t.type}:${t.confidence.toFixed(2)}`).join(',')}`
+        );
+        if (classify.type !== 'altul' && classify.type !== type && classify.confidence >= 0.5) {
+          const oldLabel = DOCUMENT_TYPE_LABELS[type] ?? type;
+          const newLabel = DOCUMENT_TYPE_LABELS[classify.type] ?? classify.type;
+          const confLabel = `${Math.round(classify.confidence * 100)}%`;
+          const confirmed = await new Promise<boolean>(resolve => {
+            Alert.alert(
+              'Tip detectat diferit',
+              `AI a detectat că documentul e „${newLabel}" (${confLabel}), nu „${oldLabel}".\n\nSchimb tipul automat ca să extrag informațiile corecte?`,
+              [
+                { text: 'Păstrează „' + oldLabel + '"', onPress: () => resolve(false) },
+                { text: 'Schimbă în „' + newLabel + '"', onPress: () => resolve(true) },
+              ]
+            );
+          });
+          if (confirmed) {
+            resolvedType = classify.type;
+            setType(classify.type);
+            // Persistă tipul nou imediat — altfel extractia medicală post-save
+            // ar folosi tot tipul vechi.
+            if (doc) {
+              await updateDocument(doc.id, { type: classify.type });
+              const refreshed = await getDocumentById(doc.id);
+              if (refreshed) setDoc(refreshed);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[runAiImageAnalysis] classify failed:', e);
+      }
+
       const ocrText = doc?.ocr_text ?? '';
-      const extracted = await extractFieldsWithLlm(type, ocrText, imageBase64);
+      const extracted = await extractFieldsWithLlm(resolvedType, ocrText, imageBase64);
       if (Object.keys(extracted.metadata).length > 0)
         setMetadata(prev => ({ ...extracted.metadata, ...prev }));
       if (extracted.expiry_date) {
@@ -349,11 +402,36 @@ export default function EditDocumentScreen() {
       }
       if (extracted.issue_date) setIssueDate(extracted.issue_date);
       if (extracted.note) setNote(extracted.note);
+      if (extracted.ocr_text && doc) {
+        await setDocumentOcrText(doc.id, extracted.ocr_text);
+        const refreshed = await getDocumentById(doc.id);
+        if (refreshed) setDoc(refreshed);
+      } else if (doc) {
+        // AI nu a returnat ocr_text — afișează diagnostic clar (vezi log Metro
+        // pentru detalii: răspuns brut, lungime).
+        Alert.alert(
+          'AI nu a returnat transcrierea',
+          `Câmpurile structurate s-au completat, dar AI nu a inclus „Text complet (OCR)" în răspuns.\n\nDetalii (în logul Metro):\n- note: ${extracted.note?.length ?? 0} char\n- metadata: ${Object.keys(extracted.metadata).length} câmpuri\n- ocr_text: lipsește\n\nPoți rula manual butonul „🔍 OCR" din secțiunea „Poze / scan" pentru OCR on-device.`
+        );
+      }
       setAiOcrApplied(true);
+
+      // Auto-trigger extracție medicală dacă tipul rezultat e medical.
+      // Userul a apăsat „Trimite la AI" → vrea TOATE informațiile extrase, nu
+      // doar metadata. Pentru analize/scrisori/imagistică/etc., extragem și
+      // observații în medical_observations → chatbot medical + timeline funcționează.
+      if (doc && ocrConsent.getDocTypeSensitivity(resolvedType) === 'medical') {
+        try {
+          const { extractAsync } = await import('@/services/medicalExtractor');
+          extractAsync(doc.id);
+        } catch (e) {
+          console.warn('[runAiImageAnalysis] medical extract trigger failed:', e);
+        }
+      }
 
       // Talon fără expiry detectat → AI n-a putut citi sigur ștampila ITP.
       // Avertizează userul să completeze manual.
-      if (type === 'talon' && !extracted.expiry_date) {
+      if (resolvedType === 'talon' && !extracted.expiry_date) {
         const warning =
           extracted.metadata.itp_warning ??
           'Nu am putut detecta cu certitudine data expirării ITP de pe ștampila talonului. Verifică talonul și completează manual data în câmpul „Expiră".';
@@ -688,6 +766,8 @@ export default function EditDocumentScreen() {
     if (!doc) return;
     setSaving(true);
     try {
+      // ocr_text NU se include — e gestionat exclusiv prin setDocumentOcrText
+      // (manual OCR, AI vision, edit text). updateDocument partial îl lasă neatins.
       await updateDocument(doc.id, {
         type,
         custom_type_id: type === 'custom' ? (customTypeId ?? undefined) : undefined,
@@ -720,8 +800,7 @@ export default function EditDocumentScreen() {
       if (hasEvent) {
         if (isBilet && biletDate) {
           const newId = await updateBiletCalendarEvent(hasEvent, {
-            title:
-              [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment',
+            title: [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment',
             eventDate: biletDate,
             venue: metadata.venue,
             note: note.trim() || undefined,
@@ -942,34 +1021,9 @@ export default function EditDocumentScreen() {
         {/* 3. LEGAT DE ENTITATE */}
         <Text style={styles.label}>Legat de</Text>
         {(() => {
-          const ENTITY_ICONS: Record<EntityType, string> = {
-            person: '👤',
-            vehicle: '🚗',
-            property: '🏠',
-            card: '💳',
-            animal: '🐾',
-            company: '🏢',
-          };
-          function entityLinkLabel(link: DocumentEntityLink): string {
-            switch (link.entityType) {
-              case 'person':
-                return persons.find(p => p.id === link.entityId)?.name ?? link.entityId;
-              case 'vehicle':
-                return vehicles.find(v => v.id === link.entityId)?.name ?? link.entityId;
-              case 'property':
-                return properties.find(p => p.id === link.entityId)?.name ?? link.entityId;
-              case 'card': {
-                const c = cards.find(c => c.id === link.entityId);
-                return c ? `${c.nickname} ····${c.last4}` : link.entityId;
-              }
-              case 'animal':
-                return animals.find(a => a.id === link.entityId)?.name ?? link.entityId;
-              case 'company':
-                return companies.find(c => c.id === link.entityId)?.name ?? link.entityId;
-              default:
-                return link.entityId;
-            }
-          }
+          const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
+          // Sursa unică pentru afișarea entității — vezi useEntities.resolveEntityName.
+          const entityLinkLabel = resolveEntityName;
           return (
             <View style={styles.entityLinksRow}>
               {entityLinks.length === 0 && (
@@ -1278,12 +1332,38 @@ export default function EditDocumentScreen() {
                   })}
                 </>
               )}
+              {medicalRecords.length > 0 && (
+                <>
+                  <Text style={styles.entityGroupLabel}>Dosare medicale</Text>
+                  {medicalRecords.map(m => {
+                    const linked = entityLinks.some(
+                      l => l.entityType === 'medical_record' && l.entityId === m.id
+                    );
+                    const personName = persons.find(p => p.id === m.person_id)?.name;
+                    const label = personName ? `${m.name} · ${personName}` : m.name;
+                    return (
+                      <Pressable
+                        key={m.id}
+                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
+                        onPress={() =>
+                          handleAddEntityLink({ entityType: 'medical_record', entityId: m.id })
+                        }
+                      >
+                        <Text style={styles.entityPickerText}>{label}</Text>
+                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
+                      </Pressable>
+                    );
+                  })}
+                </>
+              )}
             </ScrollView>
             <Pressable
-              style={[styles.btnPrimary, { marginTop: 12 }]}
+              style={({ pressed }) => [styles.overlayCloseBtn, pressed && { opacity: 0.85 }]}
               onPress={() => setLinkEntityVisible(false)}
+              accessibilityLabel="Închide picker entități"
+              accessibilityRole="button"
             >
-              <Text style={styles.btnPrimaryText}>Închide</Text>
+              <Text style={styles.overlayCloseBtnText}>Închide</Text>
             </Pressable>
           </View>
         </View>
@@ -1420,6 +1500,22 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   overlayTitle: { fontSize: 17, fontWeight: '700', marginBottom: 16 },
+  overlayCloseBtn: {
+    marginTop: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  overlayCloseBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   entityGroupLabel: {
     fontSize: 11,
     fontWeight: '700',

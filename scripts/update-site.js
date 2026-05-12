@@ -80,6 +80,10 @@ const EMOJI_MAP = {
   certificat_absolvire: '🏅',
   certificat_curs: '🏆',
   adeverinta_studii: '📄',
+  scrisoare_medicala: '✉️',
+  bilet_externare: '🏥',
+  imagistica: '🩻',
+  vaccin_persoana: '💉',
   altul: '📁',
   custom: '⭐',
 };

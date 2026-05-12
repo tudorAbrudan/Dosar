@@ -53,27 +53,14 @@ import {
   STANDARD_DOC_TYPES,
   ENTITY_DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
+  ENTITY_TYPE_LABELS,
+  ENTITY_TYPE_EMOJI,
 } from '@/types';
 import type { EntityType, DocumentType } from '@/types';
 type ModelWithCompat = LocalModelEntry & { incompatibilityReason: string | null };
 
-const ENTITY_LABELS: Record<EntityType, string> = {
-  person: 'Persoană',
-  vehicle: 'Vehicul',
-  property: 'Proprietate',
-  card: 'Card',
-  animal: 'Animal',
-  company: 'Firmă',
-};
-
-const ENTITY_ICONS: Record<EntityType, string> = {
-  person: '👤',
-  vehicle: '🚗',
-  property: '🏠',
-  card: '💳',
-  animal: '🐾',
-  company: '🏢',
-};
+const ENTITY_LABELS = ENTITY_TYPE_LABELS;
+const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
 
 // ─── Constante contact ────────────────────────────────────────────────────────
 // TODO: înlocuiește cu datele reale înainte de publish
@@ -602,7 +589,13 @@ export default function SetariScreen() {
               await localModel.setSelectedModelId(modelId);
               setSelectedLocalModelId(modelId);
               setAiProviderType('local');
-              await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId, visionUrl: '', visionModel: '' });
+              await aiProvider.saveAiConfig({
+                type: 'local',
+                url: '',
+                model: modelId,
+                visionUrl: '',
+                visionModel: '',
+              });
             } catch (e) {
               await localModel.deleteModel(modelId);
               Alert.alert('Eroare', e instanceof Error ? e.message : 'Descărcarea a eșuat.');
@@ -663,7 +656,13 @@ export default function SetariScreen() {
     await localModel.setSelectedModelId(modelId);
     setSelectedLocalModelId(modelId);
     setAiProviderType('local');
-    await aiProvider.saveAiConfig({ type: 'local', url: '', model: modelId, visionUrl: '', visionModel: '' });
+    await aiProvider.saveAiConfig({
+      type: 'local',
+      url: '',
+      model: modelId,
+      visionUrl: '',
+      visionModel: '',
+    });
   };
 
   const handleDeleteOrphanModels = () => {
@@ -747,7 +746,8 @@ export default function SetariScreen() {
     model: string
   ): Promise<{ ok: boolean; message: string }> => {
     if (!url) return { ok: false, message: 'URL lipsă' };
-    if (!/^https?:\/\//i.test(url)) return { ok: false, message: 'URL invalid (trebuie http/https)' };
+    if (!/^https?:\/\//i.test(url))
+      return { ok: false, message: 'URL invalid (trebuie http/https)' };
     if (!apiKey) return { ok: false, message: 'cheie API lipsă' };
     if (!model) return { ok: false, message: 'model lipsă' };
 
@@ -819,9 +819,7 @@ export default function SetariScreen() {
       }
 
       const chatResult = await probeOpenAiCompatible(chatUrl, chatKey, chatModel);
-      const lines: string[] = [
-        `${chatResult.ok ? '✓' : '✗'} Chat: ${chatResult.message}`,
-      ];
+      const lines: string[] = [`${chatResult.ok ? '✓' : '✗'} Chat: ${chatResult.message}`];
 
       // ─── Test 2: provider OCR (doar dacă e configurat separat) ────────────
       let ocrOk = true;
@@ -1382,6 +1380,15 @@ export default function SetariScreen() {
               setAiModalConsentChecked(aiConsentGiven);
               setAiModalVisible(true);
             }}
+            scheme={scheme}
+          />
+          <InfoRow
+            icon="medkit-outline"
+            iconBg="#FCE4EC"
+            iconColor="#C2185B"
+            label="Date medicale"
+            sub="Toggle AI medical + management cheie criptare"
+            onPress={() => router.push('/setari/medical-ai')}
             isLast
             scheme={scheme}
           />
@@ -1839,9 +1846,7 @@ export default function SetariScreen() {
                     />
                   </RNView>
                   <RNView>
-                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
-                      Model chat
-                    </RNText>
+                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model chat</RNText>
                     <TextInput
                       style={[
                         styles.aiInput,
@@ -1957,8 +1962,8 @@ export default function SetariScreen() {
                           <RNText style={{ fontWeight: '600' }}>gpt-4o</RNText> (OpenAI),{' '}
                           <RNText style={{ fontWeight: '600' }}>pixtral-large-latest</RNText>{' '}
                           (Mistral, plătit) sau{' '}
-                          <RNText style={{ fontWeight: '600' }}>pixtral-12b-2409</RNText>{' '}
-                          (Mistral, free tier).
+                          <RNText style={{ fontWeight: '600' }}>pixtral-12b-2409</RNText> (Mistral,
+                          free tier).
                         </RNText>
                       </RNView>
                     </RNView>

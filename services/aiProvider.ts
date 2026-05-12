@@ -347,17 +347,19 @@ export async function sendAiRequestWithImage(
     config.visionApiKey.trim() !== '' &&
     config.visionModel.trim() !== '';
 
-  const apiKey = config.type === 'builtin'
-    ? BUILTIN_API_KEY
-    : useSeparateVisionProvider
-      ? config.visionApiKey
-      : config.apiKey;
+  const apiKey =
+    config.type === 'builtin'
+      ? BUILTIN_API_KEY
+      : useSeparateVisionProvider
+        ? config.visionApiKey
+        : config.apiKey;
 
-  const baseUrl = (config.type === 'builtin'
-    ? BUILTIN_URL
-    : useSeparateVisionProvider
-      ? config.visionUrl
-      : config.url
+  const baseUrl = (
+    config.type === 'builtin'
+      ? BUILTIN_URL
+      : useSeparateVisionProvider
+        ? config.visionUrl
+        : config.url
   ).replace(/\/$/, '');
 
   const model =

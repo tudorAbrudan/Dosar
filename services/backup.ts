@@ -13,6 +13,321 @@ import { toFileUri, toRelativePath } from './fileUtils';
 import { onRestoreSuccess } from './reviewPrompt';
 import { db, generateId } from './db';
 import { emit } from './events';
+import { rebuildFtsFromExistingData } from './medicalFts';
+
+// ── Helpers binare pentru BLOB-uri medical (Uint8Array ↔ base64, fără Buffer) ──
+const _B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof globalThis.btoa === 'function') {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return globalThis.btoa(bin);
+  }
+  let out = '';
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    out += _B64[(n >> 18) & 63] + _B64[(n >> 12) & 63] + _B64[(n >> 6) & 63] + _B64[n & 63];
+  }
+  if (i < bytes.length) {
+    const rem = bytes.length - i;
+    const n = rem === 2 ? (bytes[i] << 16) | (bytes[i + 1] << 8) : bytes[i] << 16;
+    out += _B64[(n >> 18) & 63] + _B64[(n >> 12) & 63];
+    out += rem === 2 ? _B64[(n >> 6) & 63] + '=' : '==';
+  }
+  return out;
+}
+function base64ToBytes(b64: string): Uint8Array {
+  if (typeof globalThis.atob === 'function') {
+    const bin = globalThis.atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '');
+  const len = clean.length;
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  const byteLen = (len * 3) / 4 - padding;
+  const out = new Uint8Array(byteLen);
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const c1 = _B64.indexOf(clean[i]);
+    const c2 = _B64.indexOf(clean[i + 1]);
+    const c3 = clean[i + 2] === '=' ? 0 : _B64.indexOf(clean[i + 2]);
+    const c4 = clean[i + 3] === '=' ? 0 : _B64.indexOf(clean[i + 3]);
+    const n = (c1 << 18) | (c2 << 12) | (c3 << 6) | c4;
+    if (p < byteLen) out[p++] = (n >> 16) & 0xff;
+    if (p < byteLen) out[p++] = (n >> 8) & 0xff;
+    if (p < byteLen) out[p++] = n & 0xff;
+  }
+  return out;
+}
+
+function blobToB64(v: Uint8Array | ArrayBuffer | null | undefined): string | null {
+  if (!v) return null;
+  return bytesToBase64(v instanceof Uint8Array ? v : new Uint8Array(v));
+}
+
+// ── Medical tables — export/import ───────────────────────────────────────────
+
+interface MedicalRecordExport {
+  id: string;
+  person_id: string;
+  name: string;
+  ai_consent_at: string | null;
+  ai_consent_version: number | null;
+  encryption_key_ref: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MedicalObservationExport {
+  id: string;
+  medical_record_id: string;
+  source_document_id: string | null;
+  name_enc: string | null;
+  value_enc: string | null;
+  unit: string | null;
+  ref_min_enc: string | null;
+  ref_max_enc: string | null;
+  observed_at: string | null;
+  category: string;
+  confidence: number;
+  needs_review: number;
+  user_corrected: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MedicalChatThreadExport {
+  id: string;
+  medical_record_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MedicalChatMessageExport {
+  id: string;
+  thread_id: string;
+  role: string;
+  content_enc: string;
+  citations_json: string | null;
+  created_at: string;
+}
+
+export interface MedicalBackupBlock {
+  medical_record: MedicalRecordExport[];
+  medical_observations: MedicalObservationExport[];
+  medical_chat_threads: MedicalChatThreadExport[];
+  medical_chat_messages: MedicalChatMessageExport[];
+}
+
+async function collectMedicalForBackup(): Promise<MedicalBackupBlock> {
+  const records = await db.getAllAsync<MedicalRecordExport>('SELECT * FROM medical_record');
+  const obsRows = await db.getAllAsync<{
+    id: string;
+    medical_record_id: string;
+    source_document_id: string | null;
+    name_enc: Uint8Array | null;
+    value_enc: Uint8Array | null;
+    unit: string | null;
+    ref_min_enc: Uint8Array | null;
+    ref_max_enc: Uint8Array | null;
+    observed_at: string | null;
+    category: string;
+    confidence: number;
+    needs_review: number;
+    user_corrected: number;
+    created_at: string;
+    updated_at: string;
+  }>('SELECT * FROM medical_observations');
+  const observations: MedicalObservationExport[] = obsRows.map(r => ({
+    id: r.id,
+    medical_record_id: r.medical_record_id,
+    source_document_id: r.source_document_id,
+    name_enc: blobToB64(r.name_enc),
+    value_enc: blobToB64(r.value_enc),
+    unit: r.unit,
+    ref_min_enc: blobToB64(r.ref_min_enc),
+    ref_max_enc: blobToB64(r.ref_max_enc),
+    observed_at: r.observed_at,
+    category: r.category,
+    confidence: r.confidence,
+    needs_review: r.needs_review,
+    user_corrected: r.user_corrected,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+  const threads = await db.getAllAsync<MedicalChatThreadExport>(
+    'SELECT * FROM medical_chat_threads'
+  );
+  const msgRows = await db.getAllAsync<{
+    id: string;
+    thread_id: string;
+    role: string;
+    content_enc: Uint8Array;
+    citations_json: string | null;
+    created_at: string;
+  }>('SELECT * FROM medical_chat_messages');
+  const messages: MedicalChatMessageExport[] = msgRows.map(r => ({
+    id: r.id,
+    thread_id: r.thread_id,
+    role: r.role,
+    content_enc: blobToB64(r.content_enc) ?? '',
+    citations_json: r.citations_json,
+    created_at: r.created_at,
+  }));
+  return {
+    medical_record: records,
+    medical_observations: observations,
+    medical_chat_threads: threads,
+    medical_chat_messages: messages,
+  };
+}
+
+/**
+ * Restore medical tables din manifest.
+ *
+ * `personIdMap` remapează `person_id` (entitățile pot fi deduplicate la
+ * import). `medical_record.id` și `medical_record_id` (din observații/threads)
+ * NU se remapează — AAD-ul AES-GCM depinde de ele și schimbarea ar invalida
+ * blob-urile criptate. INSERT OR REPLACE folosește ID-urile originale.
+ *
+ * La conflict UNIQUE (deja există dosar pentru persoana remapată), păstrăm
+ * cel existent (skip), pentru că dosarul existent ar putea avea cheia AES
+ * actuală corectă. Mesajele de eroare le returnăm pentru raportare.
+ */
+async function restoreMedicalTables(
+  payload: Record<string, unknown>,
+  personIdMap: Map<string, string>
+): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  const out = { imported: 0, skipped: 0, errors: [] as string[] };
+
+  const records = (payload.medical_record as MedicalRecordExport[]) ?? [];
+  for (const r of records) {
+    try {
+      const newPersonId = personIdMap.get(r.person_id) ?? r.person_id;
+      // Skip dacă persoana nu există în DB (nu putem atașa fără FK valid).
+      const personRow = await db.getFirstAsync<{ id: string }>(
+        'SELECT id FROM persons WHERE id = ?',
+        [newPersonId]
+      );
+      if (!personRow) {
+        out.skipped++;
+        continue;
+      }
+      // Skip dacă există deja medical_record pentru această persoană cu alt id.
+      const existing = await db.getFirstAsync<{ id: string }>(
+        'SELECT id FROM medical_record WHERE person_id = ?',
+        [newPersonId]
+      );
+      if (existing && existing.id !== r.id) {
+        out.skipped++;
+        continue;
+      }
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_record
+           (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          r.id,
+          newPersonId,
+          r.name,
+          r.ai_consent_at,
+          r.ai_consent_version ?? 1,
+          r.encryption_key_ref,
+          r.created_at,
+          r.updated_at,
+        ]
+      );
+      out.imported++;
+    } catch (e) {
+      out.errors.push(`Dosar medical "${r.name}": ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  const observations = (payload.medical_observations as MedicalObservationExport[]) ?? [];
+  for (const o of observations) {
+    try {
+      // Source document poate sau nu să existe (FK ON DELETE SET NULL).
+      let srcDoc: string | null = o.source_document_id;
+      if (srcDoc) {
+        const docExists = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM documents WHERE id = ?',
+          [srcDoc]
+        );
+        if (!docExists) srcDoc = null;
+      }
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_observations
+           (id, medical_record_id, source_document_id, name_enc, value_enc, unit,
+            ref_min_enc, ref_max_enc, observed_at, category, confidence,
+            needs_review, user_corrected, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          o.id,
+          o.medical_record_id,
+          srcDoc,
+          o.name_enc ? base64ToBytes(o.name_enc) : null,
+          o.value_enc ? base64ToBytes(o.value_enc) : null,
+          o.unit,
+          o.ref_min_enc ? base64ToBytes(o.ref_min_enc) : null,
+          o.ref_max_enc ? base64ToBytes(o.ref_max_enc) : null,
+          o.observed_at,
+          o.category,
+          o.confidence,
+          o.needs_review,
+          o.user_corrected,
+          o.created_at,
+          o.updated_at,
+        ]
+      );
+      out.imported++;
+    } catch (e) {
+      out.errors.push(`Observație medicală: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  const threads = (payload.medical_chat_threads as MedicalChatThreadExport[]) ?? [];
+  for (const t of threads) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_chat_threads
+           (id, medical_record_id, title, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [t.id, t.medical_record_id, t.title, t.created_at, t.updated_at]
+      );
+      out.imported++;
+    } catch (e) {
+      out.errors.push(`Conversație medicală: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  const messages = (payload.medical_chat_messages as MedicalChatMessageExport[]) ?? [];
+  for (const m of messages) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_chat_messages
+           (id, thread_id, role, content_enc, citations_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [m.id, m.thread_id, m.role, base64ToBytes(m.content_enc), m.citations_json, m.created_at]
+      );
+      out.imported++;
+    } catch (e) {
+      out.errors.push(`Mesaj chat medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // FTS rebuild — best-effort, swallow errors (lipsă cheie etc.).
+  try {
+    await rebuildFtsFromExistingData();
+  } catch (e) {
+    console.warn('[backup] FTS rebuild failed (key missing?):', e);
+  }
+
+  return out;
+}
 
 /**
  * Citește un fișier ca base64. Returnează null dacă nu există sau nu poate fi citit.
@@ -157,8 +472,10 @@ export async function exportBackup(): Promise<void> {
     fileMap[rel] = `Vehicule/${folder}/photo.jpg`;
   }
 
+  const medicalBlock = await collectMedicalForBackup();
+
   const manifest = {
-    version: 10,
+    version: 11,
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -173,6 +490,10 @@ export async function exportBackup(): Promise<void> {
     documentPages: allPages,
     entityOrder,
     fileMap,
+    medical_record: medicalBlock.medical_record,
+    medical_observations: medicalBlock.medical_observations,
+    medical_chat_threads: medicalBlock.medical_chat_threads,
+    medical_chat_messages: medicalBlock.medical_chat_messages,
   };
 
   const zip = new JSZip();
@@ -741,6 +1062,20 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     }
   }
 
+  // Restore medical tables (folosește personMap pentru remap person_id).
+  // Best-effort: errors la nivel individual nu strică restul backup-ului.
+  // Marker pentru backup-audit (verifică prezența cheilor în applyManifestBody):
+  //   payload.medical_record, payload.medical_observations,
+  //   payload.medical_chat_threads, payload.medical_chat_messages.
+  try {
+    const medResult = await restoreMedicalTables(payload, personMap);
+    imported += medResult.imported;
+    skipped += medResult.skipped;
+    errors.push(...medResult.errors);
+  } catch (e) {
+    errors.push(`Date medicale: ${e instanceof Error ? e.message : 'eroare'}`);
+  }
+
   try {
     await onRestoreSuccess(imported);
   } catch {
@@ -759,6 +1094,11 @@ async function wipeUserData(): Promise<void> {
   await db.execAsync(`
     DELETE FROM document_pages;
     DELETE FROM document_entities;
+    DELETE FROM medical_chat_messages;
+    DELETE FROM medical_chat_threads;
+    DELETE FROM medical_observations;
+    DELETE FROM medical_record;
+    DELETE FROM medical_chunks_fts;
     DELETE FROM documents;
     DELETE FROM fuel_records;
     DELETE FROM vehicle_maintenance_tasks;

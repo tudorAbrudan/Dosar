@@ -275,6 +275,31 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     aliases: ['adeverință studii', 'adeverință student'],
     description: 'Adeverință de la o instituție de învățământ.',
   },
+  scrisoare_medicala: {
+    label: DOCUMENT_TYPE_LABELS.scrisoare_medicala,
+    aliases: [
+      'scrisoare medicală',
+      'scrisoare medicala',
+      'concluzie medicală',
+      'recomandare medic',
+    ],
+    description: 'Scrisoare/concluzie scrisă de un medic specialist către pacient.',
+  },
+  bilet_externare: {
+    label: DOCUMENT_TYPE_LABELS.bilet_externare,
+    aliases: ['bilet externare', 'bilet de externare', 'epicriza', 'externare spital'],
+    description: 'Bilet emis la externarea din spital cu diagnostic și recomandări.',
+  },
+  imagistica: {
+    label: DOCUMENT_TYPE_LABELS.imagistica,
+    aliases: ['RMN', 'CT', 'tomografie', 'ecografie', 'ecograf', 'radiografie', 'imagistică'],
+    description: 'Concluzie examen imagistic (RMN, CT, ecografie, radiografie).',
+  },
+  vaccin_persoana: {
+    label: DOCUMENT_TYPE_LABELS.vaccin_persoana,
+    aliases: ['vaccin', 'vaccinare', 'imunizare', 'adeverință vaccin'],
+    description: 'Adeverință sau dovadă de vaccinare a unei persoane.',
+  },
 };
 
 export function getRegistryEntry(type: DocumentType): AiTypeEntry {

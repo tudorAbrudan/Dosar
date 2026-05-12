@@ -73,6 +73,10 @@ const DOC_ICON: Record<DocumentType, IoniconName> = {
   certificat_absolvire: 'ribbon-outline',
   certificat_curs: 'trophy-outline',
   adeverinta_studii: 'document-text-outline',
+  scrisoare_medicala: 'mail-outline',
+  bilet_externare: 'log-out-outline',
+  imagistica: 'scan-outline',
+  vaccin_persoana: 'medkit-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };
@@ -116,6 +120,10 @@ const DOC_ICON_BG: Record<DocumentType, string> = {
   certificat_absolvire: '#EDE7F6',
   certificat_curs: '#EDE7F6',
   adeverinta_studii: '#EDE7F6',
+  scrisoare_medicala: '#FCE4EC',
+  bilet_externare: '#E3F2FD',
+  imagistica: '#E1F5FE',
+  vaccin_persoana: '#E8F5E9',
   altul: '#F5F5F5',
   custom: '#F5F5F5',
 };
@@ -159,6 +167,10 @@ const DOC_ICON_COLOR: Record<DocumentType, string> = {
   certificat_absolvire: '#4527A0',
   certificat_curs: '#4527A0',
   adeverinta_studii: '#4527A0',
+  scrisoare_medicala: '#AD1457',
+  bilet_externare: '#1565C0',
+  imagistica: '#0277BD',
+  vaccin_persoana: '#2E7D32',
   altul: '#757575',
   custom: '#757575',
 };

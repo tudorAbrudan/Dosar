@@ -231,86 +231,93 @@ export function DocumentPhotoSection({
         </View>
       )}
 
-      {ocrText !== undefined && ocrText !== '' ? (
-        <View style={[styles.ocrSection, { borderColor: C.border }]}>
-          <Pressable
-            onPress={() => {
-              if (!ocrEditing) setOcrExpanded(v => !v);
-            }}
-            style={styles.ocrToggleRow}
+      <View style={[styles.ocrSection, { borderColor: C.border }]}>
+        <Pressable
+          onPress={() => {
+            if (!ocrEditing) setOcrExpanded(v => !v);
+          }}
+          style={styles.ocrToggleRow}
+        >
+          <Text style={styles.ocrToggleLabel}>Text complet (OCR)</Text>
+          <View style={styles.ocrToggleRight}>
+            {isEditing && onOcrTextSave && !ocrEditing && (
+              <Pressable
+                style={styles.ocrEditBtn}
+                onPress={() => {
+                  setOcrDraft(ocrText ?? '');
+                  setOcrEditing(true);
+                  setOcrExpanded(true);
+                }}
+              >
+                <Ionicons name="create-outline" size={20} color={primary} />
+              </Pressable>
+            )}
+            {!ocrEditing && (
+              <Text style={styles.ocrToggleChevron}>{ocrExpanded ? '▲ Ascunde' : '▼ Arată'}</Text>
+            )}
+          </View>
+        </Pressable>
+        {ocrExpanded && !ocrEditing && (
+          <ScrollView
+            style={[styles.ocrScroll, { backgroundColor: C.background }]}
+            nestedScrollEnabled
           >
-            <Text style={styles.ocrToggleLabel}>Text complet (OCR)</Text>
-            <View style={styles.ocrToggleRight}>
-              {isEditing && onOcrTextSave && !ocrEditing && (
-                <Pressable
-                  style={styles.ocrEditBtn}
-                  onPress={() => {
-                    setOcrDraft(ocrText ?? '');
-                    setOcrEditing(true);
-                    setOcrExpanded(true);
-                  }}
-                >
-                  <Ionicons name="create-outline" size={20} color={primary} />
-                </Pressable>
-              )}
-              {!ocrEditing && (
-                <Text style={styles.ocrToggleChevron}>{ocrExpanded ? '▲ Ascunde' : '▼ Arată'}</Text>
-              )}
-            </View>
-          </Pressable>
-          {ocrExpanded && !ocrEditing && (
-            <ScrollView
-              style={[styles.ocrScroll, { backgroundColor: C.background }]}
-              nestedScrollEnabled
-            >
+            {ocrText && ocrText.length > 0 ? (
               <Text style={[styles.ocrText, { color: C.text }]} selectable>
                 {ocrText}
               </Text>
-            </ScrollView>
-          )}
-          {ocrExpanded && ocrEditing && (
-            <View style={{ backgroundColor: C.background }}>
-              <TextInput
-                style={[styles.ocrTextInput, { color: C.text, borderColor: C.border }]}
-                value={ocrDraft}
-                onChangeText={setOcrDraft}
-                multiline
-                autoFocus
-                textAlignVertical="top"
-                onBlur={() => {
-                  if (!ocrCancelledRef.current && onOcrTextSave) {
-                    onOcrTextSave(ocrDraft).catch(() => {});
-                  }
-                  ocrCancelledRef.current = false;
+            ) : (
+              <Text style={[styles.ocrEmpty, { color: C.textSecondary }]}>
+                Niciun text OCR.{' '}
+                {pages.length > 0
+                  ? 'Apasă 🔍 OCR de mai sus pentru a extrage textul din imagini.'
+                  : 'Adaugă un fișier și rulează OCR pentru a extrage textul.'}
+              </Text>
+            )}
+          </ScrollView>
+        )}
+        {ocrExpanded && ocrEditing && (
+          <View style={{ backgroundColor: C.background }}>
+            <TextInput
+              style={[styles.ocrTextInput, { color: C.text, borderColor: C.border }]}
+              value={ocrDraft}
+              onChangeText={setOcrDraft}
+              multiline
+              autoFocus
+              textAlignVertical="top"
+              onBlur={() => {
+                if (!ocrCancelledRef.current && onOcrTextSave) {
+                  onOcrTextSave(ocrDraft).catch(() => {});
+                }
+                ocrCancelledRef.current = false;
+              }}
+            />
+            <View style={styles.ocrEditActions}>
+              <Pressable
+                style={[styles.ocrActionBtn, styles.ocrCancelBtn, { borderColor: C.border }]}
+                onPress={() => {
+                  ocrCancelledRef.current = true;
+                  setOcrEditing(false);
                 }}
-              />
-              <View style={styles.ocrEditActions}>
-                <Pressable
-                  style={[styles.ocrActionBtn, styles.ocrCancelBtn, { borderColor: C.border }]}
-                  onPress={() => {
-                    ocrCancelledRef.current = true;
-                    setOcrEditing(false);
-                  }}
-                  disabled={ocrSaving}
-                >
-                  <Text style={[styles.ocrActionBtnText, { color: C.textSecondary }]}>Anulare</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.ocrActionBtn, styles.ocrSaveBtn, ocrSaving && styles.btnDisabled]}
-                  onPress={handleOcrSave}
-                  disabled={ocrSaving}
-                >
-                  {ocrSaving ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.ocrSaveBtnText}>Salvează</Text>
-                  )}
-                </Pressable>
-              </View>
+                disabled={ocrSaving}
+              >
+                <Text style={[styles.ocrActionBtnText, { color: C.textSecondary }]}>Anulare</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.ocrActionBtn, styles.ocrSaveBtn, ocrSaving && styles.btnDisabled]}
+                onPress={handleOcrSave}
+                disabled={ocrSaving}
+              >
+                {ocrSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.ocrSaveBtnText}>Salvează</Text>
+                )}
+              </Pressable>
             </View>
-          )}
-        </View>
-      ) : null}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -423,6 +430,12 @@ const styles = StyleSheet.create({
     maxHeight: 180,
     margin: 8,
     borderRadius: 8,
+  },
+  ocrEmpty: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontStyle: 'italic',
+    padding: 14,
   },
   ocrText: {
     fontSize: 12,

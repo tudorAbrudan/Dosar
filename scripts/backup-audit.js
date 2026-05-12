@@ -41,10 +41,12 @@ const FILES = {
 const EXCLUDED_TABLES = new Set([
   'cloud_state', // device-specific state (device_id, hash-uri locale)
   'pending_uploads', // coadă tranzitorie; restore-ul o golește
+  'cloud_pending_deletes', // coadă tranzitorie pentru ștergeri staggered cloud (file_path + counter)
   'chat_threads', // istoricul chatbot - ephemeral, NU se păstrează (privacy)
   'chat_messages', // idem
   'document_entities', // junction table reconstruită automat din docs.createDocument
   'fuel_records_v2', // tabel temporar de migrare
+  'medical_chunks_fts', // FTS5 virtual table — reconstruit la restore din observații + OCR
 ]);
 
 // Mapping table snake_case → manifest field camelCase pentru tabele care
@@ -55,6 +57,11 @@ const TABLE_TO_MANIFEST_FIELD = {
   vehicle_maintenance_tasks: 'maintenanceTasks',
   document_pages: 'documentPages',
   entity_order: 'entityOrder',
+  // Tabelele medical: păstrăm snake_case în manifest pentru lizibilitate.
+  medical_record: 'medical_record',
+  medical_observations: 'medical_observations',
+  medical_chat_threads: 'medical_chat_threads',
+  medical_chat_messages: 'medical_chat_messages',
 };
 
 function snakeToCamel(s) {

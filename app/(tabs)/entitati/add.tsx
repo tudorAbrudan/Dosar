@@ -18,16 +18,8 @@ import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { extractText, extractCardInfo } from '@/services/ocr';
+import { ALL_ENTITY_TYPES, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
-
-const MANUAL_ENTITY_TYPES: { key: EntityType; label: string }[] = [
-  { key: 'person', label: 'Persoană' },
-  { key: 'property', label: 'Proprietate' },
-  { key: 'vehicle', label: 'Vehicul' },
-  { key: 'card', label: 'Card' },
-  { key: 'animal', label: 'Animal' },
-  { key: 'company', label: 'Firmă' },
-];
 
 export default function AddEntityScreen() {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -47,7 +39,13 @@ export default function AddEntityScreen() {
     refresh,
   } = useEntities();
   const { visibleEntityTypes } = useVisibilitySettings();
-  const ENTITY_TYPES = MANUAL_ENTITY_TYPES.filter(t => visibleEntityTypes.includes(t.key));
+  // Sursa dinamică: ALL_ENTITY_TYPES (ordinea canonică) filtrată prin Setări →
+  // Vizibilitate. Etichetele vin din ENTITY_TYPE_LABELS — adăugarea unui tip
+  // nou în types/index.ts e automată aici, fără modificare în acest ecran.
+  const ENTITY_TYPES = ALL_ENTITY_TYPES.filter(t => visibleEntityTypes.includes(t)).map(t => ({
+    key: t,
+    label: ENTITY_TYPE_LABELS[t],
+  }));
   const headerHeight = useHeaderHeight();
 
   const [name, setName] = useState('');
@@ -154,7 +152,15 @@ export default function AddEntityScreen() {
             <Pressable
               key={key}
               style={({ pressed }) => [styles.typeButton, pressed && styles.buttonPressed]}
-              onPress={() => setChosenType(key)}
+              onPress={() => {
+                // Dosar medical are flow propriu (Person picker 1:1) — redirect
+                // la lista dedicată, ecranul deschide modalul de creare.
+                if (key === 'medical_record') {
+                  router.replace('/(tabs)/entitati/medical?create=1');
+                  return;
+                }
+                setChosenType(key);
+              }}
             >
               <Text style={styles.typeButtonText}>{label}</Text>
             </Pressable>
