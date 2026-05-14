@@ -34,6 +34,9 @@ import { AsistentAiSection } from '@/components/settings/AsistentAiSection';
 import { PrivacyGdprSection } from '@/components/settings/PrivacyGdprSection';
 import { ContactSection } from '@/components/settings/ContactSection';
 import { DiagnosticSection } from '@/components/settings/DiagnosticSection';
+import { SecuritateSection } from '@/components/settings/SecuritateSection';
+import { AspectSection } from '@/components/settings/AspectSection';
+import { NotificariSection } from '@/components/settings/NotificariSection';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -868,137 +871,29 @@ export default function SetariScreen() {
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Securitate ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>SECURITATE</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <RNView style={styles.rowLast}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#FCE4EC' }]}>
-                <Ionicons name="lock-closed-outline" size={18} color="#C62828" />
-              </RNView>
-              <RNView style={styles.rowLabelWrap}>
-                <RNText style={[styles.rowLabel, { color: C.text }]}>Blocare aplicație</RNText>
-                <RNText style={[styles.rowSub, { color: C.textSecondary }]}>
-                  Face ID / Touch ID / PIN
-                </RNText>
-              </RNView>
-            </RNView>
-            <Switch
-              value={appLockEnabled}
-              onValueChange={handleAppLockToggle}
-              trackColor={{ false: C.border, true: primary }}
-              thumbColor="#fff"
-            />
-          </RNView>
-        </RNView>
-        {appLockEnabled && (
-          <RNText style={[styles.lockHint, { color: C.textSecondary }]}>
-            Dacă ai Face ID configurat pe telefon, poți debloca aplicația cu el chiar dacă uiți
-            PIN-ul. Dacă ai uitat PIN-ul și nu ai Face ID, dezactivează blocarea din Setări iPhone →
-            Parolă și Face ID → resetează datele aplicației.
-          </RNText>
-        )}
+        <SecuritateSection
+          appLockEnabled={appLockEnabled}
+          scheme={scheme}
+          onToggle={handleAppLockToggle}
+        />
 
-        {/* ── Aspect ── */}
-        <Pressable style={styles.sectionHeader} onPress={() => setAspectCollapsed(v => !v)}>
-          <RNText
-            style={[styles.sectionLabel, styles.sectionLabelInline, { color: C.textSecondary }]}
-          >
-            ASPECT
-          </RNText>
-          <Ionicons
-            name={aspectCollapsed ? 'chevron-down' : 'chevron-up'}
-            size={14}
-            color={C.textSecondary}
-          />
-        </Pressable>
-        {!aspectCollapsed && (
-          <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-            <RNText style={[styles.hint, { color: C.textSecondary }]}>
-              Alege tema de culori a aplicației.
-            </RNText>
-            <RNView style={[styles.chipRow, { marginTop: 8 }]}>
-              {(
-                [
-                  ['auto', 'Automat'],
-                  ['light', 'Clar'],
-                  ['dark', 'Întunecat'],
-                ] as const
-              ).map(([value, label]) => {
-                const isActive = themePref === value;
-                return (
-                  <Pressable
-                    key={value}
-                    style={[
-                      styles.chip,
-                      isActive
-                        ? [styles.chipActive, { borderColor: primary }]
-                        : { borderColor: C.border },
-                    ]}
-                    onPress={() => setThemePref(value)}
-                  >
-                    <RNText
-                      style={[styles.chipText, { color: isActive ? '#fff' : C.textSecondary }]}
-                    >
-                      {label}
-                    </RNText>
-                  </Pressable>
-                );
-              })}
-            </RNView>
-          </RNView>
-        )}
+        <AspectSection
+          themePref={themePref}
+          collapsed={aspectCollapsed}
+          scheme={scheme}
+          onToggleCollapsed={() => setAspectCollapsed(v => !v)}
+          onSelectPref={setThemePref}
+        />
 
-        {/* ── Notificări ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>NOTIFICĂRI</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#E3F2FD' }]}>
-                <Ionicons name="time-outline" size={18} color="#1565C0" />
-              </RNView>
-              <RNText style={[styles.rowLabel, { color: C.text }]}>Zile înainte de expirare</RNText>
-            </RNView>
-            <TextInput
-              style={[
-                styles.inputSmall,
-                { color: C.text, borderColor: C.border, backgroundColor: C.background },
-              ]}
-              value={String(notifDays)}
-              onChangeText={handleNotifDays}
-              keyboardType="number-pad"
-              maxLength={2}
-            />
-          </RNView>
-          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#E8F5E9' }]}>
-                <Ionicons name="notifications-outline" size={18} color={primary} />
-              </RNView>
-              <RNText style={[styles.rowLabel, { color: C.text }]}>Notificări push</RNText>
-            </RNView>
-            <Switch
-              value={pushEnabled}
-              onValueChange={handlePushToggle}
-              trackColor={{ false: C.border, true: primary }}
-              thumbColor="#fff"
-            />
-          </RNView>
-          <RNView style={styles.rowLast}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#FFF3E0' }]}>
-                <Ionicons name="checkmark-done-outline" size={18} color="#E65100" />
-              </RNView>
-              <RNText style={[styles.rowLabel, { color: C.text }]}>Sugestii pe Acasă</RNText>
-            </RNView>
-            <Switch
-              value={showOrphans}
-              onValueChange={handleShowOrphansToggle}
-              trackColor={{ false: C.border, true: primary }}
-              thumbColor="#fff"
-            />
-          </RNView>
-        </RNView>
+        <NotificariSection
+          notifDays={notifDays}
+          pushEnabled={pushEnabled}
+          showOrphans={showOrphans}
+          scheme={scheme}
+          onNotifDaysChange={handleNotifDays}
+          onPushToggle={handlePushToggle}
+          onShowOrphansToggle={handleShowOrphansToggle}
+        />
 
         {/* ── Vizibilitate entități ── */}
         <Pressable style={styles.sectionHeader} onPress={() => setEntitiesCollapsed(v => !v)}>
