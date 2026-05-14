@@ -47,6 +47,7 @@ import { AiProviderSelector } from '@/components/settings/AiProviderSelector';
 import { AiExternalProviderConfig } from '@/components/settings/AiExternalProviderConfig';
 import { LocalModelSelector } from '@/components/settings/LocalModelSelector';
 import { AiConsentBar } from '@/components/settings/AiConsentBar';
+import { AiPrivacyInfoCard } from '@/components/settings/AiPrivacyInfoCard';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1111,46 +1112,8 @@ export default function SetariScreen() {
             keyboardDismissMode="on-drag"
             automaticallyAdjustKeyboardInsets
           >
-            {/* Info: ce date se trimit la AI (mirror OCR_PRIVACY onboarding) */}
             {(aiProviderType === 'builtin' || aiProviderType === 'external') && (
-              <RNView
-                style={[styles.aiPrivacyCard, { backgroundColor: C.card, borderColor: C.border }]}
-              >
-                <RNView style={styles.aiPrivacyRow}>
-                  <Ionicons
-                    name="image-outline"
-                    size={18}
-                    color="#F57F17"
-                    style={{ marginTop: 2 }}
-                  />
-                  <RNView style={{ flex: 1 }}>
-                    <RNText style={[styles.aiToggleLabel, { color: C.text }]}>
-                      Trimitere imagine/document la AI
-                    </RNText>
-                    <RNText style={[styles.aiToggleSub, { color: C.textSecondary, marginTop: 2 }]}>
-                      Doar la apăsarea butonului „Trimite documentul la AI" din formularul
-                      documentului — niciodată automat.
-                    </RNText>
-                  </RNView>
-                </RNView>
-                <RNView style={styles.aiPrivacyRow}>
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={18}
-                    color={primary}
-                    style={{ marginTop: 2 }}
-                  />
-                  <RNView style={{ flex: 1 }}>
-                    <RNText style={[styles.aiToggleLabel, { color: C.text }]}>
-                      Câmpul „Notă privată" nu pleacă niciodată la AI
-                    </RNText>
-                    <RNText style={[styles.aiToggleSub, { color: C.textSecondary, marginTop: 2 }]}>
-                      Folosește-l pentru date strict sensibile (CVV, PIN, parole). E separat de
-                      câmpul „Notă" normal.
-                    </RNText>
-                  </RNView>
-                </RNView>
-              </RNView>
+              <AiPrivacyInfoCard scheme={scheme} />
             )}
 
             <AiProviderSelector
