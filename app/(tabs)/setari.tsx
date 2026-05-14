@@ -40,6 +40,9 @@ import { NotificariSection } from '@/components/settings/NotificariSection';
 import { VizibilitateEntitatiSection } from '@/components/settings/VizibilitateEntitatiSection';
 import { VizibilitateDocTypesSection } from '@/components/settings/VizibilitateDocTypesSection';
 import { BackupSection } from '@/components/settings/BackupSection';
+import { LocalModelWarningBanner } from '@/components/settings/LocalModelWarningBanner';
+import { LocalModelCatalog } from '@/components/settings/LocalModelCatalog';
+import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1423,176 +1426,28 @@ export default function SetariScreen() {
               )}
             </RNView>
 
-            {/* Avertisment model local */}
             {aiProviderType === 'local' && (
-              <RNView
-                style={[
-                  styles.localModelWarning,
-                  { backgroundColor: '#FFF8E1', borderColor: '#F9A825' },
-                ]}
-              >
-                <Ionicons
-                  name="flask-outline"
-                  size={16}
-                  color="#F57F17"
-                  style={{ marginRight: 6, marginTop: 1 }}
-                />
-                <RNView style={{ flex: 1 }}>
-                  <RNText style={[styles.localModelWarningTitle, { color: '#E65100' }]}>
-                    Model local – în testare
-                  </RNText>
-                  <RNText style={[styles.localModelWarningText, { color: '#6D4C41' }]}>
-                    Modelele locale pot produce răspunsuri incorecte (halucinații). Dacă observi
-                    erori, te rugăm să contactezi dezvoltatorul.{' '}
-                    <RNText
-                      style={{ color: primary, textDecorationLine: 'underline' }}
-                      onPress={openEmail}
-                    >
-                      Trimite email
-                    </RNText>
-                  </RNText>
-                </RNView>
-              </RNView>
+              <LocalModelWarningBanner onContactDeveloper={openEmail} />
             )}
 
-            {/* Catalog modele locale */}
-            {compatibleModels.length > 0 && (
-              <RNView>
-                <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
-                  Modele disponibile
-                </RNText>
-                {compatibleModels.map(model => {
-                  const isDownloaded = downloadedModelIds.includes(model.id);
-                  const isDownloading = downloadingModelId === model.id;
-                  const incompatible = model.incompatibilityReason !== null;
-                  return (
-                    <RNView
-                      key={model.id}
-                      style={[
-                        styles.modelCard,
-                        {
-                          backgroundColor: C.card,
-                          borderColor: C.border,
-                          opacity: incompatible ? 0.6 : 1,
-                        },
-                      ]}
-                    >
-                      <RNView style={styles.modelCardHeader}>
-                        <RNView style={{ flex: 1 }}>
-                          <RNText style={[styles.aiToggleLabel, { color: C.text }]}>
-                            {model.name}
-                          </RNText>
-                          <RNText
-                            style={[styles.aiLabel, { color: C.textSecondary, marginTop: 2 }]}
-                          >
-                            {'★'.repeat(model.qualityStars)}
-                            {'☆'.repeat(5 - model.qualityStars)} · {model.sizeLabel}
-                          </RNText>
-                        </RNView>
-                        {isDownloaded && !isDownloading && (
-                          <Pressable onPress={() => handleDeleteModel(model.id)} hitSlop={8}>
-                            <RNText style={[styles.aiLabel, { color: statusColors.critical }]}>
-                              Șterge
-                            </RNText>
-                          </Pressable>
-                        )}
-                        {!isDownloaded && !isDownloading && incompatible && (
-                          <RNView style={[styles.downloadBtn, { backgroundColor: C.border }]}>
-                            <RNText style={[styles.downloadBtnText, { color: C.textSecondary }]}>
-                              Incompatibil
-                            </RNText>
-                          </RNView>
-                        )}
-                        {!isDownloaded && !isDownloading && !incompatible && (
-                          <Pressable
-                            onPress={() => handleDownloadModel(model.id)}
-                            style={[styles.downloadBtn, { backgroundColor: primary }]}
-                          >
-                            <RNText style={styles.downloadBtnText}>Descarcă</RNText>
-                          </Pressable>
-                        )}
-                      </RNView>
-                      <RNText style={[styles.aiToggleSub, { color: C.textSecondary }]}>
-                        {model.description}
-                      </RNText>
-                      {isDownloading && (
-                        <RNView style={{ marginTop: 8 }}>
-                          <RNView style={[styles.progressBar, { backgroundColor: C.border }]}>
-                            <RNView
-                              style={[
-                                styles.progressFill,
-                                {
-                                  backgroundColor: primary,
-                                  width: `${Math.round(downloadProgress * 100)}%` as `${number}%`,
-                                },
-                              ]}
-                            />
-                          </RNView>
-                          <RNText
-                            style={[styles.aiLabel, { color: C.textSecondary, marginTop: 4 }]}
-                          >
-                            {Math.round(downloadedMb)}MB / {Math.round(downloadTotalMb)}MB (
-                            {Math.round(downloadProgress * 100)}%)
-                          </RNText>
-                          <Pressable onPress={handleCancelDownload} style={{ marginTop: 4 }}>
-                            <RNText style={[styles.aiLabel, { color: statusColors.critical }]}>
-                              Anulează
-                            </RNText>
-                          </Pressable>
-                        </RNView>
-                      )}
-                      {incompatible && (
-                        <RNText
-                          style={[styles.aiLabel, { color: statusColors.warning, marginTop: 4 }]}
-                        >
-                          ⚠ Incompatibil: {model.incompatibilityReason}
-                        </RNText>
-                      )}
-                      {isDownloaded && !isDownloading && (
-                        <RNText style={[styles.aiLabel, { color: statusColors.ok, marginTop: 4 }]}>
-                          ✓ Instalat
-                        </RNText>
-                      )}
-                    </RNView>
-                  );
-                })}
-              </RNView>
-            )}
+            <LocalModelCatalog
+              models={compatibleModels}
+              downloadedIds={downloadedModelIds}
+              downloadingId={downloadingModelId}
+              downloadProgress={downloadProgress}
+              downloadedMb={downloadedMb}
+              downloadTotalMb={downloadTotalMb}
+              scheme={scheme}
+              onDownload={handleDownloadModel}
+              onDelete={handleDeleteModel}
+              onCancel={handleCancelDownload}
+            />
 
-            {/* Banner modele AI orphan (rămase de la versiuni vechi) */}
-            {orphanModels.length > 0 && (
-              <RNView
-                style={[
-                  styles.modelCard,
-                  {
-                    backgroundColor: C.card,
-                    borderColor: statusColors.warning,
-                    marginTop: 12,
-                  },
-                ]}
-              >
-                <RNView style={styles.modelCardHeader}>
-                  <RNView style={{ flex: 1 }}>
-                    <RNText style={[styles.aiToggleLabel, { color: C.text }]}>
-                      Modele AI vechi
-                    </RNText>
-                    <RNText style={[styles.aiToggleSub, { color: C.textSecondary, marginTop: 2 }]}>
-                      {orphanModels.length} fișier{orphanModels.length === 1 ? '' : 'e'} (~
-                      {Math.round(
-                        orphanModels.reduce((s, o) => s + o.sizeBytes, 0) / (1024 * 1024)
-                      )}{' '}
-                      MB) rămase de la versiuni anterioare. Nu mai sunt folosite.
-                    </RNText>
-                  </RNView>
-                  <Pressable
-                    onPress={handleDeleteOrphanModels}
-                    style={[styles.downloadBtn, { backgroundColor: statusColors.critical }]}
-                  >
-                    <RNText style={styles.downloadBtnText}>Eliberează</RNText>
-                  </Pressable>
-                </RNView>
-              </RNView>
-            )}
+            <OrphanModelsBanner
+              orphans={orphanModels}
+              scheme={scheme}
+              onCleanup={handleDeleteOrphanModels}
+            />
 
             {/* Descriere builtin */}
             {aiProviderType === 'builtin' && (
