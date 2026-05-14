@@ -67,6 +67,7 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useAutoActivateDocType } from '@/hooks/useAutoActivateDocType';
+import { AutoActivatedBanner } from '@/components/document/AutoActivatedBanner';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
@@ -1298,36 +1299,11 @@ export default function AddDocumentScreen() {
           </View>
         )}
 
-        {/* TIP AUTO-ACTIVAT DUPĂ DETECȚIE AI */}
         {autoActivatedType && (
-          <View
-            style={[
-              styles.autoActivatedBanner,
-              {
-                backgroundColor: C.primaryMuted,
-                borderColor: statusColors.ok,
-              },
-            ]}
-          >
-            <Ionicons
-              name="checkmark-circle"
-              size={18}
-              color={statusColors.ok}
-              style={{ marginRight: 8, marginTop: 1 }}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.autoActivatedBannerTitle, { color: C.text }]}>
-                Tipul „{DOCUMENT_TYPE_LABELS[autoActivatedType] ?? autoActivatedType}" a fost
-                activat automat
-              </Text>
-              <Text style={[styles.autoActivatedBannerBody, { color: C.textSecondary }]}>
-                Apare acum în Setări → Tipuri de documente vizibile.
-              </Text>
-            </View>
-            <Pressable onPress={() => setAutoActivatedType(null)} hitSlop={8}>
-              <Ionicons name="close" size={16} color={C.textSecondary} />
-            </Pressable>
-          </View>
+          <AutoActivatedBanner
+            type={autoActivatedType}
+            onDismiss={() => setAutoActivatedType(null)}
+          />
         )}
 
         {/* DUPLICAT */}
@@ -1853,16 +1829,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
-  autoActivatedBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-  },
-  autoActivatedBannerTitle: { fontSize: 13, fontWeight: '700', marginBottom: 3 },
-  autoActivatedBannerBody: { fontSize: 12, lineHeight: 17 },
   duplicateBanner: {
     borderWidth: 1,
     borderRadius: 10,

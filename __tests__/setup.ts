@@ -107,6 +107,32 @@ jest.mock('expo-local-authentication', () => ({
   isEnrolledAsync: jest.fn().mockResolvedValue(false),
 }));
 
+// @expo/vector-icons folosește Platform.OS prin createIconSet → undefined în jest-expo
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  const makeIcon = (set: string) => {
+    // eslint-disable-next-line react/display-name
+    return ({ name, accessibilityLabel }: { name?: string; accessibilityLabel?: string }) =>
+      React.createElement(Text, { accessibilityLabel: accessibilityLabel ?? `${set}-${name}` }, name);
+  };
+  return {
+    Ionicons: makeIcon('ion'),
+    MaterialIcons: makeIcon('mat'),
+    MaterialCommunityIcons: makeIcon('mc'),
+    FontAwesome: makeIcon('fa'),
+    FontAwesome5: makeIcon('fa5'),
+    Feather: makeIcon('feather'),
+    AntDesign: makeIcon('ant'),
+    Entypo: makeIcon('entypo'),
+    Octicons: makeIcon('oct'),
+    SimpleLineIcons: makeIcon('sl'),
+    EvilIcons: makeIcon('evil'),
+    Foundation: makeIcon('found'),
+    Zocial: makeIcon('zoc'),
+  };
+});
+
 jest.mock('expo-device', () => ({
   // iPhone 14 Pro (6GB marketed) — NSProcessInfo.physicalMemory reports ~5.9B bytes after kernel overhead
   totalMemory: 5905580032,
