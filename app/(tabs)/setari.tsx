@@ -45,6 +45,7 @@ import { LocalModelCatalog } from '@/components/settings/LocalModelCatalog';
 import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
 import { AiProviderSelector } from '@/components/settings/AiProviderSelector';
 import { AiExternalProviderConfig } from '@/components/settings/AiExternalProviderConfig';
+import { LocalModelSelector } from '@/components/settings/LocalModelSelector';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1212,48 +1213,14 @@ export default function SetariScreen() {
                   onToggleSeparateVision={setAiSeparateVision}
                 />
               )}
-              {downloadedModelIds.length > 0 && (
-                <>
-                  <RNText style={[styles.aiLabel, { color: C.textSecondary, marginTop: 8 }]}>
-                    Modele locale instalate
-                  </RNText>
-                  {downloadedModelIds.map(modelId => {
-                    const model = compatibleModels.find(m => m.id === modelId);
-                    if (!model) return null;
-                    const isSelected =
-                      aiProviderType === 'local' && selectedLocalModelId === modelId;
-                    return (
-                      <Pressable
-                        key={modelId}
-                        style={[
-                          styles.aiRadioRow,
-                          { borderColor: isSelected ? primary : C.border, backgroundColor: C.card },
-                        ]}
-                        onPress={() => handleSelectLocalModel(modelId)}
-                      >
-                        <RNView
-                          style={[
-                            styles.aiRadioDot,
-                            { borderColor: isSelected ? primary : C.border },
-                          ]}
-                        >
-                          {isSelected && (
-                            <RNView
-                              style={[styles.aiRadioDotInner, { backgroundColor: primary }]}
-                            />
-                          )}
-                        </RNView>
-                        <RNView style={{ flex: 1 }}>
-                          <RNText style={[styles.chipText, { color: C.text }]}>{model.name}</RNText>
-                          <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
-                            {'★'.repeat(model.qualityStars)} · {model.sizeLabel}
-                          </RNText>
-                        </RNView>
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
+              <LocalModelSelector
+                downloadedIds={downloadedModelIds}
+                allModels={compatibleModels}
+                providerType={aiProviderType}
+                selectedId={selectedLocalModelId}
+                scheme={scheme}
+                onSelect={handleSelectLocalModel}
+              />
             </RNView>
 
             {aiProviderType === 'local' && (
