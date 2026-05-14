@@ -44,6 +44,7 @@ import { LocalModelWarningBanner } from '@/components/settings/LocalModelWarning
 import { LocalModelCatalog } from '@/components/settings/LocalModelCatalog';
 import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
 import { AiProviderSelector } from '@/components/settings/AiProviderSelector';
+import { AiExternalProviderConfig } from '@/components/settings/AiExternalProviderConfig';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1191,171 +1192,25 @@ export default function SetariScreen() {
               onSelect={handleAiProviderSelect}
             />
             <RNView>
-              {/* Câmpuri pentru external — inline sub selecție */}
               {aiProviderType === 'external' && (
-                <RNView style={{ gap: 12, marginTop: 8 }}>
-                  <RNView>
-                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>URL API</RNText>
-                    <TextInput
-                      style={[
-                        styles.aiInput,
-                        { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                      ]}
-                      value={aiProviderUrl}
-                      onChangeText={text => {
-                        setAiProviderUrl(text);
-                        setAiTestStatus('idle');
-                      }}
-                      placeholder="ex: https://api.mistral.ai/v1"
-                      placeholderTextColor={C.textSecondary}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                    />
-                  </RNView>
-                  <RNView>
-                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Cheie API</RNText>
-                    <TextInput
-                      style={[
-                        styles.aiInput,
-                        { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                      ]}
-                      value={aiApiKey}
-                      onChangeText={text => {
-                        setAiApiKey(text);
-                        setAiTestStatus('idle');
-                      }}
-                      placeholder="••••••••••"
-                      placeholderTextColor={C.textSecondary}
-                      secureTextEntry
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                  </RNView>
-                  <RNView>
-                    <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model chat</RNText>
-                    <TextInput
-                      style={[
-                        styles.aiInput,
-                        { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                      ]}
-                      value={aiProviderModel}
-                      onChangeText={text => {
-                        setAiProviderModel(text);
-                        setAiTestStatus('idle');
-                      }}
-                      placeholder="ex: mistral-small-latest"
-                      placeholderTextColor={C.textSecondary}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                  </RNView>
-                  <Pressable
-                    style={[
-                      styles.aiVisionToggleRow,
-                      { borderColor: C.border, backgroundColor: C.card },
-                    ]}
-                    onPress={() => {
-                      setAiSeparateVision(v => !v);
-                      setAiTestStatus('idle');
-                    }}
-                  >
-                    <RNView style={{ flex: 1, backgroundColor: 'transparent' }}>
-                      <RNText style={[styles.aiVisionToggleTitle, { color: C.text }]}>
-                        Provider OCR diferit
-                      </RNText>
-                      <RNText style={[styles.aiHint, { color: C.textSecondary }]}>
-                        {aiSeparateVision
-                          ? 'OCR / vision folosește alt provider decât chat-ul.'
-                          : 'OCR și chat folosesc același provider (de mai sus).'}
-                      </RNText>
-                    </RNView>
-                    <Switch
-                      value={aiSeparateVision}
-                      onValueChange={v => {
-                        setAiSeparateVision(v);
-                        setAiTestStatus('idle');
-                      }}
-                      trackColor={{ false: C.border, true: primary }}
-                    />
-                  </Pressable>
-                  {aiSeparateVision && (
-                    <RNView style={styles.aiVisionGroup}>
-                      <RNText style={[styles.aiVisionGroupTitle, { color: C.textSecondary }]}>
-                        Provider OCR / vision
-                      </RNText>
-                      <RNView>
-                        <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>URL</RNText>
-                        <TextInput
-                          style={[
-                            styles.aiInput,
-                            { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                          ]}
-                          value={aiVisionUrl}
-                          onChangeText={text => {
-                            setAiVisionUrl(text);
-                            setAiTestStatus('idle');
-                          }}
-                          placeholder="ex: https://api.anthropic.com/v1"
-                          placeholderTextColor={C.textSecondary}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          keyboardType="url"
-                        />
-                      </RNView>
-                      <RNView>
-                        <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
-                          Cheie API
-                        </RNText>
-                        <TextInput
-                          style={[
-                            styles.aiInput,
-                            { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                          ]}
-                          value={aiVisionApiKey}
-                          onChangeText={text => {
-                            setAiVisionApiKey(text);
-                            setAiTestStatus('idle');
-                          }}
-                          placeholder="••••••••••"
-                          placeholderTextColor={C.textSecondary}
-                          secureTextEntry
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                      </RNView>
-                      <RNView>
-                        <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>Model</RNText>
-                        <TextInput
-                          style={[
-                            styles.aiInput,
-                            { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                          ]}
-                          value={aiVisionModel}
-                          onChangeText={text => {
-                            setAiVisionModel(text);
-                            setAiTestStatus('idle');
-                          }}
-                          placeholder="ex: claude-haiku-4-5"
-                          placeholderTextColor={C.textSecondary}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                        <RNText style={[styles.aiHint, { color: C.textSecondary, marginTop: 4 }]}>
-                          Modelul TREBUIE să suporte imagini (vision). Recomandat:{' '}
-                          <RNText style={{ fontWeight: '600' }}>claude-haiku-4-5</RNText> sau{' '}
-                          <RNText style={{ fontWeight: '600' }}>claude-sonnet-4-6</RNText>{' '}
-                          (Anthropic, $5 credit gratuit la cont nou),{' '}
-                          <RNText style={{ fontWeight: '600' }}>gpt-4o</RNText> (OpenAI),{' '}
-                          <RNText style={{ fontWeight: '600' }}>pixtral-large-latest</RNText>{' '}
-                          (Mistral, plătit) sau{' '}
-                          <RNText style={{ fontWeight: '600' }}>pixtral-12b-2409</RNText> (Mistral,
-                          free tier).
-                        </RNText>
-                      </RNView>
-                    </RNView>
-                  )}
-                </RNView>
+                <AiExternalProviderConfig
+                  chat={{ url: aiProviderUrl, apiKey: aiApiKey, model: aiProviderModel }}
+                  separateVision={aiSeparateVision}
+                  vision={{ url: aiVisionUrl, apiKey: aiVisionApiKey, model: aiVisionModel }}
+                  scheme={scheme}
+                  onAnyChange={() => setAiTestStatus('idle')}
+                  onChangeChat={patch => {
+                    if (patch.url !== undefined) setAiProviderUrl(patch.url);
+                    if (patch.apiKey !== undefined) setAiApiKey(patch.apiKey);
+                    if (patch.model !== undefined) setAiProviderModel(patch.model);
+                  }}
+                  onChangeVision={patch => {
+                    if (patch.url !== undefined) setAiVisionUrl(patch.url);
+                    if (patch.apiKey !== undefined) setAiVisionApiKey(patch.apiKey);
+                    if (patch.model !== undefined) setAiVisionModel(patch.model);
+                  }}
+                  onToggleSeparateVision={setAiSeparateVision}
+                />
               )}
               {downloadedModelIds.length > 0 && (
                 <>
