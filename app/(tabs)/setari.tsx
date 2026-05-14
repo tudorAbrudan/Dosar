@@ -37,6 +37,8 @@ import { DiagnosticSection } from '@/components/settings/DiagnosticSection';
 import { SecuritateSection } from '@/components/settings/SecuritateSection';
 import { AspectSection } from '@/components/settings/AspectSection';
 import { NotificariSection } from '@/components/settings/NotificariSection';
+import { VizibilitateEntitatiSection } from '@/components/settings/VizibilitateEntitatiSection';
+import { VizibilitateDocTypesSection } from '@/components/settings/VizibilitateDocTypesSection';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -895,150 +897,26 @@ export default function SetariScreen() {
           onShowOrphansToggle={handleShowOrphansToggle}
         />
 
-        {/* ── Vizibilitate entități ── */}
-        <Pressable style={styles.sectionHeader} onPress={() => setEntitiesCollapsed(v => !v)}>
-          <RNText
-            style={[styles.sectionLabel, styles.sectionLabelInline, { color: C.textSecondary }]}
-          >
-            ENTITĂȚI ACTIVE
-          </RNText>
-          <Ionicons
-            name={entitiesCollapsed ? 'chevron-down' : 'chevron-up'}
-            size={14}
-            color={C.textSecondary}
-          />
-        </Pressable>
-        {!entitiesCollapsed && (
-          <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-            <RNText style={[styles.hint, { color: C.textSecondary }]}>
-              Alege ce tipuri de entități să apară în aplicație. Entitățile dezactivate nu vor
-              apărea în formulare sau liste.
-            </RNText>
-            {ALL_ENTITY_TYPES.map((entityType, idx) => {
-              const isActive = visibleEntityTypes.includes(entityType);
-              const isLast = idx === ALL_ENTITY_TYPES.length - 1;
-              return (
-                <RNView
-                  key={entityType}
-                  style={[isLast ? styles.rowLast : styles.row, { borderBottomColor: C.border }]}
-                >
-                  <RNView style={styles.rowLeft}>
-                    <RNView
-                      style={[styles.rowIcon, { backgroundColor: isActive ? '#E8F5E9' : C.border }]}
-                    >
-                      <RNText style={{ fontSize: 16 }}>{ENTITY_ICONS[entityType]}</RNText>
-                    </RNView>
-                    <RNText style={[styles.rowLabel, { color: C.text }]}>
-                      {ENTITY_LABELS[entityType]}
-                    </RNText>
-                  </RNView>
-                  <Switch
-                    value={isActive}
-                    onValueChange={() => handleToggleEntityType(entityType)}
-                    trackColor={{ false: C.border, true: primary }}
-                    thumbColor="#fff"
-                  />
-                </RNView>
-              );
-            })}
-          </RNView>
-        )}
+        <VizibilitateEntitatiSection
+          visibleEntityTypes={visibleEntityTypes}
+          collapsed={entitiesCollapsed}
+          scheme={scheme}
+          onToggleCollapsed={() => setEntitiesCollapsed(v => !v)}
+          onToggleEntityType={handleToggleEntityType}
+        />
 
-        {/* ── Vizibilitate tipuri documente ── */}
-        <Pressable style={styles.sectionHeader} onPress={() => setDocTypesCollapsed(v => !v)}>
-          <RNText
-            style={[styles.sectionLabel, styles.sectionLabelInline, { color: C.textSecondary }]}
-          >
-            TIPURI DOCUMENTE ACTIVE
-          </RNText>
-          <Ionicons
-            name={docTypesCollapsed ? 'chevron-down' : 'chevron-up'}
-            size={14}
-            color={C.textSecondary}
-          />
-        </Pressable>
-        {!docTypesCollapsed && (
-          <>
-            <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-              <RNText style={[styles.hint, { color: C.textSecondary }]}>
-                Alege ce tipuri de documente să apară în lista globală de adăugare. Când adaugi un
-                document direct pe o entitate (mașină, casă, persoană…), tipurile relevante pentru
-                acea entitate sunt mereu vizibile, indiferent de selecția de aici.
-              </RNText>
-              <RNView style={styles.chipRow}>
-                {STANDARD_DOC_TYPES.map(docType => {
-                  const isActive = visibleDocTypes.includes(docType);
-                  return (
-                    <Pressable
-                      key={docType}
-                      style={[
-                        styles.chip,
-                        isActive
-                          ? [styles.chipActive, { borderColor: primary }]
-                          : { borderColor: C.border },
-                      ]}
-                      onPress={() => handleToggleDocType(docType)}
-                    >
-                      <RNText
-                        style={[styles.chipText, { color: isActive ? '#fff' : C.textSecondary }]}
-                      >
-                        {DOCUMENT_TYPE_LABELS[docType]}
-                      </RNText>
-                    </Pressable>
-                  );
-                })}
-              </RNView>
-            </RNView>
-
-            {/* ── Tipuri personalizate de documente ── */}
-            <RNText style={[styles.sectionLabel, { color: C.textSecondary, marginTop: 16 }]}>
-              TIPURI PERSONALIZATE
-            </RNText>
-            <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-              <RNText style={[styles.hint, { color: C.textSecondary }]}>
-                Adaugă tipuri proprii de documente (ex: „Asigurare viață", „Concediu medical").
-                Tipurile de entități (Persoană, Vehicul, Proprietate etc.) sunt fixe și nu pot fi
-                modificate.
-              </RNText>
-              {customTypes.map((ct, idx) => (
-                <RNView
-                  key={ct.id}
-                  style={[
-                    styles.customTypeRow,
-                    { borderBottomColor: C.border },
-                    idx === customTypes.length - 1 && styles.customTypeRowLast,
-                  ]}
-                >
-                  <RNText style={[styles.customTypeName, { color: C.text }]}>{ct.name}</RNText>
-                  <Pressable onPress={() => handleDeleteCustomType(ct.id, ct.name)} hitSlop={8}>
-                    <Ionicons name="trash-outline" size={18} color={statusColors.critical} />
-                  </Pressable>
-                </RNView>
-              ))}
-              <RNView style={styles.addTypeRow}>
-                <TextInput
-                  style={[
-                    styles.addTypeInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.background },
-                  ]}
-                  placeholder="Nume tip nou (ex: Asigurare viață)"
-                  placeholderTextColor={C.textSecondary}
-                  value={newTypeName}
-                  onChangeText={setNewTypeName}
-                  returnKeyType="done"
-                  onSubmitEditing={handleAddCustomType}
-                />
-                <Pressable
-                  style={[styles.addTypeBtn, !newTypeName.trim() && styles.addTypeBtnDisabled]}
-                  onPress={handleAddCustomType}
-                  disabled={!newTypeName.trim()}
-                >
-                  <RNText style={styles.addTypeBtnText}>Adaugă</RNText>
-                </Pressable>
-              </RNView>
-            </RNView>
-          </>
-        )}
+        <VizibilitateDocTypesSection
+          visibleDocTypes={visibleDocTypes}
+          customTypes={customTypes}
+          collapsed={docTypesCollapsed}
+          newTypeName={newTypeName}
+          scheme={scheme}
+          onToggleCollapsed={() => setDocTypesCollapsed(v => !v)}
+          onToggleDocType={handleToggleDocType}
+          onChangeNewTypeName={setNewTypeName}
+          onAddCustomType={handleAddCustomType}
+          onDeleteCustomType={handleDeleteCustomType}
+        />
 
         {/* ── Backup ── */}
         <Pressable style={styles.sectionHeader} onPress={() => setBackupCollapsed(v => !v)}>
