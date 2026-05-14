@@ -68,6 +68,7 @@ import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useAutoActivateDocType } from '@/hooks/useAutoActivateDocType';
 import { AutoActivatedBanner } from '@/components/document/AutoActivatedBanner';
+import { DuplicateBanner } from '@/components/document/DuplicateBanner';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
@@ -1306,32 +1307,11 @@ export default function AddDocumentScreen() {
           />
         )}
 
-        {/* DUPLICAT */}
         {duplicateDoc && (
-          <Pressable
-            style={[
-              styles.duplicateBanner,
-              {
-                backgroundColor:
-                  scheme === 'dark' ? 'rgba(232,165,58,0.18)' : 'rgba(232,165,58,0.12)',
-                borderColor: statusColors.warning,
-              },
-            ]}
+          <DuplicateBanner
+            doc={duplicateDoc}
             onPress={() => router.push(`/(tabs)/documente/${duplicateDoc.id}`)}
-          >
-            <Text style={[styles.duplicateBannerTitle, { color: statusColors.warning }]}>
-              Document similar găsit
-            </Text>
-            <Text style={[styles.duplicateBannerBody, { color: C.text }]}>
-              Există deja un document de tip „
-              {DOCUMENT_TYPE_LABELS[duplicateDoc.type] ?? duplicateDoc.type}"
-              {duplicateDoc.issue_date ? ` din ${duplicateDoc.issue_date}` : ''} pentru această
-              entitate.
-            </Text>
-            <Text style={[styles.duplicateBannerLink, { color: statusColors.warning }]}>
-              Deschide documentul existent →
-            </Text>
-          </Pressable>
+          />
         )}
 
         {/* 2. TIP DOCUMENT */}
@@ -1829,23 +1809,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
-  duplicateBanner: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-  },
-  duplicateBannerTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  duplicateBannerBody: {
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  duplicateBannerLink: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
 });
