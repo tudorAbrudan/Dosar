@@ -39,6 +39,7 @@ import { AspectSection } from '@/components/settings/AspectSection';
 import { NotificariSection } from '@/components/settings/NotificariSection';
 import { VizibilitateEntitatiSection } from '@/components/settings/VizibilitateEntitatiSection';
 import { VizibilitateDocTypesSection } from '@/components/settings/VizibilitateDocTypesSection';
+import { BackupSection } from '@/components/settings/BackupSection';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -918,81 +919,16 @@ export default function SetariScreen() {
           onDeleteCustomType={handleDeleteCustomType}
         />
 
-        {/* ── Backup ── */}
-        <Pressable style={styles.sectionHeader} onPress={() => setBackupCollapsed(v => !v)}>
-          <RNText
-            style={[styles.sectionLabel, styles.sectionLabelInline, { color: C.textSecondary }]}
-          >
-            BACKUP ȘI RESTAURARE
-          </RNText>
-          <Ionicons
-            name={backupCollapsed ? 'chevron-down' : 'chevron-up'}
-            size={14}
-            color={C.textSecondary}
-          />
-        </Pressable>
-        {!backupCollapsed && (
-          <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-            <InfoRow
-              icon="cloud-outline"
-              iconBg="#E8F5E9"
-              iconColor={primary}
-              label="iCloud Backup"
-              sub="Backup automat în iCloud Drive"
-              onPress={() => router.push('/cloud-backup')}
-              scheme={scheme}
-            />
-            <RNText style={[styles.hint, { color: C.textSecondary }]}>
-              Exportă toate datele și pozele ca fișier ZIP și salvează-l în iCloud Drive sau Files.
-              La schimbarea telefonului, importă fișierul pentru a restaura complet datele și
-              pozele.
-            </RNText>
-            <Pressable
-              style={({ pressed }) => [
-                styles.btn,
-                { opacity: pressed || backupExporting ? 0.85 : 1 },
-              ]}
-              onPress={handleExportBackup}
-              disabled={backupExporting}
-            >
-              {backupExporting ? (
-                <ActivityIndicator size="small" color="#fff" style={styles.btnIcon} />
-              ) : (
-                <Ionicons
-                  name="cloud-upload-outline"
-                  size={18}
-                  color="#fff"
-                  style={styles.btnIcon}
-                />
-              )}
-              <RNText style={styles.btnText}>
-                {backupExporting ? 'Se exportă...' : 'Exportă backup (ZIP)'}
-              </RNText>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.btnOutline,
-                { borderColor: primary, opacity: pressed || backupImporting ? 0.85 : 1 },
-              ]}
-              onPress={handleImportBackup}
-              disabled={backupImporting}
-            >
-              {backupImporting ? (
-                <ActivityIndicator size="small" color={primary} style={styles.btnIcon} />
-              ) : (
-                <Ionicons
-                  name="cloud-download-outline"
-                  size={18}
-                  color={primary}
-                  style={styles.btnIcon}
-                />
-              )}
-              <RNText style={[styles.btnOutlineText, { color: primary }]}>
-                {backupImporting ? 'Se importă...' : 'Importă din fișier backup'}
-              </RNText>
-            </Pressable>
-          </RNView>
-        )}
+        <BackupSection
+          collapsed={backupCollapsed}
+          exporting={backupExporting}
+          importing={backupImporting}
+          scheme={scheme}
+          onToggleCollapsed={() => setBackupCollapsed(v => !v)}
+          onOpenCloudBackup={() => router.push('/cloud-backup')}
+          onExport={handleExportBackup}
+          onImport={handleImportBackup}
+        />
 
         <AsistentAiSection
           aiProviderType={aiProviderType}
