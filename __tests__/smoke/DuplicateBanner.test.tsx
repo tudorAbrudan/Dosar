@@ -34,7 +34,7 @@ describe('DuplicateBanner', () => {
   });
 
   it('omite data emiterii dacă nu există', () => {
-    const docNoDate = { ...baseDoc, issue_date: null };
+    const docNoDate: Document = { ...baseDoc, issue_date: undefined };
     const { queryByText } = render(<DuplicateBanner doc={docNoDate} onPress={() => {}} />);
     expect(queryByText(/2024/)).toBeNull();
   });
