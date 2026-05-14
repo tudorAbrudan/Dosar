@@ -28,6 +28,11 @@ import { PRIVACY_URL, SUPPORT_URL } from '@/constants/AppLinks';
 import { InfoRow } from '@/components/settings/InfoRow';
 import { LegalModal } from '@/components/settings/LegalModal';
 import { buildTermsText, buildPrivacyText } from '@/components/settings/legalTexts';
+import { OnboardingSection } from '@/components/settings/OnboardingSection';
+import { AboutSection } from '@/components/settings/AboutSection';
+import { AsistentAiSection } from '@/components/settings/AsistentAiSection';
+import { PrivacyGdprSection } from '@/components/settings/PrivacyGdprSection';
+import { ContactSection } from '@/components/settings/ContactSection';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1215,115 +1220,32 @@ export default function SetariScreen() {
           </RNView>
         )}
 
-        {/* ── Asistent AI ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>ASISTENT AI</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <InfoRow
-            icon="sparkles-outline"
-            iconBg="#EDE7F6"
-            iconColor="#4527A0"
-            label="Provider AI"
-            sub={
-              aiProvider.PROVIDER_DEFAULTS[aiProviderType].label +
-              (aiConsentGiven && (aiProviderType === 'builtin' || aiProviderType === 'external')
-                ? ' · Acord acordat'
-                : '')
-            }
-            onPress={() => {
-              setAiModalConsentChecked(aiConsentGiven);
-              setAiModalVisible(true);
-            }}
-            isLast
-            scheme={scheme}
-          />
-        </RNView>
+        <AsistentAiSection
+          aiProviderType={aiProviderType}
+          aiConsentGiven={aiConsentGiven}
+          scheme={scheme}
+          onOpenAiModal={() => {
+            setAiModalConsentChecked(aiConsentGiven);
+            setAiModalVisible(true);
+          }}
+        />
 
-        {/* ── GDPR – Date și confidențialitate ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>
-          DATE ȘI CONFIDENȚIALITATE
-        </RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <InfoRow
-            icon="shield-checkmark-outline"
-            iconBg="#E8F5E9"
-            iconColor={primary}
-            label="Politică de confidențialitate"
-            sub="Cum sunt protejate datele tale · local pe dispozitiv"
-            onPress={() => setPrivacyVisible(true)}
-            scheme={scheme}
-          />
-          <InfoRow
-            icon="document-text-outline"
-            iconBg="#E3F2FD"
-            iconColor="#1565C0"
-            label="Termeni și condiții"
-            onPress={() => setTermsVisible(true)}
-            scheme={scheme}
-          />
-          <RNView style={styles.rowLast}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#FCE4EC' }]}>
-                <Ionicons name="trash-outline" size={18} color="#C62828" />
-              </RNView>
-              <RNText style={[styles.rowLabel, { color: statusColors.critical }]}>
-                Șterge toate datele
-              </RNText>
-            </RNView>
-            <Pressable onPress={handleDeleteAllData} hitSlop={8}>
-              <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-            </Pressable>
-          </RNView>
-        </RNView>
+        <PrivacyGdprSection
+          scheme={scheme}
+          onShowPrivacy={() => setPrivacyVisible(true)}
+          onShowTerms={() => setTermsVisible(true)}
+          onDeleteAllData={handleDeleteAllData}
+        />
 
-        {/* ── Contact și suport ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>CONTACT ȘI SUPORT</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <InfoRow
-            icon="mail-outline"
-            iconBg="#E8EAF6"
-            iconColor="#283593"
-            label="Contactează suport aplicație"
-            sub={CONTACT_EMAIL}
-            onPress={openEmail}
-            scheme={scheme}
-          />
-          <InfoRow
-            icon="globe-outline"
-            iconBg="#E0F2F1"
-            iconColor="#00695C"
-            label="Site web și suport"
-            sub={SUPPORT_URL}
-            onPress={openSupportUrl}
-            scheme={scheme}
-          />
-          <InfoRow
-            icon="star-outline"
-            iconBg="#FFF8E1"
-            iconColor="#F57F17"
-            label="Evaluează aplicația"
-            sub="Ne ajuți cu o recenzie pe App Store"
-            onPress={() =>
-              Linking.openURL('itms-apps://itunes.apple.com/app/id6760576986?action=write-review')
-            }
-            isLast
-            scheme={scheme}
-          />
-        </RNView>
+        <ContactSection
+          contactEmail={CONTACT_EMAIL}
+          supportUrl={SUPPORT_URL}
+          scheme={scheme}
+          onContact={openEmail}
+          onOpenSupport={openSupportUrl}
+        />
 
-        {/* ── Onboarding ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>ONBOARDING</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <InfoRow
-            icon="rocket-outline"
-            iconBg="#E8F5E9"
-            iconColor={primary}
-            label="Reluare onboarding"
-            sub="Resetează vizibilitatea tipurilor de documente la valorile implicite"
-            onPress={handleResetOnboarding}
-            isLast
-            scheme={scheme}
-          />
-        </RNView>
+        <OnboardingSection scheme={scheme} onResetOnboarding={handleResetOnboarding} />
 
         {/* ── Diagnostic / ultimul crash ── */}
         {lastCrash && (
@@ -1376,38 +1298,13 @@ export default function SetariScreen() {
           </>
         )}
 
-        {/* ── Despre aplicație ── */}
-        <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>DESPRE APLICAȚIE</RNText>
-        <RNView style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
-          <RNView style={[styles.row, { borderBottomColor: C.border }]}>
-            <RNView style={styles.rowLeft}>
-              <RNView style={[styles.rowIcon, { backgroundColor: '#E8F5E9' }]}>
-                <Ionicons name="folder-outline" size={18} color={primary} />
-              </RNView>
-              <RNView style={styles.rowLabelWrap}>
-                <RNText style={[styles.rowLabel, { color: C.text }]}>{APP_NAME}</RNText>
-                <RNText style={[styles.rowSub, { color: C.textSecondary }]}>
-                  Local-first · OCR on-device · fără cont · React Native
-                </RNText>
-              </RNView>
-            </RNView>
-            <RNText
-              style={[styles.versionBadge, { color: C.textSecondary, borderColor: C.border }]}
-            >
-              v{APP_VERSION}
-            </RNText>
-          </RNView>
-          <InfoRow
-            icon="cloud-download-outline"
-            iconBg="#E3F2FD"
-            iconColor="#1565C0"
-            label="Verifică actualizări"
-            sub={checkingUpdate ? 'Se verifică...' : `Versiune curentă: ${APP_VERSION}`}
-            onPress={handleCheckForUpdate}
-            isLast
-            scheme={scheme}
-          />
-        </RNView>
+        <AboutSection
+          appName={APP_NAME}
+          appVersion={APP_VERSION}
+          checkingUpdate={checkingUpdate}
+          scheme={scheme}
+          onCheckForUpdate={handleCheckForUpdate}
+        />
 
         <RNView style={styles.bottomPad} />
       </ScrollView>
