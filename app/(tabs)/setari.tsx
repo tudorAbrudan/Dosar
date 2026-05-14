@@ -46,6 +46,7 @@ import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
 import { AiProviderSelector } from '@/components/settings/AiProviderSelector';
 import { AiExternalProviderConfig } from '@/components/settings/AiExternalProviderConfig';
 import { LocalModelSelector } from '@/components/settings/LocalModelSelector';
+import { AiConsentBar } from '@/components/settings/AiConsentBar';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1095,47 +1096,12 @@ export default function SetariScreen() {
             </Pressable>
           </RNView>
 
-          {/* Acord utilizare AI — fix sub action bar, vizibil fără scroll */}
-          {(aiProviderType === 'builtin' || aiProviderType === 'external') && (
-            <Pressable
-              style={[
-                styles.aiConsentBar,
-                {
-                  backgroundColor: C.card,
-                  borderBottomColor: C.border,
-                  borderTopColor: aiModalConsentChecked ? primary : C.border,
-                },
-              ]}
-              onPress={() => setAiModalConsentChecked(v => !v)}
-            >
-              <RNView
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 4,
-                  borderWidth: 2,
-                  borderColor: aiModalConsentChecked ? primary : C.border,
-                  backgroundColor: aiModalConsentChecked ? primary : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                {aiModalConsentChecked && <Ionicons name="checkmark" size={14} color="#fff" />}
-              </RNView>
-              <RNView style={{ flex: 1 }}>
-                <RNText style={[styles.aiToggleLabel, { color: C.text, fontSize: 13 }]}>
-                  {aiProviderType === 'builtin'
-                    ? 'Sunt de acord cu trimiterea datelor la serviciul Dosar AI'
-                    : 'Sunt de acord cu trimiterea datelor la serviciul AI configurat'}
-                </RNText>
-                <RNText style={[styles.aiToggleSub, { color: C.textSecondary, fontSize: 11 }]}>
-                  Acoperă: text OCR, entități, detalii documente, chat. PIN-ul nu este niciodată
-                  trimis.
-                </RNText>
-              </RNView>
-            </Pressable>
-          )}
+          <AiConsentBar
+            providerType={aiProviderType}
+            checked={aiModalConsentChecked}
+            scheme={scheme}
+            onToggle={() => setAiModalConsentChecked(v => !v)}
+          />
 
           <ScrollView
             style={styles.legalScroll}
