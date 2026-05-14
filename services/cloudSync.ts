@@ -44,34 +44,8 @@ const MANIFEST_VERSION = 2;
 export { CloudQuotaError, detectQuotaError } from './cloud/errors';
 import { CloudQuotaError, detectQuotaError } from './cloud/errors';
 export { formatBytes } from './cloud/format';
-
-interface CloudState {
-  last_manifest_hash: string | null;
-  last_manifest_uploaded_at: number | null;
-  last_snapshot_at: number | null;
-  device_id: string;
-}
-
-export async function getCloudState(): Promise<CloudState> {
-  const row = await db.getFirstAsync<CloudState>(
-    'SELECT last_manifest_hash, last_manifest_uploaded_at, last_snapshot_at, device_id FROM cloud_state WHERE id = 1'
-  );
-  if (!row) throw new Error('cloud_state not initialized');
-  return row;
-}
-
-export async function setCloudState(patch: Partial<CloudState>): Promise<void> {
-  const fields: string[] = [];
-  const values: (string | number | null)[] = [];
-  for (const key of Object.keys(patch) as (keyof CloudState)[]) {
-    const value = patch[key];
-    if (value === undefined) continue;
-    fields.push(`${key} = ?`);
-    values.push(value);
-  }
-  if (!fields.length) return;
-  await db.runAsync(`UPDATE cloud_state SET ${fields.join(', ')} WHERE id = 1`, values);
-}
+export { getCloudState, setCloudState } from './cloud/state';
+import { getCloudState, setCloudState } from './cloud/state';
 
 interface ManifestPayload {
   version: number;
@@ -598,46 +572,12 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
   }
 }
 
-/** Numărul de fișiere ne-sincronizate (`uploaded_at IS NULL` și `attempt_count < MAX`). */
-export async function getPendingCount(): Promise<number> {
-  const row = await db.getFirstAsync<{ c: number }>(
-    'SELECT COUNT(*) as c FROM pending_uploads WHERE uploaded_at IS NULL AND attempt_count < ?',
-    [MAX_ATTEMPTS]
-  );
-  return row?.c ?? 0;
-}
-
-/** Numărul de fișiere care au atins `MAX_ATTEMPTS` și nu mai sunt re-încercate. */
-export async function getFailedCount(): Promise<number> {
-  const row = await db.getFirstAsync<{ c: number }>(
-    'SELECT COUNT(*) as c FROM pending_uploads WHERE uploaded_at IS NULL AND attempt_count >= ?',
-    [MAX_ATTEMPTS]
-  );
-  return row?.c ?? 0;
-}
-
-/** Mărime estimată a fișierelor ne-sincronizate (în bytes). Folosit de UI ca să
- * afișeze cât are de urcat înainte și în timpul backup-ului. */
-export async function getPendingBytes(): Promise<number> {
-  const row = await db.getFirstAsync<{ s: number | null }>(
-    `SELECT COALESCE(SUM(file_size), 0) as s FROM pending_uploads
-     WHERE uploaded_at IS NULL AND attempt_count < ?`,
-    [MAX_ATTEMPTS]
-  );
-  return row?.s ?? 0;
-}
-
-/** Mărimea fișierului SQLite local. Nu include WAL-ul (rare > 1MB). */
-export async function getLocalDbSizeBytes(): Promise<number> {
-  try {
-    const info = await FileSystem.getInfoAsync(
-      `${FileSystem.documentDirectory}SQLite/documente.db`
-    );
-    return info.exists && 'size' in info && typeof info.size === 'number' ? info.size : 0;
-  } catch {
-    return 0;
-  }
-}
+export {
+  getPendingCount,
+  getFailedCount,
+  getPendingBytes,
+  getLocalDbSizeBytes,
+} from './cloud/stats';
 
 const SNAPSHOTS_PREFIX = `${CLOUD_ROOT}/snapshots/`;
 
