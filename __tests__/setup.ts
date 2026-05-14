@@ -47,11 +47,18 @@ jest.mock('expo-sqlite', () => ({
 jest.mock('expo-modules-core', () => ({
   requireNativeModule: jest.fn(() => ({})),
   requireOptionalNativeModule: jest.fn(() => null),
+  requireNativeViewManager: jest.fn(() => () => null),
   NativeModulesProxy: {},
   EventEmitter: jest.fn().mockImplementation(() => ({
     addListener: jest.fn(),
     removeAllListeners: jest.fn(),
   })),
+}));
+
+jest.mock('expo-clipboard', () => ({
+  setStringAsync: jest.fn().mockResolvedValue(true),
+  getStringAsync: jest.fn().mockResolvedValue(''),
+  hasStringAsync: jest.fn().mockResolvedValue(false),
 }));
 
 jest.mock('expo-crypto', () => ({

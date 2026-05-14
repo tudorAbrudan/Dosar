@@ -66,6 +66,7 @@ import type { FieldDef } from '@/types/documentFields';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
+import { useAutoActivateDocType } from '@/hooks/useAutoActivateDocType';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
@@ -144,7 +145,8 @@ export default function AddDocumentScreen() {
   } = useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const { visibleEntityTypes, visibleDocTypes, updateVisibleDocTypes } = useVisibilitySettings();
+  const { visibleEntityTypes } = useVisibilitySettings();
+  const { autoActivatedType, setAutoActivatedType, activateIfNeeded } = useAutoActivateDocType();
 
   const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'altul');
   // Marker: utilizatorul a fixat manual tipul (din params sau din picker).
@@ -173,7 +175,6 @@ export default function AddDocumentScreen() {
   const lastAiTextLengthRef = useRef(0);
   const [textAiConsentAvailable, setTextAiConsentAvailable] = useState(false);
   const [duplicateDoc, setDuplicateDoc] = useState<Document | null>(null);
-  const [autoActivatedType, setAutoActivatedType] = useState<DocumentType | null>(null);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const hasMountedRef = useRef(false);
 
@@ -181,12 +182,6 @@ export default function AddDocumentScreen() {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setTextAiConsentAvailable(v === 'true'));
   }, []);
 
-  // Auto-dismiss banner-ul de „tip activat automat" după 5s.
-  useEffect(() => {
-    if (!autoActivatedType) return;
-    const id = setTimeout(() => setAutoActivatedType(null), 5000);
-    return () => clearTimeout(id);
-  }, [autoActivatedType]);
 
   useFocusEffect(
     useCallback(() => {
@@ -552,23 +547,7 @@ export default function AddDocumentScreen() {
         setType(detectedType);
         setCustomTypeId(null);
         setMetadata({});
-
-        // Dacă tipul nu e activat în Setări, activează-l automat și anunță userul.
-        if (!contextVisibleDocTypes.includes(detectedType)) {
-          try {
-            const next = visibleDocTypes.includes(detectedType)
-              ? visibleDocTypes
-              : [...visibleDocTypes, detectedType];
-            if (next !== visibleDocTypes) {
-              await updateVisibleDocTypes(next);
-            }
-            setAutoActivatedType(detectedType);
-          } catch {
-            /* dacă persistarea setărilor eșuează, păstrăm tipul setat local */
-          }
-        } else {
-          setAutoActivatedType(null);
-        }
+        await activateIfNeeded(detectedType, contextVisibleDocTypes);
       }
 
       // Aplică câmpurile — AI-ul suprascrie câmpurile locale
