@@ -41,41 +41,9 @@ const MANIFEST_PATH = `${CLOUD_ROOT}/manifest.json`;
 const META_PATH = `${CLOUD_ROOT}/manifest.meta.json`;
 const MANIFEST_VERSION = 2;
 
-/**
- * Aruncată când iCloud Drive refuză scrierea fiindcă quota contului e plină.
- * Detectată din mesajul nativ (vezi `detectQuotaError`) și transformată în
- * eroare tipată pentru ca UI-ul să afișeze banner specific cu CTA către Setări iCloud.
- */
-export class CloudQuotaError extends Error {
-  constructor(
-    message = 'iCloud-ul tău nu mai are spațiu liber. Eliberează spațiu sau extinde planul iCloud și încearcă din nou.'
-  ) {
-    super(message);
-    this.name = 'CloudQuotaError';
-  }
-}
-
-/**
- * Heuristică pentru a recunoaște erorile de quota plină din `react-native-cloud-storage`.
- * iOS poate raporta în mai multe moduri: `NSFileWriteOutOfSpaceError` (cod 640),
- * mesaj URLSession ("not enough space"), POSIX `ENOSPC`, sau text generic „quota".
- * Match-ul pe string e fragil între versiuni iOS — actualizează lista când apare alt mesaj.
- */
-export function detectQuotaError(e: unknown): boolean {
-  if (!e) return false;
-  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
-  if (!msg) return false;
-  if (msg.includes('quota')) return true;
-  if (msg.includes('not enough space')) return true;
-  if (msg.includes('insufficient') && msg.includes('space')) return true;
-  if (msg.includes('no space left')) return true;
-  if (msg.includes('out of space')) return true;
-  if (msg.includes('storage is full') || msg.includes('storage full')) return true;
-  if (msg.includes('nsfilewriteoutofspaceerror')) return true;
-  if (msg.includes('enospc')) return true;
-  if (/\bcode\s*=?\s*640\b/.test(msg)) return true;
-  return false;
-}
+export { CloudQuotaError, detectQuotaError } from './cloud/errors';
+import { CloudQuotaError, detectQuotaError } from './cloud/errors';
+export { formatBytes } from './cloud/format';
 
 interface CloudState {
   last_manifest_hash: string | null;
@@ -305,15 +273,6 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function fileNameFromPath(relPath: string): string {
   return relPath.split('/').pop() ?? relPath;
-}
-
-/** Formatează bytes în KB/MB/GB cu 1 zecimală. Folosit în UI pentru progres
- * upload/download și estimare mărime backup. */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 /**
