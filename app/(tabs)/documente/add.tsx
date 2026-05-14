@@ -69,6 +69,7 @@ import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useAutoActivateDocType } from '@/hooks/useAutoActivateDocType';
 import { AutoActivatedBanner } from '@/components/document/AutoActivatedBanner';
 import { DuplicateBanner } from '@/components/document/DuplicateBanner';
+import { AiActionsRow } from '@/components/document/AiActionsRow';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
@@ -1270,35 +1271,12 @@ export default function AddDocumentScreen() {
             </Text>
           </View>
         )}
-        {(aiOcrLoading || llmFieldLoading) && (
-          <View style={styles.aiLoadingRow}>
-            <ActivityIndicator size="small" color={primary} style={{ marginRight: 6 }} />
-            <Text style={[styles.aiLoadingText, { color: C.textSecondary }]}>
-              {llmFieldLoading ? 'Analizez documentul cu AI...' : 'Analizez cu AI...'}
-            </Text>
-          </View>
-        )}
-        {textAiConsentAvailable && pages.length > 0 && !llmFieldLoading && (
-          <View>
-            <View style={styles.aiActionsRow}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.aiActionBtn,
-                  { borderColor: '#F57F17', opacity: pressed ? 0.75 : 1 },
-                ]}
-                onPress={handleAiImageAnalysis}
-              >
-                <Text style={[styles.aiActionBtnText, { color: '#F57F17' }]}>
-                  Trimite documentul la AI
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={[styles.aiActionInfo, { color: C.textSecondary }]}>
-              Se trimite imaginea/PDF-ul documentului la AI pentru extragerea datelor. Acțiune
-              manuală explicită.
-            </Text>
-          </View>
-        )}
+        <AiActionsRow
+          busy={aiOcrLoading || llmFieldLoading}
+          busyLabel={llmFieldLoading ? 'Analizez documentul cu AI...' : 'Analizez cu AI...'}
+          showAction={textAiConsentAvailable && pages.length > 0 && !llmFieldLoading}
+          onAction={handleAiImageAnalysis}
+        />
 
         {autoActivatedType && (
           <AutoActivatedBanner
@@ -1699,17 +1677,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   aiBadgeText: { fontSize: 13, fontWeight: '600' },
-  aiLoadingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  aiLoadingText: { fontSize: 12, fontStyle: 'italic' },
-  aiActionsRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
-  aiActionBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  aiActionBtnText: { fontSize: 13, fontWeight: '600' },
-  aiActionInfo: { fontSize: 11, marginTop: 4, lineHeight: 15 },
   selectedBadge: { color: primary },
   typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   typeChip: {
