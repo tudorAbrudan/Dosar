@@ -25,6 +25,9 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useThemePreference } from '@/hooks/useThemeScheme';
 import { PRIVACY_URL, SUPPORT_URL } from '@/constants/AppLinks';
+import { InfoRow } from '@/components/settings/InfoRow';
+import { LegalModal } from '@/components/settings/LegalModal';
+import { buildTermsText, buildPrivacyText } from '@/components/settings/legalTexts';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -69,166 +72,16 @@ const CONTACT_EMAIL = 'apps.tudor@gmail.com';
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 const APP_NAME = Constants.expoConfig?.name ?? 'Documente';
 
-// ─── Texte legale ─────────────────────────────────────────────────────────────
-const TERMS_TEXT = `TERMENI ȘI CONDIȚII DE UTILIZARE
-Versiunea 1.1 – Aprilie 2026
-
-1. ACCEPTAREA TERMENILOR
-Prin utilizarea aplicației ${APP_NAME}, acceptați acești termeni în totalitate. Dacă nu sunteți de acord, vă rugăm să nu utilizați aplicația.
-
-2. DESCRIEREA SERVICIULUI
-${APP_NAME} este o aplicație mobilă pentru gestionarea documentelor personale (acte de identitate, documente auto, proprietăți, carduri bancare, facturi etc.). Aplicația funcționează local-first – datele sunt stocate exclusiv pe dispozitivul dumneavoastră, fără cont online.
-
-ASISTENT AI OPȚIONAL: Aplicația include un asistent bazat pe inteligență artificială. Dacă alegeți să utilizați această funcție și vă dați acordul explicit în prealabil, anumite date (denumiri entități, tipuri documente, date de expirare și emitere, note, date de identificare ale documentelor) sunt transmise către serviciul AI configurat pentru procesare. Utilizarea asistentului AI este complet opțională; restul aplicației funcționează 100% offline.
-
-3. UTILIZARE PERMISĂ
-Aplicația este destinată exclusiv uzului personal și familial. Nu este permisă utilizarea comercială fără acordul scris al dezvoltatorului.
-
-4. RESPONSABILITATE
-Aplicația este furnizată „ca atare". Nu garantăm că aplicația va fi lipsită de erori. Utilizatorul este responsabil pentru efectuarea regulată de backup-uri ale datelor. Datele stocate sunt responsabilitatea exclusivă a utilizatorului.
-
-5. PROPRIETATE INTELECTUALĂ
-Aplicația și codul sursă sunt proprietatea dezvoltatorului. Pictogramele și fonturile sunt utilizate conform licențelor respective.
-
-6. BACKUP ȘI DATE
-Recomandăm exportul periodic al datelor folosind funcția Backup. Nu ne asumăm responsabilitatea pentru pierderea datelor cauzată de dezinstalarea aplicației, resetarea dispozitivului sau defecțiuni hardware.
-
-7. MODIFICĂRI
-Acești termeni pot fi actualizați. Versiunea curentă este disponibilă în aplicație și pe site-ul nostru.
-
-8. CONTACT
-Pentru orice întrebare: ${CONTACT_EMAIL}`;
-
-const PRIVACY_TEXT = `POLITICĂ DE CONFIDENȚIALITATE (GDPR)
-Versiunea 1.1 – Aprilie 2026
-
-1. IDENTITATEA OPERATORULUI
-${APP_NAME} este dezvoltată și operată de [Numele tău / Firma ta], cu sediul în România.
-Contact: ${CONTACT_EMAIL}
-
-2. CE DATE COLECTĂM ȘI UNDE LE STOCĂM
-${APP_NAME} stochează local, pe dispozitivul dumneavoastră:
-• Imagini și scan-uri ale documentelor personale
-• Date structurate: numere de documente, date de expirare, note personale
-• Informații despre entități (persoane, vehicule, proprietăți, carduri)
-
-Nu există server propriu, nu există cont de utilizator, nu există analiză de trafic, nu există reclame, nu există trackere.
-
-3. ASISTENT AI OPȚIONAL – SERVICIU TERȚ
-Dacă alegeți să utilizați funcția de asistent AI (chat sau scanare OCR), după acordul dumneavoastră explicit, anumite date sunt transmise către serviciul AI configurat (cloud extern):
-• Ce se trimite: textul extras din documente (OCR), denumiri entități (persoane, vehicule, proprietăți, carduri, animale), tipuri documente, date de expirare și emitere, note, date de identificare (serie acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri completate)
-• Ce NU se trimite: fotografii ale documentelor, numărul CVV, PIN-ul aplicației, datele sensibile
-• Puteți configura propriul provider AI (URL + cheie API) din Setări → Asistent AI
-• Transmiterea are loc EXCLUSIV cu consimțământul explicit acordat anterior
-• Consultați politica de confidențialitate a providerului AI ales
-
-4. TEMEIUL JURIDIC
-Procesăm datele în baza consimțământului dumneavoastră explicit (art. 6 alin. 1 lit. a GDPR). Pentru asistentul AI, consimțământul este solicitat explicit la configurare.
-
-5. CÂT TIMP PĂSTRĂM DATELE
-Datele rămân pe dispozitivul dumneavoastră atâta timp cât utilizați aplicația. La dezinstalare, toate datele sunt șterse automat de sistemul de operare. Datele transmise asistentului AI sunt procesate de providerul AI ales conform propriei politici de retenție.
-
-6. DREPTURILE DUMNEAVOASTRĂ (GDPR)
-Aveți dreptul la:
-• Acces – toate datele sunt vizibile direct în aplicație
-• Rectificare – puteți edita orice dată oricând
-• Ștergere – folosiți funcția „Șterge toate datele" din Setări
-• Portabilitate – exportați datele ca fișier ZIP din funcția Backup
-• Reconfigurare / dezactivare asistent AI – Setări → Asistent AI
-• Opoziție – dezinstalați aplicația
-
-7. BACKUP ÎN CLOUD
-Dacă utilizați funcția de export backup, fișierul ZIP ajunge în aplicația Files / iCloud Drive / Google Drive conform alegerii dumneavoastră. Politica de confidențialitate a acestor servicii le aparține.
-
-8. SECURITATE
-Datele sunt protejate prin:
-• Stocare locală (sandbox iOS/Android)
-• Opțional: blocare prin Face ID / Touch ID / PIN
-• Fișierele nu sunt accesibile altor aplicații
-
-9. CONTACT GDPR
-Pentru exercitarea drepturilor GDPR sau orice întrebare:
-Email: ${CONTACT_EMAIL}
-Site: ${PRIVACY_URL}`;
-
-// ─── Componente helper ────────────────────────────────────────────────────────
-
-interface InfoRowProps {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  iconBg: string;
-  iconColor: string;
-  label: string;
-  sub?: string;
-  onPress?: () => void;
-  isLast?: boolean;
-  scheme: 'light' | 'dark';
-}
-
-function InfoRow({ icon, iconBg, iconColor, label, sub, onPress, isLast, scheme }: InfoRowProps) {
-  const C = Colors[scheme];
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        isLast ? styles.rowLast : styles.row,
-        { borderBottomColor: C.border },
-        pressed && onPress && { opacity: 0.7 },
-      ]}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      <RNView style={styles.rowLeft}>
-        <RNView style={[styles.rowIcon, { backgroundColor: iconBg }]}>
-          <Ionicons name={icon} size={18} color={iconColor} />
-        </RNView>
-        <RNView style={styles.rowLabelWrap}>
-          <RNText style={[styles.rowLabel, { color: C.text }]}>{label}</RNText>
-          {sub ? <RNText style={[styles.rowSub, { color: C.textSecondary }]}>{sub}</RNText> : null}
-        </RNView>
-      </RNView>
-      {onPress && <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />}
-    </Pressable>
-  );
-}
-
-// ─── Modal cu text legal ──────────────────────────────────────────────────────
-
-interface LegalModalProps {
-  visible: boolean;
-  title: string;
-  content: string;
-  onClose: () => void;
-  scheme: 'light' | 'dark';
-}
-
-function LegalModal({ visible, title, content, onClose, scheme }: LegalModalProps) {
-  const C = Colors[scheme];
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <RNView style={[styles.legalContainer, { backgroundColor: C.background }]}>
-        <RNView
-          style={[styles.legalHeader, { backgroundColor: C.card, borderBottomColor: C.border }]}
-        >
-          <RNText style={[styles.legalTitle, { color: C.text }]}>{title}</RNText>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.legalClose}>
-            <Ionicons name="close" size={22} color={C.textSecondary} />
-          </Pressable>
-        </RNView>
-        <ScrollView
-          style={styles.legalScroll}
-          contentContainerStyle={styles.legalContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <RNText style={[styles.legalText, { color: C.text }]}>{content}</RNText>
-        </ScrollView>
-      </RNView>
-    </Modal>
-  );
-}
+const TERMS_TEXT = buildTermsText({
+  appName: APP_NAME,
+  contactEmail: CONTACT_EMAIL,
+  privacyUrl: PRIVACY_URL,
+});
+const PRIVACY_TEXT = buildPrivacyText({
+  appName: APP_NAME,
+  contactEmail: CONTACT_EMAIL,
+  privacyUrl: PRIVACY_URL,
+});
 
 // ─── Ecranul principal ────────────────────────────────────────────────────────
 
