@@ -41,6 +41,9 @@ import {
   type StoredMessage,
 } from '@/services/chatThreads';
 import { AI_CONSENT_KEY, isAiAvailable } from '@/services/aiProvider';
+import { SelectTextModal } from '@/components/chat/SelectTextModal';
+import { ConsentModal } from '@/components/chat/ConsentModal';
+import { RenameModal } from '@/components/chat/RenameModal';
 
 // ─── Mention types ─────────────────────────────────────────────────────────────
 
@@ -92,55 +95,6 @@ const LINK_REGEX = /\[ID:([^\]]+)\]|\[DOC:([^|]+)\|([^\]]+)\]|\[ENT:([^|]+)\|([^
 const WELCOME_CONTENT =
   'Bună! Pot răspunde la întrebări despre documentele tale. Ex: «Când expiră buletinul?», «Arată RCA-urile», «Ce documente am pentru Dacia Logan?»';
 
-// ─── Select Text Modal ─────────────────────────────────────────────────────────
-
-interface SelectTextModalProps {
-  visible: boolean;
-  text: string;
-  colors: typeof lightColors;
-  onClose: () => void;
-}
-
-function SelectTextModal({ visible, text, colors, onClose }: SelectTextModalProps) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopyAll() {
-    await Clipboard.setStringAsync(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.selectModalOverlay} onPress={onClose}>
-        <Pressable
-          style={[styles.selectModalBox, { backgroundColor: colors.surface }]}
-          onPress={e => e.stopPropagation()}
-        >
-          <View style={styles.selectModalHeader}>
-            <Text style={[styles.selectModalTitle, { color: colors.text }]}>Selectează text</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={[styles.selectModalClose, { color: colors.textSecondary }]}>✕</Text>
-            </Pressable>
-          </View>
-          <TextInput
-            style={[styles.selectModalInput, { color: colors.text, borderColor: colors.border }]}
-            value={text}
-            editable={false}
-            multiline
-            selectTextOnFocus
-          />
-          <Pressable
-            style={[styles.selectModalCopyBtn, { backgroundColor: colors.primary }]}
-            onPress={handleCopyAll}
-          >
-            <Text style={styles.selectModalCopyText}>{copied ? 'Copiat!' : 'Copiază tot'}</Text>
-          </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
 
 // ─── Message Bubble ────────────────────────────────────────────────────────────
 
@@ -298,136 +252,9 @@ function MessageBubble({
 
 // ─── Consent Modal ─────────────────────────────────────────────────────────────
 
-interface ConsentModalProps {
-  visible: boolean;
-  colors: typeof lightColors;
-  onAccept: () => void;
-  onDecline: () => void;
-}
-
-function ConsentModal({ visible, colors, onAccept, onDecline }: ConsentModalProps) {
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDecline}>
-      <View style={styles.consentOverlay}>
-        <View style={[styles.consentBox, { backgroundColor: colors.surface }]}>
-          <ScrollView
-            style={styles.consentScroll}
-            contentContainerStyle={styles.consentScrollContent}
-            showsVerticalScrollIndicator
-          >
-            <Text style={[styles.consentTitle, { color: colors.text }]}>
-              Asistent AI – Informații despre confidențialitate
-            </Text>
-            <Text style={[styles.consentBody, { color: colors.text }]}>
-              Pentru a răspunde la întrebările tale, asistentul trimite date din aplicație către{' '}
-              <Text style={{ fontWeight: '700' }}>serviciul AI configurat</Text> (cloud extern).
-            </Text>
-            <Text style={[styles.consentBody, { color: colors.text }]}>
-              <Text style={{ fontWeight: '700' }}>Ce date sunt trimise:</Text> numele entităților
-              (persoane, vehicule, proprietăți, carduri, animale), tipurile documentelor, datele de
-              expirare și emitere, notele atașate documentelor, date de identificare ale
-              documentelor (serie acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri
-              completate).
-            </Text>
-            <Text style={[styles.consentBody, { color: colors.text }]}>
-              <Text style={{ fontWeight: '700' }}>Ce NU este trimis:</Text> fotografiile
-              documentelor, numărul CVV, PIN-ul aplicației.
-            </Text>
-            <Text style={[styles.consentNote, { color: colors.textSecondary }]}>
-              Datele sunt procesate de providerul AI ales conform propriei politici de
-              confidențialitate. Consimțământul poate fi revocat oricând dezactivând providerul din
-              Setări → Asistent AI. Dacă nu dorești să partajezi aceste date, apasă „Nu accept".
-            </Text>
-          </ScrollView>
-          <View style={styles.consentButtons}>
-            <Pressable
-              style={[styles.consentBtn, styles.consentBtnDecline, { borderColor: colors.border }]}
-              onPress={onDecline}
-            >
-              <Text style={[styles.consentBtnText, { color: colors.text }]}>Nu accept</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.consentBtn,
-                styles.consentBtnAccept,
-                { backgroundColor: colors.primary },
-              ]}
-              onPress={onAccept}
-            >
-              <Text style={[styles.consentBtnText, { color: '#ffffff' }]}>Accept</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 // ─── Rename Modal ──────────────────────────────────────────────────────────────
 
-interface RenameModalProps {
-  visible: boolean;
-  initialName: string;
-  colors: typeof lightColors;
-  onConfirm: (name: string) => void;
-  onCancel: () => void;
-}
-
-function RenameModal({ visible, initialName, colors, onConfirm, onCancel }: RenameModalProps) {
-  const [name, setName] = useState(initialName);
-
-  useEffect(() => {
-    if (visible) setName(initialName);
-  }, [visible, initialName]);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.consentOverlay} onPress={onCancel}>
-        <Pressable
-          style={[styles.selectModalBox, { backgroundColor: colors.surface }]}
-          onPress={e => e.stopPropagation()}
-        >
-          <Text style={[styles.selectModalTitle, { color: colors.text }]}>
-            Redenumește conversația
-          </Text>
-          <TextInput
-            style={[
-              styles.renameInput,
-              {
-                color: colors.text,
-                borderColor: colors.border,
-                backgroundColor: colors.background,
-              },
-            ]}
-            value={name}
-            onChangeText={setName}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={() => name.trim() && onConfirm(name.trim())}
-          />
-          <View style={styles.consentButtons}>
-            <Pressable
-              style={[styles.consentBtn, styles.consentBtnDecline, { borderColor: colors.border }]}
-              onPress={onCancel}
-            >
-              <Text style={[styles.consentBtnText, { color: colors.text }]}>Anulează</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.consentBtn,
-                styles.consentBtnAccept,
-                { backgroundColor: colors.primary },
-              ]}
-              onPress={() => name.trim() && onConfirm(name.trim())}
-            >
-              <Text style={[styles.consentBtnText, { color: '#ffffff' }]}>Salvează</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
 
 // ─── Thread List ───────────────────────────────────────────────────────────────
 
