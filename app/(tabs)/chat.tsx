@@ -45,6 +45,7 @@ import { SelectTextModal } from '@/components/chat/SelectTextModal';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { ConsentModal } from '@/components/chat/ConsentModal';
 import { RenameModal } from '@/components/chat/RenameModal';
+import { ThreadList } from '@/components/chat/ThreadList';
 
 // ─── Mention types ─────────────────────────────────────────────────────────────
 
@@ -105,121 +106,6 @@ const WELCOME_CONTENT =
 // ─── Rename Modal ──────────────────────────────────────────────────────────────
 
 
-// ─── Thread List ───────────────────────────────────────────────────────────────
-
-interface ThreadListProps {
-  threads: ChatThread[];
-  colors: typeof lightColors;
-  insets: { top: number; bottom: number };
-  onSelect: (thread: ChatThread) => void;
-  onNew: () => void;
-  onRename: (thread: ChatThread) => void;
-  onDelete: (thread: ChatThread) => void;
-  loading: boolean;
-}
-
-function ThreadList({
-  threads,
-  colors,
-  insets,
-  onSelect,
-  onNew,
-  onRename,
-  onDelete,
-  loading,
-}: ThreadListProps) {
-  function formatTime(iso: string): string {
-    const d = new Date(iso);
-    const now = new Date();
-    const diff = now.getTime() - d.getTime();
-    if (diff < 60_000) return 'acum';
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} ore`;
-    return d.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit' });
-  }
-
-  return (
-    <View
-      style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}
-    >
-      {/* Header */}
-      <View style={[styles.threadListHeader, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.threadListTitle, { color: colors.text }]}>Conversații</Text>
-        <Pressable
-          style={[styles.newThreadBtn, { backgroundColor: colors.primary }]}
-          onPress={onNew}
-        >
-          <Text style={styles.newThreadBtnText}>+ Nouă</Text>
-        </Pressable>
-      </View>
-
-      {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : threads.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Nicio conversație</Text>
-          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            Apasă „+ Nouă" pentru a începe
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.threadScroll}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
-        >
-          {threads.map(thread => (
-            <Pressable
-              key={thread.id}
-              style={({ pressed }) => [
-                styles.threadCard,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-                pressed && { opacity: 0.85 },
-              ]}
-              onPress={() => onSelect(thread)}
-              onLongPress={() =>
-                Alert.alert(thread.name, 'Ce vrei să faci cu această conversație?', [
-                  { text: 'Redenumește', onPress: () => onRename(thread) },
-                  {
-                    text: 'Șterge',
-                    style: 'destructive',
-                    onPress: () => onDelete(thread),
-                  },
-                  { text: 'Anulează', style: 'cancel' },
-                ])
-              }
-            >
-              <View style={styles.threadCardContent}>
-                <View style={styles.threadCardLeft}>
-                  <Text style={[styles.threadCardName, { color: colors.text }]} numberOfLines={1}>
-                    {thread.name}
-                  </Text>
-                  {thread.lastMessage && (
-                    <Text
-                      style={[styles.threadCardPreview, { color: colors.textSecondary }]}
-                      numberOfLines={1}
-                    >
-                      {thread.lastMessage}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.threadCardRight}>
-                  <Text style={[styles.threadCardTime, { color: colors.textSecondary }]}>
-                    {formatTime(thread.updated_at)}
-                  </Text>
-                  <Text style={[styles.threadCardCount, { color: colors.textSecondary }]}>
-                    {thread.messageCount} msg
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-    </View>
-  );
-}
 
 // ─── Conversation View ─────────────────────────────────────────────────────────
 
