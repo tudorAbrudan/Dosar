@@ -43,6 +43,7 @@ import { BackupSection } from '@/components/settings/BackupSection';
 import { LocalModelWarningBanner } from '@/components/settings/LocalModelWarningBanner';
 import { LocalModelCatalog } from '@/components/settings/LocalModelCatalog';
 import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
+import { AiProviderSelector } from '@/components/settings/AiProviderSelector';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1184,38 +1185,12 @@ export default function SetariScreen() {
               </RNView>
             )}
 
-            {/* Selector AI unificat */}
+            <AiProviderSelector
+              selected={aiProviderType}
+              scheme={scheme}
+              onSelect={handleAiProviderSelect}
+            />
             <RNView>
-              <RNText style={[styles.aiLabel, { color: C.textSecondary }]}>
-                Configurare asistent AI
-              </RNText>
-              {(['none', 'builtin', 'external'] as AiProviderType[]).map(type => (
-                <Pressable
-                  key={type}
-                  style={[
-                    styles.aiRadioRow,
-                    {
-                      borderColor: aiProviderType === type ? primary : C.border,
-                      backgroundColor: C.card,
-                    },
-                  ]}
-                  onPress={() => handleAiProviderSelect(type)}
-                >
-                  <RNView
-                    style={[
-                      styles.aiRadioDot,
-                      { borderColor: aiProviderType === type ? primary : C.border },
-                    ]}
-                  >
-                    {aiProviderType === type && (
-                      <RNView style={[styles.aiRadioDotInner, { backgroundColor: primary }]} />
-                    )}
-                  </RNView>
-                  <RNText style={[styles.chipText, { color: C.text, flex: 1 }]}>
-                    {aiProvider.PROVIDER_DEFAULTS[type].label}
-                  </RNText>
-                </Pressable>
-              ))}
               {/* Câmpuri pentru external — inline sub selecție */}
               {aiProviderType === 'external' && (
                 <RNView style={{ gap: 12, marginTop: 8 }}>
