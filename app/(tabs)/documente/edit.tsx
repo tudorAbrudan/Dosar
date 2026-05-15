@@ -3,14 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   StyleSheet,
   ScrollView,
-  Image,
   Alert,
   Pressable,
   ActivityIndicator,
-  Modal,
-  StatusBar,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
@@ -28,6 +24,7 @@ import { RETENTION_OPTIONS, retentionLabel } from '@/services/documentRetention'
 import { DatePickerField } from '@/components/DatePickerField';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
+import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import {
   getDocumentById,
   updateDocument,
@@ -95,7 +92,6 @@ export default function EditDocumentScreen() {
     animals,
     resolveEntityName,
   } = useEntities();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loadingDoc, setLoadingDoc] = useState(true);
@@ -1125,34 +1121,7 @@ export default function EditDocumentScreen() {
       </FormPageScreen>
 
       {/* Fullscreen modal */}
-      <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.fsOverlay}>
-          <StatusBar hidden />
-          <ScrollView
-            key={fullscreenUri}
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.fsScrollContent}
-            maximumZoomScale={6}
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            centerContent
-            bouncesZoom
-          >
-            {fullscreenUri && (
-              <Image
-                key={fullscreenUri}
-                source={{ uri: fullscreenUri }}
-                style={{ width: screenWidth, height: screenHeight }}
-                resizeMode="contain"
-              />
-            )}
-          </ScrollView>
-          <Pressable style={styles.fsCloseBtn} onPress={() => setFullscreenUri(null)}>
-            <Text style={styles.fsCloseBtnText}>✕</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
 
       {/* Link entity overlay */}
       {linkEntityVisible && (
@@ -1402,21 +1371,6 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   chipsScroll: { marginBottom: 20 },
   chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  // Fullscreen
-  fsOverlay: { flex: 1, backgroundColor: '#000' },
-  fsScrollContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  fsCloseBtn: {
-    position: 'absolute',
-    top: 52,
-    right: 20,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
   // Entity overlay
   overlay: {
     position: 'absolute',

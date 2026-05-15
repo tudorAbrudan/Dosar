@@ -67,6 +67,7 @@ import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
 import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
 import { buildDocumentPdfHtml, slugifyForPdfFilename } from '@/services/documentPdfExport';
+import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
@@ -1151,34 +1152,7 @@ export default function DocumentDetailScreen() {
         </View>
       </Modal>
 
-      <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.fsOverlay}>
-          <StatusBar hidden />
-          <ScrollView
-            key={fullscreenUri}
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.fsScrollContent}
-            maximumZoomScale={6}
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            centerContent
-            bouncesZoom
-          >
-            {fullscreenUri && (
-              <Image
-                key={fullscreenUri}
-                source={{ uri: fullscreenUri }}
-                style={{ width: screenWidth, height: screenHeight }}
-                resizeMode="contain"
-              />
-            )}
-          </ScrollView>
-          <Pressable style={styles.fsCloseBtn} onPress={() => setFullscreenUri(null)}>
-            <Text style={styles.fsCloseBtnText}>✕</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
     </View>
   );
 }

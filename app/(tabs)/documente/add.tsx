@@ -4,12 +4,7 @@ import {
   Pressable,
   ScrollView,
   Alert,
-  Image,
-  ActivityIndicator,
   Platform,
-  Modal,
-  StatusBar,
-  useWindowDimensions,
   InteractionManager,
 } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -82,6 +77,7 @@ import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
 import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
+import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
@@ -189,7 +185,6 @@ export default function AddDocumentScreen() {
 
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Entity picker state
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>(() => {
@@ -1569,34 +1564,7 @@ export default function AddDocumentScreen() {
         onConfirm={t => resolveClassifySheet(t)}
       />
 
-      <Modal visible={!!fullscreenUri} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.fsOverlay}>
-          <StatusBar hidden />
-          <ScrollView
-            key={fullscreenUri}
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.fsScrollContent}
-            maximumZoomScale={6}
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            centerContent
-            bouncesZoom
-          >
-            {fullscreenUri && (
-              <Image
-                key={fullscreenUri}
-                source={{ uri: fullscreenUri }}
-                style={{ width: screenWidth, height: screenHeight }}
-                resizeMode="contain"
-              />
-            )}
-          </ScrollView>
-          <Pressable style={styles.fsCloseBtn} onPress={() => setFullscreenUri(null)}>
-            <Text style={styles.fsCloseBtnText}>✕</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
     </>
   );
 }
@@ -1698,18 +1666,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  fsOverlay: { flex: 1, backgroundColor: '#000' },
-  fsScrollContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  fsCloseBtn: {
-    position: 'absolute',
-    top: 52,
-    right: 20,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
 });
