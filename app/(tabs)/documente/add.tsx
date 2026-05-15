@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -21,8 +20,7 @@ import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary, primaryMuted, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
-import { greys } from '@/theme/iconColors';
+import { primary, primaryMuted, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { scheduleExpirationReminders } from '@/services/notifications';
@@ -78,6 +76,7 @@ import type { ClassifyCandidate } from '@/services/aiClassifier';
 import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
+import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
@@ -1400,28 +1399,11 @@ export default function AddDocumentScreen() {
         />
 
         {/* 6b. NOTĂ PRIVATĂ — nu se trimite la AI */}
-        <View style={styles.privateLabelRow}>
-          <Ionicons name="lock-closed" size={14} color={sensitive} />
-          <Text style={[styles.label, { color: sensitive, opacity: 1 }]}>
-            Notă privată (opțional)
-          </Text>
-        </View>
-        <Text style={[styles.privateHint, { color: C.textSecondary }]}>
-          Rămâne pe acest telefon. Nu se trimite niciodată la asistentul AI. Potrivită pentru CVV,
-          PIN, parole, coduri de acces.
-        </Text>
-        <ThemedTextInput
-          style={[styles.input, styles.inputMultiline, styles.privateInput]}
-          placeholder="Ex. CVV 123 · PIN 4821"
-          placeholderTextColor={greys.text999}
+        <PrivateNotesField
           value={privateNotes}
-          onChangeText={setPrivateNotes}
-          multiline
-          scrollEnabled
+          scheme={scheme}
           editable={!loading}
-          secureTextEntry={false}
-          autoCorrect={false}
-          autoCapitalize="none"
+          onChange={setPrivateNotes}
         />
 
         {/* 7. LEAGĂ DE ENTITATE */}

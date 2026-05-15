@@ -16,16 +16,16 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Ionicons } from '@expo/vector-icons';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
-import { primary, primaryMuted, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { primary, primaryMuted, statusColors, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import { iconColors, greys } from '@/theme/iconColors';
 import { DatePickerField } from '@/components/DatePickerField';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
+import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import {
   getDocumentById,
   updateDocument,
@@ -1071,26 +1071,11 @@ export default function EditDocumentScreen() {
         />
 
         {/* 7b. NOTĂ PRIVATĂ — nu se trimite la AI */}
-        <View style={styles.privateLabelRow}>
-          <Ionicons name="lock-closed" size={14} color={sensitive} />
-          <Text style={[styles.label, { color: sensitive, opacity: 1 }]}>
-            Notă privată (opțional)
-          </Text>
-        </View>
-        <Text style={[styles.privateHint, { color: colors.text }]}>
-          Rămâne pe acest telefon. Nu se trimite niciodată la asistentul AI. Potrivită pentru CVV,
-          PIN, parole, coduri de acces.
-        </Text>
-        <ThemedTextInput
-          style={[styles.input, styles.inputMultiline, styles.privateInput]}
-          placeholder="Ex. CVV 123 · PIN 4821"
-          placeholderTextColor={greys.text999}
+        <PrivateNotesField
           value={privateNotes}
-          onChangeText={setPrivateNotes}
-          multiline
+          scheme={scheme}
           editable={!saving}
-          autoCorrect={false}
-          autoCapitalize="none"
+          onChange={setPrivateNotes}
         />
       </FormPageScreen>
 
