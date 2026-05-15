@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, onPrimary, statusColors } from '@/theme/colors';
+import { light, dark, primary, onPrimary } from '@/theme/colors';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
 import {
   estimateRestoreSize,
@@ -41,15 +41,9 @@ import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
 import { CloudPasswordModal, type CloudPasswordModalMode } from '@/components/CloudPasswordModal';
 import { QuotaExceededBanner } from '@/components/cloud/QuotaExceededBanner';
 import { CloudStatusCard } from '@/components/cloud/CloudStatusCard';
+import { SnapshotFrequencyPicker } from '@/components/cloud/SnapshotFrequencyPicker';
+import { SnapshotRetentionStepper } from '@/components/cloud/SnapshotRetentionStepper';
 import type { SnapshotFrequency } from '@/types';
-
-const FREQUENCY_OPTIONS: { value: SnapshotFrequency; label: string }[] = [
-  { value: 'off', label: 'Dezactivat' },
-  { value: 'daily', label: 'Zilnic' },
-  { value: 'every3days', label: 'La 3 zile' },
-  { value: 'weekly', label: 'Săptămânal' },
-  { value: 'monthly', label: 'Lunar' },
-];
 
 export default function CloudBackupScreen() {
   const scheme = useColorScheme();
@@ -352,91 +346,28 @@ export default function CloudBackupScreen() {
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
           FRECVENȚĂ SNAPSHOT
         </Text>
-        <View
-          style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
-        >
-          {!loaded ? (
-            <View style={styles.skeletonRow}>
-              <ActivityIndicator size="small" color={primary} />
-            </View>
-          ) : (
-            FREQUENCY_OPTIONS.map((opt, idx) => {
-              const selected = freq === opt.value;
-              const isLast = idx === FREQUENCY_OPTIONS.length - 1;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => handleFrequency(opt.value)}
-                  style={({ pressed }) => [
-                    styles.optionRow,
-                    !isLast && {
-                      borderBottomColor: palette.border,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                    },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.optionLabel, { color: palette.text }]}>{opt.label}</Text>
-                  {selected ? <Ionicons name="checkmark" size={20} color={primary} /> : null}
-                </Pressable>
-              );
-            })
-          )}
-        </View>
+        <SnapshotFrequencyPicker
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          value={freq}
+          loading={!loaded}
+          onChange={handleFrequency}
+        />
 
         {/* ── Retenție snapshot ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
           NUMĂR SNAPSHOT-URI PĂSTRATE
         </Text>
-        <View
-          style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
-        >
-          {!loaded ? (
-            <View style={styles.skeletonRow}>
-              <ActivityIndicator size="small" color={primary} />
-            </View>
-          ) : (
-            <>
-              <View style={styles.retentionRow}>
-                <Text style={[styles.toggleLabel, { color: palette.text }]}>
-                  Păstrează ultimele
-                </Text>
-                <View style={styles.stepperRow}>
-                  <Pressable
-                    onPress={() => handleRetention(-1)}
-                    disabled={retention <= 1}
-                    style={({ pressed }) => [
-                      styles.stepperBtn,
-                      { borderColor: palette.border },
-                      pressed && { opacity: 0.6 },
-                      retention <= 1 && { opacity: 0.4 },
-                    ]}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="remove" size={18} color={palette.text} />
-                  </Pressable>
-                  <Text style={[styles.retText, { color: palette.text }]}>{retention}</Text>
-                  <Pressable
-                    onPress={() => handleRetention(1)}
-                    disabled={retention >= 20}
-                    style={({ pressed }) => [
-                      styles.stepperBtn,
-                      { borderColor: palette.border },
-                      pressed && { opacity: 0.6 },
-                      retention >= 20 && { opacity: 0.4 },
-                    ]}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="add" size={18} color={palette.text} />
-                  </Pressable>
-                </View>
-              </View>
-              <Text style={[styles.hint, { color: palette.textSecondary }]}>
-                Snapshot-urile mai vechi sunt șterse automat din iCloud.
-              </Text>
-            </>
-          )}
-        </View>
+        <SnapshotRetentionStepper
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          value={retention}
+          loading={!loaded}
+          onChange={handleRetention}
+        />
+        {loaded && (
+          <Text style={[styles.hint, { color: palette.textSecondary, marginTop: -4 }]}>
+            Snapshot-urile mai vechi sunt șterse automat din iCloud.
+          </Text>
+        )}
 
         {/* ── Criptare backup ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>CRIPTARE BACKUP</Text>
@@ -582,37 +513,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     textTransform: 'uppercase',
   },
-
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-  },
-  optionLabel: { fontSize: 15 },
-
-  skeletonRow: {
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  retentionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  stepperBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retText: { fontSize: 16, fontWeight: '600', minWidth: 24, textAlign: 'center' },
 
   hint: { fontSize: 12, lineHeight: 18, marginTop: 8 },
 
