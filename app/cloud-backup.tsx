@@ -43,6 +43,7 @@ import { QuotaExceededBanner } from '@/components/cloud/QuotaExceededBanner';
 import { CloudStatusCard } from '@/components/cloud/CloudStatusCard';
 import { SnapshotFrequencyPicker } from '@/components/cloud/SnapshotFrequencyPicker';
 import { SnapshotRetentionStepper } from '@/components/cloud/SnapshotRetentionStepper';
+import { EncryptionSettingsCard } from '@/components/cloud/EncryptionSettingsCard';
 import type { SnapshotFrequency } from '@/types';
 
 export default function CloudBackupScreen() {
@@ -371,40 +372,13 @@ export default function CloudBackupScreen() {
 
         {/* ── Criptare backup ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>CRIPTARE BACKUP</Text>
-        <View
-          style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
-        >
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleTextWrap}>
-              <Text style={[styles.toggleLabel, { color: palette.text }]}>
-                Criptează backup-ul cu parolă
-              </Text>
-              <Text style={[styles.toggleSub, { color: palette.textSecondary }]}>
-                Doar tu poți decripta. Dacă uiți parola, datele sunt pierdute.
-              </Text>
-            </View>
-            <Switch
-              value={encryptionEnabled}
-              onValueChange={handleEncryptionToggle}
-              disabled={!loaded}
-              trackColor={{ false: palette.border, true: primary }}
-              thumbColor={onPrimary}
-            />
-          </View>
-          {encryptionEnabled ? (
-            <Pressable
-              onPress={handleChangePassword}
-              style={({ pressed }) => [
-                styles.btnOutline,
-                { borderColor: primary, marginTop: 12 },
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Ionicons name="key-outline" size={18} color={primary} style={styles.btnIcon} />
-              <Text style={[styles.btnOutlineText, { color: primary }]}>Schimbă parola</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <EncryptionSettingsCard
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          enabled={encryptionEnabled}
+          loaded={loaded}
+          onToggle={handleEncryptionToggle}
+          onChangePassword={handleChangePassword}
+        />
 
         {/* ── Acțiuni ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>ACȚIUNI</Text>
