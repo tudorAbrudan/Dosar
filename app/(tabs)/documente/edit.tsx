@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  StyleSheet,
-  Alert,
-  Pressable,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { StyleSheet, Alert, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -75,22 +69,14 @@ import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useEntities } from '@/hooks/useEntities';
 import { EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 
-
 export default function EditDocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const {
-    companies,
-    persons,
-    properties,
-    vehicles,
-    cards,
-    animals,
-    resolveEntityName,
-  } = useEntities();
+  const { companies, persons, properties, vehicles, cards, animals, resolveEntityName } =
+    useEntities();
 
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loadingDoc, setLoadingDoc] = useState(true);
@@ -100,11 +86,7 @@ export default function EditDocumentScreen() {
   const [aiOcrApplied, setAiOcrApplied] = useState(false);
   const [llmFieldLoading, setLlmFieldLoading] = useState(false);
   const [textAiConsentAvailable, setTextAiConsentAvailable] = useState(false);
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
-
-  function handleFullscreen(uri: string) {
-    setFullscreenUri(uri);
-  }
+  const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
   const [linkEntityVisible, setLinkEntityVisible] = useState(false);
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
@@ -214,6 +196,16 @@ export default function EditDocumentScreen() {
       })),
     [allPages, rotatedUris]
   );
+
+  const fullscreenPhotos = useMemo(
+    () => photoPages.filter(p => !isPdfFile(p.uri) && !isPdfFile(p.id)),
+    [photoPages]
+  );
+
+  function handleFullscreen(uri: string) {
+    const idx = fullscreenPhotos.findIndex(p => p.uri === uri);
+    if (idx >= 0) setFullscreenIndex(idx);
+  }
 
   // ── Photo management (immediate, persists to DB) ─────────────────────────
 
@@ -936,7 +928,11 @@ export default function EditDocumentScreen() {
       </FormPageScreen>
 
       {/* Fullscreen modal */}
-      <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
+      <FullscreenPhotoModal
+        photos={fullscreenPhotos}
+        initialIndex={fullscreenIndex}
+        onClose={() => setFullscreenIndex(null)}
+      />
 
       {/* Link entity overlay */}
       <LinkEntityOverlay

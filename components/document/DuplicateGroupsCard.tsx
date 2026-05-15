@@ -2,8 +2,8 @@
  * Card afișat în detaliul documentului când există duplicate detectate.
  * Două secțiuni:
  *   1. „Fișier identic" (byHash) — match exact pe SHA-256
- *   2. „Același tip și entitate" (byTypeAndEntity) — sau, pentru tipuri
- *      repetabile (facturi), „Același tip + aceeași dată de emitere"
+ *   2. „Conținut similar" (byOcrPrefix) — primii ~500 de caractere ai OCR-ului
+ *      normalizați coincid + cel puțin o entitate comună
  *
  * Extras din `documente/[id].tsx`.
  */
@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import Colors from '@/constants/Colors';
 import { sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
-import { getDocumentLabel, REPEATABLE_DOC_TYPES } from '@/types';
+import { getDocumentLabel } from '@/types';
 import type { Document, CustomDocumentType } from '@/types';
 import type { DocumentDuplicates } from '@/services/documents';
 
@@ -26,19 +26,16 @@ interface DuplicateGroupsCardProps {
 
 export function DuplicateGroupsCard({
   scheme,
-  doc,
   duplicates,
   customTypes,
   onOpenDocument,
 }: DuplicateGroupsCardProps) {
   const C = Colors[scheme];
-  if (duplicates.byHash.length === 0 && duplicates.byTypeAndEntity.length === 0) {
+  if (duplicates.byHash.length === 0 && duplicates.byOcrPrefix.length === 0) {
     return null;
   }
 
-  const byTypeLabel = REPEATABLE_DOC_TYPES.has(doc.type)
-    ? `Același tip + aceeași dată de emitere (${duplicates.byTypeAndEntity.length})`
-    : `Același tip și entitate (${duplicates.byTypeAndEntity.length})`;
+  const byOcrLabel = `Conținut similar (${duplicates.byOcrPrefix.length})`;
 
   return (
     <View style={styles.box}>
@@ -64,10 +61,10 @@ export function DuplicateGroupsCard({
           ))}
         </View>
       )}
-      {duplicates.byTypeAndEntity.length > 0 && (
+      {duplicates.byOcrPrefix.length > 0 && (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: C.textSecondary }]}>{byTypeLabel}</Text>
-          {duplicates.byTypeAndEntity.map(d => (
+          <Text style={[styles.sectionLabel, { color: C.textSecondary }]}>{byOcrLabel}</Text>
+          {duplicates.byOcrPrefix.map(d => (
             <Pressable key={d.id} style={styles.row} onPress={() => onOpenDocument(d.id)}>
               <Text style={[styles.rowText, { color: C.text }]} numberOfLines={1}>
                 {getDocumentLabel(d, customTypes)}

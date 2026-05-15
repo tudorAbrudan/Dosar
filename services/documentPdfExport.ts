@@ -176,10 +176,10 @@ function buildHtmlShell(args: {
   .meta-footer {
     margin-top: 8mm; padding-top: 3mm;
     border-top: 0.5px solid #e2ebd4;
-    display: flex; flex-direction: column; gap: 1mm;
-    font-size: 8px; color: #bbb;
+    display: flex; flex-direction: column; gap: 1.5mm;
+    font-size: 11px; color: #888;
   }
-  .meta-footer-brand { color: #1a1a1a; font-weight: 700; }
+  .meta-footer-brand { color: #1a1a1a; font-weight: 700; letter-spacing: -0.02em; }
 </style></head><body>
 
   ${imgTags.join('\n')}

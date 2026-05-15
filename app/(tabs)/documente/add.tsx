@@ -1,11 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  StyleSheet,
-  Pressable,
-  Alert,
-  Platform,
-  InteractionManager,
-} from 'react-native';
+import { StyleSheet, Pressable, Alert, Platform, InteractionManager } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
@@ -75,7 +69,11 @@ import { EntityLinkPicker } from '@/components/document/EntityLinkPicker';
 import { DocTypePicker } from '@/components/document/DocTypePicker';
 import { DocumentMetadataFields } from '@/components/document/DocumentMetadataFields';
 import { scanDocumentPages } from '@/services/documentScanner';
-import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
+import {
+  saveImageAsPage,
+  saveScannedPagesBatch,
+  savePdfAsPage,
+} from '@/services/documentPageStorage';
 
 function isValidEntityType(v: string | undefined): v is EntityType {
   return typeof v === 'string' && (ALL_ENTITY_TYPES as string[]).includes(v);
@@ -83,7 +81,6 @@ function isValidEntityType(v: string | undefined): v is EntityType {
 
 /** Prag confidence pentru auto-set tip după AI classify. Sub valoare → întrebăm userul. */
 const CLASSIFY_CONFIDENCE_AUTO_THRESHOLD = 0.75;
-
 
 // Build universe of types ONCE at module load. Filtered later prin
 // useFilteredDocTypes() la randare; aici e legitim să iterăm peste sursă.
@@ -113,15 +110,8 @@ export default function AddDocumentScreen() {
     entityType?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const {
-    persons,
-    properties,
-    vehicles,
-    cards,
-    animals,
-    companies,
-    resolveEntityName,
-  } = useEntities();
+  const { persons, properties, vehicles, cards, animals, companies, resolveEntityName } =
+    useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes } = useVisibilitySettings();
@@ -161,7 +151,6 @@ export default function AddDocumentScreen() {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setTextAiConsentAvailable(v === 'true'));
   }, []);
 
-
   useFocusEffect(
     useCallback(() => {
       if (!hasMountedRef.current) {
@@ -172,7 +161,7 @@ export default function AddDocumentScreen() {
     }, [])
   );
 
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
 
   // Entity picker state
@@ -226,10 +215,10 @@ export default function AddDocumentScreen() {
       setDuplicateDoc(null);
       return;
     }
-    findDuplicateDocument(type, customTypeId ?? undefined, entityLinks, issueDate || undefined)
+    findDuplicateDocument(entityLinks, liveOcrText || undefined)
       .then(setDuplicateDoc)
       .catch(() => setDuplicateDoc(null));
-  }, [type, customTypeId, entityLinks, issueDate]);
+  }, [entityLinks, liveOcrText]);
 
   // Pre-completează data expirării ITP din talonul vehiculului (dacă există)
   useEffect(() => {
@@ -252,6 +241,16 @@ export default function AddDocumentScreen() {
 
   // PhotoPage array for DocumentPhotoSection (uses localPath as id)
   const photoPages: PhotoPage[] = pages.map(p => ({ id: p.localPath, uri: p.uri }));
+
+  const fullscreenPhotos = useMemo(
+    () => photoPages.filter(p => !isPdfFile(p.uri) && !isPdfFile(p.id)),
+    [photoPages]
+  );
+
+  function handleFullscreen(uri: string) {
+    const idx = fullscreenPhotos.findIndex(p => p.uri === uri);
+    if (idx >= 0) setFullscreenIndex(idx);
+  }
 
   // Marchează tipul ca fiind setat manual de utilizator (din picker)
   // și actualizează state-ul. Folosit la handler-ele picker-ului de tip.
@@ -1018,9 +1017,7 @@ export default function AddDocumentScreen() {
         type,
         custom_type_id: type === 'custom' ? (customTypeId ?? undefined) : undefined,
         issue_date: issueDateRef.current.trim() || undefined,
-        expiry_date: !isNoExpiryType(type)
-          ? expiryDateRef.current.trim() || undefined
-          : undefined,
+        expiry_date: !isNoExpiryType(type) ? expiryDateRef.current.trim() || undefined : undefined,
         note: note.trim() || undefined,
         file_path: pages[0]?.localPath ? toRelativePath(pages[0].localPath) : undefined,
         person_id: entityLinks.find(l => l.entityType === 'person')?.entityId,
@@ -1147,7 +1144,7 @@ export default function AddDocumentScreen() {
           onRotate={handleRotate}
           onDelete={handleDeletePage}
           onRunOcr={handleManualOcr}
-          onFullscreen={setFullscreenUri}
+          onFullscreen={handleFullscreen}
           onReorderPage={handleReorderPage}
         />
         {aiOcrApplied && (
@@ -1319,7 +1316,11 @@ export default function AddDocumentScreen() {
         onConfirm={t => resolveClassifySheet(t)}
       />
 
-      <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
+      <FullscreenPhotoModal
+        photos={fullscreenPhotos}
+        initialIndex={fullscreenIndex}
+        onClose={() => setFullscreenIndex(null)}
+      />
     </>
   );
 }

@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useState, useEffect, useRef } from 'react';
 import { Linking, DeviceEventEmitter, useColorScheme as useColorSchemeNative } from 'react-native';
 import 'react-native-reanimated';
@@ -149,6 +150,12 @@ function RootLayoutNav() {
     checkForUpdate().then(info => {
       if (info) setUpdateInfo(info);
     });
+  }, []);
+
+  // App-ul rămâne portrait la nivel global; doar vizualizările fullscreen de
+  // document (FullscreenPhotoModal / FullscreenPdfModal) deblochează rotirea.
+  useEffect(() => {
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
   }, []);
 
   return (

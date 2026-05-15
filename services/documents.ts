@@ -8,7 +8,33 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
-import { REPEATABLE_DOC_TYPES, ALL_ENTITY_TYPES } from '@/types';
+import { ALL_ENTITY_TYPES } from '@/types';
+
+// Detecția de duplicat folosește prefixul OCR normalizat. Sub acest prag în
+// caractere (după normalizare) nu auto-flagăm — header-ele scurte au prea
+// puțină informație ca să distingă documente.
+const OCR_DUP_MIN_NORM_LEN = 50;
+// Numărul maxim de caractere normalizate luate în considerare la comparație.
+// Suficient cât să acopere header + început body, fără să balastăm cu text variabil.
+const OCR_DUP_PREFIX_LEN = 500;
+
+/**
+ * Normalizează un text OCR pentru comparația de duplicat: lowercase, fără
+ * diacritice, doar caractere alfanumerice și spațiu, whitespace colapsat,
+ * trunchiat la primii {@link OCR_DUP_PREFIX_LEN} caractere. Folosit DOAR
+ * pentru detecția duplicatelor — nu modifică OCR-ul stocat în DB.
+ */
+function normalizeOcrPrefix(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, OCR_DUP_PREFIX_LEN);
+}
 
 /**
  * Coloana legacy din tabelul `documents` corespunzătoare fiecărui tip de entitate.
@@ -706,47 +732,48 @@ export async function reorderAllDocumentFiles(
 /**
  * Caută un document existent care ar putea fi duplicatul celui în curs de adăugare.
  *
- * Pentru tipuri **non-repetabile** (buletin, talon, card etc.) — match pe (type + entity).
+ * Criteriu unic, bazat pe conținut: dacă primii ~500 de caractere ai OCR-ului
+ * (normalizați — lowercase, fără diacritice, doar alfanumeric și spațiu)
+ * coincid cu un document existent care împarte cel puțin o entitate, e duplicat.
  *
- * Pentru tipuri **repetabile** (analize, facturi, RCA, asigurări, bilete etc.) —
- * match DOAR dacă `issueDate` e furnizat și există un document existent cu același
- * `issue_date`. Fără dată → nu raportăm duplicat (n-avem destulă informație ca să fim siguri).
+ * Tip-ul, `custom_type_id` și `issue_date` nu mai sunt folosite ca semnal —
+ * același conținut scanat poate fi etichetat diferit de user, iar două
+ * documente distincte (ex. 2 seturi de analize din aceeași zi) au tip + dată
+ * identice dar conținut OCR diferit.
+ *
+ * Fără OCR pe documentul nou (sub {@link OCR_DUP_MIN_NORM_LEN} caractere
+ * normalizate) → returnăm null. Nu avem destulă informație ca să fim siguri.
  */
 export async function findDuplicateDocument(
-  type: DocumentType,
-  customTypeId: string | undefined,
   entityLinks: DocumentEntityLink[],
-  issueDate?: string
+  ocrText: string | undefined
 ): Promise<Document | null> {
   if (entityLinks.length === 0) return null;
 
-  const isRepeatable = REPEATABLE_DOC_TYPES.has(type);
-  // Pentru tipuri repetabile, fără dată de emitere nu avem cum decide dacă e duplicat.
-  if (isRepeatable && !issueDate?.trim()) return null;
+  const newPrefix = normalizeOcrPrefix(ocrText);
+  if (newPrefix.length < OCR_DUP_MIN_NORM_LEN) return null;
 
-  const customFilter =
-    type === 'custom' && customTypeId ? 'AND d.custom_type_id = ?' : type === 'custom' ? '' : '';
-  const customParams: (string | null)[] = type === 'custom' && customTypeId ? [customTypeId] : [];
-
-  const issueDateFilter = isRepeatable ? 'AND d.issue_date = ?' : '';
-  const issueDateParams: string[] = isRepeatable && issueDate ? [issueDate.trim()] : [];
-
+  const seen = new Set<string>();
   for (const link of entityLinks) {
-    const row = await db.getFirstAsync<Row>(
+    const rows = await db.getAllAsync<Row>(
       `SELECT d.* FROM documents d
-       WHERE d.type = ?
-       ${customFilter}
-       ${issueDateFilter}
+       WHERE d.ocr_text IS NOT NULL AND length(d.ocr_text) > 0
        AND EXISTS (
          SELECT 1 FROM document_entities de
          WHERE de.document_id = d.id
          AND de.entity_type = ?
          AND de.entity_id = ?
        )
-       LIMIT 1`,
-      [type, ...customParams, ...issueDateParams, link.entityType, link.entityId]
+       ORDER BY d.created_at ASC`,
+      [link.entityType, link.entityId]
     );
-    if (row) return mapRow(row);
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      if (normalizeOcrPrefix(r.ocr_text) === newPrefix) {
+        return mapRow(r);
+      }
+    }
   }
   return null;
 }
@@ -754,18 +781,22 @@ export async function findDuplicateDocument(
 export interface DocumentDuplicates {
   /** Alte documente cu fișier identic (același SHA-256). Certitudine. */
   byHash: Document[];
-  /** Alte documente cu același tip + custom_type + cel puțin o entitate comună. Suspiciune. */
-  byTypeAndEntity: Document[];
+  /**
+   * Alte documente cu același prefix OCR normalizat + cel puțin o entitate
+   * comună. Conținutul scanat coincide chiar dacă userul a clasificat documentele
+   * diferit; semnal puternic de duplicat real.
+   */
+  byOcrPrefix: Document[];
 }
 
 /**
  * Returnează documente care par a fi duplicate pentru `docId`.
- * Nu include documentul curent. Nu deduplică între `byHash` și `byTypeAndEntity`
+ * Nu include documentul curent. Nu deduplică între `byHash` și `byOcrPrefix`
  * — un document poate apărea în ambele (e util să știi de ce e flaggat).
  */
 export async function findDuplicatesOfDocument(docId: string): Promise<DocumentDuplicates> {
   const current = await getDocumentById(docId);
-  if (!current) return { byHash: [], byTypeAndEntity: [] };
+  if (!current) return { byHash: [], byOcrPrefix: [] };
 
   // ── byHash ── fișier identic bit-cu-bit
   let byHash: Document[] = [];
@@ -777,30 +808,19 @@ export async function findDuplicatesOfDocument(docId: string): Promise<DocumentD
     byHash = rows.map(r => mapRow(r));
   }
 
-  // ── byTypeAndEntity ── același tip + cel puțin o entitate legată comună.
-  // Pentru tipuri repetabile (analize, facturi, asigurări reînnoite, etc.) cerem
-  // **și aceeași `issue_date`** ca să fim siguri că e duplicat real, nu doar
-  // o intrare nouă din serie. Fără issue_date pe documentul curent → nu raportăm.
+  // ── byOcrPrefix ── conținut OCR similar + cel puțin o entitate comună.
+  // Independent de tip/dată: dacă primii ~500 de caractere normalizați coincid,
+  // e același document indiferent cum a fost clasificat de user.
+  const currentPrefix = normalizeOcrPrefix(current.ocr_text);
   const links = await getEntityLinks(docId);
-  let byTypeAndEntity: Document[] = [];
-  const isRepeatable = REPEATABLE_DOC_TYPES.has(current.type);
-  const canCheckRepeatable = !isRepeatable || Boolean(current.issue_date?.trim());
+  const byOcrPrefix: Document[] = [];
 
-  if (links.length > 0 && canCheckRepeatable) {
+  if (currentPrefix.length >= OCR_DUP_MIN_NORM_LEN && links.length > 0) {
     const seen = new Set<string>();
     for (const link of links) {
-      const customFilter =
-        current.type === 'custom' && current.custom_type_id ? 'AND d.custom_type_id = ?' : '';
-      const customParams: (string | null)[] =
-        current.type === 'custom' && current.custom_type_id ? [current.custom_type_id] : [];
-      const issueDateFilter = isRepeatable ? 'AND d.issue_date = ?' : '';
-      const issueDateParams: string[] =
-        isRepeatable && current.issue_date ? [current.issue_date.trim()] : [];
       const rows = await db.getAllAsync<Row>(
         `SELECT d.* FROM documents d
-         WHERE d.type = ?
-         ${customFilter}
-         ${issueDateFilter}
+         WHERE d.ocr_text IS NOT NULL AND length(d.ocr_text) > 0
          AND d.id != ?
          AND EXISTS (
            SELECT 1 FROM document_entities de
@@ -809,18 +829,19 @@ export async function findDuplicatesOfDocument(docId: string): Promise<DocumentD
            AND de.entity_id = ?
          )
          ORDER BY d.created_at ASC`,
-        [current.type, ...customParams, ...issueDateParams, docId, link.entityType, link.entityId]
+        [docId, link.entityType, link.entityId]
       );
       for (const r of rows) {
-        if (!seen.has(r.id)) {
+        if (seen.has(r.id)) continue;
+        if (normalizeOcrPrefix(r.ocr_text) === currentPrefix) {
           seen.add(r.id);
-          byTypeAndEntity.push(mapRow(r));
+          byOcrPrefix.push(mapRow(r));
         }
       }
     }
   }
 
-  return { byHash, byTypeAndEntity };
+  return { byHash, byOcrPrefix };
 }
 
 export async function findFileDuplicates(): Promise<Document[][]> {

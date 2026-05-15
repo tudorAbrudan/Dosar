@@ -2,8 +2,8 @@
   "expo": {
     "name": "Dosar",
     "slug": "dosar-documente",
-    "version": "3.5.0",
-    "orientation": "portrait",
+    "version": "3.5.1",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "acte",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ax.documente",
-      "buildNumber": "53",
+      "buildNumber": "54",
       "deploymentTarget": "16.0",
       "usesIcloudStorage": true,
       "entitlements": {
@@ -58,6 +58,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-screen-orientation",
       [
         "expo-splash-screen",
         {

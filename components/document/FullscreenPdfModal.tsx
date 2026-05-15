@@ -6,6 +6,8 @@
  * Counterpart la `FullscreenPhotoModal` — pentru imagini.
  */
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { useEffect } from 'react';
 import { Modal, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import WebView from 'react-native-webview';
 
@@ -15,8 +17,22 @@ interface FullscreenPdfModalProps {
 }
 
 export function FullscreenPdfModal({ uri, onClose }: FullscreenPdfModalProps) {
+  useEffect(() => {
+    if (!uri) return;
+    void ScreenOrientation.unlockAsync();
+    return () => {
+      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    };
+  }, [uri]);
+
   return (
-    <Modal visible={!!uri} transparent animationType="fade" statusBarTranslucent>
+    <Modal
+      visible={!!uri}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      supportedOrientations={['portrait', 'landscape']}
+    >
       <View style={styles.overlay}>
         <StatusBar hidden />
         {uri && (

@@ -1,12 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import {
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Pressable,
-  Linking,
-  Platform,
-} from 'react-native';
+import { StyleSheet, ScrollView, Alert, Pressable, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
@@ -63,7 +56,7 @@ import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
 import { DuplicateGroupsCard } from '@/components/document/DuplicateGroupsCard';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
-import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
+import { getDocumentLabel, ENTITY_TYPE_EMOJI } from '@/types';
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
@@ -90,17 +83,13 @@ export default function DocumentDetailScreen() {
   // Rotire imagini (per pagina, cheie = file_path)
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
 
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
   const [fullscreenPdfUri, setFullscreenPdfUri] = useState<string | null>(null);
-
-  function handleFullscreen(uri: string) {
-    setFullscreenUri(uri);
-  }
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const [privateVisible, setPrivateVisible] = useState(false);
   const [duplicates, setDuplicates] = useState<DocumentDuplicates>({
     byHash: [],
-    byTypeAndEntity: [],
+    byOcrPrefix: [],
   });
   const [focusNonce, setFocusNonce] = useState(0);
 
@@ -172,6 +161,17 @@ export default function DocumentDetailScreen() {
       })),
     [allPages, rotatedUris]
   );
+
+  // Lista folosită ca sursă pentru fullscreen (doar foto — PDF-urile au modal separat).
+  const fullscreenPhotos = useMemo(
+    () => photoPages.filter(p => !isPdfFile(p.uri) && !isPdfFile(p.id)),
+    [photoPages]
+  );
+
+  function handleFullscreen(uri: string) {
+    const idx = fullscreenPhotos.findIndex(p => p.uri === uri);
+    if (idx >= 0) setFullscreenIndex(idx);
+  }
 
   async function handleRotate(pageId: string, degrees: number) {
     if (!doc) return;
@@ -1005,7 +1005,11 @@ export default function DocumentDetailScreen() {
       />
 
       <FullscreenPdfModal uri={fullscreenPdfUri} onClose={() => setFullscreenPdfUri(null)} />
-      <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
+      <FullscreenPhotoModal
+        photos={fullscreenPhotos}
+        initialIndex={fullscreenIndex}
+        onClose={() => setFullscreenIndex(null)}
+      />
     </View>
   );
 }
