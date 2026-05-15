@@ -8,7 +8,6 @@ import {
   View as RNView,
   Text as RNText,
   FlatList,
-  Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -20,7 +19,7 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import type { BottomAction } from '@/components/BottomActionBar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary, statusColors } from '@/theme/colors';
+import { primary } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useDocuments } from '@/hooks/useDocuments';
 import { getDocuments, linkDocumentToEntity } from '@/services/documents';
@@ -33,6 +32,7 @@ import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParall
 import { PersonContactCard } from '@/components/entity/PersonContactCard';
 import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
 import { DocumentRow } from '@/components/entity/DocumentRow';
+import { VehicleEditFields } from '@/components/entity/VehicleEditFields';
 import {
   VehicleMaintenanceSection,
   type VehicleMaintenanceSectionHandle,
@@ -584,91 +584,17 @@ export default function EntityDetailScreen() {
         )}
 
         {isVehicle && (
-          <>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Poză vehicul</RNText>
-              <RNView style={styles.photoRow}>
-                {editPhotoUri ? (
-                  <RNView style={styles.photoPreviewWrap}>
-                    <Image
-                      source={{ uri: toFileUri(editPhotoUri) }}
-                      style={[styles.photoPreview, { backgroundColor: C.border }]}
-                    />
-                    <Pressable
-                      style={[styles.photoActionBtn, { backgroundColor: C.border }]}
-                      onPress={handlePickPhoto}
-                    >
-                      <RNText style={[styles.photoActionText, { color: C.text }]}>Schimbă</RNText>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.photoActionBtn, { marginLeft: 8, backgroundColor: C.border }]}
-                      onPress={handleRemovePhoto}
-                    >
-                      <RNText style={[styles.photoActionText, { color: statusColors.critical }]}>
-                        Elimină
-                      </RNText>
-                    </Pressable>
-                  </RNView>
-                ) : (
-                  <Pressable style={styles.photoAddBtn} onPress={handlePickPhoto}>
-                    <Ionicons name="camera-outline" size={18} color={primary} />
-                    <RNText style={[styles.photoAddText, { color: primary }]}>Adaugă poză</RNText>
-                  </Pressable>
-                )}
-              </RNView>
-            </RNView>
-
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Nr. înmatriculare (opțional)
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="B 12 ABC"
-                value={editPlate}
-                onChangeText={t => setEditPlate(t.toUpperCase())}
-                autoCapitalize="characters"
-                editable={!editLoading}
-              />
-            </RNView>
-
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Tip combustibil
-              </RNText>
-              <RNView style={styles.fuelTypeRow}>
-                {(['diesel', 'benzina', 'gpl', 'electric'] as const).map(t => {
-                  const label =
-                    t === 'diesel'
-                      ? 'Diesel'
-                      : t === 'benzina'
-                        ? 'Benzină'
-                        : t === 'gpl'
-                          ? 'GPL'
-                          : 'Electric';
-                  const active = editFuelType === t;
-                  return (
-                    <Pressable
-                      key={t}
-                      style={[
-                        styles.fuelTypeChip,
-                        active
-                          ? { backgroundColor: primary, borderColor: primary }
-                          : { backgroundColor: C.card, borderColor: C.border },
-                      ]}
-                      onPress={() => setEditFuelType(t)}
-                    >
-                      <RNText
-                        style={[styles.fuelTypeChipText, { color: active ? '#fff' : C.text }]}
-                      >
-                        {label}
-                      </RNText>
-                    </Pressable>
-                  );
-                })}
-              </RNView>
-            </RNView>
-          </>
+          <VehicleEditFields
+            scheme={scheme}
+            photoUri={editPhotoUri}
+            plate={editPlate}
+            fuelType={editFuelType}
+            disabled={editLoading}
+            onPickPhoto={handlePickPhoto}
+            onRemovePhoto={handleRemovePhoto}
+            onChangePlate={setEditPlate}
+            onChangeFuelType={setEditFuelType}
+          />
         )}
 
         {isPerson && (
@@ -857,57 +783,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCancelText: { fontSize: 16, opacity: 0.8 },
-  photoRow: {
-    marginBottom: 16,
-  },
-  photoAddBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    gap: 8,
-  },
-  photoAddText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  photoPreviewWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  photoPreview: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-  },
-  photoActionBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  photoActionText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  fuelTypeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  fuelTypeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  fuelTypeChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
 });
