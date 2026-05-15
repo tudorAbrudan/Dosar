@@ -62,6 +62,7 @@ const ENTRIES = {
     cloudStorage: { required: false },
     crashReporter: { required: false },
     db: { required: false },
+    documentPageStorage: { required: false },
     documentRetention: { required: false },
     entityFuzzyMatch: { required: false },
     entityOrder: { required: false },

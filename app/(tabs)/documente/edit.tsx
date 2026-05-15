@@ -65,7 +65,7 @@ import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
-import { processDocumentImage } from '@/services/imageProcessing';
+import { saveImageAsPage, savePdfAsPage } from '@/services/documentPageStorage';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -420,14 +420,7 @@ export default function EditDocumentScreen() {
   async function saveAndAddPage(uri: string) {
     if (!doc) return;
     try {
-      const filename = `doc_${Date.now()}.jpg`;
-      const relativePath = `documents/${filename}`;
-      const dest = `${FileSystem.documentDirectory}${relativePath}`;
-      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
-        intermediates: true,
-      });
-      const processedUri = await processDocumentImage(uri, doc.type);
-      await FileSystem.copyAsync({ from: processedUri, to: dest });
+      const { relativePath } = await saveImageAsPage(uri, doc.type);
       if (!doc.file_path) {
         await updateDocument(doc.id, {
           type: doc.type,
@@ -464,13 +457,7 @@ export default function EditDocumentScreen() {
   async function saveAndAddPdf(uri: string) {
     if (!doc) return;
     try {
-      const filename = `doc_${Date.now()}.pdf`;
-      const relativePath = `documents/${filename}`;
-      const dest = `${FileSystem.documentDirectory}${relativePath}`;
-      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
-        intermediates: true,
-      });
-      await FileSystem.copyAsync({ from: uri, to: dest });
+      const { relativePath } = await savePdfAsPage(uri);
       if (!doc.file_path) {
         await updateDocument(doc.id, {
           type: doc.type,

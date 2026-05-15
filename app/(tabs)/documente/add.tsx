@@ -83,7 +83,7 @@ import { classifyDocument } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
 import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { scanDocumentPages } from '@/services/documentScanner';
-import { processDocumentImage } from '@/services/imageProcessing';
+import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
 function isValidEntityType(v: string | undefined): v is EntityType {
   return typeof v === 'string' && (ALL_ENTITY_TYPES as string[]).includes(v);
@@ -806,13 +806,7 @@ export default function AddDocumentScreen() {
       const asset = result.assets[0];
       if (!asset?.uri) return;
 
-      const filename = `doc_${Date.now()}.pdf`;
-      const dir = `${FileSystem.documentDirectory}documents`;
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-      const dest = `${dir}/${filename}`;
-      await FileSystem.copyAsync({ from: asset.uri, to: dest });
-
-      // Adăugăm PDF-ul ca pagină (uri = dest pentru compatibilitate)
+      const { localPath: dest } = await savePdfAsPage(asset.uri);
       setPages(prev => [...prev, { uri: dest, localPath: dest }]);
 
       // Extragere text din PDF
@@ -906,15 +900,9 @@ export default function AddDocumentScreen() {
 
   async function processAndSaveImage(uri: string, exifOrientation?: number) {
     try {
-      const finalUri = await processDocumentImage(uri, type, exifOrientation);
-
-      const filename = `doc_${Date.now()}.jpg`;
-      const dir = `${FileSystem.documentDirectory}documents`;
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-      const dest = `${dir}/${filename}`;
-      await FileSystem.copyAsync({ from: finalUri, to: dest });
-      setPages(prev => [...prev, { uri: finalUri, localPath: dest }]);
-      runOcrOnImage(dest);
+      const saved = await saveImageAsPage(uri, type, exifOrientation);
+      setPages(prev => [...prev, { uri: saved.processedUri, localPath: saved.localPath }]);
+      runOcrOnImage(saved.localPath);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut procesa imaginea');
     }
@@ -923,21 +911,11 @@ export default function AddDocumentScreen() {
   async function processAndSaveScannedPages(uris: string[]) {
     if (uris.length === 0) return;
     try {
-      const dir = `${FileSystem.documentDirectory}documents`;
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-
-      const batchTs = Date.now();
-      const newPages: { uri: string; localPath: string }[] = [];
-      for (let i = 0; i < uris.length; i++) {
-        const processed = await processDocumentImage(uris[i], type);
-        const filename = `doc_${batchTs}_${i}.jpg`;
-        const dest = `${dir}/${filename}`;
-        await FileSystem.copyAsync({ from: processed, to: dest });
-        newPages.push({ uri: dest, localPath: dest });
-      }
-
-      setPages(prev => [...prev, ...newPages]);
-
+      const newPages = await saveScannedPagesBatch(uris, type);
+      setPages(prev => [
+        ...prev,
+        ...newPages.map(p => ({ uri: p.localPath, localPath: p.localPath })),
+      ]);
       for (const page of newPages) {
         runOcrOnImage(page.localPath);
       }
