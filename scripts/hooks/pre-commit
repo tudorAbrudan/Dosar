@@ -25,11 +25,8 @@ npm run -s type-check
 echo "▸ Backup audit (strict)..."
 node scripts/backup-audit.js --strict
 
-echo "▸ Hardcoded entities check (warning-only)..."
-# Rulează fără --strict cât timp există violări preexistente. După cleanup
-# (vezi .claude/rules/dynamic-types.md), schimbă la --strict pentru a bloca
-# violări noi.
-node scripts/check-hardcoded-entities.js || true
+echo "▸ Hardcoded entities check (strict)..."
+node scripts/check-hardcoded-entities.js --strict
 
 echo "▸ Knowledge audit (strict)..."
 node scripts/knowledge-audit.js --strict

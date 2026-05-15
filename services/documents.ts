@@ -8,11 +8,14 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
-import { REPEATABLE_DOC_TYPES } from '@/types';
+import { REPEATABLE_DOC_TYPES, ALL_ENTITY_TYPES } from '@/types';
 
 /**
  * Coloana legacy din tabelul `documents` corespunzătoare fiecărui tip de entitate.
+ * Convenția e `${entityType}_id` peste tot; păstrată ca Record pentru claritate
+ * și pentru a documenta explicit care coloane legacy există în schemă.
  */
+// check-hardcoded-entities-disable-next-cluster
 const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   person: 'person_id',
   vehicle: 'vehicle_id',
@@ -121,12 +124,12 @@ function buildEntityLinksFromInput(input: {
   extra_entity_links?: DocumentEntityLink[];
 }): DocumentEntityLink[] {
   const links: DocumentEntityLink[] = [];
-  if (input.person_id) links.push({ entityType: 'person', entityId: input.person_id });
-  if (input.vehicle_id) links.push({ entityType: 'vehicle', entityId: input.vehicle_id });
-  if (input.property_id) links.push({ entityType: 'property', entityId: input.property_id });
-  if (input.card_id) links.push({ entityType: 'card', entityId: input.card_id });
-  if (input.animal_id) links.push({ entityType: 'animal', entityId: input.animal_id });
-  if (input.company_id) links.push({ entityType: 'company', entityId: input.company_id });
+  for (const entityType of ALL_ENTITY_TYPES) {
+    const entityId = input[`${entityType}_id` as keyof typeof input];
+    if (typeof entityId === 'string' && entityId) {
+      links.push({ entityType, entityId });
+    }
+  }
   // Adaugă linkuri extra (fără duplicate)
   for (const extra of input.extra_entity_links ?? []) {
     const exists = links.some(

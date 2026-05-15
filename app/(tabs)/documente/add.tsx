@@ -203,12 +203,10 @@ export default function AddDocumentScreen() {
   // Entity picker state
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>(() => {
     const initial: DocumentEntityLink[] = [];
-    if (params.person_id) initial.push({ entityType: 'person', entityId: params.person_id });
-    if (params.property_id) initial.push({ entityType: 'property', entityId: params.property_id });
-    if (params.vehicle_id) initial.push({ entityType: 'vehicle', entityId: params.vehicle_id });
-    if (params.card_id) initial.push({ entityType: 'card', entityId: params.card_id });
-    if (params.animal_id) initial.push({ entityType: 'animal', entityId: params.animal_id });
-    if (params.company_id) initial.push({ entityType: 'company', entityId: params.company_id });
+    for (const entityType of ALL_ENTITY_TYPES) {
+      const entityId = params[`${entityType}_id` as keyof typeof params];
+      if (entityId) initial.push({ entityType, entityId });
+    }
     return initial;
   });
   const [pickerCategory, setPickerCategory] = useState<EntityType>(
@@ -341,6 +339,8 @@ export default function AddDocumentScreen() {
       }
     };
 
+    // check-hardcoded-entities-disable-next-cluster
+    // Cardurile sunt sărite intenționat — nu se potrivesc nominal cu textul OCR.
     check('person', persons);
     check('vehicle', vehicles);
     check('property', properties);

@@ -230,6 +230,9 @@ export default function ExpirariScreen() {
       : `${expired.length > 0 ? `${expired.length} expirate · ` : ''}${upcoming.length} viitoare`;
 
   function resolveEntityName(doc: Document): string | null {
+    // Semantica e diferită de useEntities().resolveEntityName: aici returnăm
+    // null pentru ID lipsă (folosit la fallback), nu ID-ul ca string.
+    // check-hardcoded-entities-disable-next-cluster
     function getByType(type: EntityType): string | null {
       switch (type) {
         case 'vehicle':

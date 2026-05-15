@@ -38,6 +38,9 @@ type EntityTab = EntityType | 'all';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 type TypedEntity = { item: AnyEntity; entityType: EntityType };
 
+// UI-specific mapping: label-uri la PLURAL pentru tab-uri (diferite de ENTITY_TYPE_LABELS
+// care sunt singular), plus icon-uri Ionicons specifice fiecărui tip.
+// check-hardcoded-entities-disable-next-cluster
 const ALL_TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
   { key: 'all', label: 'Toate', icon: 'apps-outline' },
   { key: 'person', label: 'Persoane', icon: 'person-outline' },
@@ -48,6 +51,7 @@ const ALL_TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
   { key: 'company', label: 'Firme', icon: 'business-outline' },
 ];
 
+// check-hardcoded-entities-disable-next-cluster
 const ENTITY_ICON: Record<EntityType, IoniconName> = {
   person: 'person',
   property: 'home',
@@ -57,6 +61,7 @@ const ENTITY_ICON: Record<EntityType, IoniconName> = {
   company: 'business',
 };
 
+// check-hardcoded-entities-disable-next-cluster
 const ENTITY_ICON_BG: Record<EntityType, string> = {
   person: '#E3F2FD',
   property: '#E8F5E9',
@@ -66,6 +71,7 @@ const ENTITY_ICON_BG: Record<EntityType, string> = {
   company: '#E8EAF6',
 };
 
+// check-hardcoded-entities-disable-next-cluster
 const ENTITY_ICON_COLOR: Record<EntityType, string> = {
   person: '#1565C0',
   property: '#2E7D32',
@@ -109,6 +115,9 @@ export default function EntitatiListScreen() {
   );
 
   const allTyped: TypedEntity[] = useMemo(() => {
+    // check-hardcoded-entities-disable-next-cluster
+    // Ordinea explicită: persons → property → vehicle → card → animal → company.
+    // Nu derivăm din ALL_ENTITY_TYPES ca să păstrăm ordinea UI istorică stabilă.
     const TYPE_RANK: Record<EntityType, number> = {
       person: 1,
       property: 2,

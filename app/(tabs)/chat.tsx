@@ -46,33 +46,22 @@ import { MessageBubble } from '@/components/chat/MessageBubble';
 import { ConsentModal } from '@/components/chat/ConsentModal';
 import { RenameModal } from '@/components/chat/RenameModal';
 import { ThreadList } from '@/components/chat/ThreadList';
+import { ENTITY_TYPE_LABELS, ENTITY_TYPE_EMOJI } from '@/types';
+import type { EntityType } from '@/types';
 
 // ─── Mention types ─────────────────────────────────────────────────────────────
 
 interface MentionItem {
   id: string;
   name: string;
-  entityType: 'person' | 'vehicle' | 'property' | 'card' | 'animal' | 'company';
+  entityType: EntityType;
   icon: string;
   typeLabel: string;
 }
 
-const MENTION_TYPE_LABELS: Record<MentionItem['entityType'], string> = {
-  person: 'Persoană',
-  vehicle: 'Vehicul',
-  property: 'Proprietate',
-  card: 'Card',
-  animal: 'Animal',
-  company: 'Firmă',
-};
-const MENTION_ICONS: Record<MentionItem['entityType'], string> = {
-  person: '👤',
-  vehicle: '🚗',
-  property: '🏠',
-  card: '💳',
-  animal: '🐾',
-  company: '🏢',
-};
+// Mapping-urile sunt în types/index.ts — sursa unică.
+const MENTION_TYPE_LABELS = ENTITY_TYPE_LABELS;
+const MENTION_ICONS = ENTITY_TYPE_EMOJI;
 
 /** Detectează un @query activ la finalul textului (după ultimul @ precedat de spațiu sau start). */
 function detectMentionQuery(text: string): { query: string; atIndex: number } | null {

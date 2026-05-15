@@ -11,7 +11,7 @@
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
 import { extractPlateNumber } from './ocr';
 import type { DocumentType, EntityType } from '@/types';
-import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES } from '@/types';
+import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES, ALL_ENTITY_TYPES } from '@/types';
 
 // ─── Tipuri rezultat ──────────────────────────────────────────────────────────
 
@@ -642,14 +642,7 @@ function validateDate(raw: unknown): string | undefined {
   return result;
 }
 
-const VALID_ENTITY_TYPES = new Set<string>([
-  'person',
-  'vehicle',
-  'property',
-  'card',
-  'animal',
-  'company',
-]);
+const VALID_ENTITY_TYPES = new Set<string>(ALL_ENTITY_TYPES);
 
 function validateEntitySuggestion(
   s: { entityType?: string; entityId?: string; entityName?: string; confidence?: string },
@@ -678,6 +671,7 @@ function validateEntitySuggestion(
   };
 }
 
+// check-hardcoded-entities-disable-next-cluster
 function checkEntityExists(type: EntityType, id: string, entities: AvailableEntities): boolean {
   switch (type) {
     case 'person':

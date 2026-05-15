@@ -9,13 +9,23 @@
  *
  * Strategie line-by-line (rapid, fără regex backtracking):
  *   - numără apariții de chei standard (person/vehicle/property/card/animal/company)
- *     în context de Record/array/switch within ~30 linii consecutive
+ *     în context de Record/array/switch within ~25 linii consecutive
  *   - 5+ chei distincte într-o fereastră scurtă = suspiciune hardcode
+ *
+ * Reduce false-positives:
+ *   - skip linii cu import/export
+ *   - skip linii cu comentariu (single + block)
+ *   - skip conținutul template literals cu backtick (mai ales SQL: SELECT, INSERT, CREATE TABLE)
+ *   - skip clusterul imediat după comentariul `// check-hardcoded-entities-disable-next-cluster`
  *
  * Folosire:
  *   node scripts/check-hardcoded-entities.js
  *   node scripts/check-hardcoded-entities.js --strict
  *   node scripts/check-hardcoded-entities.js --json
+ *
+ * Suppress directive (la o linie deasupra unui Record/array de tab/icon UI necesar):
+ *   // check-hardcoded-entities-disable-next-cluster
+ *   const ENTITY_ICON: Record<EntityType, IoniconName> = { ... };
  */
 
 'use strict';
@@ -32,8 +42,10 @@ const ALLOWED_FILES = new Set([
 ]);
 
 const STANDARD_KEYS = ['person', 'vehicle', 'property', 'card', 'animal', 'company'];
-const WINDOW = 25; // linii consecutive pentru a considera „context comun"
+const WINDOW = 25;
 const MIN_KEYS = 5;
+
+const SUPPRESS_DIRECTIVE = 'check-hardcoded-entities-disable-next-cluster';
 
 function walk(dir, out = []) {
   let entries;
@@ -76,27 +88,98 @@ function isAllowed(relPath) {
 }
 
 /**
- * Pentru fiecare linie a fișierului, găsește cheile standard menționate ca
- * literali (`'person'`, `"vehicle"`, sau `person:` în obiect). Apoi cu sliding
- * window de WINDOW linii, dacă găsim MIN_KEYS chei distincte → posibil hardcode.
- *
- * Reduce false-positives:
- *   - skip linii cu „import" sau „export" (deklarațiile din types)
- *   - skip linii cu comentariu // sau /*
+ * Returnează un Set de indici de linii care sunt **înăuntrul** unui template
+ * literal cu backtick (multi-line) sau în comentarii multi-linie /* ... *\/.
+ * Aceste linii sunt sărite când căutăm chei (evită false positives pe SQL).
  */
+function findIgnoredLines(lines) {
+  const ignored = new Set();
+  let inBacktick = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let j = 0;
+    while (j < line.length) {
+      const ch = line[j];
+      const next = line[j + 1];
+      if (inBlockComment) {
+        if (ch === '*' && next === '/') {
+          inBlockComment = false;
+          j += 2;
+          continue;
+        }
+        j++;
+        continue;
+      }
+      if (inBacktick) {
+        if (ch === '`') {
+          inBacktick = false;
+        }
+        j++;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        j += 2;
+        continue;
+      }
+      if (ch === '/' && next === '/') {
+        break; // restul liniei e comentariu
+      }
+      if (ch === '`') {
+        inBacktick = true;
+        j++;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        const quote = ch;
+        j++;
+        while (j < line.length && line[j] !== quote) {
+          if (line[j] === '\\') j++;
+          j++;
+        }
+        j++;
+        continue;
+      }
+      j++;
+    }
+    if (inBacktick || inBlockComment) ignored.add(i);
+  }
+  return ignored;
+}
+
 function findClusters(source) {
   const lines = source.split('\n');
-  // Pe fiecare linie, set de chei detectate.
-  const perLine = lines.map(line => {
+  const ignoredLines = findIgnoredLines(lines);
+
+  // Pentru fiecare directivă, intervalul [directive_line+1 .. directive_line+WINDOW]
+  // e suprimat — orice cluster cu firstNonEmpty în acea fereastră e ignorat.
+  const suppressRanges = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(SUPPRESS_DIRECTIVE)) {
+      suppressRanges.push({ from: i + 1, to: i + WINDOW });
+    }
+  }
+  const isSuppressed = (start, firstNonEmpty) => {
+    for (const r of suppressRanges) {
+      if (start >= r.from && start <= r.to) return true;
+      if (firstNonEmpty !== -1 && firstNonEmpty >= r.from && firstNonEmpty <= r.to) return true;
+    }
+    return false;
+  };
+
+  const perLine = lines.map((line, i) => {
+    if (ignoredLines.has(i)) return new Set();
     const trimmed = line.trim();
     if (trimmed.startsWith('//') || trimmed.startsWith('*')) return new Set();
     if (trimmed.startsWith('import') || trimmed.startsWith('export ')) return new Set();
     const found = new Set();
     for (const k of STANDARD_KEYS) {
       const inObjectKey = new RegExp(`(^|[\\s{,])${k}\\s*:`).test(trimmed);
-      const inSwitchCase = new RegExp(`case\\s+['\"]${k}['\"]`).test(trimmed);
-      const inKeyArray = new RegExp(`key:\\s*['\"]${k}['\"]`).test(trimmed);
-      const inStringLiteral = new RegExp(`['\"]${k}['\"]\\s*,`).test(trimmed);
+      const inSwitchCase = new RegExp(`case\\s+['"]${k}['"]`).test(trimmed);
+      const inKeyArray = new RegExp(`key:\\s*['"]${k}['"]`).test(trimmed);
+      const inStringLiteral = new RegExp(`['"]${k}['"]\\s*,`).test(trimmed);
       if (inObjectKey || inSwitchCase || inKeyArray || inStringLiteral) found.add(k);
     }
     return found;
@@ -106,12 +189,15 @@ function findClusters(source) {
   for (let start = 0; start < perLine.length; start++) {
     const end = Math.min(start + WINDOW, perLine.length);
     const union = new Set();
+    let firstNonEmpty = -1;
     for (let i = start; i < end; i++) {
+      if (perLine[i].size > 0 && firstNonEmpty === -1) firstNonEmpty = i;
       for (const k of perLine[i]) union.add(k);
     }
     if (union.size >= MIN_KEYS) {
-      // Avansăm până ieșim din clusterul curent (skip overlapping)
-      clusters.push({ line: start + 1, keys: Array.from(union) });
+      if (!isSuppressed(start, firstNonEmpty)) {
+        clusters.push({ line: start + 1, keys: Array.from(union) });
+      }
       start = end - 1;
     }
   }
@@ -130,7 +216,6 @@ function audit() {
     } catch {
       continue;
     }
-    // Skip fișiere fără cuvinte cheie deloc (perf)
     if (!STANDARD_KEYS.some(k => source.includes(k))) continue;
     const clusters = findClusters(source);
     if (clusters.length > 0) violations.push({ file: r, clusters });
@@ -154,6 +239,8 @@ function format(violations) {
   lines.push('  - Record<EntityType, X> → folosește ENTITY_TYPE_LABELS / ENTITY_TYPE_EMOJI');
   lines.push('  - switch(entityType) → folosește useEntities().resolveEntityName(link)');
   lines.push('  - [{ key: "person" }, ...] → ALL_ENTITY_TYPES.map(t => ({ key: t, ... }))');
+  lines.push('  - sau, dacă mapping-ul e UI-specific (icon/culoare per entitate),');
+  lines.push(`    pune comentariul \`// ${SUPPRESS_DIRECTIVE}\` deasupra Record-ului.`);
   lines.push('');
   lines.push('Vezi .claude/rules/dynamic-types.md');
   return lines.join('\n');

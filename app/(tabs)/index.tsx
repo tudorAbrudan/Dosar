@@ -367,6 +367,9 @@ export default function HomeScreen() {
 
   // ── Entity helpers ────────────────────────────────────────────────────────────
   function resolveEntityName(doc: Document): string | null {
+    // Duplicat intentionat al useEntities().resolveEntityName: aici returnăm null
+    // pentru ID lipsă (folosit la fallback), nu ID-ul ca string.
+    // check-hardcoded-entities-disable-next-cluster
     function getByType(type: EntityType): string | null {
       switch (type) {
         case 'vehicle':

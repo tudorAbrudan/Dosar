@@ -28,6 +28,9 @@ export interface OrphanGroup {
   items: OrphanItem[];
 }
 
+// Label lowercase pentru hint-uri în orphans (diferit de ENTITY_TYPE_LABELS care
+// e capitalizat: „Persoană" vs „persoană").
+// check-hardcoded-entities-disable-next-cluster
 const ENTITY_LABEL_FOR_HINT: Record<EntityType, string> = {
   person: 'persoană',
   vehicle: 'mașină',

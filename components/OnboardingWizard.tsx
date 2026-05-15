@@ -64,6 +64,8 @@ const NOTIF_DAY_OPTIONS = [7, 14, 30] as const;
 const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
 
+// Onboarding-only descrieri (text scurt per entitate) — UI specific, păstrat aici.
+// check-hardcoded-entities-disable-next-cluster
 const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   person: 'Buletin, pașaport, permis',
   vehicle: 'Talon, RCA, ITP, CASCO, vignetă',
