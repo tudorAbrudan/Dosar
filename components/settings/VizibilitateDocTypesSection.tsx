@@ -55,6 +55,9 @@ export function VizibilitateDocTypesSection({
               acea entitate sunt mereu vizibile, indiferent de selecția de aici.
             </Text>
             <View style={styles.chipRow}>
+              {/* Acesta E ecranul unde user-ul setează vizibilitatea, deci
+                  iterăm peste TOATE tipurile (sursa universului). */}
+              {/* eslint-disable-next-line local-rules/no-direct-doc-type-iteration */}
               {STANDARD_DOC_TYPES.map(docType => {
                 const isActive = visibleDocTypes.includes(docType);
                 return (

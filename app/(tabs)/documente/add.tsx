@@ -105,6 +105,9 @@ function autoDeleteLabel(val: string | null): string {
   return DELETE_OPTIONS.find(o => o.value === val)?.label ?? 'Niciodată';
 }
 
+// Build universe of types ONCE at module load. Filtered later prin
+// useFilteredDocTypes() la randare; aici e legitim să iterăm peste sursă.
+// eslint-disable-next-line local-rules/no-direct-doc-type-iteration
 const ALL_STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
   .filter(([value]) => value !== 'custom')
   .map(([value, label]) => ({ value: value as DocumentType, label }));

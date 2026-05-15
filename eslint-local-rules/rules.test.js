@@ -34,13 +34,18 @@ test('no-hardcoded-hex-colors', () => {
       { code: "const c = '#FF9800';", filename: 'scripts/update-site.js' },
       // permis în __tests__
       { code: "const c = '#FFF';", filename: '__tests__/smoke/X.test.tsx' },
+      // Whitelisted theme-neutral literals
+      { code: "const c = '#000';", filename: FILE },
+      { code: "const c = '#000000';", filename: FILE },
+      { code: "const c = '#fff';", filename: FILE },
+      { code: "const c = '#ffffff';", filename: FILE },
+      { code: "const c = '#FFF';", filename: FILE },
+      // Shadow RGBA (black with opacity) — theme-neutral
+      { code: "const c = 'rgba(0,0,0,0.06)';", filename: FILE },
+      { code: "const c = 'rgba(0,0,0,0.5)';", filename: FILE },
+      { code: "const c = 'rgba(0, 0, 0, 0.35)';", filename: FILE },
     ],
     invalid: [
-      {
-        code: "const c = '#FFF';",
-        filename: FILE,
-        errors: [{ messageId: 'hex' }],
-      },
       {
         code: "const c = '#FF9800';",
         filename: FILE,
