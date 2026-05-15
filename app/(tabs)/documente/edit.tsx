@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   StyleSheet,
-  ScrollView,
   Alert,
   Pressable,
   ActivityIndicator,
@@ -45,13 +44,12 @@ import {
 } from '@/services/documents';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import {
-  addExpiryCalendarEvent,
-  addEventToCalendar,
   updateExpiryCalendarEvent,
   updateBiletCalendarEvent,
   deleteCalendarEvent,
   isCalendarAvailable,
 } from '@/services/calendar';
+import { promptAddExpiryReminder, promptAddEventReminder } from '@/services/calendarPrompt';
 import {
   extractText,
   extractDocumentInfo,
@@ -788,51 +786,27 @@ export default function EditDocumentScreen() {
         const title =
           [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment';
         setSaving(false);
-        Alert.alert('Adaugă în calendar?', `Vrei reminder pentru evenimentul din ${biletDate}?`, [
-          { text: 'Nu', style: 'cancel', onPress: navigateBack },
-          {
-            text: 'Adaugă',
-            onPress: async () => {
-              const calId = await addEventToCalendar({
-                title,
-                eventDate: biletDate,
-                venue: metadata.venue,
-                note: note.trim() || undefined,
-                documentId: doc.id,
-              });
-              if (calId) await setDocumentCalendarEventId(doc.id, calId);
-              else Alert.alert('Eroare', 'Nu s-a putut accesa calendarul.');
-              navigateBack();
-            },
-          },
-        ]);
+        promptAddEventReminder({
+          documentId: doc.id,
+          eventDate: biletDate,
+          title,
+          venue: metadata.venue,
+          note: note.trim() || undefined,
+          onDone: navigateBack,
+        });
         return;
       }
 
       if (!isBilet && finalExpiry) {
         setSaving(false);
-        Alert.alert(
-          'Adaugă în calendar?',
-          `Vrei să adaugi un reminder pentru expirarea pe ${finalExpiry}?`,
-          [
-            { text: 'Nu', style: 'cancel', onPress: navigateBack },
-            {
-              text: 'Adaugă',
-              onPress: async () => {
-                const calId = await addExpiryCalendarEvent({
-                  docType: type,
-                  expiryDate: finalExpiry,
-                  entityName: entityName ?? undefined,
-                  documentId: doc.id,
-                  note: note.trim() || undefined,
-                });
-                if (calId) await setDocumentCalendarEventId(doc.id, calId);
-                else Alert.alert('Eroare', 'Nu s-a putut accesa calendarul.');
-                navigateBack();
-              },
-            },
-          ]
-        );
+        promptAddExpiryReminder({
+          documentId: doc.id,
+          docType: type,
+          expiryDate: finalExpiry,
+          entityName: entityName ?? undefined,
+          note: note.trim() || undefined,
+          onDone: navigateBack,
+        });
         return;
       }
 

@@ -58,6 +58,7 @@ const ENTRIES = {
 
     aiTypeRegistry: { required: false },
     chatThreads: { required: false },
+    calendarPrompt: { required: false },
     cloudCrypto: { required: false },
     cloudStorage: { required: false },
     crashReporter: { required: false },

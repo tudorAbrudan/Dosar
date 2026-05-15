@@ -23,11 +23,8 @@ import { primary, primaryMuted, sensitiveBorder, sensitiveBg } from '@/theme/col
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { scheduleExpirationReminders } from '@/services/notifications';
-import {
-  addExpiryCalendarEvent,
-  addEventToCalendar,
-  isCalendarAvailable,
-} from '@/services/calendar';
+import { addExpiryCalendarEvent, isCalendarAvailable } from '@/services/calendar';
+import { promptAddExpiryReminder, promptAddEventReminder } from '@/services/calendarPrompt';
 import {
   extractText,
   extractDocumentInfo,
@@ -1048,6 +1045,7 @@ export default function AddDocumentScreen() {
       scheduleExpirationReminders().catch(() => {});
 
       const finalExpiry = expiryDateRef.current.trim();
+      const navigateBack = () => router.replace('/(tabs)/documente');
       if (finalExpiry && isCalendarAvailable()) {
         const linkedVehicleId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
         const linkedPersonId = entityLinks.find(l => l.entityType === 'person')?.entityId;
@@ -1058,34 +1056,14 @@ export default function AddDocumentScreen() {
           (linkedPropertyId && properties.find(p => p.id === linkedPropertyId)?.name) ||
           undefined;
         setLoading(false);
-        Alert.alert(
-          'Adaugă în calendar?',
-          `Vrei să adaugi un reminder în calendar pentru expirarea pe ${finalExpiry}?`,
-          [
-            { text: 'Nu', style: 'cancel', onPress: () => router.replace('/(tabs)/documente') },
-            {
-              text: 'Adaugă',
-              onPress: async () => {
-                const id = await addExpiryCalendarEvent({
-                  docType: type,
-                  expiryDate: finalExpiry,
-                  entityName,
-                  documentId: newDoc.id,
-                  note: note.trim() || undefined,
-                });
-                if (id) {
-                  await setDocumentCalendarEventId(newDoc.id, id);
-                } else {
-                  Alert.alert(
-                    'Eroare',
-                    'Nu s-a putut accesa calendarul. Verifică permisiunile în Setări.'
-                  );
-                }
-                router.replace('/(tabs)/documente');
-              },
-            },
-          ]
-        );
+        promptAddExpiryReminder({
+          documentId: newDoc.id,
+          docType: type,
+          expiryDate: finalExpiry,
+          entityName,
+          note: note.trim() || undefined,
+          onDone: navigateBack,
+        });
         return;
       }
 
@@ -1093,31 +1071,18 @@ export default function AddDocumentScreen() {
         const title =
           [metadata.categorie, metadata.venue].filter(Boolean).join(' – ') || 'Eveniment';
         setLoading(false);
-        Alert.alert(
-          'Adaugă în calendar?',
-          `Vrei reminder pentru evenimentul din ${metadata.event_date}?`,
-          [
-            { text: 'Nu', style: 'cancel', onPress: () => router.replace('/(tabs)/documente') },
-            {
-              text: 'Adaugă',
-              onPress: async () => {
-                const id = await addEventToCalendar({
-                  title,
-                  eventDate: metadata.event_date,
-                  venue: metadata.venue,
-                  note: note.trim() || undefined,
-                  documentId: newDoc.id,
-                });
-                if (id) await setDocumentCalendarEventId(newDoc.id, id);
-                router.replace('/(tabs)/documente');
-              },
-            },
-          ]
-        );
+        promptAddEventReminder({
+          documentId: newDoc.id,
+          eventDate: metadata.event_date,
+          title,
+          venue: metadata.venue,
+          note: note.trim() || undefined,
+          onDone: navigateBack,
+        });
         return;
       }
 
-      router.replace('/(tabs)/documente');
+      navigateBack();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
     } finally {
