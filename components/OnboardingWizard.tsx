@@ -9,7 +9,6 @@ import {
   Switch,
   Linking,
   Alert,
-  TextInput,
   Modal,
   ActivityIndicator,
 } from 'react-native';
@@ -19,8 +18,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { AI_INFO_URL, SUPPORT_URL } from '@/constants/AppLinks';
+import { SUPPORT_URL } from '@/constants/AppLinks';
 import AppLockPinModal from '@/components/AppLockPinModal';
+import { AiStep } from '@/components/onboarding/AiStep';
 import {
   ALL_ENTITY_TYPES,
   STANDARD_DOC_TYPES,
@@ -44,7 +44,6 @@ import * as cloudSync from '@/services/cloudSync';
 import type { RestoreProgress } from '@/services/cloudSync';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
 import { primary, statusColors } from '@/theme/colors';
-import { iconColors } from '@/theme/iconColors';
 import { radius, spacing } from '@/theme/layout';
 import { useThemePreference } from '@/hooks/useThemeScheme';
 
@@ -882,180 +881,22 @@ export default function OnboardingWizard({ onComplete }: Props) {
         )}
 
         {step === AI_STEP && (
-          <View style={styles.aiBlock}>
-            {(
-              [
-                {
-                  type: 'builtin' as AiProviderType,
-                  title: 'Dosar AI (recomandat)',
-                  desc: 'Cloud · 20 interogări/zi gratuit · Pornești imediat, fără configurare',
-                },
-                {
-                  type: 'external' as AiProviderType,
-                  title: 'Cheie API proprie',
-                  desc: 'Cloud · Nelimitat · Orice provider compatibil OpenAI (Mistral, OpenAI etc.)',
-                },
-                {
-                  type: 'local' as AiProviderType,
-                  title: 'Model local',
-                  desc: 'Pe device · Privat · Nelimitat · Offline · Download 800MB–4GB din Setări',
-                },
-                {
-                  type: 'none' as AiProviderType,
-                  title: 'Fără AI',
-                  desc: 'Aplicația funcționează complet offline, fără asistent',
-                },
-              ] as { type: AiProviderType; title: string; desc: string }[]
-            ).map(option => (
-              <Pressable
-                key={option.type}
-                style={[
-                  styles.aiToggleCard,
-                  {
-                    backgroundColor: C.card,
-                    borderColor: aiProviderChoice === option.type ? C.primary : C.border,
-                  },
-                ]}
-                onPress={() => {
-                  setAiProviderChoice(option.type);
-                  setAiConsentChecked(false);
-                }}
-              >
-                <View style={styles.aiToggleText}>
-                  <Text style={[styles.aiToggleLabel, { color: C.text }]}>{option.title}</Text>
-                  <Text style={[styles.aiToggleSub, { color: C.textSecondary }]}>
-                    {option.desc}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.aiRadioDot,
-                    { borderColor: aiProviderChoice === option.type ? C.primary : C.border },
-                  ]}
-                >
-                  {aiProviderChoice === option.type && (
-                    <View style={[styles.aiRadioDotInner, { backgroundColor: C.primary }]} />
-                  )}
-                </View>
-              </Pressable>
-            ))}
-
-            {/* Câmpuri pentru external */}
-            {aiProviderChoice === 'external' && (
-              <View style={{ gap: 8, marginTop: 4 }}>
-                <TextInput
-                  style={[
-                    styles.aiInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                  ]}
-                  value={aiExternalUrl}
-                  onChangeText={setAiExternalUrl}
-                  placeholder="URL API (ex: https://api.mistral.ai/v1)"
-                  placeholderTextColor={C.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                />
-                <TextInput
-                  style={[
-                    styles.aiInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                  ]}
-                  value={aiExternalApiKey}
-                  onChangeText={setAiExternalApiKey}
-                  placeholder="Cheie API"
-                  placeholderTextColor={C.textSecondary}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TextInput
-                  style={[
-                    styles.aiInput,
-                    { color: C.text, borderColor: C.border, backgroundColor: C.card },
-                  ]}
-                  value={aiExternalModel}
-                  onChangeText={setAiExternalModel}
-                  placeholder="Model (ex: mistral-small-latest)"
-                  placeholderTextColor={C.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-            )}
-
-            {/* Acord AI */}
-            {(aiProviderChoice === 'builtin' || aiProviderChoice === 'external') && (
-              <Pressable
-                style={[
-                  styles.aiToggleCard,
-                  {
-                    backgroundColor: C.card,
-                    borderColor: aiConsentChecked ? C.primary : C.border,
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                  },
-                ]}
-                onPress={() => setAiConsentChecked(v => !v)}
-              >
-                <View
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 4,
-                    borderWidth: 2,
-                    borderColor: aiConsentChecked ? C.primary : C.border,
-                    backgroundColor: aiConsentChecked ? C.primary : 'transparent',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginTop: 1,
-                    flexShrink: 0,
-                  }}
-                >
-                  {aiConsentChecked && <Ionicons name="checkmark" size={14} color="#fff" />}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.aiToggleLabel, { color: C.text, fontSize: 14 }]}>
-                    {aiProviderChoice === 'builtin'
-                      ? 'Sunt de acord cu trimiterea datelor la serviciul Dosar AI'
-                      : 'Sunt de acord cu trimiterea datelor la serviciul AI configurat'}
-                  </Text>
-                  <Text style={[styles.aiToggleSub, { color: C.textSecondary }]}>
-                    Textul extras, numele entităților și detaliile documentelor sunt trimise pentru
-                    procesare. Fotografiile și PIN-ul NU sunt trimise.
-                  </Text>
-                </View>
-              </Pressable>
-            )}
-
-            {aiProviderChoice !== 'none' && (
-              <View style={[styles.card, { backgroundColor: C.card, marginTop: spacing.gap }]}>
-                <View style={styles.cardRow}>
-                  <Ionicons name="image-outline" size={20} color={iconColors.amber.fg} />
-                  <View style={{ flex: 1, marginLeft: spacing.gap }}>
-                    <Text style={[styles.cardTitle, { color: C.text }]}>
-                      Extracție AI din documente
-                    </Text>
-                    <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
-                      Textul OCR e trimis automat (dacă e activat). Imaginile se trimit doar la
-                      apăsarea butonului „Trimite documentul la AI" din formular — niciodată
-                      automat.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            <Pressable
-              onPress={() => Linking.openURL(AI_INFO_URL)}
-              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: 4 }]}
-            >
-              <Text style={[styles.link, { color: C.primary }]}>
-                Află mai multe despre opțiunile AI →
-              </Text>
-            </Pressable>
-          </View>
+          <AiStep
+            scheme={scheme}
+            aiProviderChoice={aiProviderChoice}
+            aiExternalUrl={aiExternalUrl}
+            aiExternalApiKey={aiExternalApiKey}
+            aiExternalModel={aiExternalModel}
+            aiConsentChecked={aiConsentChecked}
+            onChangeProvider={value => {
+              setAiProviderChoice(value);
+              setAiConsentChecked(false);
+            }}
+            onChangeUrl={setAiExternalUrl}
+            onChangeApiKey={setAiExternalApiKey}
+            onChangeModel={setAiExternalModel}
+            onToggleConsent={() => setAiConsentChecked(v => !v)}
+          />
         )}
 
         {step === SUMMARY && (
@@ -1339,51 +1180,6 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: 13, lineHeight: 18 },
   infoText: { fontSize: 13, lineHeight: 18, fontStyle: 'italic' },
 
-  // AI step
-  aiBlock: { gap: 16 },
-  aiToggleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 2,
-    padding: 16,
-    gap: 12,
-  },
-  aiToggleText: { flex: 1 },
-  aiToggleLabel: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
-  aiToggleSub: { fontSize: 13, lineHeight: 18 },
-  aiInfoCard: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: 16,
-    gap: 8,
-  },
-  aiInfoTitle: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  aiLimitText: { fontSize: 14, lineHeight: 20 },
-  aiKeyHint: { fontSize: 12, lineHeight: 18, marginTop: 4 },
-  aiPrivacyNote: { fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
-  aiRadioDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  aiRadioDotInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  aiInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    height: 46,
-  },
 
   footer: {
     flexDirection: 'column',
