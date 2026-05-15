@@ -75,6 +75,7 @@ const ENTRIES = {
     imageProcessing: { required: false },
     maintenancePresets: { required: false },
     manifestHash: { required: false },
+    ocrAutoRotate: { required: false },
     ocrExtractors: { required: false },
     ocrLayout: { required: false },
     pdfExtractor: { required: false },

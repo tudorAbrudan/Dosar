@@ -51,12 +51,8 @@ import {
   updateBiletCalendarEvent,
   isCalendarAvailable,
 } from '@/services/calendar';
-import {
-  extractText,
-  extractDocumentInfo,
-  detectDocumentType,
-  formatOcrSummary,
-} from '@/services/ocr';
+import { extractDocumentInfo, detectDocumentType, formatOcrSummary } from '@/services/ocr';
+import { ocrWithAutoRotate } from '@/services/ocrAutoRotate';
 import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
 import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
@@ -293,46 +289,6 @@ export default function DocumentDetailScreen() {
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut adăuga pagina');
     }
-  }
-
-  // Încearcă să găsească orientarea corectă a imaginii via OCR.
-  // Dacă pagina e lock-uită (userul a rotit-o manual), respectă orientarea
-  // curentă și nu mai încearcă rotații. Altfel, dacă textul inițial e prea scurt,
-  // testează 90°/270°/180° și salvează versiunea cea mai bună.
-  async function ocrWithAutoRotate(
-    storedPath: string,
-    isLocked: boolean
-  ): Promise<{ text: string; rotated: boolean }> {
-    const fileUri = toFileUri(storedPath);
-    let { text } = await extractText(fileUri);
-
-    if (isLocked) return { text, rotated: false };
-    if (text.trim().length >= 30) return { text, rotated: false };
-
-    let bestText = text;
-    let bestUri = fileUri;
-
-    for (const deg of [90, 270, 180]) {
-      const r = await ImageManipulator.manipulateAsync(fileUri, [{ rotate: deg }], {
-        compress: 0.92,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      const { text: rotText } = await extractText(r.uri);
-      if (rotText.trim().length > bestText.trim().length) {
-        bestText = rotText;
-        bestUri = r.uri;
-      }
-      if (bestText.trim().length >= 30) break;
-    }
-
-    const wasRotated = bestUri !== fileUri;
-    if (wasRotated) {
-      const absoluteUri = toFileUri(storedPath);
-      const destPath = absoluteUri.startsWith('file://') ? absoluteUri.slice(7) : absoluteUri;
-      await FileSystem.copyAsync({ from: bestUri, to: destPath });
-    }
-
-    return { text: bestText, rotated: wasRotated };
   }
 
   async function runOcrOnNewPage(localPath: string, currentDoc: DocType) {
