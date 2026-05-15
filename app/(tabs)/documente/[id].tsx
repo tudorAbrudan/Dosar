@@ -65,8 +65,8 @@ import {
 } from '@/services/ocr';
 import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
-import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
-import { renderAllPdfPagesAsBase64 } from '@/services/pdfOcr';
+import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
+import { buildDocumentPdfHtml, slugifyForPdfFilename } from '@/services/documentPdfExport';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
@@ -75,15 +75,6 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
 import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
-
-function slugify(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
 
 export default function DocumentDetailScreen() {
   const { id, from, entityId } = useLocalSearchParams<{
@@ -730,167 +721,23 @@ export default function DocumentDetailScreen() {
     if (!doc) return;
     setPdfLoading(true);
     try {
-      const imgTags: string[] = [];
-      for (const page of allPages) {
-        const fileUri = toFileUri(page.file_path);
-        if (isPdfFile(page.file_path)) {
-          // Randează fiecare pagină PDF ca imagine
-          const pages = await renderAllPdfPagesAsBase64(fileUri);
-          for (const b64 of pages) {
-            imgTags.push(`<div class="img-page"><img src="data:image/jpeg;base64,${b64}" /></div>`);
-          }
-        } else {
-          try {
-            const compressed = await ImageManipulator.manipulateAsync(
-              fileUri,
-              [{ resize: { width: 1400 } }],
-              { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG }
-            );
-            const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            imgTags.push(
-              `<div class="img-page"><img src="data:image/jpeg;base64,${base64}" /></div>`
-            );
-          } catch {
-            // imaginea nu a putut fi citită — continuăm
-          }
-        }
-      }
-      if (imgTags.length === 0 && allPages.length > 0) {
+      const { html, pagesFailed } = await buildDocumentPdfHtml({
+        doc,
+        allPages,
+        customTypes,
+      });
+      if (pagesFailed) {
         Alert.alert(
           'Atenție',
           'Paginile nu au putut fi incluse în PDF. Va conține doar datele documentului.'
         );
       }
-
-      const docLabel = escapeHtml(getDocumentLabel(doc, customTypes));
-      const generatedDate = new Date().toLocaleDateString('ro-RO', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      });
-
-      // Câmpuri metadata
-      const metaFields: string[] = [];
-      if (doc.issue_date)
-        metaFields.push(`
-        <div class="field">
-          <div class="field-label">Data emisiunii</div>
-          <div class="field-value">${escapeHtml(doc.issue_date)}</div>
-        </div>`);
-      if (doc.expiry_date)
-        metaFields.push(`
-        <div class="field">
-          <div class="field-label">Data expirării</div>
-          <div class="field-value">${escapeHtml(doc.expiry_date)}</div>
-        </div>`);
-      if (doc.metadata) {
-        const { DOCUMENT_FIELDS } = require('@/types/documentFields');
-        const fields = DOCUMENT_FIELDS[doc.type] ?? [];
-        for (const f of fields) {
-          const val = doc.metadata[f.key];
-          if (val)
-            metaFields.push(`
-            <div class="field">
-              <div class="field-label">${escapeHtml(f.label)}</div>
-              <div class="field-value">${escapeHtml(val)}</div>
-            </div>`);
-        }
-      }
-
-      const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-  @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #fff; color: #1e2318; }
-
-  /* 100vw/100vh = dimensiunea exacta a paginii din printToFileAsync (A4: 595x842pt) */
-  /* Fara page-break explicit — inaltimea 100vh asigura ca elementul urmator incepe pe pagina noua */
-  .img-page {
-    width: 100vw;
-    height: 100vh;
-    padding: 12mm;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .img-page img {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    display: block;
-  }
-
-  /* Pagina de meta */
-  .meta-page { padding: 12mm; page-break-inside: avoid; }
-  .meta-header {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    padding-bottom: 4mm;
-    border-bottom: 2px solid ${primary};
-    margin-bottom: 6mm;
-  }
-  .meta-brand { font-size: 16px; font-weight: 800; color: #1a1a1a; }
-  .meta-brand-url { font-size: 11px; font-weight: 400; color: #666; margin-left: 8px; vertical-align: middle; }
-  .meta-doc-type { font-size: 24px; font-weight: 700; margin-bottom: 6mm; }
-  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-bottom: 4mm; }
-  .field {
-    background: #f8faf4; border: 1px solid #e2ebd4;
-    border-radius: 6px; padding: 3mm 4mm;
-  }
-  .field-label {
-    font-size: 8px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.06em; color: #374151; margin-bottom: 1.5mm;
-  }
-  .field-value { font-size: 13px; font-weight: 500; }
-  .note-box {
-    background: #f8faf4; border: 1px solid #e2ebd4;
-    border-left: 3px solid ${primary};
-    border-radius: 0 6px 6px 0; padding: 3mm 4mm; margin-bottom: 6mm;
-  }
-  .note-label {
-    font-size: 8px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.06em; color: #374151; margin-bottom: 1.5mm;
-  }
-  .note-value { font-size: 12px; color: #444; line-height: 1.6; }
-  .meta-footer {
-    margin-top: 8mm; padding-top: 3mm;
-    border-top: 0.5px solid #e2ebd4;
-    display: flex; flex-direction: column; gap: 1mm;
-    font-size: 8px; color: #bbb;
-  }
-  .meta-footer-brand { color: #1a1a1a; font-weight: 700; }
-
-</style></head><body>
-
-  ${imgTags.join('\n')}
-
-  <div class="meta-page">
-    <div class="meta-header">
-      <div>
-        <div class="meta-brand">Dosar <span class="meta-brand-url">tudorabrudan.github.io/Dosar</span></div>
-      </div>
-    </div>
-    <div class="meta-doc-type">${docLabel}</div>
-    ${metaFields.length > 0 ? `<div class="fields">${metaFields.join('')}</div>` : ''}
-    ${doc.note ? `<div class="note-box"><div class="note-label">Notă</div><div class="note-value">${escapeHtml(doc.note)}</div></div>` : ''}
-    <div class="meta-footer">
-      <span class="meta-footer-brand">Generat cu Dosar · tudorabrudan.github.io/Dosar · App Store: apps.apple.com/ro/app/dosar-documente-personale/id6760576986</span>
-      <span>Generat pe ${generatedDate}</span>
-    </div>
-  </div>
-
-
-</body></html>`;
       const { uri } = await Print.printToFileAsync({ html, width: 595, height: 842 }); // A4 in points
 
-      // Construiește numele fișierului: entitate-tip_document.pdf
       const firstLink = entityLinks[0];
       const entityName = firstLink ? resolveEntityName(firstLink) : '';
-      const docTypeSlug = slugify(getDocumentLabel(doc, customTypes));
-      const parts = [slugify(entityName), docTypeSlug].filter(Boolean);
+      const docTypeSlug = slugifyForPdfFilename(getDocumentLabel(doc, customTypes));
+      const parts = [slugifyForPdfFilename(entityName), docTypeSlug].filter(Boolean);
       const pdfFilename = parts.join('-') + '.pdf';
       const namedUri = (FileSystem.cacheDirectory ?? '') + pdfFilename;
       await FileSystem.copyAsync({ from: uri, to: namedUri });
@@ -910,14 +757,6 @@ export default function DocumentDetailScreen() {
       setPdfLoading(false);
     }
   };
-
-  function escapeHtml(s: string): string {
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
 
   async function copyValue(value: string, label: string) {
     try {

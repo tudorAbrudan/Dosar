@@ -63,6 +63,7 @@ const ENTRIES = {
     crashReporter: { required: false },
     db: { required: false },
     documentPageStorage: { required: false },
+    documentPdfExport: { required: false },
     documentRetention: { required: false },
     entityFuzzyMatch: { required: false },
     entityOrder: { required: false },
