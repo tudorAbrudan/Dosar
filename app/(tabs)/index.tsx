@@ -26,10 +26,11 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useOrphans } from '@/hooks/useOrphans';
 import { getShowOrphansOnHome } from '@/services/settings';
 import { OrphansSection } from '@/components/OrphansSection';
-import { DOCUMENT_TYPE_LABELS, getDocumentLabel, DOC_PRIMARY_ENTITY } from '@/types';
+import { getDocumentLabel, DOC_PRIMARY_ENTITY } from '@/types';
 import type { Document, DocumentType, EntityType } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
+import { buildHomeAlerts } from '@/services/homeAlerts';
 import { isStaleExpired } from '@/services/expiry';
 import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
 import { CloudBackupBanner } from '@/components/CloudBackupBanner';
@@ -93,117 +94,6 @@ function expiryBadge(doc: Document): { label: string; bg: string; fg: string } |
   if (days < 0) return { label: 'Expirat', bg: statusColors.critical, fg: onPrimary };
   if (days <= 30) return { label: `${days}z`, bg: statusColors.warning, fg: onPrimary };
   return null;
-}
-
-// ─── Alert generation ─────────────────────────────────────────────────────────
-
-interface SmartAlert {
-  id: string;
-  message: string;
-  icon: IoniconName;
-  iconBg: string;
-  iconColor: string;
-  action?: () => void;
-  actionLabel?: string;
-}
-
-function buildAlerts(
-  documents: Document[],
-  vehicles: { id: string; name: string }[],
-  persons: { id: string; name: string }[],
-  visibleDocTypes: DocumentType[]
-): SmartAlert[] {
-  const alerts: SmartAlert[] = [];
-
-  // Verifică vehicule fără talon (doar dacă talon e activat în setări)
-  if (visibleDocTypes.includes('talon')) {
-    for (const v of vehicles) {
-      const hasTalon = documents.some(d => d.vehicle_id === v.id && d.type === 'talon');
-      if (!hasTalon) {
-        alerts.push({
-          id: `no-talon-${v.id}`,
-          message: `${v.name} nu are talon`,
-          icon: 'document-text-outline',
-          iconBg: iconColors.teal.bg,
-          iconColor: iconColors.teal.fg,
-          action: () =>
-            router.push({
-              pathname: '/(tabs)/documente/add',
-              params: { vehicle_id: v.id, type: 'talon' },
-            }),
-          actionLabel: 'Adaugă',
-        });
-      }
-    }
-  }
-
-  // Verifică vehicule fără RCA (doar dacă rca e activat în setări)
-  if (visibleDocTypes.includes('rca')) {
-    for (const v of vehicles) {
-      const hasRca = documents.some(d => d.vehicle_id === v.id && d.type === 'rca');
-      if (!hasRca) {
-        alerts.push({
-          id: `no-rca-${v.id}`,
-          message: `${v.name} nu are RCA`,
-          icon: 'shield-outline',
-          iconBg: iconColors.pink.bg,
-          iconColor: iconColors.pink.fg,
-          action: () =>
-            router.push({
-              pathname: '/(tabs)/documente/add',
-              params: { vehicle_id: v.id, type: 'rca' },
-            }),
-          actionLabel: 'Adaugă',
-        });
-      }
-    }
-  }
-
-  // Verifică vehicule fără ITP (doar dacă itp e activat în setări)
-  if (visibleDocTypes.includes('itp')) {
-    for (const v of vehicles) {
-      const hasItp = documents.some(d => d.vehicle_id === v.id && d.type === 'itp');
-      if (!hasItp) {
-        alerts.push({
-          id: `no-itp-${v.id}`,
-          message: `${v.name} nu are ITP`,
-          icon: 'checkmark-circle-outline',
-          iconBg: iconColors.deepPurple.bg,
-          iconColor: iconColors.deepPurple.fg,
-          action: () =>
-            router.push({
-              pathname: '/(tabs)/documente/add',
-              params: { vehicle_id: v.id, type: 'itp' },
-            }),
-          actionLabel: 'Adaugă',
-        });
-      }
-    }
-  }
-
-  // Verifică persoane fără buletin (doar dacă buletin e activat în setări)
-  if (visibleDocTypes.includes('buletin')) {
-    for (const p of persons) {
-      const hasBuletin = documents.some(d => d.person_id === p.id && d.type === 'buletin');
-      if (!hasBuletin) {
-        alerts.push({
-          id: `no-buletin-${p.id}`,
-          message: `${p.name} nu are buletin`,
-          icon: 'id-card-outline',
-          iconBg: iconColors.info.bg,
-          iconColor: iconColors.info.fg,
-          action: () =>
-            router.push({
-              pathname: '/(tabs)/documente/add',
-              params: { person_id: p.id, type: 'buletin' },
-            }),
-          actionLabel: 'Adaugă',
-        });
-      }
-    }
-  }
-
-  return alerts.slice(0, 3); // max 3 alerte
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -297,7 +187,7 @@ export default function HomeScreen() {
 
   // ── Smart alerts ─────────────────────────────────────────────────────────────
   const alerts = useMemo(
-    () => buildAlerts(documents, vehicles, persons, visibleDocTypes),
+    () => buildHomeAlerts(documents, vehicles, persons, visibleDocTypes),
     [documents, vehicles, persons, visibleDocTypes]
   );
 
@@ -413,7 +303,10 @@ export default function HomeScreen() {
             <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
             <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/expirari')}>
               <RNText
-                style={[styles.statNumber, { color: stats.expired > 0 ? statusColors.critical : C.text }]}
+                style={[
+                  styles.statNumber,
+                  { color: stats.expired > 0 ? statusColors.critical : C.text },
+                ]}
               >
                 {stats.expired}
               </RNText>
@@ -422,7 +315,10 @@ export default function HomeScreen() {
             <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
             <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/expirari')}>
               <RNText
-                style={[styles.statNumber, { color: stats.expiringSoon > 0 ? statusColors.warning : C.text }]}
+                style={[
+                  styles.statNumber,
+                  { color: stats.expiringSoon > 0 ? statusColors.warning : C.text },
+                ]}
               >
                 {stats.expiringSoon}
               </RNText>
@@ -472,16 +368,16 @@ export default function HomeScreen() {
                 <RNText style={[styles.alertText, { color: C.text }]} numberOfLines={2}>
                   {alert.message}
                 </RNText>
-                {alert.action && (
-                  <Pressable
-                    style={[styles.alertBtn, { borderColor: C.primary }]}
-                    onPress={alert.action}
-                  >
-                    <RNText style={[styles.alertBtnText, { color: C.primary }]}>
-                      {alert.actionLabel}
-                    </RNText>
-                  </Pressable>
-                )}
+                <Pressable
+                  style={[styles.alertBtn, { borderColor: C.primary }]}
+                  onPress={() =>
+                    router.push({ pathname: '/(tabs)/documente/add', params: alert.navigate })
+                  }
+                >
+                  <RNText style={[styles.alertBtnText, { color: C.primary }]}>
+                    {alert.actionLabel}
+                  </RNText>
+                </Pressable>
               </RNView>
             ))}
           </RNView>

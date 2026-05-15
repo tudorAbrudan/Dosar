@@ -71,6 +71,7 @@ const ENTRIES = {
     events: { required: false },
     fileHash: { required: false },
     fileUtils: { required: false },
+    homeAlerts: { required: false },
     imageProcessing: { required: false },
     maintenancePresets: { required: false },
     manifestHash: { required: false },
