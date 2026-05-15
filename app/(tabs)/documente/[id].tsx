@@ -64,6 +64,7 @@ import { buildDocumentPdfHtml, slugifyForPdfFilename } from '@/services/document
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { FullscreenPdfModal } from '@/components/document/FullscreenPdfModal';
 import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
+import { DuplicateGroupsCard } from '@/components/document/DuplicateGroupsCard';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
@@ -838,62 +839,13 @@ export default function DocumentDetailScreen() {
               />
             );
           })}
-        {(duplicates.byHash.length > 0 || duplicates.byTypeAndEntity.length > 0) && (
-          <View style={styles.dupBox}>
-            <View style={styles.dupHeader}>
-              <Ionicons name="copy-outline" size={14} color={sensitive} />
-              <Text style={styles.dupHeaderText}>Posibil duplicat</Text>
-            </View>
-            {duplicates.byHash.length > 0 && (
-              <View style={styles.dupSection}>
-                <Text style={styles.dupSectionLabel}>
-                  Fișier identic ({duplicates.byHash.length})
-                </Text>
-                {duplicates.byHash.map(d => (
-                  <Pressable
-                    key={d.id}
-                    style={styles.dupRow}
-                    onPress={() => router.push(`/(tabs)/documente/${d.id}`)}
-                  >
-                    <Text style={styles.dupRowText} numberOfLines={1}>
-                      {getDocumentLabel(d, customTypes)}
-                      {d.created_at
-                        ? ` · ${new Date(d.created_at).toLocaleDateString('ro-RO')}`
-                        : ''}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={sensitive} />
-                  </Pressable>
-                ))}
-              </View>
-            )}
-            {duplicates.byTypeAndEntity.length > 0 && (
-              <View style={styles.dupSection}>
-                <Text style={styles.dupSectionLabel}>
-                  {doc && REPEATABLE_DOC_TYPES.has(doc.type)
-                    ? `Același tip + aceeași dată de emitere (${duplicates.byTypeAndEntity.length})`
-                    : `Același tip și entitate (${duplicates.byTypeAndEntity.length})`}
-                </Text>
-                {duplicates.byTypeAndEntity.map(d => (
-                  <Pressable
-                    key={d.id}
-                    style={styles.dupRow}
-                    onPress={() => router.push(`/(tabs)/documente/${d.id}`)}
-                  >
-                    <Text style={styles.dupRowText} numberOfLines={1}>
-                      {getDocumentLabel(d, customTypes)}
-                      {d.expiry_date
-                        ? ` · expiră ${new Date(d.expiry_date).toLocaleDateString('ro-RO')}`
-                        : d.issue_date
-                          ? ` · emis ${new Date(d.issue_date).toLocaleDateString('ro-RO')}`
-                          : ''}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={sensitive} />
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
+        <DuplicateGroupsCard
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          doc={doc}
+          duplicates={duplicates}
+          customTypes={customTypes}
+          onOpenDocument={id => router.push(`/(tabs)/documente/${id}`)}
+        />
 
         {(() => {
           // Helper pentru numele entității
@@ -1108,26 +1060,6 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   muted: { opacity: 0.7 },
-  dupBox: {
-    marginBottom: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: sensitiveBorder,
-    borderRadius: 12,
-    backgroundColor: sensitiveBg,
-  },
-  dupHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  dupHeaderText: { fontSize: 12, color: sensitive, fontWeight: '700', letterSpacing: 0.3 },
-  dupSection: { marginTop: 4 },
-  dupSectionLabel: { fontSize: 11, color: sensitive, fontWeight: '600', marginBottom: 4 },
-  dupRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    gap: 8,
-  },
-  dupRowText: { fontSize: 14, flex: 1 },
   privateHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   privateLabel: { fontSize: 11, color: sensitive, flex: 1, fontWeight: '600' },
   privateToggle: { paddingHorizontal: 8, paddingVertical: 2 },
