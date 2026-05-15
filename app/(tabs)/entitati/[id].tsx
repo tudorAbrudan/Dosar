@@ -4,7 +4,6 @@ import {
   Pressable,
   RefreshControl,
   Alert,
-  Platform,
   View as RNView,
   Text as RNText,
   FlatList,
@@ -25,7 +24,7 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { getDocuments, linkDocumentToEntity } from '@/services/documents';
 import { toFileUri, toRelativePath } from '@/services/fileUtils';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
-import type { Document as DocType, DocumentType, Company } from '@/types';
+import type { Document as DocType, DocumentType } from '@/types';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
@@ -33,6 +32,10 @@ import { PersonContactCard } from '@/components/entity/PersonContactCard';
 import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
 import { DocumentRow } from '@/components/entity/DocumentRow';
 import { VehicleEditFields } from '@/components/entity/VehicleEditFields';
+import { PersonEditFields } from '@/components/entity/PersonEditFields';
+import { CompanyEditFields } from '@/components/entity/CompanyEditFields';
+import { AnimalEditFields } from '@/components/entity/AnimalEditFields';
+import { CardEditFields } from '@/components/entity/CardEditFields';
 import {
   VehicleMaintenanceSection,
   type VehicleMaintenanceSectionHandle,
@@ -85,7 +88,6 @@ export default function EntityDetailScreen() {
   const [editRegCom, setEditRegCom] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editIban, setEditIban] = useState('');
   const [editPhotoUri, setEditPhotoUri] = useState<string | undefined>(undefined);
   const [editPlate, setEditPlate] = useState('');
   const [editFuelType, setEditFuelType] = useState<'diesel' | 'benzina' | 'gpl' | 'electric'>(
@@ -598,117 +600,47 @@ export default function EntityDetailScreen() {
         )}
 
         {isPerson && (
-          <>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Telefon (opțional)
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="0722 123 456"
-                value={editPhone}
-                onChangeText={setEditPhone}
-                keyboardType="phone-pad"
-                editable={!editLoading}
-              />
-            </RNView>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Email (opțional)
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="email@exemplu.com"
-                value={editEmail}
-                onChangeText={setEditEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                editable={!editLoading}
-              />
-            </RNView>
-          </>
+          <PersonEditFields
+            scheme={scheme}
+            phone={editPhone}
+            email={editEmail}
+            disabled={editLoading}
+            onChangePhone={setEditPhone}
+            onChangeEmail={setEditEmail}
+          />
         )}
 
         {isCompany && (
-          <>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                CUI (opțional)
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="RO12345678"
-                value={editCui}
-                onChangeText={setEditCui}
-                editable={!editLoading}
-              />
-            </RNView>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Nr. Registru Comerț (opțional)
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="J40/1234/2020"
-                value={editRegCom}
-                onChangeText={setEditRegCom}
-                editable={!editLoading}
-              />
-            </RNView>
-          </>
+          <CompanyEditFields
+            scheme={scheme}
+            cui={editCui}
+            regCom={editRegCom}
+            disabled={editLoading}
+            onChangeCui={setEditCui}
+            onChangeRegCom={setEditRegCom}
+          />
         )}
 
         {isAnimal && (
-          <RNView>
-            <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Specie</RNText>
-            <ThemedTextInput
-              style={styles.modalInput}
-              placeholder="câine, pisică, papagal..."
-              value={editSpecies}
-              onChangeText={setEditSpecies}
-              editable={!editLoading}
-            />
-          </RNView>
+          <AnimalEditFields
+            scheme={scheme}
+            species={editSpecies}
+            disabled={editLoading}
+            onChangeSpecies={setEditSpecies}
+          />
         )}
 
         {isCard && (
-          <>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>Nickname</RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="Nickname card"
-                value={editNickname}
-                onChangeText={setEditNickname}
-                editable={!editLoading}
-              />
-            </RNView>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Ultimele 4 cifre
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="1234"
-                value={editLast4}
-                onChangeText={t => setEditLast4(t.replace(/\D/g, '').slice(0, 4))}
-                keyboardType="number-pad"
-                editable={!editLoading}
-              />
-            </RNView>
-            <RNView>
-              <RNText style={[styles.modalLabel, { color: C.textSecondary }]}>
-                Expirare MM/AA (opțional)
-              </RNText>
-              <ThemedTextInput
-                style={styles.modalInput}
-                placeholder="12/28"
-                value={editExpiry}
-                onChangeText={setEditExpiry}
-                editable={!editLoading}
-              />
-            </RNView>
-          </>
+          <CardEditFields
+            scheme={scheme}
+            nickname={editNickname}
+            last4={editLast4}
+            expiry={editExpiry}
+            disabled={editLoading}
+            onChangeNickname={setEditNickname}
+            onChangeLast4={setEditLast4}
+            onChangeExpiry={setEditExpiry}
+          />
         )}
       </FormSheetModal>
     </RNView>
@@ -724,35 +656,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, marginBottom: 10 },
   empty: { fontSize: 14, marginBottom: 16, opacity: 0.7 },
 
-  // Contact info card
-  contactCard: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
-  },
-  contactHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-  },
-  contactHeaderRight: { flexDirection: 'row', alignItems: 'center' },
-  contactHeaderIcon: { marginRight: 8 },
-  contactBody: { marginTop: 10 },
-  contactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingVertical: 4,
-  },
-  contactRowPressed: { opacity: 0.6 },
-  contactIcon: { marginRight: 8 },
-  contactValue: { fontSize: 15 },
-
   // Filter chips
   filterBar: { marginBottom: 12 },
   filterBarContent: { gap: 8, paddingVertical: 2 },
@@ -763,8 +666,6 @@ const styles = StyleSheet.create({
   },
   filterChipText: { fontSize: 13, fontWeight: '500' },
 
-  // Bottom bar
-  btnPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
   modalLabel: { fontSize: 14, marginBottom: 6 },
   modalInput: {
     borderWidth: 1,
@@ -774,13 +675,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 16,
   },
-  modalButtons: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  modalCancelBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalCancelText: { fontSize: 16, opacity: 0.8 },
 });
