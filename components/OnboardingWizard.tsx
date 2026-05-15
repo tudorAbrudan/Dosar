@@ -10,7 +10,6 @@ import {
   Linking,
   Alert,
   Modal,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
@@ -21,6 +20,7 @@ import Colors from '@/constants/Colors';
 import { SUPPORT_URL } from '@/constants/AppLinks';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { AiStep } from '@/components/onboarding/AiStep';
+import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
 import {
   ALL_ENTITY_TYPES,
   STANDARD_DOC_TYPES,
@@ -787,97 +787,15 @@ export default function OnboardingWizard({ onComplete }: Props) {
           </View>
         )}
 
-        {step === CLOUD_BACKUP && cloudCheck.status === 'checking' && (
-          <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            <View style={styles.cardRow}>
-              <ActivityIndicator color={C.primary} />
-              <Text style={[styles.cardSubtitle, { color: C.textSecondary, marginLeft: 12 }]}>
-                Verific iCloud...
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {step === CLOUD_BACKUP && cloudCheck.status === 'available' && cloudCheck.meta == null && (
-          <View style={styles.bulletBlock}>
-            <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
-              <View style={styles.notifRow}>
-                <View style={styles.notifRowText}>
-                  <Text style={[styles.notifLabel, { color: C.text }]}>
-                    Activează backup în iCloud
-                  </Text>
-                  <Text style={[styles.notifSub, { color: C.textSecondary }]}>
-                    Salvăm automat copii ale documentelor în iCloud-ul tău, în folderul „Dosar".
-                    Poți dezactiva oricând din Setări.
-                  </Text>
-                </View>
-                <Switch
-                  value={cloudOptIn}
-                  onValueChange={setCloudOptIn}
-                  trackColor={{ false: C.border, true: primary }}
-                />
-              </View>
-            </View>
-            {[
-              'Backup imediat la fiecare document salvat — fără efort.',
-              'Restore în câteva minute pe iPhone nou cu același Apple ID.',
-              'Datele sunt în iCloud-ul tău; nu trec printr-un server al nostru.',
-            ].map(line => (
-              <View key={line} style={styles.bulletRow}>
-                <Text style={[styles.bulletDot, { color: C.primary }]}>•</Text>
-                <Text style={[styles.bulletText, { color: C.text }]}>{line}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {step === CLOUD_BACKUP && cloudCheck.status === 'available' && cloudCheck.meta != null && (
-          <View style={styles.bulletBlock}>
-            <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
-              <Text style={[styles.notifLabel, { color: C.text }]}>Am găsit un backup</Text>
-              <Text style={[styles.notifSub, { color: C.textSecondary }]}>
-                În iCloud există un backup din {cloudCheck.meta.date} cu {cloudCheck.meta.count}{' '}
-                {cloudCheck.meta.count === 1 ? 'document' : 'documente'}. Vrei să-l restaurezi acum?
-              </Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.cloudPrimaryCta,
-                  {
-                    backgroundColor: C.primary,
-                    opacity: cloudRestoring || pressed ? 0.85 : 1,
-                  },
-                ]}
-                onPress={() => void handleCloudRestore()}
-                disabled={cloudRestoring}
-              >
-                <Text style={styles.cloudPrimaryCtaText}>Da, restaurează backup-ul</Text>
-              </Pressable>
-              <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 12 }]}>
-                Dacă alegi „Nu, încep gol", backup-ul automat rămâne activ și începe să se
-                sincronizeze de la zero din momentul ăsta.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {step === CLOUD_BACKUP && cloudCheck.status === 'unavailable' && (
-          <View style={styles.bulletBlock}>
-            <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
-              <View style={styles.cardRow}>
-                <Ionicons name="cloud-offline-outline" size={22} color={statusColors.warning} />
-                <View style={{ flex: 1, marginLeft: spacing.gap }}>
-                  <Text style={[styles.cardTitle, { color: C.text }]}>
-                    iCloud nu este disponibil
-                  </Text>
-                  <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
-                    {Platform.OS === 'ios'
-                      ? 'Pentru backup automat, activează iCloud Drive din Setări iOS și revino în aplicație. Între timp, poți folosi backup manual din pasul anterior.'
-                      : 'Backup automat în cloud nu este disponibil pe acest device. Folosește backup manual (export ZIP) descris la pasul anterior.'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
+        {step === CLOUD_BACKUP && (
+          <CloudBackupStep
+            scheme={scheme}
+            cloudCheck={cloudCheck}
+            cloudOptIn={cloudOptIn}
+            cloudRestoring={cloudRestoring}
+            onChangeOptIn={setCloudOptIn}
+            onRestore={() => void handleCloudRestore()}
+          />
         )}
 
         {step === AI_STEP && (
@@ -1217,17 +1135,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  cloudPrimaryCta: {
-    marginTop: 16,
-    borderRadius: radius.pill,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  cloudPrimaryCtaText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
   cloudRestoreOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
