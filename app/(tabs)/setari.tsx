@@ -48,6 +48,7 @@ import { AiExternalProviderConfig } from '@/components/settings/AiExternalProvid
 import { LocalModelSelector } from '@/components/settings/LocalModelSelector';
 import { AiConsentBar } from '@/components/settings/AiConsentBar';
 import { AiPrivacyInfoCard } from '@/components/settings/AiPrivacyInfoCard';
+import { AiConfigModal } from '@/components/settings/AiConfigModal';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -1003,215 +1004,48 @@ export default function SetariScreen() {
         scheme={scheme}
       />
 
-      {/* ── Modal configurare AI ── */}
-      <Modal
+      <AiConfigModal
         visible={aiModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setAiModalVisible(false)}
-      >
-        <RNView style={[styles.legalContainer, { backgroundColor: C.background }]}>
-          <RNView
-            style={[styles.legalHeader, { backgroundColor: C.card, borderBottomColor: C.border }]}
-          >
-            <RNText style={[styles.legalTitle, { color: C.text }]}>Configurare Asistent AI</RNText>
-            <Pressable
-              onPress={() => setAiModalVisible(false)}
-              hitSlop={12}
-              style={styles.legalClose}
-            >
-              <Ionicons name="close" size={22} color={C.textSecondary} />
-            </Pressable>
-          </RNView>
-
-          {/* Salvează + Testează — fixate sub header, vizibile fără scroll */}
-          <RNView
-            style={[
-              styles.aiActionBar,
-              { backgroundColor: C.background, borderBottomColor: C.border },
-            ]}
-          >
-            <Pressable
-              style={({ pressed }) => [styles.btn, { flex: 1, opacity: pressed ? 0.85 : 1 }]}
-              onPress={handleSaveAiConfig}
-            >
-              <Ionicons name="save-outline" size={18} color="#fff" style={styles.btnIcon} />
-              <RNText style={styles.btnText}>Salvează</RNText>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.btnOutline,
-                {
-                  flex: 1,
-                  borderColor:
-                    aiTestStatus === 'error'
-                      ? statusColors.critical
-                      : aiTestStatus === 'ok'
-                        ? statusColors.ok
-                        : primary,
-                  opacity: pressed || aiTestStatus === 'loading' ? 0.7 : 1,
-                },
-              ]}
-              onPress={handleTestAiConnection}
-              disabled={aiTestStatus === 'loading'}
-            >
-              <Ionicons
-                name={
-                  aiTestStatus === 'ok'
-                    ? 'checkmark-circle-outline'
-                    : aiTestStatus === 'error'
-                      ? 'close-circle-outline'
-                      : 'wifi-outline'
-                }
-                size={18}
-                color={
-                  aiTestStatus === 'ok'
-                    ? statusColors.ok
-                    : aiTestStatus === 'error'
-                      ? statusColors.critical
-                      : primary
-                }
-                style={styles.btnIcon}
-              />
-              <RNText
-                style={[
-                  styles.btnOutlineText,
-                  {
-                    color:
-                      aiTestStatus === 'ok'
-                        ? statusColors.ok
-                        : aiTestStatus === 'error'
-                          ? statusColors.critical
-                          : primary,
-                  },
-                ]}
-              >
-                {aiTestStatus === 'loading'
-                  ? 'Se testează…'
-                  : aiTestStatus === 'ok'
-                    ? 'Conexiune OK'
-                    : aiTestStatus === 'error'
-                      ? 'Eroare'
-                      : 'Testează'}
-              </RNText>
-            </Pressable>
-          </RNView>
-
-          <AiConsentBar
-            providerType={aiProviderType}
-            checked={aiModalConsentChecked}
-            scheme={scheme}
-            onToggle={() => setAiModalConsentChecked(v => !v)}
-          />
-
-          <ScrollView
-            style={styles.legalScroll}
-            contentContainerStyle={[styles.legalContent, { gap: 20 }]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            automaticallyAdjustKeyboardInsets
-          >
-            {(aiProviderType === 'builtin' || aiProviderType === 'external') && (
-              <AiPrivacyInfoCard scheme={scheme} />
-            )}
-
-            <AiProviderSelector
-              selected={aiProviderType}
-              scheme={scheme}
-              onSelect={handleAiProviderSelect}
-            />
-            <RNView>
-              {aiProviderType === 'external' && (
-                <AiExternalProviderConfig
-                  chat={{ url: aiProviderUrl, apiKey: aiApiKey, model: aiProviderModel }}
-                  separateVision={aiSeparateVision}
-                  vision={{ url: aiVisionUrl, apiKey: aiVisionApiKey, model: aiVisionModel }}
-                  scheme={scheme}
-                  onAnyChange={() => setAiTestStatus('idle')}
-                  onChangeChat={patch => {
-                    if (patch.url !== undefined) setAiProviderUrl(patch.url);
-                    if (patch.apiKey !== undefined) setAiApiKey(patch.apiKey);
-                    if (patch.model !== undefined) setAiProviderModel(patch.model);
-                  }}
-                  onChangeVision={patch => {
-                    if (patch.url !== undefined) setAiVisionUrl(patch.url);
-                    if (patch.apiKey !== undefined) setAiVisionApiKey(patch.apiKey);
-                    if (patch.model !== undefined) setAiVisionModel(patch.model);
-                  }}
-                  onToggleSeparateVision={setAiSeparateVision}
-                />
-              )}
-              <LocalModelSelector
-                downloadedIds={downloadedModelIds}
-                allModels={compatibleModels}
-                providerType={aiProviderType}
-                selectedId={selectedLocalModelId}
-                scheme={scheme}
-                onSelect={handleSelectLocalModel}
-              />
-            </RNView>
-
-            {aiProviderType === 'local' && (
-              <LocalModelWarningBanner onContactDeveloper={openEmail} />
-            )}
-
-            <LocalModelCatalog
-              models={compatibleModels}
-              downloadedIds={downloadedModelIds}
-              downloadingId={downloadingModelId}
-              downloadProgress={downloadProgress}
-              downloadedMb={downloadedMb}
-              downloadTotalMb={downloadTotalMb}
-              scheme={scheme}
-              onDownload={handleDownloadModel}
-              onDelete={handleDeleteModel}
-              onCancel={handleCancelDownload}
-            />
-
-            <OrphanModelsBanner
-              orphans={orphanModels}
-              scheme={scheme}
-              onCleanup={handleDeleteOrphanModels}
-            />
-
-            {/* Descriere builtin */}
-            {aiProviderType === 'builtin' && (
-              <RNView
-                style={[
-                  styles.aiInput,
-                  styles.aiInputReadonly,
-                  {
-                    borderColor: C.border,
-                    backgroundColor: C.background,
-                    flexDirection: 'column',
-                    height: 'auto',
-                    paddingVertical: 12,
-                  },
-                ]}
-              >
-                <RNText
-                  style={[styles.aiInputReadonlyText, { color: C.textSecondary, lineHeight: 20 }]}
-                >
-                  Utilizează serviciul AI inclus în aplicație. Nu este necesară o cheie API
-                  personală.
-                </RNText>
-              </RNView>
-            )}
-
-            {aiTestMessage ? (
-              <RNText
-                style={[
-                  styles.aiHint,
-                  { color: aiTestStatus === 'error' ? statusColors.critical : statusColors.ok },
-                ]}
-              >
-                {aiTestMessage}
-              </RNText>
-            ) : null}
-          </ScrollView>
-        </RNView>
-      </Modal>
+        scheme={scheme}
+        providerType={aiProviderType}
+        chat={{ url: aiProviderUrl, apiKey: aiApiKey, model: aiProviderModel }}
+        separateVision={aiSeparateVision}
+        vision={{ url: aiVisionUrl, apiKey: aiVisionApiKey, model: aiVisionModel }}
+        testStatus={aiTestStatus}
+        testMessage={aiTestMessage}
+        consentChecked={aiModalConsentChecked}
+        compatibleModels={compatibleModels}
+        downloadedIds={downloadedModelIds}
+        downloadingId={downloadingModelId}
+        downloadProgress={downloadProgress}
+        downloadedMb={downloadedMb}
+        downloadTotalMb={downloadTotalMb}
+        selectedLocalModelId={selectedLocalModelId}
+        orphanModels={orphanModels}
+        onClose={() => setAiModalVisible(false)}
+        onSave={handleSaveAiConfig}
+        onTest={handleTestAiConnection}
+        onConsentToggle={() => setAiModalConsentChecked(v => !v)}
+        onProviderSelect={handleAiProviderSelect}
+        onChangeChat={patch => {
+          if (patch.url !== undefined) setAiProviderUrl(patch.url);
+          if (patch.apiKey !== undefined) setAiApiKey(patch.apiKey);
+          if (patch.model !== undefined) setAiProviderModel(patch.model);
+        }}
+        onChangeVision={patch => {
+          if (patch.url !== undefined) setAiVisionUrl(patch.url);
+          if (patch.apiKey !== undefined) setAiVisionApiKey(patch.apiKey);
+          if (patch.model !== undefined) setAiVisionModel(patch.model);
+        }}
+        onToggleSeparateVision={setAiSeparateVision}
+        onMarkTestStale={() => setAiTestStatus('idle')}
+        onSelectLocalModel={handleSelectLocalModel}
+        onDownloadModel={handleDownloadModel}
+        onDeleteModel={handleDeleteModel}
+        onCancelDownload={handleCancelDownload}
+        onDeleteOrphanModels={handleDeleteOrphanModels}
+        onContactDeveloper={openEmail}
+      />
 
       <AppLockPinModal
         visible={appLockPinModal}
