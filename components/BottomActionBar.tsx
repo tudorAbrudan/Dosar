@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary } from '@/theme/colors';
+import { primary, statusColors } from '@/theme/colors';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -31,7 +31,7 @@ export function BottomActionBar({ actions, topActions }: Props) {
   const C = Colors[scheme];
 
   function renderAction(action: BottomAction, index: number, total: number) {
-    const color = action.danger ? '#E53935' : (action.color ?? primary);
+    const color = action.danger ? statusColors.critical : (action.color ?? primary);
     const isLast = index === total - 1;
 
     return (

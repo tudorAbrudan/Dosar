@@ -17,6 +17,14 @@ export const statusColors = {
   ok: primary,
   warning: '#E8A53A',
   critical: '#D84C4C',
+  /** Banner background pentru "critical" pe tema dark (alpha low pentru subtle). */
+  criticalSurfaceDark: 'rgba(216,76,76,0.18)',
+  /** Subtle background pentru warning (chip-uri, banner duplicate). */
+  warningSurface: 'rgba(232,165,58,0.15)',
+  /** Alpha mai mic pentru tema dark sau accent ușor. */
+  warningSurfaceDark: 'rgba(232,165,58,0.18)',
+  /** Alpha minim pentru fundal subtil. */
+  warningSurfaceSoft: 'rgba(232,165,58,0.12)',
 } as const;
 
 export type StatusSeverity = 'ok' | 'warning' | 'critical';

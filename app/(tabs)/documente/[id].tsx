@@ -1049,7 +1049,7 @@ export default function DocumentDetailScreen() {
         {(duplicates.byHash.length > 0 || duplicates.byTypeAndEntity.length > 0) && (
           <View style={styles.dupBox}>
             <View style={styles.dupHeader}>
-              <Ionicons name="copy-outline" size={14} color="#8a6d2f" />
+              <Ionicons name="copy-outline" size={14} color={sensitive} />
               <Text style={styles.dupHeaderText}>Posibil duplicat</Text>
             </View>
             {duplicates.byHash.length > 0 && (
@@ -1069,7 +1069,7 @@ export default function DocumentDetailScreen() {
                         ? ` · ${new Date(d.created_at).toLocaleDateString('ro-RO')}`
                         : ''}
                     </Text>
-                    <Ionicons name="chevron-forward" size={14} color="#8a6d2f" />
+                    <Ionicons name="chevron-forward" size={14} color={sensitive} />
                   </Pressable>
                 ))}
               </View>
@@ -1095,7 +1095,7 @@ export default function DocumentDetailScreen() {
                           ? ` · emis ${new Date(d.issue_date).toLocaleDateString('ro-RO')}`
                           : ''}
                     </Text>
-                    <Ionicons name="chevron-forward" size={14} color="#8a6d2f" />
+                    <Ionicons name="chevron-forward" size={14} color={sensitive} />
                   </Pressable>
                 ))}
               </View>

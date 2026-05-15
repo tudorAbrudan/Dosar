@@ -1,4 +1,5 @@
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
 
@@ -12,7 +13,7 @@ export function OnboardingSection({ scheme, onResetOnboarding }: OnboardingSecti
     <SectionCard title="Onboarding" scheme={scheme}>
       <InfoRow
         icon="rocket-outline"
-        iconBg="#E8F5E9"
+        iconBg={iconColors.primary.bg}
         iconColor={primary}
         label="Reluare onboarding"
         sub="Resetează vizibilitatea tipurilor de documente la valorile implicite"

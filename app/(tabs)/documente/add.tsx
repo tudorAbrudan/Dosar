@@ -26,7 +26,8 @@ import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { primary, primaryMuted, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { greys } from '@/theme/iconColors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { scheduleExpirationReminders } from '@/services/notifications';
@@ -1268,7 +1269,7 @@ export default function AddDocumentScreen() {
           onReorderPage={handleReorderPage}
         />
         {aiOcrApplied && (
-          <View style={[styles.aiBadge, { backgroundColor: C.primaryMuted ?? '#f0f5e8' }]}>
+          <View style={[styles.aiBadge, { backgroundColor: C.primaryMuted ?? primaryMuted }]}>
             <Text style={[styles.aiBadgeText, { color: primary }]}>
               ✦ Câmpuri completate cu AI · Verifică înainte de salvare
             </Text>
@@ -1519,7 +1520,7 @@ export default function AddDocumentScreen() {
         <ThemedTextInput
           style={[styles.input, styles.inputMultiline, styles.privateInput]}
           placeholder="Ex. CVV 123 · PIN 4821"
-          placeholderTextColor="#999"
+          placeholderTextColor={greys.text999}
           value={privateNotes}
           onChangeText={setPrivateNotes}
           multiline

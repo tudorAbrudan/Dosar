@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
-import { primary, statusColors } from '@/theme/colors';
+import { primary, statusColors, onPrimary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { toFileUri } from '@/services/fileUtils';
@@ -63,22 +64,22 @@ const ENTITY_ICON: Record<EntityType, IoniconName> = {
 
 // check-hardcoded-entities-disable-next-cluster
 const ENTITY_ICON_BG: Record<EntityType, string> = {
-  person: '#E3F2FD',
-  property: '#E8F5E9',
-  vehicle: '#FFF3E0',
-  card: '#F3E5F5',
-  animal: '#FFF3E0',
-  company: '#E8EAF6',
+  person: iconColors.info.bg,
+  property: iconColors.primary.bg,
+  vehicle: iconColors.warning.bg,
+  card: iconColors.purple.bg,
+  animal: iconColors.warning.bg,
+  company: iconColors.indigo.bg,
 };
 
 // check-hardcoded-entities-disable-next-cluster
 const ENTITY_ICON_COLOR: Record<EntityType, string> = {
-  person: '#1565C0',
-  property: '#2E7D32',
-  vehicle: '#E65100',
-  card: '#7B1FA2',
-  animal: '#E65100',
-  company: '#283593',
+  person: iconColors.info.fg,
+  property: iconColors.primary.fg,
+  vehicle: iconColors.warning.fg,
+  card: iconColors.purple.fg,
+  animal: iconColors.warning.fg,
+  company: iconColors.indigo.fg,
 };
 
 export default function EntitatiListScreen() {
@@ -361,13 +362,13 @@ export default function EntitatiListScreen() {
                 <Ionicons
                   name={icon}
                   size={13}
-                  color={isActive ? '#fff' : C.textSecondary}
+                  color={isActive ? onPrimary : C.textSecondary}
                   style={styles.chipIcon}
                 />
                 <RNText
                   style={[
                     styles.chipText,
-                    { color: isActive ? '#fff' : C.text },
+                    { color: isActive ? onPrimary : C.text },
                     isActive && styles.chipTextActive,
                   ]}
                 >
@@ -385,7 +386,7 @@ export default function EntitatiListScreen() {
           style={[
             styles.errorBanner,
             {
-              backgroundColor: scheme === 'dark' ? 'rgba(216,76,76,0.18)' : '#FFEBEE',
+              backgroundColor: scheme === 'dark' ? statusColors.criticalSurfaceDark : iconColors.danger.bg,
               borderColor: statusColors.critical,
               borderWidth: StyleSheet.hairlineWidth,
             },
@@ -522,7 +523,7 @@ const styles = StyleSheet.create({
   },
   chipIcon: { marginRight: 4 },
   chipText: { fontSize: 13, lineHeight: 18 },
-  chipTextActive: { color: '#fff', fontWeight: '600' },
+  chipTextActive: { color: onPrimary, fontWeight: '600' },
 
   // Error
   errorBanner: {
@@ -621,6 +622,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     justifyContent: 'flex-end',
     padding: 12,
+    // Vehicle photo overlay este intenționat dark; text alb peste poză.
+    // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
     backgroundColor: '#000',
   },
   vehicleCardText: {
@@ -630,11 +633,15 @@ const styles = StyleSheet.create({
   vehicleName: {
     fontSize: 16,
     fontWeight: '600',
+    // Text peste vehicle photo overlay — intenționat alb pe ambele teme.
+    // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
     color: '#fff',
   },
   vehiclePlate: {
     fontSize: 12,
     marginTop: 2,
+    // Text peste vehicle photo overlay — intenționat alb pe ambele teme.
+    // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
     color: 'rgba(255,255,255,0.85)',
   },
 });

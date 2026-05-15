@@ -18,6 +18,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { primary, primaryTint, statusColors } from '@/theme/colors';
+import { DOC_ICON_BG, DOC_ICON_COLOR } from '@/theme/docTypeColors';
+import { iconColors } from '@/theme/iconColors';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
@@ -77,96 +79,6 @@ const DOC_ICON: Record<DocumentType, IoniconName> = {
   adeverinta_studii: 'document-text-outline',
   altul: 'document-outline',
   custom: 'document-outline',
-};
-
-const DOC_ICON_BG: Record<DocumentType, string> = {
-  buletin: '#E3F2FD',
-  pasaport: '#E8EAF6',
-  permis_auto: '#FFF3E0',
-  talon: '#E0F2F1',
-  carte_auto: '#E0F2F1',
-  rca: '#FCE4EC',
-  casco: '#FCE4EC',
-  itp: '#F3E5F5',
-  vigneta: '#FFF8E1',
-  act_proprietate: '#E8F5E9',
-  cadastru: '#E8F5E9',
-  factura: '#FFF3E0',
-  impozit_proprietate: '#FFF8E1',
-  card: '#F3E5F5',
-  garantie: '#E8F5E9',
-  bon_cumparaturi: '#FFF8E1',
-  bon_parcare: '#E8F5E9',
-  pad: '#E3F2FD',
-  stingator_incendiu: '#FCE4EC',
-  abonament: '#F3E5F5',
-  contract: '#E8EAF6',
-  card_sanatate: '#FFEBEE',
-  certificat_nastere: '#FFF8E1',
-  certificat_casatorie: '#FCE4EC',
-  certificat_botez: '#E1F5FE',
-  vaccin_animal: '#E8F5E9',
-  deparazitare: '#FFF8E1',
-  vizita_vet: '#E8EAF6',
-  bilet: '#F3E5F5',
-  certificat_inregistrare: '#E8EAF6',
-  autorizatie_activitate: '#E8F5E9',
-  act_constitutiv: '#E8EAF6',
-  certificat_tva: '#FFF3E0',
-  asigurare_profesionala: '#FCE4EC',
-  asigurare_personala: '#FFEBEE',
-  diploma: '#EDE7F6',
-  foaie_matricola: '#EDE7F6',
-  certificat_absolvire: '#EDE7F6',
-  certificat_curs: '#EDE7F6',
-  adeverinta_studii: '#EDE7F6',
-  altul: '#F5F5F5',
-  custom: '#F5F5F5',
-};
-
-const DOC_ICON_COLOR: Record<DocumentType, string> = {
-  buletin: '#1565C0',
-  pasaport: '#283593',
-  permis_auto: '#E65100',
-  talon: '#00695C',
-  carte_auto: '#00897B',
-  rca: '#C62828',
-  casco: '#AD1457',
-  itp: '#6A1B9A',
-  vigneta: '#F57F17',
-  act_proprietate: '#2E7D32',
-  cadastru: '#388E3C',
-  factura: '#BF360C',
-  impozit_proprietate: '#F57F17',
-  card: '#7B1FA2',
-  garantie: '#2E7D32',
-  bon_cumparaturi: '#F57F17',
-  bon_parcare: '#2E7D32',
-  pad: '#1565C0',
-  stingator_incendiu: '#BF360C',
-  abonament: '#7B1FA2',
-  contract: '#283593',
-  card_sanatate: '#C62828',
-  certificat_nastere: '#F57F17',
-  certificat_casatorie: '#C2185B',
-  certificat_botez: '#0277BD',
-  vaccin_animal: '#388E3C',
-  deparazitare: '#F57F17',
-  vizita_vet: '#283593',
-  bilet: '#7B1FA2',
-  certificat_inregistrare: '#283593',
-  autorizatie_activitate: '#2E7D32',
-  act_constitutiv: '#283593',
-  certificat_tva: '#E65100',
-  asigurare_profesionala: '#C62828',
-  asigurare_personala: '#8E0000',
-  diploma: '#4527A0',
-  foaie_matricola: '#4527A0',
-  certificat_absolvire: '#4527A0',
-  certificat_curs: '#4527A0',
-  adeverinta_studii: '#4527A0',
-  altul: '#757575',
-  custom: '#757575',
 };
 
 // ─── Entity kind → icon ───────────────────────────────────────────────────────
@@ -231,8 +143,8 @@ function DocumentCard({
   onLongPress,
 }: DocumentCardProps) {
   const C = Colors[scheme];
-  const iconBg = DOC_ICON_BG[doc.type] ?? '#F5F5F5';
-  const iconColor = DOC_ICON_COLOR[doc.type] ?? '#757575';
+  const iconBg = DOC_ICON_BG[doc.type] ?? iconColors.neutral.bg;
+  const iconColor = DOC_ICON_COLOR[doc.type] ?? iconColors.neutral.fg;
   const iconName = DOC_ICON[doc.type] ?? 'document-outline';
   const expiry = getExpiryInfo(doc);
   const entityIconName: IoniconName = entityKind
@@ -752,7 +664,7 @@ export default function DocumenteListScreen() {
           style={[
             styles.errorBanner,
             {
-              backgroundColor: scheme === 'dark' ? 'rgba(216,76,76,0.18)' : '#FFEBEE',
+              backgroundColor: scheme === 'dark' ? statusColors.criticalSurfaceDark : iconColors.danger.bg,
               borderColor: statusColors.critical,
               borderWidth: StyleSheet.hairlineWidth,
             },

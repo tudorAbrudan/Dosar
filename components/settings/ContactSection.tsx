@@ -1,6 +1,7 @@
 import { Linking } from 'react-native';
 import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
+import { iconColors } from '@/theme/iconColors';
 
 const APP_STORE_REVIEW_URL =
   'itms-apps://itunes.apple.com/app/id6760576986?action=write-review';
@@ -24,8 +25,8 @@ export function ContactSection({
     <SectionCard title="Contact și suport" scheme={scheme}>
       <InfoRow
         icon="mail-outline"
-        iconBg="#E8EAF6"
-        iconColor="#283593"
+        iconBg={iconColors.indigo.bg}
+        iconColor={iconColors.indigo.fg}
         label="Contactează suport aplicație"
         sub={contactEmail}
         onPress={onContact}
@@ -33,8 +34,8 @@ export function ContactSection({
       />
       <InfoRow
         icon="globe-outline"
-        iconBg="#E0F2F1"
-        iconColor="#00695C"
+        iconBg={iconColors.teal.bg}
+        iconColor={iconColors.teal.fg}
         label="Site web și suport"
         sub={supportUrl}
         onPress={onOpenSupport}
@@ -42,8 +43,8 @@ export function ContactSection({
       />
       <InfoRow
         icon="star-outline"
-        iconBg="#FFF8E1"
-        iconColor="#F57F17"
+        iconBg={iconColors.amber.bg}
+        iconColor={iconColors.amber.fg}
         label="Evaluează aplicația"
         sub="Ne ajuți cu o recenzie pe App Store"
         onPress={() => Linking.openURL(APP_STORE_REVIEW_URL)}

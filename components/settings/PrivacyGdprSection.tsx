@@ -2,6 +2,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary, statusColors } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
 
@@ -23,7 +24,7 @@ export function PrivacyGdprSection({
     <SectionCard title="Date și confidențialitate" scheme={scheme}>
       <InfoRow
         icon="shield-checkmark-outline"
-        iconBg="#E8F5E9"
+        iconBg={iconColors.primary.bg}
         iconColor={primary}
         label="Politică de confidențialitate"
         sub="Cum sunt protejate datele tale · local pe dispozitiv"
@@ -32,16 +33,16 @@ export function PrivacyGdprSection({
       />
       <InfoRow
         icon="document-text-outline"
-        iconBg="#E3F2FD"
-        iconColor="#1565C0"
+        iconBg={iconColors.info.bg}
+        iconColor={iconColors.info.fg}
         label="Termeni și condiții"
         onPress={onShowTerms}
         scheme={scheme}
       />
       <View style={styles.rowLast}>
         <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: '#FCE4EC' }]}>
-            <Ionicons name="trash-outline" size={18} color="#C62828" />
+          <View style={[styles.rowIcon, { backgroundColor: iconColors.pink.bg }]}>
+            <Ionicons name="trash-outline" size={18} color={iconColors.pink.fg} />
           </View>
           <Text style={[styles.rowLabel, { color: statusColors.critical }]}>
             Șterge toate datele

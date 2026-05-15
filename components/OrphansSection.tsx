@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { radius } from '@/theme/layout';
+import { iconColors } from '@/theme/iconColors';
 import type { OrphanGroup, OrphanFixKind } from '@/services/orphans';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -35,8 +36,8 @@ export function OrphansSection({ groups, onItemPress }: OrphansSectionProps) {
     <RNView style={styles.section}>
       <RNView style={styles.sectionHeader}>
         <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>DE COMPLETAT</RNText>
-        <RNView style={[styles.totalBadge, { backgroundColor: '#FFF3E0' }]}>
-          <RNText style={[styles.totalBadgeText, { color: '#E65100' }]}>{total}</RNText>
+        <RNView style={[styles.totalBadge, { backgroundColor: iconColors.warning.bg }]}>
+          <RNText style={[styles.totalBadgeText, { color: iconColors.warning.fg }]}>{total}</RNText>
         </RNView>
       </RNView>
 

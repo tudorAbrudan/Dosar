@@ -22,7 +22,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
-import { primary, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { primary, primaryMuted, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { iconColors, greys } from '@/theme/iconColors';
 import { DatePickerField } from '@/components/DatePickerField';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
@@ -904,7 +905,7 @@ export default function EditDocumentScreen() {
           onOcrTextSave={handleOcrSave}
         />
         {aiOcrApplied && (
-          <View style={[styles.aiBadge, { backgroundColor: '#f0f5e8' }]}>
+          <View style={[styles.aiBadge, { backgroundColor: primaryMuted }]}>
             <Text style={[styles.aiBadgeText, { color: primary }]}>
               ✦ Câmpuri completate cu AI · Verifică înainte de salvare
             </Text>
@@ -924,11 +925,11 @@ export default function EditDocumentScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.aiActionBtn,
-                  { borderColor: '#F57F17', opacity: pressed ? 0.75 : 1 },
+                  { borderColor: iconColors.amber.fg, opacity: pressed ? 0.75 : 1 },
                 ]}
                 onPress={runAiImageAnalysis}
               >
-                <Text style={[styles.aiActionBtnText, { color: '#F57F17' }]}>
+                <Text style={[styles.aiActionBtnText, { color: iconColors.amber.fg }]}>
                   Trimite documentul la AI
                 </Text>
               </Pressable>
@@ -1140,7 +1141,7 @@ export default function EditDocumentScreen() {
         <ThemedTextInput
           style={[styles.input, styles.inputMultiline, styles.privateInput]}
           placeholder="Ex. CVV 123 · PIN 4821"
-          placeholderTextColor="#999"
+          placeholderTextColor={greys.text999}
           value={privateNotes}
           onChangeText={setPrivateNotes}
           multiline
@@ -1403,11 +1404,11 @@ const styles = StyleSheet.create({
   aiBadge: { borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginTop: 8 },
   aiBadgeText: { fontSize: 13, fontWeight: '600' },
   aiLoadingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  aiLoadingText: { fontSize: 12, fontStyle: 'italic', color: '#666' },
+  aiLoadingText: { fontSize: 12, fontStyle: 'italic', color: greys.text666 },
   aiActionsRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   aiActionBtn: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1 },
   aiActionBtnText: { fontSize: 13, fontWeight: '600' },
-  aiActionInfo: { fontSize: 11, marginTop: 4, lineHeight: 15, color: '#888' },
+  aiActionInfo: { fontSize: 11, marginTop: 4, lineHeight: 15, color: greys.text888 },
   btnOutline: {
     flex: 1,
     paddingVertical: 15,

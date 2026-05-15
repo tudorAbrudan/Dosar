@@ -56,7 +56,7 @@ module.exports = {
   },
   create(context) {
     const filename = context.getFilename();
-    if (/theme\/colors\./.test(filename)) return {};
+    if (/theme\//.test(filename)) return {};
     if (/eslint-local-rules\//.test(filename)) return {};
     if (/scripts\//.test(filename)) return {};
     if (/__tests__\//.test(filename)) return {};

@@ -2,6 +2,7 @@ import { View, Text, Switch, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { SectionCard } from './SectionCard';
 
 interface SecuritateSectionProps {
@@ -21,8 +22,8 @@ export function SecuritateSection({
       <SectionCard title="Securitate" scheme={scheme}>
         <View style={styles.rowLast}>
           <View style={styles.rowLeft}>
-            <View style={[styles.rowIcon, { backgroundColor: '#FCE4EC' }]}>
-              <Ionicons name="lock-closed-outline" size={18} color="#C62828" />
+            <View style={[styles.rowIcon, { backgroundColor: iconColors.pink.bg }]}>
+              <Ionicons name="lock-closed-outline" size={18} color={iconColors.pink.fg} />
             </View>
             <View style={styles.rowLabelWrap}>
               <Text style={[styles.rowLabel, { color: C.text }]}>Blocare aplicație</Text>

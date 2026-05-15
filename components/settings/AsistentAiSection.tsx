@@ -2,6 +2,7 @@ import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
 import * as aiProvider from '@/services/aiProvider';
 import type { AiProviderType } from '@/services/aiProvider';
+import { iconColors } from '@/theme/iconColors';
 
 interface AsistentAiSectionProps {
   aiProviderType: AiProviderType;
@@ -24,8 +25,8 @@ export function AsistentAiSection({
     <SectionCard title="Asistent AI" scheme={scheme}>
       <InfoRow
         icon="sparkles-outline"
-        iconBg="#EDE7F6"
-        iconColor="#4527A0"
+        iconBg={iconColors.aiPurple.bg}
+        iconColor={iconColors.aiPurple.fg}
         label="Provider AI"
         sub={providerLabel + (showConsentBadge ? ' · Acord acordat' : '')}
         onPress={onOpenAiModal}

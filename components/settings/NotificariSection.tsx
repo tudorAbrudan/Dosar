@@ -2,6 +2,7 @@ import { View, Text, Switch, TextInput, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { SectionCard } from './SectionCard';
 
 interface NotificariSectionProps {
@@ -28,8 +29,8 @@ export function NotificariSection({
     <SectionCard title="Notificări" scheme={scheme}>
       <View style={[styles.row, { borderBottomColor: C.border }]}>
         <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: '#E3F2FD' }]}>
-            <Ionicons name="time-outline" size={18} color="#1565C0" />
+          <View style={[styles.rowIcon, { backgroundColor: iconColors.info.bg }]}>
+            <Ionicons name="time-outline" size={18} color={iconColors.info.fg} />
           </View>
           <Text style={[styles.rowLabel, { color: C.text }]}>Zile înainte de expirare</Text>
         </View>
@@ -47,7 +48,7 @@ export function NotificariSection({
       </View>
       <View style={[styles.row, { borderBottomColor: C.border }]}>
         <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: '#E8F5E9' }]}>
+          <View style={[styles.rowIcon, { backgroundColor: iconColors.primary.bg }]}>
             <Ionicons name="notifications-outline" size={18} color={primary} />
           </View>
           <Text style={[styles.rowLabel, { color: C.text }]}>Notificări push</Text>
@@ -61,8 +62,8 @@ export function NotificariSection({
       </View>
       <View style={styles.rowLast}>
         <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: '#FFF3E0' }]}>
-            <Ionicons name="checkmark-done-outline" size={18} color="#E65100" />
+          <View style={[styles.rowIcon, { backgroundColor: iconColors.warning.bg }]}>
+            <Ionicons name="checkmark-done-outline" size={18} color={iconColors.warning.fg} />
           </View>
           <Text style={[styles.rowLabel, { color: C.text }]}>Sugestii pe Acasă</Text>
         </View>

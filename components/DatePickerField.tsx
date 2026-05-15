@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { greys } from '@/theme/iconColors';
 
 interface DatePickerFieldProps {
   label: string;
@@ -108,7 +109,7 @@ export function DatePickerField({
           value={display}
           onChangeText={handleChange}
           placeholder={placeholder}
-          placeholderTextColor={C.textSecondary ?? '#999'}
+          placeholderTextColor={C.textSecondary ?? greys.text999}
           keyboardType="numeric"
           maxLength={10}
           editable={!disabled}
@@ -117,7 +118,7 @@ export function DatePickerField({
         />
         {hasValue && !disabled && (
           <Pressable onPress={handleClear} style={styles.clearBtn} hitSlop={8}>
-            <Text style={[styles.clearText, { color: C.textSecondary ?? '#999' }]}>✕</Text>
+            <Text style={[styles.clearText, { color: C.textSecondary ?? greys.text999 }]}>✕</Text>
           </Pressable>
         )}
       </View>

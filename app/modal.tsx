@@ -8,6 +8,8 @@ export default function ModalScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Modal</Text>
+      {/* Expo template boilerplate — light/dark literals trec direct la `ThemedView`. */}
+      {/* eslint-disable-next-line local-rules/no-hardcoded-hex-colors */}
       <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
       <EditScreenInfo path="app/modal.tsx" />
 

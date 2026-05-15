@@ -863,13 +863,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   partialChip: {
-    backgroundColor: 'rgba(232,165,58,0.15)',
+    backgroundColor: statusColors.warningSurface,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
   partialChipText: {
-    color: '#E8A53A',
+    color: statusColors.warning,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.3,

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 
 interface LocalModelWarningBannerProps {
   onContactDeveloper: () => void;
@@ -16,7 +17,7 @@ export function LocalModelWarningBanner({ onContactDeveloper }: LocalModelWarnin
       <Ionicons
         name="flask-outline"
         size={16}
-        color="#F57F17"
+        color={iconColors.amber.fg}
         style={styles.icon}
       />
       <View style={styles.body}>
@@ -41,8 +42,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
-    backgroundColor: '#FFF8E1',
-    borderColor: '#F9A825',
+    backgroundColor: iconColors.amberLight.bg,
+    borderColor: iconColors.amberLight.fg,
   },
   icon: { marginRight: 6, marginTop: 1 },
   body: { flex: 1 },
@@ -50,12 +51,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 4,
-    color: '#E65100',
+    color: iconColors.warning.fg,
   },
   text: {
     fontSize: 12,
     lineHeight: 17,
-    color: '#6D4C41',
+    color: iconColors.brown.fg,
   },
   link: {
     color: primary,

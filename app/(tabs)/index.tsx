@@ -16,7 +16,9 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { AppButton } from '@/components/ui/AppButton';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import Colors from '@/constants/Colors';
-import { primary } from '@/theme/colors';
+import { primary, statusColors, onPrimary } from '@/theme/colors';
+import { DOC_ICON_BG, DOC_ICON_COLOR } from '@/theme/docTypeColors';
+import { iconColors } from '@/theme/iconColors';
 import { radius, spacing } from '@/theme/layout';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
@@ -74,72 +76,6 @@ const DOC_ICON: Partial<Record<DocumentType, IoniconName>> = {
   custom: 'document-outline',
 };
 
-const DOC_ICON_BG: Partial<Record<DocumentType, string>> = {
-  buletin: '#E3F2FD',
-  pasaport: '#E8EAF6',
-  permis_auto: '#FFF3E0',
-  talon: '#E0F2F1',
-  carte_auto: '#E0F2F1',
-  rca: '#FCE4EC',
-  casco: '#FCE4EC',
-  itp: '#F3E5F5',
-  vigneta: '#FFF8E1',
-  act_proprietate: '#E8F5E9',
-  cadastru: '#E8F5E9',
-  factura: '#FFF3E0',
-  impozit_proprietate: '#FFF8E1',
-  card: '#F3E5F5',
-  garantie: '#E8F5E9',
-  bon_cumparaturi: '#FFF8E1',
-  pad: '#E3F2FD',
-  stingator_incendiu: '#FCE4EC',
-  abonament: '#F3E5F5',
-  contract: '#E8EAF6',
-  card_sanatate: '#FFEBEE',
-  certificat_nastere: '#FFF8E1',
-  certificat_casatorie: '#FCE4EC',
-  certificat_botez: '#E1F5FE',
-  vaccin_animal: '#E8F5E9',
-  deparazitare: '#FFF8E1',
-  vizita_vet: '#E8EAF6',
-  bilet: '#F3E5F5',
-  altul: '#F5F5F5',
-  custom: '#F5F5F5',
-};
-
-const DOC_ICON_COLOR: Partial<Record<DocumentType, string>> = {
-  buletin: '#1565C0',
-  pasaport: '#283593',
-  permis_auto: '#E65100',
-  talon: '#00695C',
-  carte_auto: '#00897B',
-  rca: '#C62828',
-  casco: '#AD1457',
-  itp: '#6A1B9A',
-  vigneta: '#F57F17',
-  act_proprietate: '#2E7D32',
-  cadastru: '#388E3C',
-  factura: '#BF360C',
-  impozit_proprietate: '#F57F17',
-  card: '#7B1FA2',
-  garantie: '#2E7D32',
-  bon_cumparaturi: '#F57F17',
-  pad: '#1565C0',
-  stingator_incendiu: '#BF360C',
-  abonament: '#7B1FA2',
-  contract: '#283593',
-  card_sanatate: '#C62828',
-  certificat_nastere: '#F57F17',
-  certificat_casatorie: '#C2185B',
-  certificat_botez: '#0277BD',
-  vaccin_animal: '#388E3C',
-  deparazitare: '#F57F17',
-  vizita_vet: '#283593',
-  bilet: '#7B1FA2',
-  altul: '#757575',
-  custom: '#757575',
-};
-
 function greeting(): string {
   const h = new Date().getHours();
   if (h < 12) return 'Bună dimineața';
@@ -154,8 +90,8 @@ function daysUntil(dateStr: string): number {
 function expiryBadge(doc: Document): { label: string; bg: string; fg: string } | null {
   if (!doc.expiry_date) return null;
   const days = daysUntil(doc.expiry_date);
-  if (days < 0) return { label: 'Expirat', bg: '#E53935', fg: '#fff' };
-  if (days <= 30) return { label: `${days}z`, bg: '#F57C00', fg: '#fff' };
+  if (days < 0) return { label: 'Expirat', bg: statusColors.critical, fg: onPrimary };
+  if (days <= 30) return { label: `${days}z`, bg: statusColors.warning, fg: onPrimary };
   return null;
 }
 
@@ -188,8 +124,8 @@ function buildAlerts(
           id: `no-talon-${v.id}`,
           message: `${v.name} nu are talon`,
           icon: 'document-text-outline',
-          iconBg: '#E0F2F1',
-          iconColor: '#00695C',
+          iconBg: iconColors.teal.bg,
+          iconColor: iconColors.teal.fg,
           action: () =>
             router.push({
               pathname: '/(tabs)/documente/add',
@@ -210,8 +146,8 @@ function buildAlerts(
           id: `no-rca-${v.id}`,
           message: `${v.name} nu are RCA`,
           icon: 'shield-outline',
-          iconBg: '#FCE4EC',
-          iconColor: '#C62828',
+          iconBg: iconColors.pink.bg,
+          iconColor: iconColors.pink.fg,
           action: () =>
             router.push({
               pathname: '/(tabs)/documente/add',
@@ -232,8 +168,8 @@ function buildAlerts(
           id: `no-itp-${v.id}`,
           message: `${v.name} nu are ITP`,
           icon: 'checkmark-circle-outline',
-          iconBg: '#F3E5F5',
-          iconColor: '#6A1B9A',
+          iconBg: iconColors.deepPurple.bg,
+          iconColor: iconColors.deepPurple.fg,
           action: () =>
             router.push({
               pathname: '/(tabs)/documente/add',
@@ -254,8 +190,8 @@ function buildAlerts(
           id: `no-buletin-${p.id}`,
           message: `${p.name} nu are buletin`,
           icon: 'id-card-outline',
-          iconBg: '#E3F2FD',
-          iconColor: '#1565C0',
+          iconBg: iconColors.info.bg,
+          iconColor: iconColors.info.fg,
           action: () =>
             router.push({
               pathname: '/(tabs)/documente/add',
@@ -477,7 +413,7 @@ export default function HomeScreen() {
             <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
             <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/expirari')}>
               <RNText
-                style={[styles.statNumber, { color: stats.expired > 0 ? '#E53935' : C.text }]}
+                style={[styles.statNumber, { color: stats.expired > 0 ? statusColors.critical : C.text }]}
               >
                 {stats.expired}
               </RNText>
@@ -486,7 +422,7 @@ export default function HomeScreen() {
             <RNView style={[styles.statDivider, { backgroundColor: C.border }]} />
             <Pressable style={styles.statCell} onPress={() => router.push('/(tabs)/expirari')}>
               <RNText
-                style={[styles.statNumber, { color: stats.expiringSoon > 0 ? '#F57C00' : C.text }]}
+                style={[styles.statNumber, { color: stats.expiringSoon > 0 ? statusColors.warning : C.text }]}
               >
                 {stats.expiringSoon}
               </RNText>
@@ -578,13 +514,13 @@ export default function HomeScreen() {
                   <RNView
                     style={[
                       styles.docIcon,
-                      { backgroundColor: DOC_ICON_BG[doc.type] ?? '#F5F5F5' },
+                      { backgroundColor: DOC_ICON_BG[doc.type] ?? iconColors.neutral.bg },
                     ]}
                   >
                     <Ionicons
                       name={DOC_ICON[doc.type] ?? 'document-outline'}
                       size={20}
-                      color={DOC_ICON_COLOR[doc.type] ?? '#757575'}
+                      color={DOC_ICON_COLOR[doc.type] ?? iconColors.neutral.fg}
                     />
                   </RNView>
                   <RNView style={styles.docContent}>
@@ -636,13 +572,13 @@ export default function HomeScreen() {
                   <RNView
                     style={[
                       styles.docIcon,
-                      { backgroundColor: DOC_ICON_BG[doc.type] ?? '#F5F5F5' },
+                      { backgroundColor: DOC_ICON_BG[doc.type] ?? iconColors.neutral.bg },
                     ]}
                   >
                     <Ionicons
                       name={DOC_ICON[doc.type] ?? 'document-outline'}
                       size={20}
-                      color={DOC_ICON_COLOR[doc.type] ?? '#757575'}
+                      color={DOC_ICON_COLOR[doc.type] ?? iconColors.neutral.fg}
                     />
                   </RNView>
                   <RNView style={styles.docContent}>
@@ -674,8 +610,8 @@ export default function HomeScreen() {
               <RNText style={[styles.sectionLabel, { color: C.textSecondary }]}>
                 FIȘIERE DUPLICATE
               </RNText>
-              <RNView style={[styles.dupBadge, { backgroundColor: '#FFF3E0' }]}>
-                <RNText style={[styles.dupBadgeText, { color: '#E65100' }]}>
+              <RNView style={[styles.dupBadge, { backgroundColor: iconColors.warning.bg }]}>
+                <RNText style={[styles.dupBadgeText, { color: iconColors.warning.fg }]}>
                   {duplicateGroups.length}
                 </RNText>
               </RNView>
@@ -703,13 +639,13 @@ export default function HomeScreen() {
                       <RNView
                         style={[
                           styles.docIcon,
-                          { backgroundColor: DOC_ICON_BG[doc.type] ?? '#F5F5F5' },
+                          { backgroundColor: DOC_ICON_BG[doc.type] ?? iconColors.neutral.bg },
                         ]}
                       >
                         <Ionicons
                           name={DOC_ICON[doc.type] ?? 'document-outline'}
                           size={18}
-                          color={DOC_ICON_COLOR[doc.type] ?? '#757575'}
+                          color={DOC_ICON_COLOR[doc.type] ?? iconColors.neutral.fg}
                         />
                       </RNView>
                       <RNView style={styles.docContent}>
@@ -745,7 +681,7 @@ export default function HomeScreen() {
                         );
                       }}
                     >
-                      <Ionicons name="trash-outline" size={16} color="#E53935" />
+                      <Ionicons name="trash-outline" size={16} color={statusColors.critical} />
                     </Pressable>
                   </RNView>
                 ))}

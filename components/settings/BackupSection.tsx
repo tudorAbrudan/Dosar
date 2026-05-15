@@ -2,6 +2,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform } from '
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { InfoRow } from './InfoRow';
 
 interface BackupSectionProps {
@@ -40,7 +41,7 @@ export function BackupSection({
         <View style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
           <InfoRow
             icon="cloud-outline"
-            iconBg="#E8F5E9"
+            iconBg={iconColors.primary.bg}
             iconColor={primary}
             label="iCloud Backup"
             sub="Backup automat în iCloud Drive"

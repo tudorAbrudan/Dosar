@@ -2,6 +2,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
 
@@ -25,7 +26,7 @@ export function AboutSection({
     <SectionCard title="Despre aplicație" scheme={scheme}>
       <View style={[styles.row, { borderBottomColor: C.border }]}>
         <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: '#E8F5E9' }]}>
+          <View style={[styles.rowIcon, { backgroundColor: iconColors.primary.bg }]}>
             <Ionicons name="folder-outline" size={18} color={primary} />
           </View>
           <View style={styles.rowLabelWrap}>
@@ -41,8 +42,8 @@ export function AboutSection({
       </View>
       <InfoRow
         icon="cloud-download-outline"
-        iconBg="#E3F2FD"
-        iconColor="#1565C0"
+        iconBg={iconColors.info.bg}
+        iconColor={iconColors.info.fg}
         label="Verifică actualizări"
         sub={checkingUpdate ? 'Se verifică...' : `Versiune curentă: ${appVersion}`}
         onPress={onCheckForUpdate}

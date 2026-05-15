@@ -1,3 +1,5 @@
+/* eslint-disable local-rules/no-hardcoded-hex-colors */
+// Boilerplate Expo template — light/dark color literals trec direct la `ThemedView`.
 import React from 'react';
 import { StyleSheet } from 'react-native';
 

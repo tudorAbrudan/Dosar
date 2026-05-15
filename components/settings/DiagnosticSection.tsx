@@ -2,6 +2,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary, statusColors } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { SectionCard } from './SectionCard';
 import type { NativeCrashReport } from '@/services/crashReporter';
 
@@ -23,7 +24,7 @@ export function DiagnosticSection({ crash, scheme, onCopy, onClear }: Diagnostic
     <SectionCard title="Diagnostic" scheme={scheme}>
       <View style={[styles.row, { borderBottomColor: C.border }]}>
         <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: '#FFEBEE' }]}>
+          <View style={[styles.rowIcon, { backgroundColor: iconColors.danger.bg }]}>
             <Ionicons name="bug-outline" size={18} color={statusColors.critical} />
           </View>
           <View style={styles.rowLabelWrap}>

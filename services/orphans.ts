@@ -1,6 +1,7 @@
 import { db } from './db';
 import { DOC_PRIMARY_ENTITY, DOCUMENT_TYPE_LABELS } from '@/types';
 import type { DocumentType, EntityType } from '@/types';
+import { iconColors } from '@/theme/iconColors';
 
 export type OrphanGroupKey =
   | 'doc_no_entity'
@@ -204,8 +205,8 @@ export async function getOrphans(): Promise<OrphanGroup[]> {
       title: 'Documente fără entitate',
       description: `${docsNoEntity.length} ${pluralRo(docsNoEntity.length, 'document neatașat la o entitate', 'documente neatașate la o entitate')}`,
       icon: 'document-text-outline',
-      iconBg: '#E3F2FD',
-      iconColor: '#1565C0',
+      iconBg: iconColors.info.bg,
+      iconColor: iconColors.info.fg,
       items: docsNoEntity,
     });
   }
@@ -216,8 +217,8 @@ export async function getOrphans(): Promise<OrphanGroup[]> {
       title: 'Tip personalizat nesetat',
       description: `${customNoType.length} ${pluralRo(customNoType.length, 'document fără numele tipului', 'documente fără numele tipului')}`,
       icon: 'pricetag-outline',
-      iconBg: '#FFF8E1',
-      iconColor: '#F57F17',
+      iconBg: iconColors.amber.bg,
+      iconColor: iconColors.amber.fg,
       items: customNoType,
     });
   }
@@ -228,8 +229,8 @@ export async function getOrphans(): Promise<OrphanGroup[]> {
       title: 'Carduri fără expirare',
       description: `${cardsNoExpiry.length} ${pluralRo(cardsNoExpiry.length, 'card fără data expirării', 'carduri fără data expirării')}`,
       icon: 'card-outline',
-      iconBg: '#F3E5F5',
-      iconColor: '#7B1FA2',
+      iconBg: iconColors.purple.bg,
+      iconColor: iconColors.purple.fg,
       items: cardsNoExpiry,
     });
   }
@@ -240,8 +241,8 @@ export async function getOrphans(): Promise<OrphanGroup[]> {
       title: 'Persoane fără contact',
       description: `${personsNoContact.length} ${pluralRo(personsNoContact.length, 'persoană fără telefon și email', 'persoane fără telefon și email')}`,
       icon: 'person-outline',
-      iconBg: '#E8F5E9',
-      iconColor: '#388E3C',
+      iconBg: iconColors.primary.bg,
+      iconColor: iconColors.primaryDark.fg,
       items: personsNoContact,
     });
   }

@@ -2,6 +2,7 @@ import { View, Text, Switch, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { ALL_ENTITY_TYPES, ENTITY_TYPE_LABELS, ENTITY_TYPE_EMOJI } from '@/types';
 import type { EntityType } from '@/types';
 
@@ -47,7 +48,7 @@ export function VizibilitateEntitatiSection({
               >
                 <View style={styles.rowLeft}>
                   <View
-                    style={[styles.rowIcon, { backgroundColor: isActive ? '#E8F5E9' : C.border }]}
+                    style={[styles.rowIcon, { backgroundColor: isActive ? iconColors.primary.bg : C.border }]}
                   >
                     <Text style={styles.entityEmoji}>{ENTITY_TYPE_EMOJI[entityType]}</Text>
                   </View>

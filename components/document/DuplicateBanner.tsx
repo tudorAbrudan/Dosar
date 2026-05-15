@@ -25,7 +25,7 @@ export function DuplicateBanner({ doc, onPress }: DuplicateBannerProps) {
         styles.container,
         {
           backgroundColor:
-            scheme === 'dark' ? 'rgba(232,165,58,0.18)' : 'rgba(232,165,58,0.12)',
+            scheme === 'dark' ? statusColors.warningSurfaceDark : statusColors.warningSurfaceSoft,
           borderColor: statusColors.warning,
         },
       ]}

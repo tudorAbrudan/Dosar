@@ -44,6 +44,7 @@ import * as cloudSync from '@/services/cloudSync';
 import type { RestoreProgress } from '@/services/cloudSync';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
 import { primary, statusColors } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { radius, spacing } from '@/theme/layout';
 import { useThemePreference } from '@/hooks/useThemeScheme';
 
@@ -1031,7 +1032,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
             {aiProviderChoice !== 'none' && (
               <View style={[styles.card, { backgroundColor: C.card, marginTop: spacing.gap }]}>
                 <View style={styles.cardRow}>
-                  <Ionicons name="image-outline" size={20} color="#F57F17" />
+                  <Ionicons name="image-outline" size={20} color={iconColors.amber.fg} />
                   <View style={{ flex: 1, marginLeft: spacing.gap }}>
                     <Text style={[styles.cardTitle, { color: C.text }]}>
                       Extracție AI din documente
