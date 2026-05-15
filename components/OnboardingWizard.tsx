@@ -10,7 +10,6 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +23,7 @@ import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
 import { DocsStep } from '@/components/onboarding/DocsStep';
 import { NotificationsStep } from '@/components/onboarding/NotificationsStep';
 import { VehicleMgmtStep } from '@/components/onboarding/VehicleMgmtStep';
+import { AppearanceStep } from '@/components/onboarding/AppearanceStep';
 import {
   ALL_ENTITY_TYPES,
   DEFAULT_VISIBLE_DOC_TYPES,
@@ -58,7 +58,6 @@ const BACKUP = 7;
 const CLOUD_BACKUP = 8;
 const AI_STEP = 9;
 const SUMMARY = 10;
-
 
 const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 
@@ -441,39 +440,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
         )}
 
         {step === APPEARANCE && (
-          <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            <Text style={[styles.notifLabel, { color: C.text }]}>Temă de culori</Text>
-            <View style={[styles.chipRow, { marginTop: 14 }]}>
-              {(
-                [
-                  ['auto', 'Automat'],
-                  ['light', 'Clar'],
-                  ['dark', 'Întunecat'],
-                ] as const
-              ).map(([value, label]) => {
-                const active = themePref === value;
-                return (
-                  <Pressable
-                    key={value}
-                    style={[
-                      styles.chip,
-                      active
-                        ? [styles.chipActive, { borderColor: C.primary }]
-                        : { borderColor: C.border, backgroundColor: C.background },
-                    ]}
-                    onPress={() => setThemePref(value)}
-                  >
-                    <Text style={[styles.chipText, { color: active ? '#fff' : C.text }]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 12 }]}>
-              „Automat" urmărește setarea telefonului.
-            </Text>
-          </View>
+          <AppearanceStep scheme={scheme} value={themePref} onChange={setThemePref} />
         )}
 
         {step === SECURITY && (
@@ -517,11 +484,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
         {step === VEHICLE_MGMT && <VehicleMgmtStep scheme={scheme} />}
 
         {step === DOCS && (
-          <DocsStep
-            scheme={scheme}
-            selectedDocTypes={selectedDocTypes}
-            onToggle={toggleDocType}
-          />
+          <DocsStep scheme={scheme} selectedDocTypes={selectedDocTypes} onToggle={toggleDocType} />
         )}
 
         {step === NOTIFICATIONS && (
@@ -813,7 +776,6 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
   cardSubtitle: { fontSize: 13, lineHeight: 18 },
   infoText: { fontSize: 13, lineHeight: 18, fontStyle: 'italic' },
-
 
   footer: {
     flexDirection: 'column',
