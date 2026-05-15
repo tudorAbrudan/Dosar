@@ -2,7 +2,6 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Pressable,
-  ScrollView,
   Alert,
   Platform,
   InteractionManager,
@@ -49,7 +48,6 @@ import {
   DOCUMENT_TYPE_LABELS,
   ENTITY_DOCUMENT_TYPES,
   ALL_ENTITY_TYPES,
-  ENTITY_TYPE_LABELS,
   NO_EXPIRY_DOC_TYPES,
 } from '@/types';
 import type { Document } from '@/types';
@@ -77,6 +75,7 @@ import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { PrivateNotesField } from '@/components/document/PrivateNotesField';
+import { EntityLinkPicker } from '@/components/document/EntityLinkPicker';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
@@ -100,13 +99,6 @@ const ALL_STANDARD_TYPES = Object.entries(DOCUMENT_TYPE_LABELS)
 function isNoExpiryType(t: DocumentType): boolean {
   return NO_EXPIRY_DOC_TYPES.has(t);
 }
-
-// Sursa unică: ALL_ENTITY_TYPES din types/index.ts. Adăugarea unui tip nou
-// e automată — apar tab-uri filtrate prin Vizibilitate.
-const ENTITY_CATEGORIES: { key: EntityType; label: string }[] = ALL_ENTITY_TYPES.map(t => ({
-  key: t,
-  label: ENTITY_TYPE_LABELS[t],
-}));
 
 export default function AddDocumentScreen() {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -1158,8 +1150,6 @@ export default function AddDocumentScreen() {
   // Sursa unică pentru afișarea entității — vezi useEntities.resolveEntityName.
   const getEntityDisplayName = resolveEntityName;
 
-  const anyEntitySelected = entityLinks.length > 0;
-
   const visibleStandardTypes = ALL_STANDARD_TYPES.filter(({ value }) =>
     contextVisibleDocTypes.includes(value)
   );
@@ -1407,97 +1397,16 @@ export default function AddDocumentScreen() {
         />
 
         {/* 7. LEAGĂ DE ENTITATE */}
-        <>
-          <Text style={[styles.label, styles.sectionLabel]}>
-            Leagă de entitate
-            {anyEntitySelected ? (
-              <Text style={{ color: primary }}>
-                {' '}
-                · {entityLinks.length} {entityLinks.length === 1 ? 'selectată' : 'selectate'}
-              </Text>
-            ) : (
-              <Text style={{ opacity: 0.5 }}> (opțional)</Text>
-            )}
-          </Text>
-
-          {/* Rezumat entități selectate */}
-          {anyEntitySelected && (
-            <Text style={[styles.entitySummary, { color: C.textSecondary }]} numberOfLines={2}>
-              {entityLinks.map(l => getEntityDisplayName(l)).join('  ·  ')}
-            </Text>
-          )}
-
-          {/* Taburi categorii cu badge */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoryRow}
-            contentContainerStyle={styles.categoryRowContent}
-          >
-            {ENTITY_CATEGORIES.filter(cat => visibleEntityTypes.includes(cat.key)).map(
-              ({ key, label }) => {
-                const countInCat = entityLinks.filter(l => l.entityType === key).length;
-                const active = pickerCategory === key;
-                return (
-                  <Pressable
-                    key={key}
-                    style={[
-                      styles.categoryTab,
-                      { borderColor: C.border },
-                      active && styles.categoryTabActive,
-                    ]}
-                    onPress={() => setPickerCategory(key)}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryTabText,
-                        { color: C.text },
-                        active && styles.categoryTabTextActive,
-                      ]}
-                    >
-                      {label}
-                      {countInCat > 0 ? ` (${countInCat})` : ''}
-                    </Text>
-                  </Pressable>
-                );
-              }
-            )}
-          </ScrollView>
-
-          {/* Entități ca chips — tap = toggle selectare */}
-          {pickerEntities.length === 0 ? (
-            <Text style={styles.pickerEmpty}>Nicio entitate adăugată.</Text>
-          ) : (
-            <View style={styles.entityChipsWrap}>
-              {pickerEntities.map(e => {
-                const isSelected = entityLinks.some(
-                  l => l.entityType === pickerCategory && l.entityId === e.id
-                );
-                return (
-                  <Pressable
-                    key={e.id}
-                    style={[
-                      styles.entityChipItem,
-                      { borderColor: C.border },
-                      isSelected && styles.entityChipItemActive,
-                    ]}
-                    onPress={() => toggleEntityLink(e.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.entityChipLabel,
-                        { color: C.text },
-                        isSelected && styles.entityChipLabelActive,
-                      ]}
-                    >
-                      {isSelected ? `✓ ${e.label}` : e.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </>
+        <EntityLinkPicker
+          scheme={scheme}
+          entityLinks={entityLinks}
+          pickerCategory={pickerCategory}
+          pickerEntities={pickerEntities}
+          visibleEntityTypes={visibleEntityTypes}
+          resolveEntityName={getEntityDisplayName}
+          onChangeCategory={setPickerCategory}
+          onToggleEntity={toggleEntityLink}
+        />
       </FormPageScreen>
 
       <ClassifyConfirmSheet
@@ -1552,31 +1461,6 @@ const styles = StyleSheet.create({
   privateLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   privateHint: { fontSize: 12, marginBottom: 8, lineHeight: 16, opacity: 0.8 },
   privateInput: { borderColor: sensitiveBorder, backgroundColor: sensitiveBg },
-  // Entity picker
-  categoryRow: { marginBottom: 12, marginTop: 8 },
-  categoryRowContent: { flexDirection: 'row', gap: 8 },
-  categoryTab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  categoryTabActive: { backgroundColor: primary, borderColor: primary },
-  categoryTabText: { fontSize: 12, fontWeight: '500' },
-  categoryTabTextActive: { color: '#fff' },
-  entitySummary: { fontSize: 12, marginBottom: 10, marginTop: -2 },
-  entityChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  entityChipItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  entityChipItemActive: { backgroundColor: primary, borderColor: primary },
-  entityChipLabel: { fontSize: 14 },
-  entityChipLabelActive: { color: '#fff', fontWeight: '500' as const },
-  pickerEmpty: { opacity: 0.6, fontSize: 14, marginBottom: 20 },
   chipsScroll: { marginBottom: 20 },
   chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
   calendarInlineBtn: {
