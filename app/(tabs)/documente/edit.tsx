@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
+import { useColorScheme } from '@/components/useColorScheme';
 import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,11 +21,11 @@ import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { primary, primaryMuted, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import { iconColors, greys } from '@/theme/iconColors';
-import { RETENTION_OPTIONS, retentionLabel } from '@/services/documentRetention';
 import { DatePickerField } from '@/components/DatePickerField';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
+import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import {
   getDocumentById,
   updateDocument,
@@ -81,6 +82,7 @@ import type { FieldDef } from '@/types/documentFields';
 export default function EditDocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const {
@@ -1050,40 +1052,12 @@ export default function EditDocumentScreen() {
         )}
 
         {/* 6. AUTO-ȘTERGERE */}
-        <Text style={styles.label}>
-          {'Auto-ștergere (opțional)'}
-          {autoDelete !== null ? `: ${retentionLabel(autoDelete)}` : ''}
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsRow}
-          style={styles.chipsScroll}
-        >
-          {(
-            [
-              ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-              ...RETENTION_OPTIONS,
-            ] as { label: string; value: string | null }[]
-          ).map(opt => {
-            const active = autoDelete === opt.value;
-            return (
-              <Pressable
-                key={opt.value ?? 'never'}
-                style={[
-                  styles.typeChip,
-                  { borderColor: colors.border },
-                  active && styles.typeChipActive,
-                ]}
-                onPress={() => setAutoDelete(opt.value)}
-              >
-                <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <AutoDeletePicker
+          value={autoDelete}
+          hasExpiryDate={!!expiryDate}
+          scheme={scheme}
+          onChange={setAutoDelete}
+        />
 
         {/* 7. NOTĂ */}
         <Text style={styles.label}>Notă (opțional)</Text>

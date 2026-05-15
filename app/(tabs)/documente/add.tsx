@@ -71,13 +71,13 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
-import { RETENTION_OPTIONS, retentionLabel } from '@/services/documentRetention';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
 import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
+import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
@@ -1380,46 +1380,12 @@ export default function AddDocumentScreen() {
         ) : null}
 
         {/* 5. AUTO-ȘTERGERE */}
-        <Text style={styles.label}>
-          {'Auto-ștergere (opțional)'}
-          {autoDelete !== null ? `: ${retentionLabel(autoDelete)}` : ''}
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsRow}
-          style={styles.chipsScroll}
-        >
-          {(
-            [
-              ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-              ...RETENTION_OPTIONS,
-            ] as { label: string; value: string | null }[]
-          ).map(opt => {
-            const active = autoDelete === opt.value;
-            return (
-              <Pressable
-                key={opt.value ?? 'never'}
-                style={[
-                  styles.typeChip,
-                  { borderColor: C.border },
-                  active && styles.typeChipActive,
-                ]}
-                onPress={() => setAutoDelete(opt.value)}
-              >
-                <Text
-                  style={[
-                    styles.typeChipText,
-                    { color: C.text },
-                    active && styles.typeChipTextActive,
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <AutoDeletePicker
+          value={autoDelete}
+          hasExpiryDate={!!expiryDate}
+          scheme={scheme}
+          onChange={setAutoDelete}
+        />
 
         {/* 6. NOTĂ */}
         <Text style={styles.label}>Notă (opțional)</Text>
