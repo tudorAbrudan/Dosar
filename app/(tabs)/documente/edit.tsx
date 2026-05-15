@@ -24,6 +24,7 @@ import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { primary, primaryMuted, statusColors, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import { iconColors, greys } from '@/theme/iconColors';
+import { RETENTION_OPTIONS, retentionLabel } from '@/services/documentRetention';
 import { DatePickerField } from '@/components/DatePickerField';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
@@ -79,21 +80,6 @@ import { useEntities } from '@/hooks/useEntities';
 import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 
-const DELETE_OPTIONS: { label: string; value: string | null }[] = [
-  { label: 'Niciodată', value: null },
-  { label: '30 zile', value: '30d' },
-  { label: '90 zile', value: '90d' },
-  { label: '180 zile', value: '180d' },
-  { label: '1 an', value: '365d' },
-  { label: '2 ani', value: '730d' },
-  { label: '3 ani', value: '1095d' },
-  { label: '4 ani', value: '1460d' },
-  { label: '5 ani', value: '1825d' },
-];
-
-function autoDeleteLabel(val: string | null): string {
-  return DELETE_OPTIONS.find(o => o.value === val)?.label ?? 'Niciodată';
-}
 
 export default function EditDocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -1083,7 +1069,7 @@ export default function EditDocumentScreen() {
         {/* 6. AUTO-ȘTERGERE */}
         <Text style={styles.label}>
           {'Auto-ștergere (opțional)'}
-          {autoDelete !== null ? `: ${autoDeleteLabel(autoDelete)}` : ''}
+          {autoDelete !== null ? `: ${retentionLabel(autoDelete)}` : ''}
         </Text>
         <ScrollView
           horizontal
@@ -1094,7 +1080,7 @@ export default function EditDocumentScreen() {
           {(
             [
               ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-              ...DELETE_OPTIONS,
+              ...RETENTION_OPTIONS,
             ] as { label: string; value: string | null }[]
           ).map(opt => {
             const active = autoDelete === opt.value;

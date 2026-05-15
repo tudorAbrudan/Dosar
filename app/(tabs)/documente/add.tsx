@@ -75,6 +75,8 @@ import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
+import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
+import { RETENTION_OPTIONS, retentionLabel } from '@/services/documentRetention';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
@@ -90,21 +92,6 @@ function isValidEntityType(v: string | undefined): v is EntityType {
 /** Prag confidence pentru auto-set tip după AI classify. Sub valoare → întrebăm userul. */
 const CLASSIFY_CONFIDENCE_AUTO_THRESHOLD = 0.75;
 
-const DELETE_OPTIONS: { label: string; value: string | null }[] = [
-  { label: 'Niciodată', value: null },
-  { label: '30 zile', value: '30d' },
-  { label: '90 zile', value: '90d' },
-  { label: '180 zile', value: '180d' },
-  { label: '1 an', value: '365d' },
-  { label: '2 ani', value: '730d' },
-  { label: '3 ani', value: '1095d' },
-  { label: '4 ani', value: '1460d' },
-  { label: '5 ani', value: '1825d' },
-];
-
-function autoDeleteLabel(val: string | null): string {
-  return DELETE_OPTIONS.find(o => o.value === val)?.label ?? 'Niciodată';
-}
 
 // Build universe of types ONCE at module load. Filtered later prin
 // useFilteredDocTypes() la randare; aici e legitim să iterăm peste sursă.
@@ -315,48 +302,15 @@ export default function AddDocumentScreen() {
   // numelui entității (normalizat fără diacritice) în textul OCR.
 
   function tryLocalEntityMatch(ocrText: string) {
-    // Nu suprascrie legăturile existente
     if (entityLinks.length > 0) return;
-
-    const norm = (s: string) =>
-      s
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9 ]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const normOcr = norm(ocrText);
-
-    type Candidate = { entityType: EntityType; entityId: string; score: number };
-    const candidates: Candidate[] = [];
-
-    const check = (etype: EntityType, items: { id: string; name: string }[]) => {
-      for (const item of items) {
-        const normName = norm(item.name);
-        if (normName.length < 2) continue;
-        if (normOcr.includes(normName)) {
-          // Scor = lungimea numelui (evităm false-positive pe nume scurte)
-          candidates.push({ entityType: etype, entityId: item.id, score: normName.length });
-        }
-      }
-    };
-
-    // check-hardcoded-entities-disable-next-cluster
-    // Cardurile sunt sărite intenționat — nu se potrivesc nominal cu textul OCR.
-    check('person', persons);
-    check('vehicle', vehicles);
-    check('property', properties);
-    check('animal', animals);
-    check('company', companies);
-
-    if (candidates.length === 0) return;
-    candidates.sort((a, b) => b.score - a.score);
-    const best = candidates[0];
-    // Minim 3 caractere ca să evităm potriviri accidentale pe silabe
-    if (best.score < 3) return;
-
+    const best = matchEntityInOcr(ocrText, {
+      persons,
+      vehicles,
+      properties,
+      animals,
+      companies,
+    });
+    if (!best) return;
     setEntityLinks(prev => {
       if (prev.some(l => l.entityType === best.entityType && l.entityId === best.entityId))
         return prev;
@@ -1455,7 +1409,7 @@ export default function AddDocumentScreen() {
         {/* 5. AUTO-ȘTERGERE */}
         <Text style={styles.label}>
           {'Auto-ștergere (opțional)'}
-          {autoDelete !== null ? `: ${autoDeleteLabel(autoDelete)}` : ''}
+          {autoDelete !== null ? `: ${retentionLabel(autoDelete)}` : ''}
         </Text>
         <ScrollView
           horizontal
@@ -1466,7 +1420,7 @@ export default function AddDocumentScreen() {
           {(
             [
               ...(expiryDate ? [{ label: 'La expirare', value: 'expiry' }] : []),
-              ...DELETE_OPTIONS,
+              ...RETENTION_OPTIONS,
             ] as { label: string; value: string | null }[]
           ).map(opt => {
             const active = autoDelete === opt.value;

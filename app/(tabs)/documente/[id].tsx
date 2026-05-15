@@ -49,6 +49,7 @@ import {
 import type { DocumentDuplicates } from '@/services/documents';
 import type { DocumentEntityLink, EntityType } from '@/types';
 import { scheduleExpirationReminders } from '@/services/notifications';
+import { retentionLabel } from '@/services/documentRetention';
 import {
   addExpiryCalendarEvent,
   addEventToCalendar,
@@ -82,20 +83,6 @@ function slugify(s: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-function autoDeleteLabel(rule: string): string {
-  if (rule === 'expiry') return 'La data expirării';
-  const m = rule.match(/^(\d+)d$/);
-  if (m) {
-    const d = parseInt(m[1], 10);
-    if (d === 30) return '30 de zile';
-    if (d === 90) return '90 de zile';
-    if (d === 180) return '180 de zile';
-    if (d === 365) return '1 an';
-    return `${d} zile`;
-  }
-  return rule;
 }
 
 export default function DocumentDetailScreen() {
@@ -1168,7 +1155,7 @@ export default function DocumentDetailScreen() {
                 </DocumentDetailRow>
               )}
               {doc.auto_delete && (
-                <DocumentDetailRow label="Auto-ștergere" value={autoDeleteLabel(doc.auto_delete)} />
+                <DocumentDetailRow label="Auto-ștergere" value={retentionLabel(doc.auto_delete)} />
               )}
               {filteredFields.map((field: FieldDef) => (
                 <DocumentDetailRow
