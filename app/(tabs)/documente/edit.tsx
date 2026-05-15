@@ -27,6 +27,7 @@ import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import { LinkEntityOverlay } from '@/components/document/LinkEntityOverlay';
 import { DocTypePicker } from '@/components/document/DocTypePicker';
+import { DocumentMetadataFields } from '@/components/document/DocumentMetadataFields';
 import {
   getDocumentById,
   updateDocument,
@@ -75,8 +76,7 @@ import type { Document as DocType, DocumentType, DocumentEntityLink, EntityType 
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useEntities } from '@/hooks/useEntities';
-import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
-import type { FieldDef } from '@/types/documentFields';
+import { EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 
 
 export default function EditDocumentScreen() {
@@ -953,19 +953,13 @@ export default function EditDocumentScreen() {
         })()}
 
         {/* 4. CÂMPURI SPECIFICE TIPULUI */}
-        {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
-          <View key={field.key}>
-            <Text style={styles.label}>{field.label}</Text>
-            <ThemedTextInput
-              style={styles.input}
-              placeholder={field.placeholder ?? ''}
-              value={metadata[field.key] ?? ''}
-              onChangeText={v => setMetadata(prev => ({ ...prev, [field.key]: v }))}
-              keyboardType={field.keyboardType ?? 'default'}
-              editable={!saving}
-            />
-          </View>
-        ))}
+        <DocumentMetadataFields
+          scheme={scheme}
+          type={type}
+          metadata={metadata}
+          editable={!saving}
+          onChange={(key, value) => setMetadata(prev => ({ ...prev, [key]: value }))}
+        />
 
         {/* 5. DATE */}
         <DatePickerField

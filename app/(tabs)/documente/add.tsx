@@ -50,8 +50,7 @@ import {
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
 import { DatePickerField } from '@/components/DatePickerField';
-import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
-import type { FieldDef } from '@/types/documentFields';
+import { EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
@@ -74,6 +73,7 @@ import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import { EntityLinkPicker } from '@/components/document/EntityLinkPicker';
 import { DocTypePicker } from '@/components/document/DocTypePicker';
+import { DocumentMetadataFields } from '@/components/document/DocumentMetadataFields';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
@@ -1211,19 +1211,13 @@ export default function AddDocumentScreen() {
         />
 
         {/* 3. CÂMPURI SPECIFICE TIPULUI */}
-        {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
-          <View key={field.key}>
-            <Text style={styles.label}>{field.label}</Text>
-            <ThemedTextInput
-              style={styles.input}
-              placeholder={field.placeholder ?? ''}
-              value={metadata[field.key] ?? ''}
-              onChangeText={v => setMetadata(prev => ({ ...prev, [field.key]: v }))}
-              keyboardType={field.keyboardType ?? 'default'}
-              editable={!loading}
-            />
-          </View>
-        ))}
+        <DocumentMetadataFields
+          scheme={scheme}
+          type={type}
+          metadata={metadata}
+          editable={!loading}
+          onChange={(key, value) => setMetadata(prev => ({ ...prev, [key]: value }))}
+        />
 
         {/* 4. DATE */}
         <DatePickerField
