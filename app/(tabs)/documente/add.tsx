@@ -76,6 +76,7 @@ import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal
 import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import { EntityLinkPicker } from '@/components/document/EntityLinkPicker';
+import { DocTypePicker } from '@/components/document/DocTypePicker';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, saveScannedPagesBatch, savePdfAsPage } from '@/services/documentPageStorage';
 
@@ -1213,98 +1214,36 @@ export default function AddDocumentScreen() {
         )}
 
         {/* 2. TIP DOCUMENT */}
-        <Text style={styles.label}>Tip document</Text>
-        <Pressable
-          style={[styles.typeToggleRow, { borderColor: C.border }]}
-          onPress={() => setTypePickerVisible(v => !v)}
-        >
-          <Text style={[styles.typeToggleCurrent, { color: C.text }]}>
-            {type === 'custom'
-              ? (customTypes.find(c => c.id === customTypeId)?.name ?? 'Tip personalizat')
-              : (DOCUMENT_TYPE_LABELS[type] ?? type)}
-          </Text>
-          <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
-        </Pressable>
-        {typePickerVisible && (
-          <>
-            {hasHiddenTypes && (
-              <Pressable onPress={() => router.push('/(tabs)/setari')} style={styles.showAllBtn}>
-                <Text style={[styles.showAllBtnText, { color: C.textSecondary }]}>
-                  Alte tipuri (dezactivate în Setări) →
-                </Text>
-              </Pressable>
-            )}
-            <View style={styles.typeRow}>
-              {visibleStandardTypes.map(({ value, label }) => {
-                const active = type === value;
-                return (
-                  <Pressable
-                    key={value}
-                    style={[
-                      styles.typeChip,
-                      { borderColor: C.border },
-                      active && styles.typeChipActive,
-                    ]}
-                    onPress={() => {
-                      const combinedText = Array.from(ocrTextsRef.current.values()).join(
-                        '\n\n---\n\n'
-                      );
-                      setTypeManual(value);
-                      setCustomTypeId(null);
-                      setMetadata({});
-                      if (combinedText.trim().length > 0) {
-                        const extracted = extractFieldsForType(value, combinedText);
-                        if (Object.keys(extracted.metadata).length > 0) {
-                          setMetadata(extracted.metadata);
-                        }
-                      }
-                      setTypePickerVisible(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.typeChipText,
-                        { color: C.text },
-                        active && styles.typeChipTextActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {customTypes.map(ct => {
-                const active = type === 'custom' && customTypeId === ct.id;
-                return (
-                  <Pressable
-                    key={ct.id}
-                    style={[
-                      styles.typeChip,
-                      { borderColor: C.border },
-                      active && styles.typeChipActive,
-                    ]}
-                    onPress={() => {
-                      setTypeManual('custom');
-                      setCustomTypeId(ct.id);
-                      setMetadata({});
-                      setTypePickerVisible(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.typeChipText,
-                        { color: C.text },
-                        active && styles.typeChipTextActive,
-                      ]}
-                    >
-                      {ct.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        )}
+        <DocTypePicker
+          scheme={scheme}
+          type={type}
+          customTypeId={customTypeId}
+          visibleStandardTypes={visibleStandardTypes}
+          customTypes={customTypes}
+          expanded={typePickerVisible}
+          hasHiddenTypes={hasHiddenTypes}
+          onToggleExpanded={() => setTypePickerVisible(v => !v)}
+          onSelectStandard={value => {
+            const combinedText = Array.from(ocrTextsRef.current.values()).join('\n\n---\n\n');
+            setTypeManual(value);
+            setCustomTypeId(null);
+            setMetadata({});
+            if (combinedText.trim().length > 0) {
+              const extracted = extractFieldsForType(value, combinedText);
+              if (Object.keys(extracted.metadata).length > 0) {
+                setMetadata(extracted.metadata);
+              }
+            }
+            setTypePickerVisible(false);
+          }}
+          onSelectCustom={id => {
+            setTypeManual('custom');
+            setCustomTypeId(id);
+            setMetadata({});
+            setTypePickerVisible(false);
+          }}
+          onPressHiddenTypesLink={() => router.push('/(tabs)/setari')}
+        />
 
         {/* 3. CÂMPURI SPECIFICE TIPULUI */}
         {(DOCUMENT_FIELDS[type] ?? []).map((field: FieldDef) => (
@@ -1439,16 +1378,6 @@ const styles = StyleSheet.create({
   },
   aiBadgeText: { fontSize: 13, fontWeight: '600' },
   selectedBadge: { color: primary },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  typeChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  typeChipActive: { backgroundColor: primary, borderColor: primary },
-  typeChipText: { fontSize: 14 },
-  typeChipTextActive: { color: '#fff', fontWeight: '500' },
   input: {
     borderWidth: 1,
     borderRadius: 12,
@@ -1476,26 +1405,6 @@ const styles = StyleSheet.create({
   calendarInlineBtnText: {
     fontSize: 13,
     color: primary,
-    fontWeight: '500',
-  },
-  typeToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-  },
-  typeToggleCurrent: { fontSize: 15, fontWeight: '500', flex: 1 },
-  typeToggleChevron: { fontSize: 13, color: primary, fontWeight: '500' },
-  showAllBtn: {
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-  },
-  showAllBtnText: {
-    fontSize: 13,
     fontWeight: '500',
   },
 });

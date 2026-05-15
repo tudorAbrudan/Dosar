@@ -27,6 +27,7 @@ import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal
 import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import { LinkEntityOverlay } from '@/components/document/LinkEntityOverlay';
+import { DocTypePicker } from '@/components/document/DocTypePicker';
 import {
   getDocumentById,
   updateDocument,
@@ -914,66 +915,25 @@ export default function EditDocumentScreen() {
         )}
 
         {/* 2. TIP DOCUMENT */}
-        <Text style={styles.label}>Tip document</Text>
-        <Pressable
-          style={[styles.typeToggleRow, { borderColor: colors.border }]}
-          onPress={() => setTypePickerVisible(v => !v)}
-        >
-          <Text style={styles.typeToggleCurrent}>
-            {type === 'custom'
-              ? (customTypes.find(c => c.id === customTypeId)?.name ?? 'Tip personalizat')
-              : (DOCUMENT_TYPE_LABELS[type] ?? type)}
-          </Text>
-          <Text style={styles.typeToggleChevron}>{typePickerVisible ? '▲' : '▼ Schimbă'}</Text>
-        </Pressable>
-        {typePickerVisible && (
-          <View style={styles.typeRow}>
-            {standardTypes.map(({ value, label }) => {
-              const active = type === value;
-              return (
-                <Pressable
-                  key={value}
-                  style={[
-                    styles.typeChip,
-                    { borderColor: colors.border },
-                    active && styles.typeChipActive,
-                  ]}
-                  onPress={() => {
-                    setType(value);
-                    setCustomTypeId(null);
-                    setTypePickerVisible(false);
-                  }}
-                >
-                  <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            {customTypes.map(ct => {
-              const active = type === 'custom' && customTypeId === ct.id;
-              return (
-                <Pressable
-                  key={ct.id}
-                  style={[
-                    styles.typeChip,
-                    { borderColor: colors.border },
-                    active && styles.typeChipActive,
-                  ]}
-                  onPress={() => {
-                    setType('custom');
-                    setCustomTypeId(ct.id);
-                    setTypePickerVisible(false);
-                  }}
-                >
-                  <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
-                    {ct.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
+        <DocTypePicker
+          scheme={scheme}
+          type={type}
+          customTypeId={customTypeId}
+          visibleStandardTypes={standardTypes}
+          customTypes={customTypes}
+          expanded={typePickerVisible}
+          onToggleExpanded={() => setTypePickerVisible(v => !v)}
+          onSelectStandard={value => {
+            setType(value);
+            setCustomTypeId(null);
+            setTypePickerVisible(false);
+          }}
+          onSelectCustom={id => {
+            setType('custom');
+            setCustomTypeId(id);
+            setTypePickerVisible(false);
+          }}
+        />
 
         {/* 3. LEGAT DE ENTITATE */}
         <Text style={styles.label}>Legat de</Text>
@@ -1122,28 +1082,6 @@ const styles = StyleSheet.create({
   privateLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   privateHint: { fontSize: 12, marginBottom: 8, lineHeight: 16, opacity: 0.6 },
   privateInput: { borderColor: sensitiveBorder, backgroundColor: sensitiveBg },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  typeChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  typeChipActive: { backgroundColor: primary, borderColor: primary },
-  typeChipText: { fontSize: 14 },
-  typeChipTextActive: { color: '#fff', fontWeight: '500' },
-  typeToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-  },
-  typeToggleCurrent: { fontSize: 15, fontWeight: '500', flex: 1 },
-  typeToggleChevron: { fontSize: 13, color: primary, fontWeight: '500' },
   entityLinksRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
