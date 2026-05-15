@@ -17,10 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
-import { primary, primaryTint, statusColors } from '@/theme/colors';
-import { DOC_ICON_BG, DOC_ICON_COLOR } from '@/theme/docTypeColors';
-import { DOC_ICON } from '@/theme/docTypeIcons';
+import { primary, statusColors } from '@/theme/colors';
 import { iconColors } from '@/theme/iconColors';
+import { DocumentListCard } from '@/components/document/DocumentListCard';
+import { DocumentsEmptyState } from '@/components/document/DocumentsEmptyState';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { getDocumentLabel } from '@/types';
@@ -35,8 +35,6 @@ const EXPIRING_DAYS = 30;
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-// ─── Entity kind → icon ───────────────────────────────────────────────────────
-
 const ENTITY_ICON: Record<string, IoniconName> = {
   person_id: 'person',
   vehicle_id: 'car-outline',
@@ -45,254 +43,12 @@ const ENTITY_ICON: Record<string, IoniconName> = {
   animal_id: 'paw-outline',
 };
 
-// ─── Pure logic helpers ───────────────────────────────────────────────────────
-
 function isExpiringSoon(doc: Document, days: number): boolean {
   if (!doc.expiry_date) return false;
   const exp = new Date(doc.expiry_date).getTime();
   const limit = Date.now() + days * 24 * 60 * 60 * 1000;
   return exp <= limit && exp >= Date.now() - 7 * 24 * 60 * 60 * 1000;
 }
-
-function getExpiryInfo(doc: Document): {
-  label: string;
-  bg: string;
-  fg: string;
-} | null {
-  if (!doc.expiry_date) return null;
-  const exp = new Date(doc.expiry_date).getTime();
-  const now = Date.now();
-  const daysLeft = Math.ceil((exp - now) / (24 * 60 * 60 * 1000));
-
-  if (daysLeft < 0) {
-    return { label: 'Expirat', bg: statusColors.critical, fg: '#fff' };
-  }
-  if (daysLeft <= 30) {
-    return { label: `${daysLeft}z`, bg: statusColors.warning, fg: '#fff' };
-  }
-  const date = new Date(doc.expiry_date);
-  const label = date.toLocaleDateString('ro-RO', { month: 'short', year: 'numeric' });
-  return { label, bg: primaryTint, fg: primary };
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-interface DocumentCardProps {
-  doc: Document;
-  entityName: string | null;
-  entityKind: string | null;
-  label: string;
-  scheme: 'light' | 'dark';
-  onPress: () => void;
-  onLongPress: () => void;
-}
-
-function DocumentCard({
-  doc,
-  entityName,
-  entityKind,
-  label,
-  scheme,
-  onPress,
-  onLongPress,
-}: DocumentCardProps) {
-  const C = Colors[scheme];
-  const iconBg = DOC_ICON_BG[doc.type] ?? iconColors.neutral.bg;
-  const iconColor = DOC_ICON_COLOR[doc.type] ?? iconColors.neutral.fg;
-  const iconName = DOC_ICON[doc.type] ?? 'document-outline';
-  const expiry = getExpiryInfo(doc);
-  const entityIconName: IoniconName = entityKind
-    ? (ENTITY_ICON[entityKind] ?? 'ellipse-outline')
-    : 'ellipse-outline';
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        cardStyles.card,
-        { backgroundColor: C.card, shadowColor: C.cardShadow },
-        pressed && cardStyles.cardPressed,
-      ]}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
-    >
-      {/* Left: type icon */}
-      <RNView style={[cardStyles.iconWrap, { backgroundColor: iconBg }]}>
-        <Ionicons name={iconName} size={22} color={iconColor} />
-      </RNView>
-
-      {/* Middle: text */}
-      <RNView style={cardStyles.content}>
-        <RNText style={[cardStyles.title, { color: C.text }]} numberOfLines={1}>
-          {label}
-        </RNText>
-
-        {entityName && (
-          <RNView style={cardStyles.entityRow}>
-            <Ionicons
-              name={entityIconName}
-              size={11}
-              color={C.textSecondary}
-              style={cardStyles.entityIcon}
-            />
-            <RNText style={[cardStyles.entityText, { color: C.textSecondary }]} numberOfLines={1}>
-              {entityName}
-            </RNText>
-          </RNView>
-        )}
-
-        {doc.note ? (
-          <RNText style={[cardStyles.note, { color: C.textSecondary }]} numberOfLines={1}>
-            {doc.note}
-          </RNText>
-        ) : null}
-      </RNView>
-
-      {/* Right: expiry badge + chevron */}
-      <RNView style={cardStyles.right}>
-        {expiry && (
-          <RNView style={[cardStyles.expiryBadge, { backgroundColor: expiry.bg }]}>
-            <RNText style={[cardStyles.expiryText, { color: expiry.fg }]}>{expiry.label}</RNText>
-          </RNView>
-        )}
-        <Ionicons
-          name="chevron-forward"
-          size={16}
-          color={C.textSecondary}
-          style={cardStyles.chevron}
-        />
-      </RNView>
-    </Pressable>
-  );
-}
-
-const cardStyles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  cardPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.99 }],
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  entityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  entityIcon: {
-    marginTop: 1,
-  },
-  entityText: {
-    fontSize: 12,
-    lineHeight: 17,
-    flex: 1,
-  },
-  note: {
-    fontSize: 12,
-    lineHeight: 17,
-    fontStyle: 'italic',
-  },
-  right: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginLeft: 8,
-    gap: 4,
-    flexShrink: 0,
-  },
-  expiryBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  expiryText: {
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 15,
-  },
-  chevron: {
-    marginTop: 2,
-  },
-});
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
-
-function EmptyState({ isFiltered, scheme }: { isFiltered: boolean; scheme: 'light' | 'dark' }) {
-  const C = Colors[scheme];
-  return (
-    <RNView style={emptyStyles.wrap}>
-      <Ionicons
-        name="document-outline"
-        size={64}
-        color={C.textSecondary}
-        style={emptyStyles.icon}
-      />
-      <RNText style={[emptyStyles.title, { color: C.text }]}>
-        {isFiltered ? 'Niciun rezultat' : 'Niciun document'}
-      </RNText>
-      <RNText style={[emptyStyles.sub, { color: C.textSecondary }]}>
-        {isFiltered
-          ? 'Încearcă alte filtre sau șterge căutarea.'
-          : 'Apasă + pentru a adăuga primul tău document.'}
-      </RNText>
-    </RNView>
-  );
-}
-
-const emptyStyles = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    marginTop: 60,
-    paddingHorizontal: 32,
-  },
-  icon: {
-    marginBottom: 16,
-    opacity: 0.4,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  sub: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.8,
-  },
-});
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
@@ -443,7 +199,7 @@ export default function DocumenteListScreen() {
   // ── Render item ──────────────────────────────────────────────────────────────
   const renderItem = useCallback(
     ({ item: doc }: { item: Document }) => (
-      <DocumentCard
+      <DocumentListCard
         doc={doc}
         entityName={getEntityName(doc)}
         entityKind={getEntityKind(doc)}
@@ -644,7 +400,7 @@ export default function DocumenteListScreen() {
           <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />
         }
         ListEmptyComponent={
-          !loading ? <EmptyState isFiltered={isFiltered} scheme={scheme} /> : null
+          !loading ? <DocumentsEmptyState isFiltered={isFiltered} scheme={scheme} /> : null
         }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
