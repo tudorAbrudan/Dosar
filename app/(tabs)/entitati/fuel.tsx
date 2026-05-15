@@ -16,8 +16,9 @@ import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { primary, light, dark, statusColors } from '@/theme/colors';
 import { DatePickerField } from '@/components/DatePickerField';
-import { FuelConsumptionChart } from '@/components/FuelConsumptionChart';
 import { FormSheetModal } from '@/components/ui/FormSheetModal';
+import { FuelStatsBar } from '@/components/fuel/FuelStatsBar';
+import { FuelRecordCard } from '@/components/fuel/FuelRecordCard';
 import {
   getFuelRecords,
   addFuelRecord,
@@ -449,63 +450,16 @@ export default function FuelScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Stats bar */}
       {stats && (
-        <>
-          <View style={styles.statsBar}>
-            <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-              <Text
-                style={styles.statValue}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.6}
-              >
-                {stats.totalRecords}
-              </Text>
-              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>înreg.</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-              <Text
-                style={styles.statValue}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.6}
-              >
-                {stats.totalLiters.toFixed(1)}
-              </Text>
-              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>L total</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: palette.card }]}>
-              <Text
-                style={styles.statValue}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.6}
-              >
-                {stats.totalCost.toFixed(2)}
-              </Text>
-              <Text style={[styles.statLabel, { color: palette.textSecondary }]}>RON</Text>
-            </View>
-          </View>
-          <FuelConsumptionChart
-            values={stats.consumptionSparkline}
-            averageL100={stats.avgConsumptionL100}
-            cardColor={palette.card}
-            textSecondary={palette.textSecondary}
-          />
-          <Pressable
-            onPress={() =>
-              router.push(
-                `/(tabs)/entitati/fuel-stats?vehicleId=${vehicleId}&vehicleName=${encodeURIComponent(vehicleName ?? '')}`
-              )
-            }
-            style={({ pressed }) => [styles.statsLink, pressed && styles.btnPressed]}
-          >
-            <Text style={[styles.statsLinkText, { color: primary }]}>
-              Vezi statistici detaliate →
-            </Text>
-          </Pressable>
-        </>
+        <FuelStatsBar
+          stats={stats}
+          scheme={scheme}
+          onOpenDetails={() =>
+            router.push(
+              `/(tabs)/entitati/fuel-stats?vehicleId=${vehicleId}&vehicleName=${encodeURIComponent(vehicleName ?? '')}`
+            )
+          }
+        />
       )}
 
       <ScrollView
@@ -522,92 +476,18 @@ export default function FuelScreen() {
           <Text style={styles.empty}>Nicio înregistrare. Adaugă primul bon.</Text>
         )}
 
-        {records.map((record, i) => {
-          // records sortate DESC după dată → "anteriorul" chronologic e records[i+1]
-          const prev = i + 1 < records.length ? records[i + 1] : null;
-          let kmSinceLast: number | undefined;
-          if (prev && record.km_total !== undefined && prev.km_total !== undefined) {
-            const delta = record.km_total - prev.km_total;
-            if (delta > 0) kmSinceLast = delta;
-          }
-
-          // Consum mediu: doar la bonurile pline. Adună litrii din toate bonurile
-          // (parțiale + acest plin) de la ultimul plin anterior și împarte la km parcurși.
-          let consumptionSinceLast: number | undefined;
-          if (record.is_full && record.km_total !== undefined) {
-            let prevFullIdx = -1;
-            for (let j = i + 1; j < records.length; j++) {
-              if (records[j].is_full && records[j].km_total !== undefined) {
-                prevFullIdx = j;
-                break;
-              }
-            }
-            if (prevFullIdx !== -1) {
-              const prevFull = records[prevFullIdx];
-              const kmDelta = record.km_total - (prevFull.km_total ?? 0);
-              let totalLiters = 0;
-              for (let j = i; j < prevFullIdx; j++) {
-                totalLiters += records[j].liters ?? 0;
-              }
-              if (kmDelta > 0 && totalLiters > 0) {
-                consumptionSinceLast = (totalLiters / kmDelta) * 100;
-              }
-            }
-          }
-
-          return (
-            <Pressable
-              key={record.id}
-              style={({ pressed }) => [
-                styles.recordCard,
-                { backgroundColor: colors.card },
-                pressed && styles.btnPressed,
-              ]}
-              onPress={() => openEditModal(record)}
-              onLongPress={() => handleDeleteRecord(record)}
-            >
-              <View style={styles.recordHeader}>
-                <View style={styles.recordHeaderLeft}>
-                  <Text style={styles.recordDate}>{record.date}</Text>
-                  {!record.is_full && (
-                    <View style={styles.partialChip}>
-                      <Text style={styles.partialChipText}>PARȚIAL</Text>
-                    </View>
-                  )}
-                </View>
-                {record.price !== undefined && (
-                  <Text style={styles.recordPrice}>{record.price.toFixed(2)} RON</Text>
-                )}
-              </View>
-              <View style={styles.recordDetails}>
-                {record.liters !== undefined && (
-                  <Text style={styles.recordMeta}>{record.liters.toFixed(2)} L</Text>
-                )}
-                {record.km_total !== undefined && (
-                  <Text style={styles.recordMeta}>
-                    {record.km_total.toLocaleString('ro-RO')} km
-                  </Text>
-                )}
-              </View>
-              {record.station && (
-                <Text style={[styles.recordStation, { color: palette.textSecondary }]}>
-                  📍 {record.station}
-                </Text>
-              )}
-              {prev && (
-                <Text style={[styles.recordSinceLast, { color: palette.textSecondary }]}>
-                  De la ultima:{' '}
-                  {kmSinceLast !== undefined ? `${kmSinceLast.toLocaleString('ro-RO')} km` : '– km'}{' '}
-                  ·{' '}
-                  {consumptionSinceLast !== undefined
-                    ? `${consumptionSinceLast.toFixed(1)} L/100km`
-                    : '– L/100km'}
-                </Text>
-              )}
-              <Text style={styles.recordHint}>Apasă pentru editare · lung pentru ștergere</Text>
-            </Pressable>
-          );
-        })}
+        {records.map((record, i) => (
+          <FuelRecordCard
+            key={record.id}
+            record={record}
+            index={i}
+            records={records}
+            scheme={scheme}
+            cardColor={colors.card}
+            onPress={() => openEditModal(record)}
+            onLongPress={() => handleDeleteRecord(record)}
+          />
+        ))}
       </ScrollView>
 
       {/* Buton adaugă bon */}
@@ -809,82 +689,11 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   errorText: { fontSize: 16, opacity: 0.7, textAlign: 'center' },
 
-  // Stats bar
-  statsBar: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-    backgroundColor: 'transparent',
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 10,
-    alignItems: 'center',
-  },
-  statValue: { fontSize: 15, fontWeight: '700', color: primary },
-  statLabel: { fontSize: 11, marginTop: 2, textAlign: 'center' },
-
-  statsLink: {
-    alignSelf: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginBottom: 4,
-  },
-  statsLinkText: { fontSize: 13, fontWeight: '600' },
-
   scroll: { flex: 1 },
   scrollContent: { padding: 12, paddingBottom: 90 },
 
   sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 14 },
-
-  // Records
   empty: { opacity: 0.6, fontSize: 14, marginBottom: 16, textAlign: 'center' },
-  recordCard: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  recordHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    marginBottom: 6,
-  },
-  recordHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  partialChip: {
-    backgroundColor: statusColors.warningSurface,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  partialChipText: {
-    color: statusColors.warning,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  recordDate: { fontSize: 15, fontWeight: '600' },
-  recordPrice: { fontSize: 15, fontWeight: '700', color: primary },
-  recordDetails: {
-    flexDirection: 'row',
-    gap: 14,
-    backgroundColor: 'transparent',
-  },
-  recordMeta: { fontSize: 13, opacity: 0.7 },
-  recordStation: { fontSize: 12, marginTop: 4 },
-  recordSinceLast: { fontSize: 12, marginTop: 6, fontStyle: 'italic' },
-  recordHint: { fontSize: 11, opacity: 0.35, marginTop: 4 },
 
   btnPressed: { opacity: 0.7 },
 
