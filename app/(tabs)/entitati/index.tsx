@@ -8,9 +8,7 @@ import {
   Text as RNText,
   TextInput,
   Platform,
-  Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,18 +19,11 @@ import { primary, statusColors, onPrimary } from '@/theme/colors';
 import { iconColors } from '@/theme/iconColors';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
-import { toFileUri } from '@/services/fileUtils';
-import { DraggableEntityList, LONG_PRESS_DELAY_MS } from '@/components/DraggableEntityList';
+import { DraggableEntityList } from '@/components/DraggableEntityList';
+import { EntityListCard } from '@/components/entity/EntityListCard';
+import { VehiclePhotoCard } from '@/components/entity/VehiclePhotoCard';
 import type { EntityRef } from '@/services/entityOrder';
-import type {
-  EntityType,
-  Person,
-  Property,
-  Vehicle,
-  Card,
-  Animal,
-  Company,
-} from '@/types';
+import type { EntityType, Person, Property, Vehicle, Card, Animal, Company } from '@/types';
 
 type AnyEntity = Person | Property | Vehicle | Card | Animal | Company;
 type EntityTab = EntityType | 'all';
@@ -143,15 +134,7 @@ export default function EntitatiListScreen() {
       if (sb !== undefined) return 1;
       return TYPE_RANK[a.entityType] - TYPE_RANK[b.entityType];
     });
-  }, [
-    persons,
-    properties,
-    vehicles,
-    cards,
-    animals,
-    companies,
-    globalOrderMap,
-  ]);
+  }, [persons, properties, vehicles, cards, animals, companies, globalOrderMap]);
 
   const rawTyped: TypedEntity[] = useMemo(
     () => (tab === 'all' ? allTyped : allTyped.filter(e => e.entityType === tab)),
@@ -237,81 +220,34 @@ export default function EntitatiListScreen() {
 
   const renderCard = (typed: TypedEntity, info: { isActive: boolean; onLongPress: () => void }) => {
     const { item, entityType } = typed;
-
-    const title = getTitle(item);
-    const subtitle = getSubtitle(item, entityType);
-    const iconBg = ENTITY_ICON_BG[entityType];
-    const iconColor = ENTITY_ICON_COLOR[entityType];
-    const iconName = ENTITY_ICON[entityType];
     const vehiclePhoto = entityType === 'vehicle' ? (item as Vehicle).photo_uri : undefined;
 
     if (vehiclePhoto) {
       const v = item as Vehicle;
       return (
-        <Pressable
+        <VehiclePhotoCard
+          photoUri={vehiclePhoto}
+          name={v.name}
+          plateNumber={v.plate_number}
+          isActive={info.isActive}
           onPress={() => router.push(`/(tabs)/entitati/${item.id}`)}
           onLongPress={info.onLongPress}
-          delayLongPress={LONG_PRESS_DELAY_MS}
-          android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
-          style={({ pressed }) => [
-            styles.vehicleCard,
-            pressed && styles.cardPressed,
-            info.isActive && styles.cardActive,
-          ]}
-        >
-          <Image
-            source={{ uri: toFileUri(vehiclePhoto) }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-          />
-          <LinearGradient
-            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
-            style={StyleSheet.absoluteFill}
-          />
-          <RNView style={styles.vehicleCardText}>
-            <RNText style={styles.vehicleName} numberOfLines={1}>
-              {v.name}
-            </RNText>
-            {v.plate_number ? (
-              <RNText style={styles.vehiclePlate} numberOfLines={1}>
-                {v.plate_number}
-              </RNText>
-            ) : null}
-          </RNView>
-        </Pressable>
+        />
       );
     }
 
-    const targetRoute = `/(tabs)/entitati/${item.id}` as const;
-
     return (
-      <Pressable
-        style={({ pressed }) => [
-          styles.card,
-          { backgroundColor: C.card, shadowColor: C.cardShadow },
-          pressed && styles.cardPressed,
-          info.isActive && styles.cardActive,
-        ]}
-        onPress={() => router.push(targetRoute)}
+      <EntityListCard
+        title={getTitle(item)}
+        subtitle={getSubtitle(item, entityType)}
+        icon={ENTITY_ICON[entityType]}
+        iconBg={ENTITY_ICON_BG[entityType]}
+        iconColor={ENTITY_ICON_COLOR[entityType]}
+        scheme={scheme}
+        isActive={info.isActive}
+        onPress={() => router.push(`/(tabs)/entitati/${item.id}`)}
         onLongPress={info.onLongPress}
-        delayLongPress={LONG_PRESS_DELAY_MS}
-        android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
-      >
-        <RNView style={[styles.iconWrap, { backgroundColor: iconBg }]}>
-          <Ionicons name={iconName} size={22} color={iconColor} />
-        </RNView>
-        <RNView style={styles.cardContent}>
-          <RNText style={[styles.cardTitle, { color: C.text }]} numberOfLines={1}>
-            {title}
-          </RNText>
-          {subtitle && (
-            <RNText style={[styles.cardSub, { color: C.textSecondary }]} numberOfLines={1}>
-              {subtitle}
-            </RNText>
-          )}
-        </RNView>
-        <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-      </Pressable>
+      />
     );
   };
 
@@ -386,7 +322,8 @@ export default function EntitatiListScreen() {
           style={[
             styles.errorBanner,
             {
-              backgroundColor: scheme === 'dark' ? statusColors.criticalSurfaceDark : iconColors.danger.bg,
+              backgroundColor:
+                scheme === 'dark' ? statusColors.criticalSurfaceDark : iconColors.danger.bg,
               borderColor: statusColors.critical,
               borderWidth: StyleSheet.hairlineWidth,
             },
@@ -461,12 +398,6 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   headerLeft: { gap: 2 },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    lineHeight: 34,
-  },
   headerSub: {
     fontSize: 14,
     lineHeight: 18,
@@ -538,7 +469,6 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 13, flex: 1 },
 
   // Scroll
-  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 12,
     paddingTop: 4,
@@ -564,84 +494,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     opacity: 0.8,
-  },
-
-  // Card
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  cardPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.99 }],
-  },
-  cardActive: {
-    opacity: 0.95,
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  cardContent: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  cardSub: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-
-  // Vehicle photo card
-  vehicleCard: {
-    height: 90,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 12,
-    justifyContent: 'flex-end',
-    padding: 12,
-    // Vehicle photo overlay este intenționat dark; text alb peste poză.
-    // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
-    backgroundColor: '#000',
-  },
-  vehicleCardText: {
-    position: 'relative',
-    zIndex: 1,
-  },
-  vehicleName: {
-    fontSize: 16,
-    fontWeight: '600',
-    // Text peste vehicle photo overlay — intenționat alb pe ambele teme.
-    // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
-    color: '#fff',
-  },
-  vehiclePlate: {
-    fontSize: 12,
-    marginTop: 2,
-    // Text peste vehicle photo overlay — intenționat alb pe ambele teme.
-    // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
-    color: 'rgba(255,255,255,0.85)',
   },
 });
