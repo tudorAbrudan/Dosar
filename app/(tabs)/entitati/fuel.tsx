@@ -1,13 +1,5 @@
 import { useCallback, useState } from 'react';
-import {
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  TextInput,
-  Switch,
-} from 'react-native';
+import { StyleSheet, ScrollView, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,10 +7,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { primary, light, dark, statusColors } from '@/theme/colors';
-import { DatePickerField } from '@/components/DatePickerField';
 import { FormSheetModal } from '@/components/ui/FormSheetModal';
 import { FuelStatsBar } from '@/components/fuel/FuelStatsBar';
 import { FuelRecordCard } from '@/components/fuel/FuelRecordCard';
+import { FuelRecordFormFields } from '@/components/fuel/FuelRecordFormFields';
 import {
   getFuelRecords,
   addFuelRecord,
@@ -498,7 +490,6 @@ export default function FuelScreen() {
         <Text style={styles.fabText}>+ Adaugă bon</Text>
       </Pressable>
 
-      {/* Modal adaugă bon */}
       <FormSheetModal
         visible={modalVisible}
         title={editingId ? 'Editează bon' : 'Bon alimentare'}
@@ -506,179 +497,31 @@ export default function FuelScreen() {
         onSave={handleSaveRecord}
         saving={mLoading}
       >
-        {/* OCR */}
-        <Pressable
-          style={({ pressed }) => [styles.ocrBtn, styles.ocrBtnFull, pressed && styles.btnPressed]}
-          onPress={handleScanReceipt}
-          disabled={mLoading}
-        >
-          <Text style={styles.ocrBtnText} numberOfLines={1}>
-            {mLoading ? 'Se analizează bonul...' : '📷 Scanează bon'}
-          </Text>
-        </Pressable>
-
-        <DatePickerField label="Data" value={mDate} onChange={setMDate} disabled={mLoading} />
-
-        <View>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Benzinărie</Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                borderColor: palette.border,
-                color: colors.text,
-                backgroundColor: palette.background,
-              },
-            ]}
-            value={mStation}
-            onChangeText={setMStation}
-            placeholder="Ex: OMV Cluj-Napoca, Calea Turzii"
-            placeholderTextColor={palette.textSecondary}
-            editable={!mLoading}
-          />
-        </View>
-
-        <View>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Nr. pompă</Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                borderColor: palette.border,
-                color: colors.text,
-                backgroundColor: palette.background,
-              },
-            ]}
-            value={mPump}
-            onChangeText={setMPump}
-            placeholder="Ex: 4"
-            placeholderTextColor={palette.textSecondary}
-            keyboardType="default"
-            editable={!mLoading}
-          />
-        </View>
-
-        <View>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Litri</Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                borderColor: errorBorderColor,
-                color: colors.text,
-                backgroundColor: palette.background,
-              },
-            ]}
-            value={mLiters}
-            onChangeText={handleLitersChange}
-            placeholder="Ex: 45.23"
-            placeholderTextColor={palette.textSecondary}
-            keyboardType="decimal-pad"
-            editable={!mLoading}
-          />
-        </View>
-
-        <View>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
-            Preț/litru (RON)
-          </Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                borderColor: errorBorderColor,
-                color: colors.text,
-                backgroundColor: palette.background,
-              },
-            ]}
-            value={mPriceL}
-            onChangeText={handlePriceLChange}
-            placeholder="Ex: 9.82"
-            placeholderTextColor={palette.textSecondary}
-            keyboardType="decimal-pad"
-            editable={!mLoading}
-          />
-        </View>
-
-        <View>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
-            Preț total (RON)
-          </Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                borderColor: errorBorderColor,
-                color: colors.text,
-                backgroundColor: palette.background,
-              },
-            ]}
-            value={mPrice}
-            onChangeText={handlePriceChange}
-            placeholder="Ex: 280.50"
-            placeholderTextColor={palette.textSecondary}
-            keyboardType="decimal-pad"
-            editable={!mLoading}
-          />
-        </View>
-
-        {hasMathError && (
-          <View
-            style={[
-              styles.mathWarning,
-              {
-                borderColor: statusColors.critical,
-                backgroundColor: `${statusColors.critical}14`,
-              },
-            ]}
-          >
-            <Text style={[styles.mathWarningTitle, { color: statusColors.critical }]}>
-              ⚠ Verifică valorile
-            </Text>
-            <Text style={[styles.mathWarningBody, { color: colors.text }]}>
-              {`${litersN.toFixed(2)} L × ${priceLN.toFixed(2)} RON/L = ${expectedPrice.toFixed(2)} RON, dar totalul e ${priceN.toFixed(2)} RON. Probabil OCR-ul a citit greșit un câmp.`}
-            </Text>
-          </View>
-        )}
-
-        <View>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>
-            KM total (odometru)
-          </Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                borderColor: palette.border,
-                color: colors.text,
-                backgroundColor: palette.background,
-              },
-            ]}
-            value={mKm}
-            onChangeText={setMKm}
-            placeholder={
-              lastKm !== undefined ? `Anterior: ${lastKm.toLocaleString('ro-RO')}` : 'Ex: 125430'
-            }
-            placeholderTextColor={palette.textSecondary}
-            keyboardType="number-pad"
-            editable={!mLoading}
-          />
-        </View>
-
-        <View style={styles.isFullRow}>
-          <Text style={[styles.modalLabel, { color: palette.textSecondary }]}>Plin complet</Text>
-          <Switch
-            value={mIsFull}
-            onValueChange={setMIsFull}
-            trackColor={{ false: palette.border, true: primary }}
-            disabled={mLoading}
-          />
-        </View>
-        {!mIsFull && (
-          <Text style={[styles.isFullHint, { color: palette.textSecondary }]}>
-            Litrii nu vor fi contați în consum până la următorul plin complet.
-          </Text>
-        )}
+        <FuelRecordFormFields
+          scheme={scheme}
+          loading={mLoading}
+          date={mDate}
+          station={mStation}
+          pump={mPump}
+          liters={mLiters}
+          priceL={mPriceL}
+          price={mPrice}
+          km={mKm}
+          isFull={mIsFull}
+          errorBorderColor={errorBorderColor}
+          hasMathError={hasMathError}
+          mathErrorMessage={`${litersN.toFixed(2)} L × ${priceLN.toFixed(2)} RON/L = ${expectedPrice.toFixed(2)} RON, dar totalul e ${priceN.toFixed(2)} RON. Probabil OCR-ul a citit greșit un câmp.`}
+          lastKm={lastKm}
+          onChangeDate={setMDate}
+          onChangeStation={setMStation}
+          onChangePump={setMPump}
+          onChangeLiters={handleLitersChange}
+          onChangePriceL={handlePriceLChange}
+          onChangePrice={handlePriceChange}
+          onChangeKm={setMKm}
+          onChangeIsFull={setMIsFull}
+          onScanReceipt={handleScanReceipt}
+        />
       </FormSheetModal>
     </View>
   );
@@ -688,16 +531,10 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   errorText: { fontSize: 16, opacity: 0.7, textAlign: 'center' },
-
   scroll: { flex: 1 },
   scrollContent: { padding: 12, paddingBottom: 90 },
-
   sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 14 },
   empty: { opacity: 0.6, fontSize: 14, marginBottom: 16, textAlign: 'center' },
-
-  btnPressed: { opacity: 0.7 },
-
-  // FAB
   fab: {
     position: 'absolute',
     bottom: 24,
@@ -714,54 +551,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabPressed: { opacity: 0.85 },
+  // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
   fabText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  // Modal
-  modalLabel: { fontSize: 13, marginBottom: 5 },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 15,
-    marginBottom: 14,
-  },
-  ocrBtn: {
-    borderWidth: 1,
-    borderColor: primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  ocrBtnFull: {
-    marginBottom: 18,
-  },
-  ocrBtnText: { color: primary, fontSize: 15, fontWeight: '600' },
-  isFullRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
-  isFullHint: {
-    fontSize: 11,
-    fontStyle: 'italic',
-    marginBottom: 14,
-  },
-  mathWarning: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 14,
-  },
-  mathWarningTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  mathWarningBody: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
 });
