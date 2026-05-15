@@ -1,21 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Platform,
-  Linking,
-  Alert,
-  Modal,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, Platform, Linking, Alert, Modal } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import AppLockPinModal from '@/components/AppLockPinModal';
+import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
+import { OnboardingFooter } from '@/components/onboarding/OnboardingFooter';
 import { AiStep } from '@/components/onboarding/AiStep';
 import { AppearanceStep } from '@/components/onboarding/AppearanceStep';
 import { BackupStep } from '@/components/onboarding/BackupStep';
@@ -41,8 +33,6 @@ import * as cloudStorage from '@/services/cloudStorage';
 import * as cloudSync from '@/services/cloudSync';
 import type { RestoreProgress } from '@/services/cloudSync';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
-import { primary } from '@/theme/colors';
-import { radius } from '@/theme/layout';
 import { useThemePreference } from '@/hooks/useThemeScheme';
 
 const WELCOME = 0;
@@ -392,18 +382,14 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
   return (
     <View style={[styles.overlay, { backgroundColor: C.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 16, borderBottomColor: C.border }]}>
-        <Text style={[styles.stepIndicator, { color: C.textSecondary }]}>
-          {currentIdx + 1} / {totalActive}
-        </Text>
-        <Text style={[styles.title, { color: C.text }]}>{stepTitle(step)}</Text>
-        <Text style={[styles.subtitle, { color: C.textSecondary }]}>{stepSubtitle(step)}</Text>
-      </View>
-
-      <View style={[styles.progressTrack, { backgroundColor: C.border }]}>
-        <View style={{ flex: currentIdx + 1, backgroundColor: primary }} />
-        <View style={{ flex: Math.max(0, totalActive - currentIdx - 1), minWidth: 0 }} />
-      </View>
+      <OnboardingHeader
+        scheme={scheme}
+        paddingTop={insets.top}
+        currentIdx={currentIdx}
+        totalActive={totalActive}
+        title={stepTitle(step)}
+        subtitle={stepSubtitle(step)}
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -492,67 +478,19 @@ export default function OnboardingWizard({ onComplete }: Props) {
         )}
       </ScrollView>
 
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingBottom: insets.bottom + 16,
-            borderTopColor: C.border,
-            backgroundColor: C.surface,
-            borderTopLeftRadius: radius.xl,
-            borderTopRightRadius: radius.xl,
-            ...Platform.select({
-              ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: -3 },
-                shadowOpacity: 0.06,
-                shadowRadius: 10,
-              },
-              android: { elevation: 12 },
-              default: {},
-            }),
-          },
-        ]}
-      >
-        <View style={styles.footerRow}>
-          {step > WELCOME && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.btnBack,
-                { borderColor: C.primary, opacity: pressed ? 0.7 : 1 },
-              ]}
-              onPress={handleBack}
-            >
-              <Text style={[styles.btnBackText, { color: C.primary }]}>Înapoi</Text>
-            </Pressable>
-          )}
-          <Pressable
-            style={({ pressed }) => [
-              styles.btnNext,
-              step === WELCOME && styles.btnNextSingle,
-              { backgroundColor: C.primary, opacity: isNextDisabled ? 0.4 : pressed ? 0.85 : 1 },
-            ]}
-            onPress={handleFooterPrimary}
-            disabled={isNextDisabled}
-          >
-            <Text style={styles.btnNextText}>{step === SUMMARY ? 'Finalizează' : 'Continuă'}</Text>
-          </Pressable>
-        </View>
-        {step < SUMMARY && step !== AI_STEP && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.btnSkip,
-              { opacity: cloudRestoring ? 0.4 : pressed ? 0.6 : 1 },
-            ]}
-            onPress={() => void handleComplete()}
-            disabled={cloudRestoring}
-          >
-            <Text style={[styles.btnSkipText, { color: C.textSecondary }]}>
-              Sari peste configurare
-            </Text>
-          </Pressable>
-        )}
-      </View>
+      <OnboardingFooter
+        scheme={scheme}
+        paddingBottom={insets.bottom}
+        showBack={step > WELCOME}
+        showSkip={step < SUMMARY && step !== AI_STEP}
+        isLastStep={step === SUMMARY}
+        isSingleButton={step === WELCOME}
+        nextDisabled={isNextDisabled}
+        skipDisabled={cloudRestoring}
+        onBack={handleBack}
+        onNext={handleFooterPrimary}
+        onSkip={() => void handleComplete()}
+      />
 
       <AppLockPinModal
         visible={pinModalVisible}
@@ -579,73 +517,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 1000,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  stepIndicator: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  progressTrack: {
-    height: 3,
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 24 },
-
-  footer: {
-    flexDirection: 'column',
-    gap: 4,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  btnBack: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderRadius: radius.pill,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  btnBackText: { fontSize: 16, fontWeight: '600' },
-  btnNext: {
-    flex: 2,
-    borderRadius: radius.pill,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  btnNextSingle: { flex: 1 },
-  btnNextText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  btnSkip: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  btnSkipText: {
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
-
   cloudRestoreOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
