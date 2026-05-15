@@ -23,6 +23,7 @@ import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
 import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
 import { DocsStep } from '@/components/onboarding/DocsStep';
 import { NotificationsStep } from '@/components/onboarding/NotificationsStep';
+import { VehicleMgmtStep } from '@/components/onboarding/VehicleMgmtStep';
 import {
   ALL_ENTITY_TYPES,
   DEFAULT_VISIBLE_DOC_TYPES,
@@ -513,50 +514,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
           />
         )}
 
-        {step === VEHICLE_MGMT && (
-          <View style={styles.bulletBlock}>
-            {[
-              {
-                icon: 'car-sport-outline' as const,
-                title: 'Acte vehicul într-un singur loc',
-                desc: 'Talon, carte auto, RCA, CASCO, ITP, vignetă, revizie — fiecare cu data de expirare.',
-              },
-              {
-                icon: 'notifications-outline' as const,
-                title: 'Remindere automate',
-                desc: 'Cu 7, 14 sau 30 zile înainte de expirare. Notificări locale, fără server.',
-              },
-              {
-                icon: 'speedometer-outline' as const,
-                title: 'Alimentări și statistici consum',
-                desc: 'Înregistrezi alimentările și vezi consumul mediu, costul pe 100 km, evoluția lunară.',
-              },
-              {
-                icon: 'scan-outline' as const,
-                title: 'Scanare cu OCR',
-                desc: 'Fotografiezi talonul sau cartea auto — datele esențiale se completează automat.',
-              },
-            ].map(item => (
-              <View
-                key={item.icon}
-                style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}
-              >
-                <View style={styles.cardRow}>
-                  <Ionicons name={item.icon} size={22} color={C.primary} />
-                  <View style={{ flex: 1, marginLeft: spacing.gap }}>
-                    <Text style={[styles.cardTitle, { color: C.text }]}>{item.title}</Text>
-                    <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
-                      {item.desc}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-            <Text style={[styles.notifSub, { color: C.textSecondary, marginTop: 4 }]}>
-              Adaugi vehiculele tale ulterior din tabul Entități → Vehicul.
-            </Text>
-          </View>
-        )}
+        {step === VEHICLE_MGMT && <VehicleMgmtStep scheme={scheme} />}
 
         {step === DOCS && (
           <DocsStep
