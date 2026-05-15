@@ -1,21 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   StyleSheet,
-  ScrollView,
   Pressable,
   RefreshControl,
   Alert,
-  Modal,
   Platform,
   View as RNView,
   Text as RNText,
   FlatList,
   Image,
-  Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedTextInput } from '@/components/Themed';
@@ -34,6 +30,9 @@ import type { Document as DocType, DocumentType, Company } from '@/types';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
+import { PersonContactCard } from '@/components/entity/PersonContactCard';
+import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
+import { DocumentRow } from '@/components/entity/DocumentRow';
 import {
   VehicleMaintenanceSection,
   type VehicleMaintenanceSectionHandle,
@@ -438,114 +437,14 @@ export default function EntityDetailScreen() {
           (() => {
             const person = persons.find(p => p.id === id);
             if (!person) return null;
-            const hasContact = Boolean(person.phone || person.email);
-            if (!hasContact) return null;
-            const openTel = async (phone: string) => {
-              const url = `tel:${phone.replace(/\s+/g, '')}`;
-              try {
-                await Linking.openURL(url);
-              } catch {
-                Alert.alert('Eroare', 'Nu s-a putut iniția apelul.');
-              }
-            };
-            const openMail = async (email: string) => {
-              try {
-                await Linking.openURL(`mailto:${email}`);
-              } catch {
-                Alert.alert('Eroare', 'Nu s-a putut deschide clientul de email.');
-              }
-            };
-            const copyValue = async (value: string, label: string) => {
-              await Clipboard.setStringAsync(value);
-              Alert.alert('Copiat', `${label} a fost copiat în clipboard.`);
-            };
             return (
-              <RNView
-                style={[styles.contactCard, { backgroundColor: C.card, shadowColor: C.cardShadow }]}
-              >
-                <Pressable
-                  onPress={() => setContactExpanded(v => !v)}
-                  style={styles.contactHeader}
-                  hitSlop={8}
-                >
-                  <RNText
-                    style={[styles.sectionTitle, { color: C.textSecondary, marginBottom: 0 }]}
-                  >
-                    DATE CONTACT
-                  </RNText>
-                  <RNView style={styles.contactHeaderRight}>
-                    {!contactExpanded && (
-                      <>
-                        {person.phone ? (
-                          <Ionicons
-                            name="call-outline"
-                            size={14}
-                            color={C.textSecondary}
-                            style={styles.contactHeaderIcon}
-                          />
-                        ) : null}
-                        {person.email ? (
-                          <Ionicons
-                            name="mail-outline"
-                            size={14}
-                            color={C.textSecondary}
-                            style={styles.contactHeaderIcon}
-                          />
-                        ) : null}
-                      </>
-                    )}
-                    <Ionicons
-                      name={contactExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={C.textSecondary}
-                    />
-                  </RNView>
-                </Pressable>
-                {contactExpanded && (
-                  <RNView style={styles.contactBody}>
-                    {person.phone ? (
-                      <Pressable
-                        onPress={() => openTel(person.phone!)}
-                        onLongPress={() => copyValue(person.phone!, 'Telefonul')}
-                        style={({ pressed }) => [
-                          styles.contactRow,
-                          pressed && styles.contactRowPressed,
-                        ]}
-                      >
-                        <Ionicons
-                          name="call-outline"
-                          size={16}
-                          color={C.primary}
-                          style={styles.contactIcon}
-                        />
-                        <RNText style={[styles.contactValue, { color: C.primary }]}>
-                          {person.phone}
-                        </RNText>
-                      </Pressable>
-                    ) : null}
-                    {person.email ? (
-                      <Pressable
-                        onPress={() => openMail(person.email!)}
-                        onLongPress={() => copyValue(person.email!, 'Emailul')}
-                        style={({ pressed }) => [
-                          styles.contactRow,
-                          pressed && styles.contactRowPressed,
-                        ]}
-                      >
-                        <Ionicons
-                          name="mail-outline"
-                          size={16}
-                          color={C.primary}
-                          style={styles.contactIcon}
-                        />
-                        <RNText style={[styles.contactValue, { color: C.primary }]}>
-                          {person.email}
-                        </RNText>
-                      </Pressable>
-                    ) : null}
-                  </RNView>
-                )}
-              </RNView>
+              <PersonContactCard
+                phone={person.phone}
+                email={person.email}
+                expanded={contactExpanded}
+                scheme={scheme}
+                onToggle={() => setContactExpanded(v => !v)}
+              />
             );
           })()}
 
@@ -599,37 +498,17 @@ export default function EntityDetailScreen() {
         )}
 
         {visibleDocuments.map(doc => (
-          <Pressable
+          <DocumentRow
             key={doc.id}
-            style={({ pressed }) => [
-              styles.docRow,
-              { backgroundColor: C.card, shadowColor: C.cardShadow },
-              pressed && styles.docRowPressed,
-            ]}
+            doc={doc}
+            scheme={scheme}
             onPress={() =>
               router.push({
                 pathname: '/(tabs)/documente/[id]',
                 params: { id: doc.id, from: 'entity', entityId: id },
               })
             }
-          >
-            <RNView style={styles.docRowText}>
-              <RNText style={[styles.docType, { color: C.text }]}>
-                {DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type}
-              </RNText>
-              {doc.issue_date && (
-                <RNText style={[styles.docMeta, { color: C.textSecondary }]}>
-                  Emis: {doc.issue_date}
-                </RNText>
-              )}
-              {doc.expiry_date && (
-                <RNText style={[styles.docMeta, { color: C.textSecondary }]}>
-                  Expiră: {doc.expiry_date}
-                </RNText>
-              )}
-            </RNView>
-            <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-          </Pressable>
+          />
         ))}
       </Animated.ScrollView>
 
@@ -675,61 +554,13 @@ export default function EntityDetailScreen() {
         ]}
       />
 
-      {/* ── Link existing document modal ── */}
-      <Modal
+      <LinkDocumentModal
         visible={linkDocVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setLinkDocVisible(false)}
-      >
-        <RNView style={styles.modalOverlay}>
-          <RNView style={[styles.modalContent, { backgroundColor: C.card }]}>
-            <RNText style={[styles.modalTitle, { color: C.text }]}>
-              Asociază document existent
-            </RNText>
-            {unlinkedDocs.length === 0 ? (
-              <RNText style={[styles.modalLabel, { color: C.textSecondary, marginBottom: 16 }]}>
-                Nu există documente nelegate disponibile.
-              </RNText>
-            ) : (
-              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-                {unlinkedDocs.map(d => (
-                  <Pressable
-                    key={d.id}
-                    style={[styles.linkDocRow, { borderBottomColor: C.border }]}
-                    onPress={() => handleLinkDoc(d.id)}
-                  >
-                    <RNText style={[styles.linkDocType, { color: C.primary }]}>
-                      {DOCUMENT_TYPE_LABELS[d.type] ?? d.type}
-                    </RNText>
-                    {d.note ? (
-                      <RNText
-                        style={[styles.linkDocNote, { color: C.textSecondary }]}
-                        numberOfLines={1}
-                      >
-                        {d.note}
-                      </RNText>
-                    ) : null}
-                    {d.expiry_date ? (
-                      <RNText style={[styles.linkDocNote, { color: C.textSecondary }]}>
-                        Expiră: {d.expiry_date}
-                      </RNText>
-                    ) : null}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
-            <RNView style={[styles.modalButtons, { marginTop: 12 }]}>
-              <Pressable
-                style={[styles.modalCancelBtn, { borderColor: C.border }]}
-                onPress={() => setLinkDocVisible(false)}
-              >
-                <RNText style={[styles.modalCancelText, { color: C.text }]}>Anulare</RNText>
-              </Pressable>
-            </RNView>
-          </RNView>
-        </RNView>
-      </Modal>
+        unlinkedDocs={unlinkedDocs}
+        scheme={scheme}
+        onClose={() => setLinkDocVisible(false)}
+        onLink={handleLinkDoc}
+      />
 
       {/* ── Edit modal ── */}
       <FormSheetModal
@@ -1006,38 +837,8 @@ const styles = StyleSheet.create({
   },
   filterChipText: { fontSize: 13, fontWeight: '500' },
 
-  // Doc row
-  docRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
-  },
-  docRowPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
-  docRowText: { flex: 1 },
-  docType: { fontSize: 15, fontWeight: '500' },
-  docMeta: { fontSize: 13, marginTop: 3 },
-
   // Bottom bar
   btnPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
-  linkDocRow: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
-  linkDocType: { fontSize: 15, fontWeight: '600' },
-  linkDocNote: { fontSize: 13, marginTop: 2 },
-
-  // Modal
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 20 },
   modalLabel: { fontSize: 14, marginBottom: 6 },
   modalInput: {
     borderWidth: 1,
