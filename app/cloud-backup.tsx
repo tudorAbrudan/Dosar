@@ -40,6 +40,7 @@ import {
 } from '@/services/cloudCrypto';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
 import { CloudPasswordModal, type CloudPasswordModalMode } from '@/components/CloudPasswordModal';
+import { QuotaExceededBanner } from '@/components/cloud/QuotaExceededBanner';
 import type { SnapshotFrequency, CloudStatus } from '@/types';
 
 const FREQUENCY_OPTIONS: { value: SnapshotFrequency; label: string }[] = [
@@ -349,38 +350,8 @@ export default function CloudBackupScreen() {
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <Stack.Screen options={{ title: 'iCloud Backup', headerShown: true }} />
       <ScrollView contentContainerStyle={styles.content}>
-        {/* ── Banner quota iCloud plin ── */}
         {cloud.quotaExceeded ? (
-          <View
-            style={[
-              styles.quotaBanner,
-              { backgroundColor: `${statusColors.critical}1A`, borderColor: statusColors.critical },
-            ]}
-          >
-            <View style={styles.quotaBannerHeader}>
-              <Ionicons name="cloud-offline" size={20} color={statusColors.critical} />
-              <Text style={[styles.quotaBannerTitle, { color: statusColors.critical }]}>
-                iCloud-ul tău este plin
-              </Text>
-            </View>
-            <Text style={[styles.quotaBannerBody, { color: palette.text }]}>
-              Backup-ul nu a putut fi finalizat fiindcă nu mai e spațiu liber în contul tău iCloud.
-              Eliberează spațiu sau extinde planul iCloud, apoi încearcă din nou.
-            </Text>
-            <Pressable
-              onPress={() => {
-                void Linking.openURL('App-Prefs:APPLE_ACCOUNT&path=ICLOUD_SERVICE/STORAGE_USAGE');
-              }}
-              style={({ pressed }) => [
-                styles.quotaBannerCta,
-                { borderColor: statusColors.critical, opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <Text style={[styles.quotaBannerCtaText, { color: statusColors.critical }]}>
-                Deschide setări iCloud
-              </Text>
-            </Pressable>
-          </View>
+          <QuotaExceededBanner scheme={scheme === 'dark' ? 'dark' : 'light'} />
         ) : null}
 
         {/* ── Status ── */}
@@ -721,25 +692,6 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusLabel: { fontSize: 16, fontWeight: '600' },
   errorText: { fontSize: 13, marginBottom: 8 },
-
-  quotaBanner: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 12,
-  },
-  quotaBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  quotaBannerTitle: { fontSize: 15, fontWeight: '700' },
-  quotaBannerBody: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
-  quotaBannerCta: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  quotaBannerCtaText: { fontSize: 13, fontWeight: '600' },
 
   statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   statLabel: { fontSize: 13 },
