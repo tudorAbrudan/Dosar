@@ -52,12 +52,8 @@ import {
   isCalendarAvailable,
 } from '@/services/calendar';
 import { promptAddExpiryReminder, promptAddEventReminder } from '@/services/calendarPrompt';
-import {
-  extractText,
-  extractDocumentInfo,
-  detectDocumentType,
-  formatOcrSummary,
-} from '@/services/ocr';
+import { extractDocumentInfo, detectDocumentType, formatOcrSummary } from '@/services/ocr';
+import { ocrWithAutoRotate } from '@/services/ocrAutoRotate';
 import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
@@ -512,43 +508,6 @@ export default function EditDocumentScreen() {
       },
       { text: 'Anulare', style: 'cancel' },
     ]);
-  }
-
-  // ── OCR ──────────────────────────────────────────────────────────────────
-
-  async function ocrWithAutoRotate(
-    storedPath: string,
-    isLocked: boolean
-  ): Promise<{ text: string; rotated: boolean }> {
-    const fileUri = toFileUri(storedPath);
-    const { text } = await extractText(fileUri);
-
-    // Pagină rotită manual de user — respectă orientarea, nu mai încerca alte rotații.
-    if (isLocked) return { text, rotated: false };
-
-    // Încearcă mereu toate cele 3 rotații — threshold-ul >= 50 era insuficient deoarece
-    // Vision pe iOS modern extrage ≥50 chars chiar și din imagini rotite greșit.
-    let bestText = text;
-    let bestUri = fileUri;
-    for (const deg of [90, 270, 180]) {
-      const r = await ImageManipulator.manipulateAsync(fileUri, [{ rotate: deg }], {
-        compress: 0.92,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      const { text: rotText } = await extractText(r.uri);
-      if (rotText.trim().length > bestText.trim().length) {
-        bestText = rotText;
-        bestUri = r.uri;
-      }
-    }
-
-    const wasRotated = bestUri !== fileUri;
-    if (wasRotated) {
-      // Folosim fileUri direct (cu file://) — destPath fără prefix arunca excepție
-      // care era prinsă silențios, împiedicând salvarea imaginii și extragerea datelor.
-      await FileSystem.copyAsync({ from: bestUri, to: fileUri });
-    }
-    return { text: bestText, rotated: wasRotated };
   }
 
   async function runOcrOnNewPage(localPath: string, currentDoc: DocType) {
