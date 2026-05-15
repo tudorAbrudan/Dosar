@@ -21,6 +21,7 @@ import { SUPPORT_URL } from '@/constants/AppLinks';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { AiStep } from '@/components/onboarding/AiStep';
 import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
+import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
 import {
   ALL_ENTITY_TYPES,
   STANDARD_DOC_TYPES,
@@ -62,18 +63,6 @@ const SUMMARY = 10;
 const NOTIF_DAY_OPTIONS = [7, 14, 30] as const;
 
 const ENTITY_LABELS = ENTITY_TYPE_LABELS;
-const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
-
-// Onboarding-only descrieri (text scurt per entitate) — UI specific, păstrat aici.
-// check-hardcoded-entities-disable-next-cluster
-const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
-  person: 'Buletin, pașaport, permis',
-  vehicle: 'Talon, RCA, ITP, CASCO, vignetă',
-  property: 'Acte proprietate, facturi, PAD',
-  card: 'Carduri bancare, abonamente',
-  animal: 'Vaccinuri, deparazitare, vizite vet',
-  company: 'Certificat înregistrare, acte constitutive, TVA',
-};
 
 interface Props {
   onComplete: () => void;
@@ -573,51 +562,13 @@ export default function OnboardingWizard({ onComplete }: Props) {
           </>
         )}
 
-        {step === ENTITIES &&
-          ALL_ENTITY_TYPES.map(entityType => {
-            const isSelected = selectedEntities.includes(entityType);
-            return (
-              <Pressable
-                key={entityType}
-                style={({ pressed }) => [
-                  styles.entityCard,
-                  {
-                    backgroundColor: C.card,
-                    shadowColor: C.cardShadow,
-                    borderColor: isSelected ? C.primary : 'transparent',
-                  },
-                  pressed && { opacity: 0.85 },
-                ]}
-                onPress={() => toggleEntity(entityType)}
-              >
-                <View
-                  style={[
-                    styles.entityIcon,
-                    { backgroundColor: isSelected ? C.primaryMuted : C.background },
-                  ]}
-                >
-                  <Text style={styles.entityIconText}>{ENTITY_ICONS[entityType]}</Text>
-                </View>
-                <View style={styles.entityContent}>
-                  <Text style={[styles.entityLabel, { color: C.text }]}>
-                    {ENTITY_LABELS[entityType]}
-                  </Text>
-                  <Text style={[styles.entityDesc, { color: C.textSecondary }]}>
-                    {ENTITY_DESCRIPTIONS[entityType]}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.checkbox,
-                    { borderColor: C.border },
-                    isSelected && styles.checkboxActive,
-                  ]}
-                >
-                  {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-              </Pressable>
-            );
-          })}
+        {step === ENTITIES && (
+          <EntitiesStep
+            scheme={scheme}
+            selectedEntities={selectedEntities}
+            onToggle={toggleEntity}
+          />
+        )}
 
         {step === VEHICLE_MGMT && (
           <View style={styles.bulletBlock}>
@@ -979,42 +930,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   secondaryCtaText: { fontSize: 15, fontWeight: '600' },
-
-  entityCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 2,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
-  },
-  entityIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  entityIconText: { fontSize: 22 },
-  entityContent: { flex: 1 },
-  entityLabel: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  entityDesc: { fontSize: 12, lineHeight: 16 },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  checkboxActive: { backgroundColor: primary, borderColor: primary },
-  checkmark: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   groupLabelRow: {
     flexDirection: 'row',
