@@ -18,6 +18,7 @@ import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import Colors from '@/constants/Colors';
 import { primary, statusColors, onPrimary } from '@/theme/colors';
 import { DOC_ICON_BG, DOC_ICON_COLOR } from '@/theme/docTypeColors';
+import { DOC_ICON } from '@/theme/docTypeIcons';
 import { iconColors } from '@/theme/iconColors';
 import { radius, spacing } from '@/theme/layout';
 import { useDocuments } from '@/hooks/useDocuments';
@@ -27,7 +28,7 @@ import { useOrphans } from '@/hooks/useOrphans';
 import { getShowOrphansOnHome } from '@/services/settings';
 import { OrphansSection } from '@/components/OrphansSection';
 import { getDocumentLabel, DOC_PRIMARY_ENTITY } from '@/types';
-import type { Document, DocumentType, EntityType } from '@/types';
+import type { Document, EntityType } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
 import { buildHomeAlerts } from '@/services/homeAlerts';
@@ -41,41 +42,6 @@ const EXPIRING_DAYS = 30;
 const RECENT_COUNT = 4;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
-
-const DOC_ICON: Partial<Record<DocumentType, IoniconName>> = {
-  buletin: 'id-card',
-  pasaport: 'book',
-  permis_auto: 'car',
-  talon: 'document-text',
-  carte_auto: 'document',
-  rca: 'shield-checkmark',
-  casco: 'shield-half',
-  itp: 'checkmark-circle',
-  vigneta: 'ribbon',
-  act_proprietate: 'home',
-  cadastru: 'map',
-  factura: 'receipt',
-  impozit_proprietate: 'cash-outline',
-  card: 'card',
-  garantie: 'ribbon-outline',
-  bon_cumparaturi: 'receipt-outline',
-  pad: 'home-outline',
-  stingator_incendiu: 'flame-outline',
-  abonament: 'repeat-outline',
-  contract: 'document-text-outline',
-  card_sanatate: 'medkit-outline',
-  certificat_nastere: 'happy-outline',
-  certificat_casatorie: 'heart-outline',
-  certificat_botez: 'water-outline',
-  vaccin_animal: 'fitness-outline',
-  deparazitare: 'bug-outline',
-  vizita_vet: 'paw-outline',
-  bilet: 'ticket-outline',
-  altul: 'document-outline',
-  custom: 'document-outline',
-};
 
 function greeting(): string {
   const h = new Date().getHours();
