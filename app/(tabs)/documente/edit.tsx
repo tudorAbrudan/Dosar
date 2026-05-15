@@ -28,6 +28,7 @@ import { PrivateNotesField } from '@/components/document/PrivateNotesField';
 import { LinkEntityOverlay } from '@/components/document/LinkEntityOverlay';
 import { DocTypePicker } from '@/components/document/DocTypePicker';
 import { DocumentMetadataFields } from '@/components/document/DocumentMetadataFields';
+import { EntityLinksChipList } from '@/components/document/EntityLinksChipList';
 import {
   getDocumentById,
   updateDocument,
@@ -911,46 +912,13 @@ export default function EditDocumentScreen() {
 
         {/* 3. LEGAT DE ENTITATE */}
         <Text style={styles.label}>Legat de</Text>
-        {(() => {
-          const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
-          // Sursa unică pentru afișarea entității — vezi useEntities.resolveEntityName.
-          const entityLinkLabel = resolveEntityName;
-          return (
-            <View style={styles.entityLinksRow}>
-              {entityLinks.length === 0 && (
-                <Text style={[styles.entityValue, styles.entityPlaceholder]}>Nelegat</Text>
-              )}
-              {entityLinks.map((link, idx) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.entityChip,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <Text style={[styles.entityChipText, { color: colors.text }]}>
-                    {ENTITY_ICONS[link.entityType]} {entityLinkLabel(link)}
-                  </Text>
-                  <Pressable
-                    onPress={() => handleRemoveEntityLink(link)}
-                    hitSlop={8}
-                    style={styles.entityChipRemove}
-                  >
-                    <Text style={{ color: statusColors.critical, fontSize: 14, fontWeight: '700' }}>
-                      ✕
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-              <Pressable
-                style={[styles.entityAddBtn, { borderColor: primary }]}
-                onPress={() => setLinkEntityVisible(true)}
-              >
-                <Text style={[styles.entityAddBtnText, { color: primary }]}>+ Adaugă</Text>
-              </Pressable>
-            </View>
-          );
-        })()}
+        <EntityLinksChipList
+          scheme={scheme}
+          entityLinks={entityLinks}
+          resolveEntityName={resolveEntityName}
+          onRemove={handleRemoveEntityLink}
+          onAdd={() => setLinkEntityVisible(true)}
+        />
 
         {/* 4. CÂMPURI SPECIFICE TIPULUI */}
         <DocumentMetadataFields
@@ -1050,32 +1018,6 @@ const styles = StyleSheet.create({
   privateLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   privateHint: { fontSize: 12, marginBottom: 8, lineHeight: 16, opacity: 0.6 },
   privateInput: { borderColor: sensitiveBorder, backgroundColor: sensitiveBg },
-  entityLinksRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-  },
-  entityChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 6,
-  },
-  entityChipText: { fontSize: 13, fontWeight: '500' },
-  entityChipRemove: { padding: 2 },
-  entityAddBtn: {
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  entityAddBtnText: { fontSize: 13, fontWeight: '500' },
-  entityValue: { fontSize: 15, flex: 1 },
-  entityPlaceholder: { opacity: 0.4 },
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
   aiBadge: { borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginTop: 8 },
   aiBadgeText: { fontSize: 13, fontWeight: '600' },
