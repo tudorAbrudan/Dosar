@@ -15,21 +15,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { SUPPORT_URL } from '@/constants/AppLinks';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { AiStep } from '@/components/onboarding/AiStep';
-import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
-import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
-import { DocsStep } from '@/components/onboarding/DocsStep';
-import { NotificationsStep } from '@/components/onboarding/NotificationsStep';
-import { VehicleMgmtStep } from '@/components/onboarding/VehicleMgmtStep';
 import { AppearanceStep } from '@/components/onboarding/AppearanceStep';
-import {
-  ALL_ENTITY_TYPES,
-  DEFAULT_VISIBLE_DOC_TYPES,
-  ENTITY_DOCUMENT_TYPES,
-  ENTITY_TYPE_LABELS,
-} from '@/types';
+import { BackupStep } from '@/components/onboarding/BackupStep';
+import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
+import { DocsStep } from '@/components/onboarding/DocsStep';
+import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
+import { NotificationsStep } from '@/components/onboarding/NotificationsStep';
+import { SecurityStep } from '@/components/onboarding/SecurityStep';
+import { SummaryStep } from '@/components/onboarding/SummaryStep';
+import { VehicleMgmtStep } from '@/components/onboarding/VehicleMgmtStep';
+import { WelcomeStep } from '@/components/onboarding/WelcomeStep';
+import { ALL_ENTITY_TYPES, DEFAULT_VISIBLE_DOC_TYPES, ENTITY_DOCUMENT_TYPES } from '@/types';
 import type { EntityType, DocumentType } from '@/types';
 import * as settings from '@/services/settings';
 import * as aiProvider from '@/services/aiProvider';
@@ -44,7 +42,7 @@ import * as cloudSync from '@/services/cloudSync';
 import type { RestoreProgress } from '@/services/cloudSync';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
 import { primary } from '@/theme/colors';
-import { radius, spacing } from '@/theme/layout';
+import { radius } from '@/theme/layout';
 import { useThemePreference } from '@/hooks/useThemeScheme';
 
 const WELCOME = 0;
@@ -58,8 +56,6 @@ const BACKUP = 7;
 const CLOUD_BACKUP = 8;
 const AI_STEP = 9;
 const SUMMARY = 10;
-
-const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 
 interface Props {
   onComplete: () => void;
@@ -390,19 +386,6 @@ export default function OnboardingWizard({ onComplete }: Props) {
     if (idx > 0) setStep(activeSteps[idx - 1]);
   }
 
-  const welcomeBullets = [
-    'Datele și fișierele stau pe acest dispozitiv (SQLite, local). Nu există cont online obligatoriu.',
-    'Poți atașa fotografii, scan-uri și fișiere PDF la orice document — totul rămâne local.',
-    'Asistentul AI (chat) este opțional: îl activezi explicit din tabul Asistent. Poate fi configurat sau dezactivat oricând din Setări → Date și confidențialitate.',
-    'Exportul de backup (JSON) este opțional și sub controlul tău (Drive, iCloud, Fișiere).',
-  ];
-
-  const securityBullets = [
-    'Recomandăm Face ID / Touch ID sau PIN pentru a limita accesul la acte și documente.',
-    'Nu salva codul CVV al cardurilor sau parole în câmpurile de note.',
-    'Fișierele sunt izolate în sandbox-ul sistemului; alte aplicații nu le văd.',
-  ];
-
   const isNextDisabled =
     !canProceedFromAiStep() ||
     (step === CLOUD_BACKUP && (cloudCheck.status === 'checking' || cloudRestoring));
@@ -428,49 +411,14 @@ export default function OnboardingWizard({ onComplete }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {step === WELCOME && (
-          <View style={styles.bulletBlock}>
-            {welcomeBullets.map((line, i) => (
-              <View key={i} style={styles.bulletRow}>
-                <Text style={[styles.bulletDot, { color: C.primary }]}>•</Text>
-                <Text style={[styles.bulletText, { color: C.text }]}>{line}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        {step === WELCOME && <WelcomeStep scheme={scheme} />}
 
         {step === APPEARANCE && (
           <AppearanceStep scheme={scheme} value={themePref} onChange={setThemePref} />
         )}
 
         {step === SECURITY && (
-          <>
-            <View style={styles.bulletBlock}>
-              {securityBullets.map((line, i) => (
-                <View key={i} style={styles.bulletRow}>
-                  <Text style={[styles.bulletDot, { color: C.primary }]}>•</Text>
-                  <Text style={[styles.bulletText, { color: C.text }]}>{line}</Text>
-                </View>
-              ))}
-            </View>
-            {Platform.OS === 'web' ? (
-              <Text style={[styles.webNote, { color: C.textSecondary }]}>
-                Pe web, blocarea cu PIN / biometrie nu este disponibilă.
-              </Text>
-            ) : (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.secondaryCta,
-                  { borderColor: C.primary, opacity: pressed ? 0.85 : 1 },
-                ]}
-                onPress={() => setPinModalVisible(true)}
-              >
-                <Text style={[styles.secondaryCtaText, { color: C.primary }]}>
-                  Activează PIN acum
-                </Text>
-              </Pressable>
-            )}
-          </>
+          <SecurityStep scheme={scheme} onActivatePin={() => setPinModalVisible(true)} />
         )}
 
         {step === ENTITIES && (
@@ -498,20 +446,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
           />
         )}
 
-        {step === BACKUP && (
-          <View style={styles.bulletBlock}>
-            <Text style={[styles.backupBody, { color: C.text }]}>
-              Din Setări poți exporta toate datele într-un fișier JSON și atașamentele într-o
-              arhivă. Recomandăm export periodic — la dezinstalare, datele dispar de pe dispozitiv.
-            </Text>
-            <Pressable
-              onPress={() => Linking.openURL(SUPPORT_URL)}
-              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: spacing.gap }]}
-            >
-              <Text style={[styles.link, { color: C.primary }]}>Deschide ghidul și suportul</Text>
-            </Pressable>
-          </View>
-        )}
+        {step === BACKUP && <BackupStep scheme={scheme} />}
 
         {step === CLOUD_BACKUP && (
           <CloudBackupStep
@@ -544,32 +479,16 @@ export default function OnboardingWizard({ onComplete }: Props) {
         )}
 
         {step === SUMMARY && (
-          <View style={[styles.summaryCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            <Text style={[styles.summaryLine, { color: C.text }]}>
-              <Text style={styles.summaryKey}>Temă: </Text>
-              {themePref === 'auto' ? 'Automat' : themePref === 'light' ? 'Clar' : 'Întunecat'}
-            </Text>
-            <Text style={[styles.summaryLine, { color: C.text }]}>
-              <Text style={styles.summaryKey}>Entități: </Text>
-              {selectedEntities.map(e => ENTITY_LABELS[e]).join(', ')}
-            </Text>
-            <Text style={[styles.summaryLine, { color: C.text }]}>
-              <Text style={styles.summaryKey}>Tipuri documente vizibile: </Text>
-              {selectedDocTypes.length}
-            </Text>
-            <Text style={[styles.summaryLine, { color: C.text }]}>
-              <Text style={styles.summaryKey}>Notificări expirări: </Text>
-              {pushEnabled ? `Da (${notifDays} zile înainte)` : 'Nu'}
-            </Text>
-            <Text style={[styles.summaryLine, { color: C.text }]}>
-              <Text style={styles.summaryKey}>Blocare aplicație: </Text>
-              {lockEnabled ? 'Activă (PIN / biometrie)' : 'Nu'}
-            </Text>
-            <Text style={[styles.summaryLine, { color: C.text }]}>
-              <Text style={styles.summaryKey}>Asistent AI: </Text>
-              {aiProvider.PROVIDER_DEFAULTS[aiProviderChoice]?.label ?? aiProviderChoice}
-            </Text>
-          </View>
+          <SummaryStep
+            scheme={scheme}
+            themePref={themePref}
+            selectedEntities={selectedEntities}
+            selectedDocTypes={selectedDocTypes}
+            pushEnabled={pushEnabled}
+            notifDays={notifDays}
+            lockEnabled={lockEnabled}
+            aiProviderChoice={aiProviderChoice}
+          />
         )}
       </ScrollView>
 
@@ -690,92 +609,6 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 24 },
-
-  bulletBlock: { gap: 12 },
-  bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  bulletDot: { fontSize: 18, lineHeight: 22, width: 14 },
-  bulletText: { flex: 1, fontSize: 15, lineHeight: 22 },
-  webNote: { marginTop: 16, fontSize: 14, lineHeight: 20 },
-  secondaryCta: {
-    marginTop: 20,
-    alignSelf: 'flex-start',
-    borderWidth: 1.5,
-    borderRadius: radius.pill,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  secondaryCtaText: { fontSize: 15, fontWeight: '600' },
-
-  groupLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  groupLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  groupOptional: {
-    fontSize: 11,
-    fontStyle: 'italic',
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-  },
-  chipActive: { backgroundColor: primary },
-  chipText: { fontSize: 13, fontWeight: '500' },
-
-  notifCard: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: 16,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
-      android: { elevation: 1 },
-    }),
-  },
-  notifLabel: { fontSize: 16, fontWeight: '600' },
-  notifSub: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-
-  backupBody: { fontSize: 15, lineHeight: 22 },
-  link: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
-
-  summaryCard: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-  },
-  summaryLine: { fontSize: 15, lineHeight: 22 },
-  summaryKey: { fontWeight: '700' },
-
-  // OCR Privacy step
-  stepContent: { gap: 0 },
-  card: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    padding: 16,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
-      android: { elevation: 1 },
-    }),
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardTitle: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
-  cardSubtitle: { fontSize: 13, lineHeight: 18 },
-  infoText: { fontSize: 13, lineHeight: 18, fontStyle: 'italic' },
 
   footer: {
     flexDirection: 'column',
