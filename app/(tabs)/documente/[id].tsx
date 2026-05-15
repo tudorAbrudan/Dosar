@@ -2,13 +2,8 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   ScrollView,
-  Image,
   Alert,
   Pressable,
-  ActivityIndicator,
-  Modal,
-  useWindowDimensions,
-  StatusBar,
   Linking,
   Platform,
 } from 'react-native';
@@ -68,6 +63,7 @@ import { toFileUri } from '@/services/fileUtils';
 import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
 import { buildDocumentPdfHtml, slugifyForPdfFilename } from '@/services/documentPdfExport';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
+import { FullscreenPdfModal } from '@/components/document/FullscreenPdfModal';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
@@ -110,7 +106,6 @@ export default function DocumentDetailScreen() {
     byTypeAndEntity: [],
   });
   const [focusNonce, setFocusNonce] = useState(0);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   useEffect(() => {
     if (!id) return;
@@ -1131,27 +1126,7 @@ export default function DocumentDetailScreen() {
         ]}
       />
 
-      <Modal visible={!!fullscreenPdfUri} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.fsOverlay}>
-          <StatusBar hidden />
-          {fullscreenPdfUri && (
-            <WebView
-              source={{ uri: fullscreenPdfUri }}
-              style={{ flex: 1 }}
-              originWhitelist={['file://*', '*']}
-              allowFileAccess
-              allowFileAccessFromFileURLs
-              allowUniversalAccessFromFileURLs
-              allowingReadAccessToURL={FileSystem.documentDirectory ?? undefined}
-              scrollEnabled
-            />
-          )}
-          <Pressable style={styles.fsCloseBtn} onPress={() => setFullscreenPdfUri(null)}>
-            <Text style={styles.fsCloseBtnText}>✕</Text>
-          </Pressable>
-        </View>
-      </Modal>
-
+      <FullscreenPdfModal uri={fullscreenPdfUri} onClose={() => setFullscreenPdfUri(null)} />
       <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
     </View>
   );
@@ -1163,20 +1138,6 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   muted: { opacity: 0.7 },
-  fsOverlay: { flex: 1, backgroundColor: '#000' },
-  fsScrollContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  fsCloseBtn: {
-    position: 'absolute',
-    top: 48,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fsCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
   pdfContainer: {
     marginBottom: 16,
     borderRadius: 12,
