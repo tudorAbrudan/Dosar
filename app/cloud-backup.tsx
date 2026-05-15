@@ -4,13 +4,10 @@ import {
   ScrollView,
   View,
   Text,
-  Pressable,
   Switch,
   Alert,
   Modal,
-  ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, onPrimary } from '@/theme/colors';
@@ -44,6 +41,7 @@ import { CloudStatusCard } from '@/components/cloud/CloudStatusCard';
 import { SnapshotFrequencyPicker } from '@/components/cloud/SnapshotFrequencyPicker';
 import { SnapshotRetentionStepper } from '@/components/cloud/SnapshotRetentionStepper';
 import { EncryptionSettingsCard } from '@/components/cloud/EncryptionSettingsCard';
+import { CloudActionsCard } from '@/components/cloud/CloudActionsCard';
 import type { SnapshotFrequency } from '@/types';
 
 export default function CloudBackupScreen() {
@@ -382,55 +380,15 @@ export default function CloudBackupScreen() {
 
         {/* ── Acțiuni ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>ACȚIUNI</Text>
-        <View
-          style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
-        >
-          <Pressable
-            onPress={handleBackupNow}
-            disabled={!cloud.enabled || !cloud.available || cloud.status === 'uploading'}
-            style={({ pressed }) => [
-              styles.btn,
-              { backgroundColor: primary },
-              (pressed || !cloud.enabled || !cloud.available || cloud.status === 'uploading') && {
-                opacity: 0.6,
-              },
-            ]}
-          >
-            {cloud.status === 'uploading' ? (
-              <ActivityIndicator size="small" color={onPrimary} style={styles.btnIcon} />
-            ) : (
-              <Ionicons
-                name="cloud-upload-outline"
-                size={18}
-                color={onPrimary}
-                style={styles.btnIcon}
-              />
-            )}
-            <Text style={[styles.btnText, { color: onPrimary }]}>
-              {cloud.status === 'uploading' ? 'Se sincronizează...' : 'Backup acum'}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={handleRestore}
-            disabled={!cloud.available || restoreProgress !== null}
-            style={({ pressed }) => [
-              styles.btnOutline,
-              { borderColor: primary },
-              (pressed || !cloud.available || restoreProgress !== null) && { opacity: 0.6 },
-            ]}
-          >
-            <Ionicons
-              name="cloud-download-outline"
-              size={18}
-              color={primary}
-              style={styles.btnIcon}
-            />
-            <Text style={[styles.btnOutlineText, { color: primary }]}>Restaurează din iCloud</Text>
-          </Pressable>
-          <Text style={[styles.hint, { color: palette.textSecondary }]}>
-            Restaurarea înlocuiește toate datele locale cu cele din backup-ul iCloud.
-          </Text>
-        </View>
+        <CloudActionsCard
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          enabled={cloud.enabled}
+          available={cloud.available}
+          uploading={cloud.status === 'uploading'}
+          restoreInProgress={restoreProgress !== null}
+          onBackupNow={handleBackupNow}
+          onRestore={handleRestore}
+        />
       </ScrollView>
 
       <Modal
