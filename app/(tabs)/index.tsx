@@ -27,11 +27,12 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useOrphans } from '@/hooks/useOrphans';
 import { getShowOrphansOnHome } from '@/services/settings';
 import { OrphansSection } from '@/components/OrphansSection';
-import { getDocumentLabel, DOC_PRIMARY_ENTITY } from '@/types';
-import type { Document, EntityType } from '@/types';
+import { getDocumentLabel } from '@/types';
+import type { Document } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
 import { buildHomeAlerts } from '@/services/homeAlerts';
+import { resolveDocumentEntityName } from '@/services/documentEntityName';
 import { isStaleExpired } from '@/services/expiry';
 import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
 import { CloudBackupBanner } from '@/components/CloudBackupBanner';
@@ -158,57 +159,8 @@ export default function HomeScreen() {
   );
 
   // ── Entity helpers ────────────────────────────────────────────────────────────
-  function resolveEntityName(doc: Document): string | null {
-    // Duplicat intentionat al useEntities().resolveEntityName: aici returnăm null
-    // pentru ID lipsă (folosit la fallback), nu ID-ul ca string.
-    // check-hardcoded-entities-disable-next-cluster
-    function getByType(type: EntityType): string | null {
-      switch (type) {
-        case 'vehicle':
-          return doc.vehicle_id
-            ? (vehicles.find(v => v.id === doc.vehicle_id)?.name ?? null)
-            : null;
-        case 'person':
-          return doc.person_id ? (persons.find(p => p.id === doc.person_id)?.name ?? null) : null;
-        case 'property':
-          return doc.property_id
-            ? (properties.find(p => p.id === doc.property_id)?.name ?? null)
-            : null;
-        case 'animal':
-          return doc.animal_id ? (animals.find(a => a.id === doc.animal_id)?.name ?? null) : null;
-        case 'company':
-          return doc.company_id
-            ? (companies.find(c => c.id === doc.company_id)?.name ?? null)
-            : null;
-        case 'card': {
-          if (!doc.card_id) return null;
-          const c = cards.find(c => c.id === doc.card_id);
-          return c ? `${c.nickname ?? ''} ····${c.last4}`.trim() : null;
-        }
-        default:
-          return null;
-      }
-    }
-    // Entitatea primară conform tipului documentului
-    const primary = DOC_PRIMARY_ENTITY[doc.type];
-    if (primary) {
-      const name = getByType(primary);
-      if (name) return name;
-    }
-    // Fallback: prima entitate disponibilă
-    for (const type of [
-      'vehicle',
-      'person',
-      'property',
-      'animal',
-      'company',
-      'card',
-    ] as EntityType[]) {
-      const name = getByType(type);
-      if (name) return name;
-    }
-    return null;
-  }
+  const resolveEntityName = (doc: Document) =>
+    resolveDocumentEntityName(doc, { persons, properties, vehicles, cards, animals, companies });
 
   const totalEntities =
     persons.length +

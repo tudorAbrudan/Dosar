@@ -21,8 +21,9 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { isExpired, isStaleExpired } from '@/services/expiry';
-import { DOCUMENT_TYPE_LABELS, DOC_PRIMARY_ENTITY } from '@/types';
-import type { Document, EntityType } from '@/types';
+import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { resolveDocumentEntityName } from '@/services/documentEntityName';
+import type { Document } from '@/types';
 
 function sortByExpiryAsc(a: Document, b: Document): number {
   return (a.expiry_date ?? '').localeCompare(b.expiry_date ?? '');
@@ -93,57 +94,8 @@ export default function ExpirariScreen() {
       ? 'Niciun document cu dată de expirare'
       : `${expired.length > 0 ? `${expired.length} expirate · ` : ''}${upcoming.length} viitoare`;
 
-  function resolveEntityName(doc: Document): string | null {
-    // Semantica e diferită de useEntities().resolveEntityName: aici returnăm
-    // null pentru ID lipsă (folosit la fallback), nu ID-ul ca string.
-    // check-hardcoded-entities-disable-next-cluster
-    function getByType(type: EntityType): string | null {
-      switch (type) {
-        case 'vehicle':
-          return doc.vehicle_id
-            ? (vehicles.find(v => v.id === doc.vehicle_id)?.name ?? null)
-            : null;
-        case 'person':
-          return doc.person_id ? (persons.find(p => p.id === doc.person_id)?.name ?? null) : null;
-        case 'property':
-          return doc.property_id
-            ? (properties.find(p => p.id === doc.property_id)?.name ?? null)
-            : null;
-        case 'animal':
-          return doc.animal_id ? (animals.find(a => a.id === doc.animal_id)?.name ?? null) : null;
-        case 'company':
-          return doc.company_id
-            ? (companies.find(c => c.id === doc.company_id)?.name ?? null)
-            : null;
-        case 'card': {
-          if (!doc.card_id) return null;
-          const card = cards.find(c => c.id === doc.card_id);
-          return card ? `${card.nickname ?? ''} ••${card.last4}`.trim() : null;
-        }
-        default:
-          return null;
-      }
-    }
-    // Entitatea primară conform tipului documentului
-    const primary = DOC_PRIMARY_ENTITY[doc.type];
-    if (primary) {
-      const name = getByType(primary);
-      if (name) return name;
-    }
-    // Fallback: prima entitate disponibilă
-    for (const type of [
-      'vehicle',
-      'person',
-      'property',
-      'animal',
-      'company',
-      'card',
-    ] as EntityType[]) {
-      const name = getByType(type);
-      if (name) return name;
-    }
-    return null;
-  }
+  const resolveEntityName = (doc: Document) =>
+    resolveDocumentEntityName(doc, { persons, properties, vehicles, cards, animals, companies });
 
   const renderCard = (doc: Document) => {
     const entityName = resolveEntityName(doc);
