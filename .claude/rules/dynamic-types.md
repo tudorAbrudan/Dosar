@@ -140,7 +140,8 @@ Singurele locuri unde adăugarea trebuie făcută manual:
    - Opțional: `DEFAULT_VISIBLE_DOC_TYPES`
 2. `services/aiTypeRegistry.ts` — `DOC_TYPE_AI_REGISTRY[<tip>]` cu aliases + description
 3. `scripts/update-site.js` — `EMOJI_MAP[<tip>]` (opțional, default 📄)
-4. `app/(tabs)/documente/index.tsx` și `app/(tabs)/expirari.tsx` — adaugă în `DOC_ICON`, `DOC_ICON_BG`, `DOC_ICON_COLOR` (Ionicons + culoare custom — singurul caz unde nu putem evita)
+4. `theme/docTypeIcons.ts` — adaugă în `DOC_ICON` (Ionicons; sursă unică folosită de Home, Documente, Expirări)
+5. `theme/docTypeColors.ts` — adaugă în `DOC_ICON_BG` și `DOC_ICON_COLOR` (palette pair — singurul caz unde nu putem evita pentru iconițe colorate)
 
 **Restul (picker tipuri, setări vizibilitate, chatbot knowledge, site documentație) ridică automat.**
 
