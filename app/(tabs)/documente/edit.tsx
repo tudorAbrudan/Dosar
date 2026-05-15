@@ -26,6 +26,7 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { AutoDeletePicker } from '@/components/document/AutoDeletePicker';
 import { PrivateNotesField } from '@/components/document/PrivateNotesField';
+import { LinkEntityOverlay } from '@/components/document/LinkEntityOverlay';
 import {
   getDocumentById,
   updateDocument,
@@ -1083,155 +1084,23 @@ export default function EditDocumentScreen() {
       <FullscreenPhotoModal uri={fullscreenUri} onClose={() => setFullscreenUri(null)} />
 
       {/* Link entity overlay */}
-      {linkEntityVisible && (
-        <View style={styles.overlay}>
-          <View style={[styles.overlayBox, { backgroundColor: colors.card }]}>
-            <Text style={styles.overlayTitle}>Adaugă entitate asociată</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              {persons.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Persoane</Text>
-                  {persons.map(p => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'person' && l.entityId === p.id
-                    );
-                    return (
-                      <Pressable
-                        key={p.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'person', entityId: p.id })
-                        }
-                      >
-                        <Text style={styles.entityPickerText}>{p.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {vehicles.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Vehicule</Text>
-                  {vehicles.map(v => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'vehicle' && l.entityId === v.id
-                    );
-                    return (
-                      <Pressable
-                        key={v.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'vehicle', entityId: v.id })
-                        }
-                      >
-                        <Text style={styles.entityPickerText}>{v.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {properties.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Proprietăți</Text>
-                  {properties.map(p => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'property' && l.entityId === p.id
-                    );
-                    return (
-                      <Pressable
-                        key={p.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'property', entityId: p.id })
-                        }
-                      >
-                        <Text style={styles.entityPickerText}>{p.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {cards.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Carduri</Text>
-                  {cards.map(c => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'card' && l.entityId === c.id
-                    );
-                    return (
-                      <Pressable
-                        key={c.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() => handleAddEntityLink({ entityType: 'card', entityId: c.id })}
-                      >
-                        <Text style={styles.entityPickerText}>
-                          {c.nickname ?? ''} ····{c.last4}
-                        </Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {animals.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Animale</Text>
-                  {animals.map(a => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'animal' && l.entityId === a.id
-                    );
-                    return (
-                      <Pressable
-                        key={a.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'animal', entityId: a.id })
-                        }
-                      >
-                        <Text style={styles.entityPickerText}>{a.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-              {companies.length > 0 && (
-                <>
-                  <Text style={styles.entityGroupLabel}>Firme</Text>
-                  {companies.map(c => {
-                    const linked = entityLinks.some(
-                      l => l.entityType === 'company' && l.entityId === c.id
-                    );
-                    return (
-                      <Pressable
-                        key={c.id}
-                        style={[styles.entityPickerRow, { borderBottomColor: colors.border }]}
-                        onPress={() =>
-                          handleAddEntityLink({ entityType: 'company', entityId: c.id })
-                        }
-                      >
-                        <Text style={styles.entityPickerText}>{c.name}</Text>
-                        {linked && <Text style={{ color: primary, fontSize: 13 }}>✓ Adăugat</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </>
-              )}
-            </ScrollView>
-            <Pressable
-              style={({ pressed }) => [styles.overlayCloseBtn, pressed && { opacity: 0.85 }]}
-              onPress={() => setLinkEntityVisible(false)}
-              accessibilityLabel="Închide picker entități"
-              accessibilityRole="button"
-            >
-              <Text style={styles.overlayCloseBtnText}>Închide</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      <LinkEntityOverlay
+        visible={linkEntityVisible}
+        scheme={scheme}
+        entityLinks={entityLinks}
+        groups={{
+          // check-hardcoded-entities-disable-next-cluster
+          // Mapping caller-specific: card-urile au label format diferit (nickname + last4).
+          person: persons.map(p => ({ id: p.id, label: p.name })),
+          vehicle: vehicles.map(v => ({ id: v.id, label: v.name })),
+          property: properties.map(p => ({ id: p.id, label: p.name })),
+          card: cards.map(c => ({ id: c.id, label: `${c.nickname ?? ''} ····${c.last4}` })),
+          animal: animals.map(a => ({ id: a.id, label: a.name })),
+          company: companies.map(c => ({ id: c.id, label: c.name })),
+        }}
+        onAdd={handleAddEntityLink}
+        onClose={() => setLinkEntityVisible(false)}
+      />
     </>
   );
 }
@@ -1330,56 +1199,6 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   chipsScroll: { marginBottom: 20 },
   chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  // Entity overlay
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  overlayBox: {
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-    maxHeight: '80%',
-  },
-  overlayTitle: { fontSize: 17, fontWeight: '700', marginBottom: 16 },
-  overlayCloseBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'stretch',
-  },
-  overlayCloseBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  entityGroupLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    opacity: 0.5,
-    letterSpacing: 0.5,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  entityPickerRow: {
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  entityPickerText: { fontSize: 15 },
   entityPickerRowDanger: { paddingVertical: 14, marginTop: 8 },
   entityPickerDangerText: { color: statusColors.critical, fontSize: 15 },
 });
