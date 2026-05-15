@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Platform,
-  Switch,
   Linking,
   Alert,
   Modal,
@@ -23,6 +22,7 @@ import { AiStep } from '@/components/onboarding/AiStep';
 import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
 import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
 import { DocsStep } from '@/components/onboarding/DocsStep';
+import { NotificationsStep } from '@/components/onboarding/NotificationsStep';
 import {
   ALL_ENTITY_TYPES,
   DEFAULT_VISIBLE_DOC_TYPES,
@@ -42,7 +42,7 @@ import * as cloudStorage from '@/services/cloudStorage';
 import * as cloudSync from '@/services/cloudSync';
 import type { RestoreProgress } from '@/services/cloudSync';
 import { CloudRestoreProgress } from '@/components/CloudRestoreProgress';
-import { primary, statusColors } from '@/theme/colors';
+import { primary } from '@/theme/colors';
 import { radius, spacing } from '@/theme/layout';
 import { useThemePreference } from '@/hooks/useThemeScheme';
 
@@ -58,7 +58,6 @@ const CLOUD_BACKUP = 8;
 const AI_STEP = 9;
 const SUMMARY = 10;
 
-const NOTIF_DAY_OPTIONS = [7, 14, 30] as const;
 
 const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 
@@ -568,59 +567,14 @@ export default function OnboardingWizard({ onComplete }: Props) {
         )}
 
         {step === NOTIFICATIONS && (
-          <View style={[styles.notifCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            <View style={styles.notifRow}>
-              <View style={styles.notifRowText}>
-                <Text style={[styles.notifLabel, { color: C.text }]}>Remindere expirări</Text>
-                <Text style={[styles.notifSub, { color: C.textSecondary }]}>
-                  Notificări locale când se apropie data expirării
-                </Text>
-              </View>
-              <Switch
-                value={pushEnabled}
-                onValueChange={handlePushSwitchToggle}
-                trackColor={{ false: C.border, true: primary }}
-              />
-            </View>
-            {notifPermStatus === 'denied' && (
-              <View style={styles.permDeniedRow}>
-                <Text style={[styles.permDeniedText, { color: statusColors.warning }]}>
-                  Notificările sunt blocate. Activează-le din Setări sistem.
-                </Text>
-                <Pressable onPress={() => Linking.openSettings()}>
-                  <Text style={[styles.permDeniedLink, { color: C.primary }]}>Deschide Setări</Text>
-                </Pressable>
-              </View>
-            )}
-            {pushEnabled && notifPermStatus !== 'denied' && (
-              <>
-                <Text style={[styles.notifDaysLabel, { color: C.textSecondary }]}>
-                  Câte zile înainte să te anunțăm
-                </Text>
-                <View style={styles.chipRow}>
-                  {NOTIF_DAY_OPTIONS.map(d => {
-                    const active = notifDays === d;
-                    return (
-                      <Pressable
-                        key={d}
-                        style={[
-                          styles.chip,
-                          active
-                            ? [styles.chipActive, { borderColor: C.primary }]
-                            : { borderColor: C.border, backgroundColor: C.background },
-                        ]}
-                        onPress={() => setNotifDays(d)}
-                      >
-                        <Text style={[styles.chipText, { color: active ? '#fff' : C.text }]}>
-                          {d} zile
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-          </View>
+          <NotificationsStep
+            scheme={scheme}
+            pushEnabled={pushEnabled}
+            notifDays={notifDays}
+            notifPermStatus={notifPermStatus}
+            onTogglePush={handlePushSwitchToggle}
+            onChangeDays={setNotifDays}
+          />
         )}
 
         {step === BACKUP && (
@@ -866,19 +820,8 @@ const styles = StyleSheet.create({
       android: { elevation: 1 },
     }),
   },
-  notifRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  notifRowText: { flex: 1 },
   notifLabel: { fontSize: 16, fontWeight: '600' },
   notifSub: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-  notifDaysLabel: { fontSize: 13, marginTop: 16, marginBottom: 10, fontWeight: '500' },
-  permDeniedRow: { marginTop: 12, gap: 6 },
-  permDeniedText: { fontSize: 13, lineHeight: 18 },
-  permDeniedLink: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
 
   backupBody: { fontSize: 15, lineHeight: 22 },
   link: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
