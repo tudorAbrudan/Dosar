@@ -7,7 +7,6 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
@@ -64,6 +63,7 @@ import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
 import { buildDocumentPdfHtml, slugifyForPdfFilename } from '@/services/documentPdfExport';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
 import { FullscreenPdfModal } from '@/components/document/FullscreenPdfModal';
+import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
 import { getDocumentLabel, REPEATABLE_DOC_TYPES, ENTITY_TYPE_EMOJI } from '@/types';
@@ -827,45 +827,15 @@ export default function DocumentDetailScreen() {
           .filter(p => isPdfFile(p.file_path))
           .map((pdfPage, idx) => {
             const pdfUri = toFileUri(pdfPage.file_path);
+            const totalPdfs = allPages.filter(p => isPdfFile(p.file_path)).length;
             return (
-              <View
+              <DocumentPdfViewer
                 key={`${pdfPage.id}_${focusNonce}`}
-                style={[styles.pdfContainer, { borderColor: colors.border }]}
-              >
-                <View style={styles.pdfHeaderRow}>
-                  <Text style={styles.pdfSectionLabel}>
-                    PDF{' '}
-                    {allPages.filter(p => isPdfFile(p.file_path)).length > 1 ? `(${idx + 1})` : ''}
-                  </Text>
-                  {Platform.OS === 'ios' && (
-                    <Pressable
-                      style={styles.pdfFullscreenBtn}
-                      onPress={() => setFullscreenPdfUri(pdfUri)}
-                    >
-                      <Ionicons name="expand-outline" size={18} color={primary} />
-                    </Pressable>
-                  )}
-                </View>
-                {Platform.OS === 'ios' ? (
-                  <WebView
-                    source={{ uri: pdfUri }}
-                    style={styles.pdfWebView}
-                    originWhitelist={['file://*', '*']}
-                    allowFileAccess
-                    allowFileAccessFromFileURLs
-                    allowUniversalAccessFromFileURLs
-                    allowingReadAccessToURL={FileSystem.documentDirectory ?? undefined}
-                    scrollEnabled
-                  />
-                ) : (
-                  <Pressable
-                    style={[styles.pdfOpenBtn, { backgroundColor: colors.card }]}
-                    onPress={() => Linking.openURL(pdfUri)}
-                  >
-                    <Text style={styles.pdfOpenBtnText}>📄 Deschide PDF extern</Text>
-                  </Pressable>
-                )}
-              </View>
+                pdfUri={pdfUri}
+                scheme={scheme === 'dark' ? 'dark' : 'light'}
+                label={`PDF${totalPdfs > 1 ? ` (${idx + 1})` : ''}`}
+                onFullscreen={() => setFullscreenPdfUri(pdfUri)}
+              />
             );
           })}
         {(duplicates.byHash.length > 0 || duplicates.byTypeAndEntity.length > 0) && (
@@ -1138,39 +1108,6 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   muted: { opacity: 0.7 },
-  pdfContainer: {
-    marginBottom: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-  },
-  pdfSectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.6,
-  },
-  pdfWebView: {
-    height: 350,
-    width: '100%',
-  },
-  pdfHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  pdfFullscreenBtn: {
-    padding: 4,
-  },
-  pdfOpenBtn: {
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-    margin: 8,
-  },
-  pdfOpenBtnText: { color: primary, fontSize: 15, fontWeight: '500' },
   dupBox: {
     marginBottom: 16,
     padding: 12,
