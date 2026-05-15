@@ -4,13 +4,12 @@ import {
   ScrollView,
   View,
   Text,
-  Switch,
   Alert,
   Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, onPrimary } from '@/theme/colors';
+import { light, dark } from '@/theme/colors';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
 import {
   estimateRestoreSize,
@@ -42,6 +41,7 @@ import { SnapshotFrequencyPicker } from '@/components/cloud/SnapshotFrequencyPic
 import { SnapshotRetentionStepper } from '@/components/cloud/SnapshotRetentionStepper';
 import { EncryptionSettingsCard } from '@/components/cloud/EncryptionSettingsCard';
 import { CloudActionsCard } from '@/components/cloud/CloudActionsCard';
+import { CloudAutoBackupToggle } from '@/components/cloud/CloudAutoBackupToggle';
 import type { SnapshotFrequency } from '@/types';
 
 export default function CloudBackupScreen() {
@@ -313,33 +313,13 @@ export default function CloudBackupScreen() {
         <CloudStatusCard cloud={cloud} scheme={scheme === 'dark' ? 'dark' : 'light'} />
 
         {/* ── Toggle ── */}
-        <View
-          style={[styles.card, { backgroundColor: palette.card, shadowColor: palette.cardShadow }]}
-        >
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleTextWrap}>
-              <Text style={[styles.toggleLabel, { color: palette.text }]}>
-                Backup automat iCloud
-              </Text>
-              <Text style={[styles.toggleSub, { color: palette.textSecondary }]}>
-                Sincronizează automat manifestul și fișierele când app-ul intră în fundal.
-              </Text>
-            </View>
-            <Switch
-              value={cloud.enabled}
-              onValueChange={handleToggle}
-              disabled={cloud.loading}
-              trackColor={{ false: palette.border, true: primary }}
-              thumbColor={onPrimary}
-            />
-          </View>
-          {!cloud.available ? (
-            <Text style={[styles.hint, { color: palette.textSecondary }]}>
-              iCloud Drive nu este disponibil pe acest dispozitiv. Activează-l din Setările
-              telefonului.
-            </Text>
-          ) : null}
-        </View>
+        <CloudAutoBackupToggle
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          enabled={cloud.enabled}
+          available={cloud.available}
+          loading={cloud.loading}
+          onToggle={handleToggle}
+        />
 
         {/* ── Frecvență snapshot ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
@@ -363,7 +343,16 @@ export default function CloudBackupScreen() {
           onChange={handleRetention}
         />
         {loaded && (
-          <Text style={[styles.hint, { color: palette.textSecondary, marginTop: -4 }]}>
+          <Text
+            style={{
+              color: palette.textSecondary,
+              fontSize: 12,
+              lineHeight: 18,
+              marginTop: -4,
+              marginBottom: 12,
+              marginLeft: 4,
+            }}
+          >
             Snapshot-urile mai vechi sunt șterse automat din iCloud.
           </Text>
         )}
@@ -418,24 +407,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 40 },
 
-  card: {
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 12,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-
-
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toggleTextWrap: { flex: 1 },
-  toggleLabel: { fontSize: 15, fontWeight: '500' },
-  toggleSub: { fontSize: 12, marginTop: 2, lineHeight: 16 },
-
   sectionLabel: {
     fontSize: 12,
     fontWeight: '600',
@@ -445,30 +416,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     textTransform: 'uppercase',
   },
-
-  hint: { fontSize: 12, lineHeight: 18, marginTop: 8 },
-
-  btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  btnIcon: { marginRight: 8 },
-  btnText: { fontSize: 15, fontWeight: '600' },
-  btnOutline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 13,
-    marginBottom: 6,
-  },
-  btnOutlineText: { fontSize: 15, fontWeight: '600' },
 
   modalBackdrop: {
     flex: 1,
