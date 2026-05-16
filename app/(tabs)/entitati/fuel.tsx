@@ -22,6 +22,7 @@ import { extractText, extractFuelInfo } from '@/services/ocr';
 import { extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { mapFuelReceiptWithAi, mergeFuelResults, type FuelAiResult } from '@/services/aiOcrMapper';
+import { scanDocumentPages } from '@/services/documentScanner';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { FuelRecord, FuelStats } from '@/services/fuel';
 
@@ -213,8 +214,7 @@ export default function FuelScreen() {
   const hasMathError = mathCheckable && Math.abs(expectedPrice - priceN) / priceN > 0.01;
   const errorBorderColor = hasMathError ? statusColors.critical : palette.border;
 
-  async function processReceiptAsset(asset: ImagePicker.ImagePickerAsset) {
-    const uri = asset.uri;
+  async function processReceiptUri(uri: string, prefetchedBase64?: string) {
     setMLoading(true);
     try {
       let ocrText = '';
@@ -226,15 +226,15 @@ export default function FuelScreen() {
         return;
       }
 
-      let base64: string | undefined;
-      try {
-        base64 =
-          asset.base64 ??
-          (await FileSystem.readAsStringAsync(uri, {
+      let base64: string | undefined = prefetchedBase64;
+      if (!base64) {
+        try {
+          base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
-          }));
-      } catch (err) {
-        console.warn('[fuel] base64 read failed:', err);
+          });
+        } catch (err) {
+          console.warn('[fuel] base64 read failed:', err);
+        }
       }
 
       await processReceiptOcr(ocrText, base64);
@@ -273,21 +273,17 @@ export default function FuelScreen() {
   }
 
   async function handleScanFromCamera() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permisiune refuzată', 'Aplicația nu are acces la cameră.');
-      return;
+    try {
+      // Scanner cu detecție automată a marginilor + corecție de perspectivă
+      // (react-native-document-scanner-plugin). Înlocuiește camera brută care
+      // dădea poze necorectate, dificil de OCR-uit. Permisiunile sunt cerute
+      // intern de plugin.
+      const uris = await scanDocumentPages();
+      if (!uris || uris.length === 0) return;
+      await processReceiptUri(uris[0]);
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Scanarea a eșuat.');
     }
-    // allowsEditing=false: păstrăm imaginea originală 4:3 a iPhone-ului fără
-    // crop forțat — bonurile lungi nu încap în 1:1 sau 4:3 portrait.
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      quality: 0.9,
-      base64: true,
-      exif: true,
-    });
-    if (result.canceled || !result.assets || result.assets.length === 0) return;
-    await processReceiptAsset(result.assets[0]);
   }
 
   async function handleScanFromGallery() {
@@ -304,7 +300,8 @@ export default function FuelScreen() {
       exif: true,
     });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
-    await processReceiptAsset(result.assets[0]);
+    const asset = result.assets[0];
+    await processReceiptUri(asset.uri, asset.base64 ?? undefined);
   }
 
   async function handleScanFromPdf() {
@@ -324,7 +321,7 @@ export default function FuelScreen() {
 
   function handleScanReceipt() {
     Alert.alert('Scanează bon', 'Alege sursa', [
-      { text: 'Cameră', onPress: handleScanFromCamera },
+      { text: 'Scaner', onPress: handleScanFromCamera },
       { text: 'Galerie', onPress: handleScanFromGallery },
       { text: 'PDF', onPress: handleScanFromPdf },
       { text: 'Anulează', style: 'cancel' },

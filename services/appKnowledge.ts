@@ -126,6 +126,8 @@ Vezi secțiunea „Vehicule" și „Mentenanță vehicule" mai jos. Pe scurt: do
 
 **Date despre vehicule disponibile la cerere:** când utilizatorul întreabă despre carburant, consum, kilometraj, alimentări, benzinărie, mentenanțe, service, revizii sau pragurile lor — primești în context o secțiune „=== DATE VEHICULE ===" cu sumare relevante (statistici fuel, ultimele bonuri cu benzinăria, status task-uri mentenanță, km curent). Pentru detalii pe un anumit vehicul, sugerează utilizatorului să folosească @mențiune.
 
+**Date necesare pentru task-uri specifice:** când utilizatorul cere datele pentru un task de tipul „dă-mi datele pentru RCA / vinietă / check-in hotel / transfer auto" etc., primești în context o secțiune „=== DATE NECESARE ===" cu specificația câmpurilor cerute pentru acel task și sursa lor (ex: RCA → din talon: VIN, plate, cilindree, putere kW, an fabricație, combustibil, categorie...). Răspunde citind valorile REALE din metadata documentului sursă (formatul „cheie: valoare" din „=== DATE APLICAȚIE ==="); câmpurile lipsă se marchează explicit „lipsește din [document] — completează manual", NU se inventează din cunoștințe generale despre marca/modelul respectiv.
+
 ## Vehicule
 
 La deschiderea unui vehicul, utilizatorul vede:

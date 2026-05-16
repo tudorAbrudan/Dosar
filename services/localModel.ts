@@ -51,13 +51,13 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     id: 'ministral-3b',
     name: 'Ministral 3B IT',
     description:
-      'Model Mistral compact, bun la urmarea instrucțiunilor. Context 8K tokeni. iPhone 14+.',
+      'Model Mistral compact, bun la urmarea instrucțiunilor. Context 16K tokeni. iPhone 14+.',
     sizeBytes: 2000 * 1024 * 1024,
     sizeLabel: '~2GB',
     minRamBytes: 5 * 1024 * 1024 * 1024,
     minIphoneGen: 14,
     qualityStars: 4,
-    nCtx: 8192,
+    nCtx: 16384,
     downloadUrl:
       'https://huggingface.co/bartowski/Ministral-3B-Instruct-GGUF/resolve/main/Ministral-3B-Instruct-Q4_K_M.gguf',
   },
@@ -65,13 +65,13 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     id: 'mistral-7b',
     name: 'Mistral 7B IT',
     description:
-      'Calitate maximă disponibilă local. Context 8K tokeni. Necesită iPhone 15 Pro+ și ~4GB spațiu liber.',
+      'Calitate maximă disponibilă local. Context 16K tokeni. Necesită iPhone 15 Pro+ și ~4GB spațiu liber.',
     sizeBytes: 4100 * 1024 * 1024,
     sizeLabel: '~4.1GB',
     minRamBytes: 7 * 1024 * 1024 * 1024,
     minIphoneGen: 15,
     qualityStars: 5,
-    nCtx: 8192,
+    nCtx: 16384,
     downloadUrl:
       'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
   },
@@ -311,13 +311,17 @@ export async function initLocalModel(modelId: string): Promise<void> {
   const modelEntry = LOCAL_MODEL_CATALOG.find(m => m.id === modelId);
   const nCtx = modelEntry?.nCtx ?? 32768;
 
-  // Try GPU first, fall back to CPU if Metal not available
+  // ctx_shift = true: la depășirea n_ctx, llama trunchiază automat tokeni vechi
+  // în loc să arunce „Context is full". Acceptabil pentru aplicație: la fiecare
+  // mesaj reconstruim system prompt-ul integral, deci pierderea unui turn vechi
+  // e nesemnificativă față de un crash dur.
   try {
     _llamaContext = await initLlama({
       model: path,
       use_mlock: true,
       n_ctx: nCtx,
       n_gpu_layers: 99,
+      ctx_shift: true,
     });
   } catch {
     try {
@@ -326,6 +330,7 @@ export async function initLocalModel(modelId: string): Promise<void> {
         use_mlock: true,
         n_ctx: nCtx,
         n_gpu_layers: 0,
+        ctx_shift: true,
       });
     } catch (e) {
       throw new Error(
@@ -334,6 +339,29 @@ export async function initLocalModel(modelId: string): Promise<void> {
     }
   }
   _loadedModelId = modelId;
+}
+
+/**
+ * Forțează alternarea user/assistant în array-ul de mesaje. Template-urile Jinja
+ * ale modelelor locale (ex. Mistral 7B Instruct) refuză cu excepție explicită
+ * mesaje consecutive cu același rol. Această normalizare:
+ * - păstrează `system` ca atare;
+ * - îmbină perechi consecutive de același rol într-un singur mesaj.
+ *
+ * Acoperă scenariul în care un mesaj user a fost salvat în DB dar răspunsul
+ * assistant a eșuat (sau a fost șters manual), lăsând două user-uri lipite.
+ */
+export function normalizeMessagesForLocal(messages: AiMessage[]): AiMessage[] {
+  const result: AiMessage[] = [];
+  for (const msg of messages) {
+    const last = result[result.length - 1];
+    if (last && last.role === msg.role) {
+      last.content = `${last.content}\n\n${msg.content}`;
+    } else {
+      result.push({ role: msg.role, content: msg.content });
+    }
+  }
+  return result;
 }
 
 /**
@@ -348,8 +376,10 @@ export async function runLocalInference(messages: AiMessage[], maxTokens = 500):
 
   await initLocalModel(selectedId);
 
+  const normalized = normalizeMessagesForLocal(messages);
+
   const result = await _llamaContext!.completion({
-    messages,
+    messages: normalized,
     n_predict: maxTokens,
     temperature: 0.3,
     stop: ['</s>', '<|end|>', '<|eot_id|>', '<end_of_turn>'],

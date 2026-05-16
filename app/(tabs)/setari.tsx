@@ -585,6 +585,12 @@ export default function SetariScreen() {
       });
       await aiProvider.saveAiApiKey(aiApiKey);
       await aiProvider.saveAiVisionApiKey(usesSeparateVision ? aiVisionApiKey : '');
+      // Dacă noul provider nu e local, eliberează contextul llama dacă mai e
+      // încărcat. Acoperă cazul în care userul a comutat radio-ul prin alte
+      // căi (auto-restore, onboarding) fără să treacă prin handleAiProviderSelect.
+      if (aiProviderType !== 'local') {
+        await localModel.disposeLocalModel().catch(() => {});
+      }
       if (isRemote && aiModalConsentChecked) {
         await AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
         setAiConsentGiven(true);

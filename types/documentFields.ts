@@ -39,32 +39,123 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
   // ─── IDENTITATE PERSONALĂ ────────────────────────────────────────────────
 
   buletin: [
+    // Acoperă atât CI vechi (laminat A7) cât și CEI nou (card cu cip, post-2021).
+    // Folosit pentru: aplicații vize, formularele „Date personale" online, etc.
     { key: 'series', label: 'Serie și număr', placeholder: 'RT 123456' },
     { key: 'cnp', label: 'CNP', placeholder: '1234567890123', keyboardType: 'numeric' },
+    { key: 'surname', label: 'Nume (familie)', placeholder: 'POPESCU' },
+    { key: 'given_names', label: 'Prenume', placeholder: 'ION ANDREI' },
+    { key: 'sex', label: 'Sex', placeholder: 'M / F' },
+    { key: 'citizenship', label: 'Cetățenie', placeholder: 'Română' },
+    { key: 'place_of_birth', label: 'Loc naștere', placeholder: 'Mun. Cluj-Napoca, Jud. Cluj' },
+    { key: 'address', label: 'Domiciliu', placeholder: 'Str. Mihai Eminescu nr. 5, Sect. 1' },
+    { key: 'issuer', label: 'Emitent', placeholder: 'SPCLEP Sect. 1' },
   ],
 
-  pasaport: [{ key: 'series', label: 'Număr pașaport', placeholder: '05123456' }],
+  pasaport: [
+    // Câmpurile sunt extrase automat din MRZ (zona machine-readable de jos).
+    // Folosite pentru check-in avion / cazare hotel / aplicații vize.
+    { key: 'series', label: 'Număr pașaport', placeholder: '05123456' },
+    { key: 'surname', label: 'Nume (familie)', placeholder: 'POPESCU' },
+    { key: 'given_names', label: 'Prenume', placeholder: 'ION ANDREI' },
+    { key: 'nationality', label: 'Cetățenie (cod 3 litere)', placeholder: 'ROU' },
+    { key: 'birth_date', label: 'Data nașterii', placeholder: '28.09.1985' },
+    { key: 'sex', label: 'Sex', placeholder: 'M / F' },
+  ],
 
   permis_auto: [
-    { key: 'series', label: 'Număr permis', placeholder: '12345678' },
-    { key: 'categories', label: 'Categorii', placeholder: 'B, A, C...' },
+    // Permisul EU (Directiva 2006/126/CE) are câmpuri numerotate 1-12.
+    // Folosit pentru: înregistrare ride-sharing, închiriere mașini, asigurări auto.
+    { key: 'series', label: 'Număr permis (câmpul 5)', placeholder: '12345678' },
+    { key: 'categories', label: 'Categorii (câmpul 9)', placeholder: 'B, BE, A2, C1...' },
+    { key: 'surname', label: 'Nume (1)', placeholder: 'POPESCU' },
+    { key: 'given_names', label: 'Prenume (2)', placeholder: 'ION ANDREI' },
+    { key: 'birth_date', label: 'Data nașterii (3a)', placeholder: '28.09.1985' },
+    { key: 'cnp', label: 'CNP (4d)', placeholder: '1234567890123', keyboardType: 'numeric' },
+    {
+      key: 'restrictions',
+      label: 'Restricții (câmpul 12)',
+      placeholder: '01 (ochelari), 78 (auto), ...',
+    },
   ],
 
   // ─── VEHICULE ────────────────────────────────────────────────────────────
 
   talon: [
-    // itp_expiry_date e stocat în metadata (din OCR/AI) dar nu e câmp editabil.
-    // Utilizatorul vede o singură dată: "Scadență ITP" → câmpul expiryDate din formular.
+    // EXCEPȚIE JUSTIFICATĂ față de cap-ul „3-5 câmpuri":
+    // talonul e un document structurat EU-standardizat ale cărui câmpuri sunt
+    // cerute frecvent de task-uri downstream (RCA, vinietă, transfer proprietate,
+    // bareme amenzi, expertize). Vezi services/taskRequirements.ts.
+    // itp_expiry_date e stocat în metadata (din OCR/AI) dar nu e câmp editabil:
+    // utilizatorul vede o singură dată — „Scadență ITP" → câmpul expiryDate.
     { key: 'plate', label: 'Nr. înmatriculare', placeholder: 'B 123 ABC' },
     { key: 'marca', label: 'Marcă', placeholder: 'VOLKSWAGEN' },
     { key: 'model', label: 'Model', placeholder: 'Golf' },
     { key: 'vin', label: 'Serie șasiu (VIN)', placeholder: 'WVWZZZ1JZ3W386752' },
+    { key: 'category', label: 'Categorie (J)', placeholder: 'M1 / N1 / L3e...' },
+    { key: 'an_fabricatie', label: 'An fabricație', placeholder: '2020', keyboardType: 'numeric' },
+    {
+      key: 'combustibil',
+      label: 'Combustibil (P.3)',
+      placeholder: 'Benzină / Motorină / GPL / Electric',
+    },
+    {
+      key: 'cilindree_cm3',
+      label: 'Cilindree cm³ (P.1)',
+      placeholder: '1498',
+      keyboardType: 'numeric',
+    },
+    {
+      key: 'putere_kw',
+      label: 'Putere kW (P.2)',
+      placeholder: '85',
+      keyboardType: 'numeric',
+    },
+    {
+      key: 'masa_max_kg',
+      label: 'Masă maximă kg (F.1)',
+      placeholder: '1670',
+      keyboardType: 'numeric',
+    },
+    {
+      key: 'nr_locuri',
+      label: 'Nr. locuri (S.1)',
+      placeholder: '5',
+      keyboardType: 'numeric',
+    },
+    { key: 'culoare', label: 'Culoare (R)', placeholder: 'Gri' },
   ],
 
   carte_auto: [
-    // CIV nu expiră niciodată. Placa nu apare pe CIV — e doar pe talon.
-    // Marca/model/an sunt deja pe talon pentru același vehicul.
-    { key: 'vin', label: 'Serie șasiu (VIN)', placeholder: 'WVWZZZ1JZ3W386752' },
+    // CIV nu expiră niciodată. Placa NU apare pe CIV — e doar pe talon.
+    // CIV-ul are aceleași coduri EU ca talonul (D.1, D.2, E, F.1, J, P.1-3, R, S.1).
+    // Util când userul are doar CIV-ul (ex. mașină nou cumpărată, înainte de înmatriculare).
+    { key: 'vin', label: 'Serie șasiu / NIV (E)', placeholder: 'WVWZZZ1JZ3W386752' },
+    { key: 'marca', label: 'Marca (D.1)', placeholder: 'VOLKSWAGEN' },
+    { key: 'model', label: 'Tipul / Model (D.2)', placeholder: 'GOLF' },
+    { key: 'an_fabricatie', label: 'An fabricație', placeholder: '2020', keyboardType: 'numeric' },
+    { key: 'category', label: 'Categorie (J)', placeholder: 'M1 / N1 / L3e...' },
+    { key: 'combustibil', label: 'Combustibil (P.3)', placeholder: 'Benzină / Motorină...' },
+    {
+      key: 'cilindree_cm3',
+      label: 'Cilindree cm³ (P.1)',
+      placeholder: '1498',
+      keyboardType: 'numeric',
+    },
+    { key: 'putere_kw', label: 'Putere kW (P.2)', placeholder: '85', keyboardType: 'numeric' },
+    {
+      key: 'masa_max_kg',
+      label: 'Masă maximă kg (F.1)',
+      placeholder: '1670',
+      keyboardType: 'numeric',
+    },
+    { key: 'nr_locuri', label: 'Nr. locuri (S.1)', placeholder: '5', keyboardType: 'numeric' },
+    { key: 'culoare', label: 'Culoare (R)', placeholder: 'Gri' },
+    {
+      key: 'omologare',
+      label: 'Nr. omologare (K)',
+      placeholder: 'eX*2007/46*XXXX*XX',
+    },
   ],
 
   rca: [

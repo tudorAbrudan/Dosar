@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
-import * as ImagePicker from 'expo-image-picker';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -18,6 +17,7 @@ import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { extractText, extractCardInfo } from '@/services/ocr';
+import { scanDocumentPages } from '@/services/documentScanner';
 import { ALL_ENTITY_TYPES, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
 
@@ -59,15 +59,18 @@ export default function AddEntityScreen() {
   const [ocrLoading, setOcrLoading] = useState(false);
 
   async function scanCard() {
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.9,
-      allowsEditing: false,
-    });
-    if (result.canceled || !result.assets[0]) return;
+    let uri: string;
+    try {
+      const uris = await scanDocumentPages();
+      if (!uris || uris.length === 0) return;
+      uri = uris[0];
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Scanarea a eșuat.');
+      return;
+    }
     setOcrLoading(true);
     try {
-      const { text } = await extractText(result.assets[0].uri);
+      const { text } = await extractText(uri);
       const info = extractCardInfo(text);
       if (!info.last4 && !info.expiry) {
         Alert.alert('OCR card', 'Nu s-au putut extrage date. Completează manual.');

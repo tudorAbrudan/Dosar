@@ -328,6 +328,11 @@ export async function sendAiRequestWithImage(
     );
   }
 
+  // Provider remote: eliberează contextul local dacă mai e încărcat (no-op dacă
+  // nu). Schimbarea provider-ului în Setări → Asistent AI nu mai impune restart.
+  const { disposeLocalModel } = await import('./localModel');
+  await disposeLocalModel().catch(() => {});
+
   if (config.type === 'builtin') {
     const used = await getAiUsageToday();
     if (used >= DAILY_AI_LIMIT) {
@@ -434,6 +439,13 @@ export async function sendAiRequest(
     const { runLocalInference } = await import('./localModel');
     return runLocalInference(messages, maxTokens);
   }
+
+  // Eliberează contextul llama dacă mai e încărcat (no-op dacă nu) — schimbarea
+  // provider-ului din Setări nu mai impune restart de app. Fără asta, ~4GB RAM
+  // locked (use_mlock=true) rămân ocupați și pot bloca fetch-ul HTTPS la modele
+  // mari sub presiune de memorie.
+  const { disposeLocalModel } = await import('./localModel');
+  await disposeLocalModel().catch(() => {});
 
   const apiKey = config.type === 'builtin' ? BUILTIN_API_KEY : config.apiKey;
 

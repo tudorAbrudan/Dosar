@@ -268,7 +268,16 @@ export default function ChatScreen() {
         e instanceof Error && e.message
           ? e.message
           : 'A apărut o eroare. Verifică conexiunea la internet și încearcă din nou.';
-      setMessages(prev => [...prev, { role: 'assistant', content: errContent }]);
+      // Persistăm și eroarea ca mesaj assistant în DB pentru a păstra alternarea
+      // user/assistant. Altfel, la următoarea trimitere, history-ul reîncărcat are
+      // două mesaje user consecutive → template-ele LLM stricte (ex. Mistral)
+      // resping cu „Conversation roles must alternate".
+      try {
+        const savedErr = await saveMessage(activeThread.id, 'assistant', errContent);
+        setMessages(prev => [...prev, { role: 'assistant', content: errContent, id: savedErr.id }]);
+      } catch {
+        setMessages(prev => [...prev, { role: 'assistant', content: errContent }]);
+      }
     } finally {
       setSendLoading(false);
     }

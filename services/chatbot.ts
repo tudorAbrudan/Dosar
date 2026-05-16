@@ -5,10 +5,15 @@ import { getDocumentsForAI } from './documents';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { DocumentType, Document, Vehicle } from '@/types';
 import { buildAppKnowledge } from './appKnowledge';
-import { sendAiRequest } from './aiProvider';
+import { sendAiRequest, getAiConfig } from './aiProvider';
 import type { AiMessage } from './aiProvider';
 import { getFuelRecords, computeFuelStats } from './fuel';
 import { getMaintenanceTasks, computeTaskStatus, getCurrentKm } from './maintenance';
+import {
+  detectTaskRequirements,
+  formatTaskRequirementSpec,
+  type TaskRequirement,
+} from './taskRequirements';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -254,15 +259,38 @@ function collectHistoryMentions(history: ChatMessage[], lastN = 6): Set<string> 
 
 // ─── Construire context filtrat ───────────────────────────────────────────────
 
-const MAX_DOCS_FULL = 80; // fără filtrare: max 80 doc
-const MAX_DOCS_FILTERED = 40; // cu filtrare: mai mult spațiu per doc
-const NOTE_LIMIT = 500; // caractere notă AI (date distilate, prioritare)
-const OCR_LIMIT = 1000; // caractere OCR pentru orice document
-const OCR_LIMIT_FULL = 3000; // doc găsit prin căutare text — OCR complet
+// Limite pentru provider-e remote (Mistral cloud / OpenAI etc., context 32K+).
+const REMOTE_LIMITS = {
+  maxDocsFull: 80,
+  maxDocsFiltered: 40,
+  noteLimit: 500,
+  ocrLimit: 1000,
+  ocrLimitFull: 3000,
+} as const;
+
+// Limite pentru model local (Mistral 7B / Ministral 3B, context 16K).
+// System prompt + history + reply trebuie să încapă în 16K tokeni. Comprimăm
+// agresiv: ~10 docs × 300 chars OCR ≈ 3K chars ≈ 800 tokeni, plus appKnowledge
+// (~1.5K) + entități (~500) → buget ~3K tokeni pentru system prompt.
+const LOCAL_LIMITS = {
+  maxDocsFull: 15,
+  maxDocsFiltered: 10,
+  noteLimit: 200,
+  ocrLimit: 300,
+  ocrLimitFull: 800,
+} as const;
 
 // Sumarizare per vehicul: dacă 5+ vehicule și user nu a @menționat unul anume,
 // sumarizez agresiv (fără ultimele 5 bonuri).
 const COMPACT_SUMMARY_THRESHOLD = 5;
+
+interface ContextLimits {
+  maxDocsFull: number;
+  maxDocsFiltered: number;
+  noteLimit: number;
+  ocrLimit: number;
+  ocrLimitFull: number;
+}
 
 function fmtDateRo(iso?: string): string {
   if (!iso) return '?';
@@ -355,8 +383,14 @@ async function buildKmSummary(vehicleList: Vehicle[]): Promise<string> {
 
 async function buildContext(
   userMessage: string,
-  history: ChatMessage[]
-): Promise<{ contextText: string; filtered: boolean; docMap: Map<string, string> }> {
+  history: ChatMessage[],
+  limits: ContextLimits
+): Promise<{
+  contextText: string;
+  filtered: boolean;
+  docMap: Map<string, string>;
+  tasks: TaskRequirement[];
+}> {
   const [persons, properties, vehicles, cards, animals, documents] = await Promise.all([
     getPersons(),
     getProperties(),
@@ -380,6 +414,7 @@ async function buildContext(
         'NU EXISTĂ DATE ÎN APLICAȚIE. Utilizatorul nu a adăugat nicio entitate sau document.',
       filtered: false,
       docMap: new Map(),
+      tasks: [],
     };
   }
 
@@ -434,7 +469,7 @@ async function buildContext(
   }
 
   // Limită maximă de documente
-  const maxDocs = isFiltered ? MAX_DOCS_FILTERED : MAX_DOCS_FULL;
+  const maxDocs = isFiltered ? limits.maxDocsFiltered : limits.maxDocsFull;
   if (filteredDocs.length > maxDocs) {
     // Prioritizăm: 1. găsite prin OCR search, 2. cu dată expirare, 3. restul
     filteredDocs = [
@@ -488,9 +523,9 @@ async function buildContext(
 
   for (const doc of filteredDocs) {
     // OCR limit per document:
-    // - găsit prin căutare text → OCR complet (3000 chars)
-    // - restul → 1000 chars
-    const ocrLimit = ocrMatchedIds.has(doc.id) ? OCR_LIMIT_FULL : OCR_LIMIT;
+    // - găsit prin căutare text → OCR complet (limits.ocrLimitFull)
+    // - restul → limits.ocrLimit
+    const ocrLimit = ocrMatchedIds.has(doc.id) ? limits.ocrLimitFull : limits.ocrLimit;
     const entity =
       persons.find(p => p.id === doc.person_id)?.name ??
       vehicles.find(v => v.id === doc.vehicle_id)?.name ??
@@ -503,7 +538,7 @@ async function buildContext(
     const issued = doc.issue_date ? ` | emis: ${doc.issue_date}` : '';
     const entityStr = entity ? ` (${entity})` : '';
     const noteStr = doc.note
-      ? ` | notă: ${doc.note.slice(0, NOTE_LIMIT)}${doc.note.length > NOTE_LIMIT ? '…' : ''}`
+      ? ` | notă: ${doc.note.slice(0, limits.noteLimit)}${doc.note.length > limits.noteLimit ? '…' : ''}`
       : '';
 
     let meta = '';
@@ -563,19 +598,58 @@ async function buildContext(
     }
   }
 
+  // ── Date necesare pentru task-uri (intent-based) ───────────────────────────
+  // Dacă userul cere date pentru un task specific (RCA, rovinietă, check-in,
+  // transfer auto etc.), injectăm SPECIFICAȚIA câmpurilor cerute. Valorile
+  // reale le ia AI-ul din metadata documentelor afișate mai sus.
+  const tasks = detectTaskRequirements(cleanMessage);
+  if (tasks.length > 0) {
+    lines.push('\n=== DATE NECESARE ===');
+    lines.push(
+      '(specificația câmpurilor pentru task-urile detectate în mesaj; valorile reale se citesc din metadata documentelor de mai sus)'
+    );
+    for (const t of tasks) {
+      lines.push('');
+      lines.push(formatTaskRequirementSpec(t));
+    }
+  }
+
   // Hartă id → label pentru post-procesare răspuns AI
   const docMap = new Map<string, string>();
   for (const doc of documents) {
     docMap.set(doc.id, DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type);
   }
 
-  return { contextText: lines.join('\n'), filtered: isFiltered, docMap };
+  return { contextText: lines.join('\n'), filtered: isFiltered, docMap, tasks };
 }
 
 // ─── Export principal ─────────────────────────────────────────────────────────
 
 export async function sendMessage(userMessage: string, history: ChatMessage[]): Promise<string> {
-  const { contextText, docMap } = await buildContext(userMessage, history);
+  // Detectăm provider-ul ca să comprimăm contextul pentru modele locale
+  // (Mistral 7B / Ministral 3B au context 16K — un system prompt cu 80 docs ×
+  // 1000 chars OCR ar depăși ~20K tokeni și ar arunca „Context is full").
+  const config = await getAiConfig();
+  const limits: ContextLimits = config.type === 'local' ? LOCAL_LIMITS : REMOTE_LIMITS;
+  const { contextText, docMap, tasks } = await buildContext(userMessage, history, limits);
+
+  // Regulă suplimentară când userul cere date pentru un task specific:
+  // răspunsul trebuie să folosească EXCLUSIV valorile reale din metadata și
+  // să marcheze explicit câmpurile lipsă — niciodată să nu inventeze valori
+  // plauzibile (ex. cilindree pentru o marcă cunoscută).
+  const taskRule =
+    tasks.length > 0
+      ? `
+
+## Reguli pentru răspuns la „DATE NECESARE"
+
+Userul a cerut datele pentru: ${tasks.map(t => t.label).join(', ')}.
+- Răspunde sub formă de listă, câmp cu câmp, în ordinea din specificația „=== DATE NECESARE ===".
+- Pentru fiecare câmp, citește valoarea din metadata documentului sursă din „=== DATE APLICAȚIE ===" (formatul: \`key: value\`).
+- Dacă valoarea NU există în metadata documentului sursă → scrie EXPLICIT „lipsește din [tip document] — completează manual" SAU caută în OCR (\`OCR: ...\`) dacă apare ca text.
+- INTERZIS: să inventezi valori plauzibile pentru marca/modelul respectiv (cilindree, putere, MMA etc.) chiar dacă „știi" specificațiile tipice. Răspunsul reflectă DOAR datele utilizatorului.
+- La final, dacă există ≥1 câmp lipsă, sugerează: „Pentru completare, editează [DOC:...|...] din Acte și adaugă câmpurile lipsă."`
+      : '';
 
   const systemPrompt = `${buildAppKnowledge()}
 
@@ -584,7 +658,7 @@ export async function sendMessage(userMessage: string, history: ChatMessage[]): 
 ${contextText}
 
 Când menționezi un document specific, folosește ÎNTOTDEAUNA tag-ul [DOC:...|...] din context.
-Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.`;
+Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.${taskRule}`;
 
   const messages: AiMessage[] = [
     { role: 'system', content: systemPrompt },

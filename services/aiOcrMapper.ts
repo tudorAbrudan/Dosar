@@ -316,6 +316,10 @@ Pentru a lega documentul de o entitate existentă, compară cu DATELE entități
 
 VEHICULE — distincție critică:
 - "talon" = Certificat de Înmatriculare (CR). Conține: "CERTIFICAT DE ÎNMATRICULARE", marcă/model/culoare/proprietar, ștampilă RAR cu data ITP. NU are "CARTE DE IDENTITATE". NU expiră ca document.
+  ━━━ DOUĂ FORMATE DE TALON ROMÂNESC ━━━
+  • **Talon NOU (post-2018, EU-harmonizat):** card plastifiat format card de credit (ISO/IEC 7810 ID-1), față cu poză vehicul + coduri **A, B, D.1, D.2, E** etc. tipărite explicit lângă valori. Spate cu coduri **F.1, G, P.1, P.2, P.3, R, S.1** etc. Tabelul ITP poate fi pe spate sau anexă separată.
+  • **Talon VECHI (pre-2018):** broșură A6 albă/gri pe hârtie, mai multe pagini, **NU are codurile EU literă/cifră** — câmpurile sunt etichetate doar textual în română („Marca", „Tipul", „Numărul de identificare", „Capacitate cilindrică" etc.). Tabelul ITP e tipărit pe paginile interioare.
+  Pentru AMBELE formate folosește mapările definite la „CÂMPURI EXACTE PER TIP" — diferența e doar UNDE găsești valoarea (după cod literal vs. după etichetă textuală). Dacă vezi codurile A/D.1/E etc. → talon nou; dacă vezi doar etichete textuale RO fără coduri → talon vechi. Niciodată nu raporta tipul ca subcategorie — câmpul "documentType" rămâne "talon" în ambele cazuri.
 - "carte_auto" = Carte de Identitate a Vehiculului (CIV). Conține: "CARTE DE IDENTITATE A VEHICULULUI" sau "CERTIFICATUL DE ÎNMATRICULARE AL VEHICULULUI" cu booklet mic. NU expiră. NU conține placa (placa e doar pe talon). VIN-ul e etichetat "NUMĂRUL DE IDENTIFICARE AL VEHICULULUI" sau "NIV" sau ca punct "E." (câmpul E din formatul EU) — NU ca "VIN". Caută după aceste etichete. VIN-ul poate apărea fragmentat în OCR (ex: "WVW ZZZ1JZ3W 386752") — concatenează-l la 17 caractere fără spații.
 - "itp" = Inspecție Tehnică Periodică. Conține: "INSPECȚIE TEHNICĂ PERIODICĂ", nr. stație ITP, rezultat ADMIS/RESPINS.
 - "rca" = Poliță RCA (Răspundere Civilă Auto). Conține: "ASIGURARE OBLIGATORIE" sau "RCA", nr. poliță (format RO/XX/... sau ROXXV...), asigurator, interval de valabilitate, primă de asigurare.
@@ -340,15 +344,59 @@ FACTURI (utilități și servicii):
 
 ━━━ CÂMPURI EXACTE PER TIP (folosește EXACT aceste chei în "fields") ━━━
 
-talon: plate="B 123 ABC", marca="VW", model="Golf", vin="VIN17CARACTERE", itp_expiry_date="ZZ.LL.AAAA" (data ITP cea mai recentă din tabelul "INSPECȚII TEHNICE PERIODICE" — vezi regulile de la "REGULI DATE")
-carte_auto: vin="VIN17CARACTERE" (CIV NU conține nr. de înmatriculare — nu-l include chiar dacă apare)
+talon: Talonul românesc respectă formatul EU (Directiva 1999/37/CE) — fiecare câmp are un cod literă/cifră tipărit în stânga lui. Mapează STRICT după aceste coduri:
+  - plate="B 123 ABC" — câmpul **A** „Număr de înmatriculare"
+  - marca="VOLKSWAGEN" — câmpul **D.1** „Marca"
+  - model="GOLF" — câmpul **D.2** „Tipul" sau **D.3** „Denumirea comercială"
+  - vin="WVWZZZ1JZ3W386752" — câmpul **E** „Numărul de identificare al vehiculului" (NIV / VIN). Exact 17 caractere alfanumerice (niciodată I/O/Q). În talon e tipărit explicit cu prefixul „E.".
+  - itp_expiry_date="ZZ.LL.AAAA" — data celei mai recente ștampile RAR din tabelul „INSPECȚII TEHNICE PERIODICE" (vezi „REGULI DATE")
+  - category="M1" — câmpul **J** „Categoria vehiculului" (M1=autoturism, M2/M3=transport persoane, N1=utilitară ≤3.5t, N2=3.5-12t, N3≥12t, L3e=motocicletă, L7e=cvadriciclu, O=remorcă)
+  - an_fabricatie="2020" — câmpul „ANUL FABRICAȚIEI" sau „An fabricație" (4 cifre). NU folosi câmpul **B** (acela e „Data primei înmatriculări" — diferit de anul fabricației). Dacă nu apare explicit, derivă din poziția 10 a VIN-ului (mapping standard ISO 3779: A=1980 → Y=2000, 1=2001 → 9=2009, A=2010 → Y=2030).
+  - combustibil="Benzină" — câmpul **P.3** „Tipul de combustibil sau sursa de energie" (Benzină / Motorină / GPL / Electric / Hibrid / Hidrogen)
+  - cilindree_cm3="1498" — câmpul **P.1** „Capacitatea cilindrică (cm³)". Doar cifre, fără unitate.
+  - putere_kw="85" — câmpul **P.2** „Puterea netă maximă (kW)". Doar cifre, fără unitate. NU folosi CP — talonul EU exprimă puterea în kW (1 CP ≈ 0.7355 kW).
+  - masa_max_kg="1670" — câmpul **F.1** „Masă maximă tehnic admisibilă (kg)" (MMA). Doar cifre. NU folosi câmpul **G** (acela e „Masa vehiculului în serviciu", diferit de MMA).
+  - nr_locuri="5" — câmpul **S.1** „Numărul de locuri pe scaune" (inclusiv șoferul)
+  - culoare="Gri" — câmpul **R** „Culoarea vehiculului"
+  Atenție la confuziile uzuale: NU mapa câmpul **C** (proprietar), **H** (validitate înmatriculare), **I/I.1** (data primei înmatriculări), **K** (nr. omologare). Acestea NU sunt în lista de mai sus.
+carte_auto: CIV-ul (Cartea de Identitate a Vehiculului) folosește aceleași coduri EU ca talonul nou. **NU conține număr de înmatriculare** — nu-l include chiar dacă apare ca însemnare ulterioară.
+  - vin="WVWZZZ1JZ3W386752" — câmpul **E** „Numărul de identificare al vehiculului" / „NIV" (17 caractere, fără I/O/Q)
+  - marca="VOLKSWAGEN" — câmpul **D.1** „Marca"
+  - model="GOLF" — câmpul **D.2** „Tipul" / **D.3** „Denumirea comercială"
+  - an_fabricatie="2020" — câmpul „ANUL FABRICAȚIEI" sau derivat din poziția 10 a VIN-ului
+  - category="M1" — câmpul **J** „Categoria"
+  - combustibil="Benzină" — câmpul **P.3** „Tipul de combustibil"
+  - cilindree_cm3="1498" — câmpul **P.1** „Capacitatea cilindrică (cm³)", doar cifre
+  - putere_kw="85" — câmpul **P.2** „Puterea netă maximă (kW)", doar cifre
+  - masa_max_kg="1670" — câmpul **F.1** „Masă maximă tehnic admisibilă (kg)", doar cifre
+  - nr_locuri="5" — câmpul **S.1** „Numărul de locuri pe scaune"
+  - culoare="Gri" — câmpul **R** „Culoarea vehiculului"
+  - omologare="eX*2007/46*XXXX*XX" — câmpul **K** „Numărul de omologare de tip"
 itp: plate="B 123 ABC"
 rca: policy_number="RO32V32LM1100745021", insurer="Groupama", plate="B 123 ABC", prima="850.00", valid_from="01.04.2024", marca_model="Dacia Logan"
 casco: policy_number="...", insurer="...", plate="B 123 ABC"
 vigneta: plate="B 123 ABC"
-buletin: series="RX 123456", cnp="1234567890123", birth_date="28.09.1985" (derivă din CNP: cifra 1=sex/secol, pozițiile 2-3=an, 4-5=lună, 6-7=zi; S∈{1,2}→1900+AA, S∈{5,6}→2000+AA), address="Str. Exemplu nr. 1, Cluj-Napoca" (doar dacă apare în text)
-pasaport: series="05123456"
-permis_auto: series="12345678", categories="B"
+buletin: Acoperă atât CI vechi (laminat A7) cât și CEI nou (card cu cip, post-2021). Ambele formate au aceleași date utile.
+  - series="RX 123456" — „Seria" + „Numărul" (RO format: 2 litere + 6 cifre)
+  - cnp="1234567890123" — Codul Numeric Personal (13 cifre)
+  - surname="POPESCU" — „Nume" / pe MRZ rândul 1 între tag-uri „<<"
+  - given_names="ION ANDREI" — „Prenume"
+  - sex="M" — „Sex" (M sau F). Dacă lipsește, derivă din CNP cifra 1: {1,3,5,7}→M, {2,4,6,8}→F.
+  - citizenship="Română" — „Cetățenie" / „Naționalitate" (în RO de obicei „Română"; pe MRZ apare „ROU")
+  - place_of_birth="Mun. Cluj-Napoca, Jud. Cluj" — „Loc naștere"
+  - birth_date="28.09.1985" — „Născut(ă) la"; dacă nu apare textual, derivă din CNP: cifra 1=sex/secol, pozițiile 2-3=an, 4-5=lună, 6-7=zi; S∈{1,2}→1900+AA, S∈{5,6}→2000+AA
+  - address="Str. Exemplu nr. 1, Cluj-Napoca" — „Domiciliu" (doar dacă apare în text)
+  - issuer="SPCLEP Sect. 1" — „Emis de" / „Eliberat de" (SPCLEP = Serviciul Public Comunitar Local de Evidență a Persoanelor)
+pasaport: series="05123456" (numărul pașaportului, 8-9 caractere alfanumerice), surname="POPESCU" (numele de familie, din MRZ rândul 1 între P< și <<; sau scris pe pagina cu poza), given_names="ION ANDREI" (prenumele complet, fără caractere <), nationality="ROU" (cod 3 litere ISO 3166: Romania=ROU, US=USA, UK=GBR etc., din MRZ poziția 11-13 a rândului 2), birth_date="28.09.1985" (data nașterii din MRZ format YYMMDD, expandează anul: dacă YY≥30 prefixează "19", altfel "20"), sex="M" (M sau F, din MRZ rândul 2 poziția 21)
+permis_auto: Permisul EU (Directiva 2006/126/CE, model standardizat post-2013) are câmpuri numerotate 1-12 tipărite pe față, lângă valori. Pe permisul vechi (cartonat A7, pre-2013) câmpurile au doar etichete textuale RO — mapează după sens.
+  - surname="POPESCU" — câmpul **1** „Numele"
+  - given_names="ION ANDREI" — câmpul **2** „Prenumele"
+  - birth_date="28.09.1985" — câmpul **3a** „Data nașterii"; sau derivă din CNP (vezi reguli buletin)
+  - cnp="1234567890123" — câmpul **4d** „Numărul de identificare" (în RO = CNP)
+  - series="12345678" — câmpul **5** „Numărul permisului" (NU CNP-ul!)
+  - categories="B, BE, A2" — câmpul **9** „Categoriile" (listă separată prin virgulă: A, A1, A2, AM, B, BE, B1, C, C1, CE, C1E, D, D1, DE, D1E, Tr, Tb, Tv)
+  - restrictions="01, 78" — câmpul **12** „Restricții" (coduri 01-78; 01=ochelari obligatorii, 78=numai cutie automată, etc.)
+  NU confunda câmpul 5 (nr. permis) cu 4d (CNP) — sunt valori complet diferite.
 factura: invoice_number="FAC-001", supplier="E.ON Energie România", amount="225.06", due_date="15.04.2024", period="01.03.2024 - 31.03.2024"
 garantie: product_name="iPhone 15", serie_produs="SN123"
 contract: tip_contract="Chirie"

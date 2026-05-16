@@ -53,6 +53,7 @@ const ENTRIES = {
     orphans: { required: true, keywords: ['sugestii', 'completare'] },
     pdfOcr: { required: true, keywords: ['PDF', 'OCR'] },
     settings: { required: true, keywords: ['setări'] },
+    taskRequirements: { required: true, keywords: ['DATE NECESARE', 'task'] },
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
     vehicleStatus: { required: true, keywords: ['vehicul'] },
 
