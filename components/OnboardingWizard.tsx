@@ -317,6 +317,10 @@ export default function OnboardingWizard({ onComplete }: Props) {
       // pentru cereri vision.
       visionUrl: '',
       visionModel: '',
+      // La onboarding nu știm dacă modelul ales suportă vision — bifa explicită
+      // se face ulterior în Setări → Asistent AI dacă userul vrea vision pe
+      // modelul de chat.
+      chatModelSupportsVision: false,
     });
     if (aiProviderChoice === 'external') {
       await aiProvider.saveAiApiKey(aiExternalApiKey);

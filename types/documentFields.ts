@@ -340,6 +340,27 @@ export const DOCUMENT_FIELDS: Partial<Record<DocumentType, FieldDef[]>> = {
     // seat: omis — disponibil în OCR text / vizibil pe bilet
   ],
 
+  // ─── STARE CIVILĂ / RELIGIOASE ──────────────────────────────────────────
+
+  certificat_botez: [
+    // Document permanent emis de biserică (vezi NO_EXPIRY_DOC_TYPES).
+    // baptism_date = ziua când s-a săvârșit Taina Botezului (eveniment istoric);
+    // issue_date = data eliberării acestei copii de certificat (poate fi >> baptism_date).
+    { key: 'subject_name', label: 'Numele celui botezat', placeholder: 'POPESCU ION-ANDREI' },
+    { key: 'baptism_date', label: 'Data botezului', placeholder: '14.05.1984' },
+    {
+      key: 'baptism_name',
+      label: 'Nume primit la botez',
+      placeholder: 'ION-ANDREI',
+    },
+    { key: 'godparents', label: 'Nași', placeholder: 'POPESCU MARIA' },
+    {
+      key: 'church',
+      label: 'Biserica / Parohia',
+      placeholder: 'Sfântul Dumitru, Florești',
+    },
+  ],
+
   // ─── ALTELE ──────────────────────────────────────────────────────────────
 
   stingator_incendiu: [

@@ -7,18 +7,37 @@ import { detectInsurer } from './insurers';
 export function extractCertificatInregistrare(text: string): ExtractResult {
   const meta: Record<string, string> = {};
 
-  const cui = text.match(/(?:CUI|CIF|cod\s*unic)[:\s]+(?:RO\s*)?(\d{6,10})/i);
+  // CUI / CIF — pe Certificat de Înregistrare apare ca „Cod Unic de Înregistrare:".
+  // Permitem text scurt între „cod unic" și valoare (ex. „de Înregistrare").
+  const cui = text.match(
+    /(?:CUI|CIF|cod\s*unic(?:\s+[a-zăâîșțA-ZĂÂÎȘȚ]{2,30}){0,3})\s*:?\s*(?:RO\s*)?(\d{6,10})\b/i
+  );
   if (cui) meta['cui'] = cui[1];
 
-  const rc = text.match(
-    /(?:nr\.?\s*reg\.?\s*com\.?|reg\.?\s*com)[:\s]+([J]\d{1,2}\/\d{4}\/\d{4})/i
+  // Nr. registru comerț — acceptăm atât „Nr. reg. com." cât și „Nr. de ordine în
+  // registrul comerțului". Prefixe valide: J (SRL/SA/SNC), F (PFA/II/IF),
+  // C (cooperative), R (regii autonome). Sufix: an de 4 cifre SAU dată completă
+  // dd.mm.yyyy. Dacă trigger-ul textual nu match-uiește, fallback pe format.
+  const rcTrigger = text.match(
+    /(?:nr\.?\s*(?:de\s+)?ordine[^:\n]{0,40}?comer[tț]ului|nr\.?\s*reg\.?\s*com\.?|reg\.?\s*com|registr[uli]{0,3}\s*comer[tț]ului)\s*:?\s*([JFCR]\d{1,2}\/\d{1,6}\/(?:\d{1,2}\.\d{1,2}\.)?\d{2,4})/i
   );
-  if (rc) meta['reg_com'] = rc[1];
+  const rcFormat = rcTrigger
+    ? null
+    : text.match(/\b([JFCR]\d{1,2}\/\d{1,6}\/(?:\d{1,2}\.\d{1,2}\.)?\d{4})\b/);
+  if (rcTrigger) meta['reg_com'] = rcTrigger[1];
+  else if (rcFormat) meta['reg_com'] = rcFormat[1];
 
-  const den = text.match(/(?:denumire|societate|firm[aă])[:\s]+([^\n]{5,80})/i);
+  // Denumire firmă / PFA — anchor pe start-of-line ca să nu mănânce text precedent;
+  // permitem și newline între label și valoare (OCR poate sparge linia).
+  const den = text.match(
+    /(?:^|\n)\s*(?:denumire|societate|firm[aă])\s*:?\s*\n?\s*([A-ZĂÂÎȘȚ][^\n]{4,119})/i
+  );
   if (den) meta['denumire'] = den[1].trim();
 
-  const issue = findDateNear(text, /data\s*[îi]nregistr[aă]rii|emis/i);
+  const issue = findDateNear(
+    text,
+    /data\s*[îi]nregistr[aă]rii|data\s*eliber[aă]rii|emis|din\s+data\s+de/i
+  );
 
   return { metadata: meta, issue_date: issue };
 }

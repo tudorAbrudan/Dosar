@@ -65,6 +65,64 @@ export function extractPasaport(text: string): ExtractResult {
   return { metadata: meta, expiry_date: expiry, issue_date: issue };
 }
 
+// ─── CERTIFICAT DE BOTEZ ─────────────────────────────────────────────────────
+
+/**
+ * Certificat de botez — formular bisericesc cu spații completate de mână.
+ * OCR-ul prinde textul tipărit (labelurile) și parțial scrisul de mână.
+ * Strategia: ancore pe label-uri tipărite + capturare lacomă până la următorul label.
+ */
+export function extractCertificatBotez(text: string): ExtractResult {
+  const meta: Record<string, string> = {};
+  // Colapsăm whitespace-ul multiplu (inclusiv newline-uri) ca să tolerăm OCR
+  // care rupe textul certificatului pe linii arbitrare între labeluri.
+  const collapsed = text.replace(/\s+/g, ' ');
+
+  // baptism_date: după „în ziua de" și înainte de „s-a săvârșit"
+  const baptismDate = collapsed.match(
+    /[îi]n\s+ziua\s+de\s+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4})[^a-z]{0,40}s[-\s]*a\s+s[aă]v[âa]r[șs]it/i
+  );
+  if (baptismDate) meta['baptism_date'] = baptismDate[1];
+
+  // subject_name: după „fiului/fiicei" până la „a(l) d-lui"
+  const subject = collapsed.match(/fiului\s*\/?\s*fiicei\s+(.{3,80}?)\s+a\s*\(?l\)?\s*d[-\s]*lui/i);
+  if (subject) meta['subject_name'] = subject[1].trim().replace(/\.+/g, '').trim();
+
+  // baptism_name: după „primind din botez numele" până la „asistând"
+  const baptismName = collapsed.match(/primind\s+din\s+botez\s+numele\s+(.{2,60}?)\s+asist[âa]nd/i);
+  if (baptismName) meta['baptism_name'] = baptismName[1].trim().replace(/\.+/g, '').trim();
+
+  // godparents: după „asistând ca naș(i)" până la „domiciliat" sau „str."
+  const godparents = collapsed.match(
+    /asist[âa]nd\s+ca\s+na[sș]i?\s+(.{3,120}?)\s+(?:domicili[ai]t|str\.|nr\.)/i
+  );
+  if (godparents) meta['godparents'] = godparents[1].trim().replace(/\.+/g, '').trim();
+
+  // church: combină hramul (între ghilimele) cu localitatea
+  const churchName = collapsed.match(/(?:Parohia\s+Bisericii[^"„]*["„]([^"”]{3,60})["”])/i);
+  const churchLocality = collapsed.match(/din\s+localitatea\s+([A-ZĂÂÎȘȚa-zăâîșț\-]{3,40})/i);
+  if (churchName || churchLocality) {
+    const parts = [
+      churchName ? churchName[1].trim() : null,
+      churchLocality ? churchLocality[1].trim() : null,
+    ].filter(Boolean);
+    if (parts.length > 0) meta['church'] = parts.join(', ');
+  }
+
+  // issue_date: după „Drept care s-a eliberat acest certificat astăzi"
+  const issue =
+    findDateNear(text, /drept\s+care\s+s[-\s]*a\s+eliberat|data\s+eliber[aă]rii/i) ??
+    // fallback: ultima dată din text (uneori e doar lângă „PAROH")
+    (() => {
+      const dates = [...collapsed.matchAll(/\b(\d{2})[.\/-](\d{2})[.\/-](\d{4})\b/g)];
+      if (dates.length === 0) return undefined;
+      const last = dates[dates.length - 1];
+      return `${last[3]}-${last[2]}-${last[1]}`;
+    })();
+
+  return { metadata: meta, issue_date: issue };
+}
+
 // ─── PERMIS AUTO ─────────────────────────────────────────────────────────────
 
 export function extractPermisAuto(text: string): ExtractResult {

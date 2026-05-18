@@ -40,16 +40,23 @@ export interface AiProviderConfig {
   apiKey: string;
   model: string;
   /**
-   * Provider OCR / vision (cereri cu imagine) — doar pentru `external`.
+   * Provider OCR / vision (cereri cu imagine).
    * Permite folosirea unui provider COMPLET diferit pentru OCR (ex. chat pe Mistral
-   * free + OCR pe Claude Haiku cu credit gratuit Anthropic). Dacă oricare din cele
-   * 3 câmpuri (`visionUrl`, `visionApiKey`, `visionModel`) e gol, fallback complet
-   * la provider-ul de chat (URL + key + model). Asta înseamnă că „lasă gol" =
-   * „folosește același provider ca pentru chat".
+   * free + OCR pe Claude Haiku cu credit gratuit Anthropic; sau chat local + OCR
+   * remote). Dacă oricare din cele 3 câmpuri (`visionUrl`, `visionApiKey`,
+   * `visionModel`) e gol, fallback la provider-ul de chat când e capabil; altfel
+   * vision indisponibil.
    */
   visionUrl: string;
   visionApiKey: string;
   visionModel: string;
+  /**
+   * Doar pentru `type === 'external'`: marchează că modelul de chat configurat
+   * suportă imagini (ex: Pixtral, GPT-4o, Claude). Folosit de `canDoVision` pentru
+   * a decide dacă butonul „Trimite la AI" e vizibil când nu există vision provider
+   * separat. Default false — user-ul trebuie să bifeze explicit în Setări.
+   */
+  chatModelSupportsVision: boolean;
 }
 
 // ─── Cheie inclusă în aplicație ───────────────────────────────────────────────
@@ -102,22 +109,32 @@ const KEY_PROVIDER_URL = 'ai_provider_url';
 const KEY_PROVIDER_MODEL = 'ai_provider_model';
 const KEY_PROVIDER_VISION_URL = 'ai_provider_vision_url';
 const KEY_PROVIDER_VISION_MODEL = 'ai_provider_vision_model';
+const KEY_CHAT_MODEL_SUPPORTS_VISION = 'ai_chat_model_supports_vision';
 const SECURE_KEY_API_KEY = 'ai_provider_api_key';
 const SECURE_KEY_VISION_API_KEY = 'ai_provider_vision_api_key';
 
 // ─── Citire / scriere config ──────────────────────────────────────────────────
 
 export async function getAiConfig(): Promise<AiProviderConfig> {
-  const [typeRaw, urlRaw, modelRaw, visionUrlRaw, visionModelRaw, apiKey, visionApiKey] =
-    await Promise.all([
-      AsyncStorage.getItem(KEY_PROVIDER_TYPE),
-      AsyncStorage.getItem(KEY_PROVIDER_URL),
-      AsyncStorage.getItem(KEY_PROVIDER_MODEL),
-      AsyncStorage.getItem(KEY_PROVIDER_VISION_URL),
-      AsyncStorage.getItem(KEY_PROVIDER_VISION_MODEL),
-      getAiApiKey(),
-      getAiVisionApiKey(),
-    ]);
+  const [
+    typeRaw,
+    urlRaw,
+    modelRaw,
+    visionUrlRaw,
+    visionModelRaw,
+    chatVisionRaw,
+    apiKey,
+    visionApiKey,
+  ] = await Promise.all([
+    AsyncStorage.getItem(KEY_PROVIDER_TYPE),
+    AsyncStorage.getItem(KEY_PROVIDER_URL),
+    AsyncStorage.getItem(KEY_PROVIDER_MODEL),
+    AsyncStorage.getItem(KEY_PROVIDER_VISION_URL),
+    AsyncStorage.getItem(KEY_PROVIDER_VISION_MODEL),
+    AsyncStorage.getItem(KEY_CHAT_MODEL_SUPPORTS_VISION),
+    getAiApiKey(),
+    getAiVisionApiKey(),
+  ]);
 
   // Migrare valori vechi → external
   const legacyMap: Record<string, AiProviderType> = {
@@ -143,13 +160,17 @@ export async function getAiConfig(): Promise<AiProviderConfig> {
     model: modelRaw ?? defaults.model,
     visionUrl: visionUrlRaw ?? '',
     visionModel: visionModelRaw ?? '',
+    chatModelSupportsVision: chatVisionRaw === 'true',
     apiKey,
     visionApiKey,
   };
 }
 
 export async function saveAiConfig(
-  config: Pick<AiProviderConfig, 'type' | 'url' | 'model' | 'visionUrl' | 'visionModel'>
+  config: Pick<
+    AiProviderConfig,
+    'type' | 'url' | 'model' | 'visionUrl' | 'visionModel' | 'chatModelSupportsVision'
+  >
 ): Promise<void> {
   await AsyncStorage.multiSet([
     [KEY_PROVIDER_TYPE, config.type],
@@ -157,6 +178,7 @@ export async function saveAiConfig(
     [KEY_PROVIDER_MODEL, config.model],
     [KEY_PROVIDER_VISION_URL, config.visionUrl],
     [KEY_PROVIDER_VISION_MODEL, config.visionModel],
+    [KEY_CHAT_MODEL_SUPPORTS_VISION, config.chatModelSupportsVision ? 'true' : 'false'],
   ]);
 }
 
@@ -224,6 +246,35 @@ export async function isAiAvailable(): Promise<{ ok: boolean; reason?: string }>
   const config = await getAiConfig();
   const err = validateConfig(config);
   return err ? { ok: false, reason: err } : { ok: true };
+}
+
+/**
+ * Întoarce true dacă configurația curentă poate procesa imagini (vision).
+ * Folosit în ecranele de adăugare/editare document pentru a decide dacă butonul
+ * „Trimite documentul la AI" e vizibil. Regula:
+ *
+ * - Vision provider separat complet configurat → true (indiferent de chat).
+ * - `builtin` cu cheie validă → true (modelul intern e Pixtral, are vision).
+ * - `external` + flag `chatModelSupportsVision` + config chat valid → true.
+ * - `local` fără vision provider separat → false (executorch nu duce vision).
+ * - `none` → false.
+ */
+export async function canDoVision(): Promise<boolean> {
+  const config = await getAiConfig();
+
+  const hasSeparateVision =
+    config.visionUrl.trim() !== '' &&
+    config.visionApiKey.trim() !== '' &&
+    config.visionModel.trim() !== '';
+  if (hasSeparateVision) return true;
+
+  if (config.type === 'builtin') return !!BUILTIN_API_KEY;
+
+  if (config.type === 'external' && config.chatModelSupportsVision) {
+    return config.url.trim() !== '' && config.apiKey.trim() !== '' && config.model.trim() !== '';
+  }
+
+  return false;
 }
 
 // ─── Helper fetch cu timeout ──────────────────────────────────────────────────
@@ -308,11 +359,18 @@ export async function sendAiRequestWithImage(
   const validationError = validateConfig(config);
   if (validationError) throw new Error(validationError);
 
-  // Modele locale nu suportă vision — fallback la text-only (păstrat pentru
-  // aiOcrMapper / ocrLlmExtractor care contează pe acest comportament).
-  // Mapper-ele care vor să refuze explicit local (ex. aiStatementVisionMapper)
-  // verifică `getAiConfig().type` înainte de a apela.
-  if (config.type === 'local') {
+  // Pre-calculează dacă există un vision provider complet configurat — folosit
+  // de toate branch-urile (inclusiv `local`).
+  const hasVisionProvider =
+    config.visionUrl.trim() !== '' &&
+    config.visionApiKey.trim() !== '' &&
+    config.visionModel.trim() !== '';
+
+  // Modele locale nu suportă vision azi. Dacă userul a configurat un vision
+  // provider separat (ex. Mistral free pe pixtral, Anthropic Haiku) îl folosim
+  // pentru cererile cu imagine. Altfel fallback text-only — păstrat pentru
+  // aiOcrMapper / ocrLlmExtractor care contează pe acest comportament.
+  if (config.type === 'local' && !hasVisionProvider) {
     const arr = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
     const userTextWithNote =
       arr.length > 0
@@ -342,15 +400,11 @@ export async function sendAiRequestWithImage(
     }
   }
 
-  // Pe `external`, dacă userul a configurat un provider OCR complet separat (URL + cheie
-  // + model TOATE completate), îl folosim pentru cererile cu imagine. Permite scenarii
-  // gen chat pe Mistral free + OCR pe Anthropic free. Dacă oricare câmp e gol, fallback
-  // complet la provider-ul de chat (URL + cheie + model).
-  const useSeparateVisionProvider =
-    config.type === 'external' &&
-    config.visionUrl.trim() !== '' &&
-    config.visionApiKey.trim() !== '' &&
-    config.visionModel.trim() !== '';
+  // Dacă userul a configurat un provider OCR complet separat (URL + cheie + model
+  // TOATE completate), îl folosim pentru cererile cu imagine — indiferent de tipul
+  // de chat. Permite scenarii: chat Mistral free + OCR Anthropic, chat local +
+  // OCR remote, etc. Dacă oricare câmp e gol, fallback la provider-ul de chat.
+  const useSeparateVisionProvider = hasVisionProvider;
 
   const apiKey =
     config.type === 'builtin'

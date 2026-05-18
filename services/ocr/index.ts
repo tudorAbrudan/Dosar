@@ -9,7 +9,12 @@ import type { DocumentType } from '@/types';
 import { NO_EXPIRY_DOC_TYPES } from '@/types';
 import type { ExtractResult } from './types';
 
-import { extractBuletin, extractPasaport, extractPermisAuto } from './personal';
+import {
+  extractBuletin,
+  extractCertificatBotez,
+  extractPasaport,
+  extractPermisAuto,
+} from './personal';
 import {
   extractTalonDoc,
   extractCarteAuto,
@@ -48,10 +53,7 @@ import { extractStingator, extractGeneric } from './misc';
 export type { ExtractResult } from './types';
 export { isKnownUtilitySupplier } from './suppliers';
 
-export function extractFieldsForType(
-  type: DocumentType | string,
-  text: string
-): ExtractResult {
+export function extractFieldsForType(type: DocumentType | string, text: string): ExtractResult {
   const result = extractFieldsForTypeInner(type, text);
   // Safety net: tipurile fără expirare nu trebuie să capete expiry_date —
   // chiar dacă regex-ul a prins o dată în document.
@@ -123,6 +125,8 @@ function extractFieldsForTypeInner(type: DocumentType | string, text: string): E
       return extractCertificatTva(text);
     case 'asigurare_profesionala':
       return extractAsigurareProf(text);
+    case 'certificat_botez':
+      return extractCertificatBotez(text);
     default:
       return extractGeneric(text);
   }

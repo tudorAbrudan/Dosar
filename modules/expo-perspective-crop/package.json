@@ -1,0 +1,12 @@
+{
+  "name": "expo-perspective-crop",
+  "version": "1.0.0",
+  "description": "Perspective correction + document corner detection via Core Image & Vision (iOS)",
+  "main": "src/index",
+  "types": "src/index",
+  "ios": {
+    "modules": [
+      "ExpoPerspectiveCropModule"
+    ]
+  }
+}

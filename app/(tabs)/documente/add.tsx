@@ -14,6 +14,7 @@ import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { primary, primaryMuted, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { awaitCropper, makeRequestId } from '@/services/cropperBridge';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { scheduleExpirationReminders } from '@/services/notifications';
@@ -57,7 +58,7 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
-import { AI_CONSENT_KEY } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, canDoVision } from '@/services/aiProvider';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
@@ -143,13 +144,23 @@ export default function AddDocumentScreen() {
   const [llmFieldLoading, setLlmFieldLoading] = useState(false);
   const lastAiTextLengthRef = useRef(0);
   const [textAiConsentAvailable, setTextAiConsentAvailable] = useState(false);
+  const [visionAvailable, setVisionAvailable] = useState(false);
   const [duplicateDoc, setDuplicateDoc] = useState<Document | null>(null);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const hasMountedRef = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setTextAiConsentAvailable(v === 'true'));
+    canDoVision().then(setVisionAvailable);
   }, []);
+
+  // Re-citește capabilitatea vision când ecranul recapătă focus — userul poate
+  // schimba configurația AI din Setări și să se întoarcă cu un alt răspuns.
+  useFocusEffect(
+    useCallback(() => {
+      canDoVision().then(setVisionAvailable);
+    }, [])
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -921,10 +932,19 @@ export default function AddDocumentScreen() {
       quality: 1,
       exif: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      const exifOrientation = result.assets[0].exif?.Orientation as number | undefined;
-      await processAndSaveImage(result.assets[0].uri, exifOrientation);
-    }
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+
+    const requestId = makeRequestId();
+    const cropPromise = awaitCropper(requestId);
+    router.push({ pathname: '/cropper', params: { uri: asset.uri, requestId } });
+    const croppedUri = await cropPromise;
+    if (!croppedUri) return;
+
+    // Imaginea cropped a fost generată de expo-image-manipulator → EXIF
+    // normalizat în output, nu mai trecem orientarea originală mai departe.
+    await processAndSaveImage(croppedUri);
   }
 
   // ── Validare ─────────────────────────────────────────────────────────────
@@ -1157,7 +1177,9 @@ export default function AddDocumentScreen() {
         <AiActionsRow
           busy={aiOcrLoading || llmFieldLoading}
           busyLabel={llmFieldLoading ? 'Analizez documentul cu AI...' : 'Analizez cu AI...'}
-          showAction={textAiConsentAvailable && pages.length > 0 && !llmFieldLoading}
+          showAction={
+            textAiConsentAvailable && visionAvailable && pages.length > 0 && !llmFieldLoading
+          }
           onAction={handleAiImageAnalysis}
         />
 

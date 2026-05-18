@@ -9,6 +9,7 @@ import { AiConsentBar } from './AiConsentBar';
 import { AiPrivacyInfoCard } from './AiPrivacyInfoCard';
 import { AiProviderSelector } from './AiProviderSelector';
 import { AiExternalProviderConfig } from './AiExternalProviderConfig';
+import { AiVisionProviderSection } from './AiVisionProviderSection';
 import { LocalModelSelector } from './LocalModelSelector';
 import { LocalModelWarningBanner } from './LocalModelWarningBanner';
 import { LocalModelCatalog } from './LocalModelCatalog';
@@ -36,6 +37,7 @@ export interface AiConfigModalProps {
   // Provider config state
   providerType: AiProviderType;
   chat: ChatFields;
+  chatModelSupportsVision: boolean;
   separateVision: boolean;
   vision: VisionFields;
 
@@ -65,6 +67,7 @@ export interface AiConfigModalProps {
   onChangeChat: (patch: Partial<ChatFields>) => void;
   onChangeVision: (patch: Partial<VisionFields>) => void;
   onToggleSeparateVision: (value: boolean) => void;
+  onToggleChatModelSupportsVision: (value: boolean) => void;
   onMarkTestStale: () => void;
   onSelectLocalModel: (id: string) => void;
   onDownloadModel: (id: string) => void;
@@ -88,6 +91,7 @@ export function AiConfigModal({
   scheme,
   providerType,
   chat,
+  chatModelSupportsVision,
   separateVision,
   vision,
   testStatus,
@@ -109,6 +113,7 @@ export function AiConfigModal({
   onChangeChat,
   onChangeVision,
   onToggleSeparateVision,
+  onToggleChatModelSupportsVision,
   onMarkTestStale,
   onSelectLocalModel,
   onDownloadModel,
@@ -129,7 +134,12 @@ export function AiConfigModal({
       <View style={[styles.container, { backgroundColor: C.background }]}>
         <View style={[styles.header, { backgroundColor: C.card, borderBottomColor: C.border }]}>
           <Text style={[styles.title, { color: C.text }]}>Configurare Asistent AI</Text>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.close} accessibilityLabel="Închide">
+          <Pressable
+            onPress={onClose}
+            hitSlop={12}
+            style={styles.close}
+            accessibilityLabel="Închide"
+          >
             <Ionicons name="close" size={22} color={C.textSecondary} />
           </Pressable>
         </View>
@@ -155,16 +165,13 @@ export function AiConfigModal({
             <AiPrivacyInfoCard scheme={scheme} />
           )}
 
-          <AiProviderSelector
-            selected={providerType}
-            scheme={scheme}
-            onSelect={onProviderSelect}
-          />
+          <AiProviderSelector selected={providerType} scheme={scheme} onSelect={onProviderSelect} />
 
           <View>
             {providerType === 'external' && (
               <AiExternalProviderConfig
                 chat={chat}
+                chatModelSupportsVision={chatModelSupportsVision}
                 separateVision={separateVision}
                 vision={vision}
                 scheme={scheme}
@@ -172,6 +179,7 @@ export function AiConfigModal({
                 onChangeChat={onChangeChat}
                 onChangeVision={onChangeVision}
                 onToggleSeparateVision={onToggleSeparateVision}
+                onToggleChatModelSupportsVision={onToggleChatModelSupportsVision}
               />
             )}
             <LocalModelSelector
@@ -185,7 +193,20 @@ export function AiConfigModal({
           </View>
 
           {providerType === 'local' && (
-            <LocalModelWarningBanner onContactDeveloper={onContactDeveloper} />
+            <>
+              <LocalModelWarningBanner onContactDeveloper={onContactDeveloper} />
+              <AiVisionProviderSection
+                scheme={scheme}
+                enabled={separateVision}
+                vision={vision}
+                toggleTitle="Folosește un provider remote pentru OCR"
+                toggleHintEnabled="Imaginile vor fi trimise la providerul de mai jos (chat-ul rămâne local)."
+                toggleHintDisabled="Modelele locale nu suportă imagini azi. Activează ca să folosești un API remote DOAR pentru vision (ex. Anthropic, Mistral)."
+                onAnyChange={onMarkTestStale}
+                onToggle={onToggleSeparateVision}
+                onChangeVision={onChangeVision}
+              />
+            </>
           )}
 
           <LocalModelCatalog

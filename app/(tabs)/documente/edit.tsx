@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StyleSheet, Alert, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -56,7 +56,7 @@ import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, savePdfAsPage } from '@/services/documentPageStorage';
-import { AI_CONSENT_KEY } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, canDoVision } from '@/services/aiProvider';
 import {
   DOCUMENT_TYPE_LABELS,
   getDocumentLabel,
@@ -86,6 +86,7 @@ export default function EditDocumentScreen() {
   const [aiOcrApplied, setAiOcrApplied] = useState(false);
   const [llmFieldLoading, setLlmFieldLoading] = useState(false);
   const [textAiConsentAvailable, setTextAiConsentAvailable] = useState(false);
+  const [visionAvailable, setVisionAvailable] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
   const [linkEntityVisible, setLinkEntityVisible] = useState(false);
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
@@ -153,7 +154,16 @@ export default function EditDocumentScreen() {
 
   useEffect(() => {
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setTextAiConsentAvailable(v === 'true'));
+    canDoVision().then(setVisionAvailable);
   }, []);
+
+  // Re-citește capabilitatea vision când ecranul recapătă focus (userul poate
+  // schimba providerul AI din Setări).
+  useFocusEffect(
+    useCallback(() => {
+      canDoVision().then(setVisionAvailable);
+    }, [])
+  );
 
   const allPages = useMemo(() => {
     if (!doc) return [];
@@ -818,7 +828,7 @@ export default function EditDocumentScreen() {
             </Text>
           </View>
         )}
-        {textAiConsentAvailable && allPages.length > 0 && !llmFieldLoading && (
+        {textAiConsentAvailable && visionAvailable && allPages.length > 0 && !llmFieldLoading && (
           <View>
             <View style={styles.aiActionsRow}>
               <Pressable

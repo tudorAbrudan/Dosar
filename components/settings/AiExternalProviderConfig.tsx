@@ -1,6 +1,7 @@
 import { View, Text, TextInput, Pressable, Switch, StyleSheet } from 'react-native';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
+import { AiVisionProviderSection } from './AiVisionProviderSection';
 
 interface ChatFields {
   url: string;
@@ -16,6 +17,7 @@ interface VisionFields {
 
 interface AiExternalProviderConfigProps {
   chat: ChatFields;
+  chatModelSupportsVision: boolean;
   separateVision: boolean;
   vision: VisionFields;
   scheme: 'light' | 'dark';
@@ -24,17 +26,21 @@ interface AiExternalProviderConfigProps {
   onChangeChat: (patch: Partial<ChatFields>) => void;
   onChangeVision: (patch: Partial<VisionFields>) => void;
   onToggleSeparateVision: (value: boolean) => void;
+  onToggleChatModelSupportsVision: (value: boolean) => void;
 }
 
 /**
  * Inputs pentru providerul AI extern (URL/API key/model chat).
- * Conține și toggle „Provider OCR diferit" + inputs vision când e activat.
- *
- * NU citește direct hook-uri — primește totul prin props pentru testabilitate
- * și ca să poată fi reutilizat în modal-uri/wizards.
+ * Conține:
+ *  - toggle „Modelul de chat suportă imagini" — informează app-ul că modelul
+ *    chat poate prelua și cereri vision (ex: Pixtral, GPT-4o, Claude). Folosit
+ *    de `canDoVision` pentru a decide vizibilitatea butonului „Trimite la AI".
+ *  - toggle „Provider OCR diferit" + inputs vision (delegat la
+ *    `AiVisionProviderSection`).
  */
 export function AiExternalProviderConfig({
   chat,
+  chatModelSupportsVision,
   separateVision,
   vision,
   scheme,
@@ -42,6 +48,7 @@ export function AiExternalProviderConfig({
   onChangeChat,
   onChangeVision,
   onToggleSeparateVision,
+  onToggleChatModelSupportsVision,
 }: AiExternalProviderConfigProps) {
   const C = Colors[scheme];
   return (
@@ -49,10 +56,7 @@ export function AiExternalProviderConfig({
       <View>
         <Text style={[styles.label, { color: C.textSecondary }]}>URL API</Text>
         <TextInput
-          style={[
-            styles.input,
-            { color: C.text, borderColor: C.border, backgroundColor: C.card },
-          ]}
+          style={[styles.input, { color: C.text, borderColor: C.border, backgroundColor: C.card }]}
           value={chat.url}
           onChangeText={text => {
             onChangeChat({ url: text });
@@ -68,10 +72,7 @@ export function AiExternalProviderConfig({
       <View>
         <Text style={[styles.label, { color: C.textSecondary }]}>Cheie API</Text>
         <TextInput
-          style={[
-            styles.input,
-            { color: C.text, borderColor: C.border, backgroundColor: C.card },
-          ]}
+          style={[styles.input, { color: C.text, borderColor: C.border, backgroundColor: C.card }]}
           value={chat.apiKey}
           onChangeText={text => {
             onChangeChat({ apiKey: text });
@@ -87,10 +88,7 @@ export function AiExternalProviderConfig({
       <View>
         <Text style={[styles.label, { color: C.textSecondary }]}>Model chat</Text>
         <TextInput
-          style={[
-            styles.input,
-            { color: C.text, borderColor: C.border, backgroundColor: C.card },
-          ]}
+          style={[styles.input, { color: C.text, borderColor: C.border, backgroundColor: C.card }]}
           value={chat.model}
           onChangeText={text => {
             onChangeChat({ model: text });
@@ -105,98 +103,40 @@ export function AiExternalProviderConfig({
       <Pressable
         style={[styles.toggleRow, { borderColor: C.border, backgroundColor: C.card }]}
         onPress={() => {
-          onToggleSeparateVision(!separateVision);
+          onToggleChatModelSupportsVision(!chatModelSupportsVision);
           onAnyChange();
         }}
       >
         <View style={{ flex: 1 }}>
-          <Text style={[styles.toggleTitle, { color: C.text }]}>Provider OCR diferit</Text>
+          <Text style={[styles.toggleTitle, { color: C.text }]}>
+            Modelul de chat suportă imagini
+          </Text>
           <Text style={[styles.hint, { color: C.textSecondary }]}>
-            {separateVision
-              ? 'OCR / vision folosește alt provider decât chat-ul.'
-              : 'OCR și chat folosesc același provider (de mai sus).'}
+            {chatModelSupportsVision
+              ? 'Modelul de mai sus va fi folosit și pentru OCR / analiza imaginilor.'
+              : 'Bifează dacă modelul tău e Pixtral, GPT-4o, Claude sau similar. Necesar pentru a vedea butonul „Trimite documentul la AI".'}
           </Text>
         </View>
         <Switch
-          value={separateVision}
+          value={chatModelSupportsVision}
           onValueChange={v => {
-            onToggleSeparateVision(v);
+            onToggleChatModelSupportsVision(v);
             onAnyChange();
           }}
           trackColor={{ false: C.border, true: primary }}
         />
       </Pressable>
-      {separateVision && (
-        <View style={styles.visionGroup}>
-          <Text style={[styles.groupTitle, { color: C.textSecondary }]}>
-            Provider OCR / vision
-          </Text>
-          <View>
-            <Text style={[styles.label, { color: C.textSecondary }]}>URL</Text>
-            <TextInput
-              style={[
-                styles.input,
-                { color: C.text, borderColor: C.border, backgroundColor: C.card },
-              ]}
-              value={vision.url}
-              onChangeText={text => {
-                onChangeVision({ url: text });
-                onAnyChange();
-              }}
-              placeholder="ex: https://api.anthropic.com/v1"
-              placeholderTextColor={C.textSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
-          </View>
-          <View>
-            <Text style={[styles.label, { color: C.textSecondary }]}>Cheie API</Text>
-            <TextInput
-              style={[
-                styles.input,
-                { color: C.text, borderColor: C.border, backgroundColor: C.card },
-              ]}
-              value={vision.apiKey}
-              onChangeText={text => {
-                onChangeVision({ apiKey: text });
-                onAnyChange();
-              }}
-              placeholder="••••••••••"
-              placeholderTextColor={C.textSecondary}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          <View>
-            <Text style={[styles.label, { color: C.textSecondary }]}>Model</Text>
-            <TextInput
-              style={[
-                styles.input,
-                { color: C.text, borderColor: C.border, backgroundColor: C.card },
-              ]}
-              value={vision.model}
-              onChangeText={text => {
-                onChangeVision({ model: text });
-                onAnyChange();
-              }}
-              placeholder="ex: claude-haiku-4-5"
-              placeholderTextColor={C.textSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={[styles.hint, { color: C.textSecondary, marginTop: 4 }]}>
-              Modelul TREBUIE să suporte imagini (vision). Recomandat:{' '}
-              <Text style={styles.bold}>claude-haiku-4-5</Text> sau{' '}
-              <Text style={styles.bold}>claude-sonnet-4-6</Text> (Anthropic, $5 credit gratuit
-              la cont nou), <Text style={styles.bold}>gpt-4o</Text> (OpenAI),{' '}
-              <Text style={styles.bold}>pixtral-large-latest</Text> (Mistral, plătit) sau{' '}
-              <Text style={styles.bold}>pixtral-12b-2409</Text> (Mistral, free tier).
-            </Text>
-          </View>
-        </View>
-      )}
+      <AiVisionProviderSection
+        scheme={scheme}
+        enabled={separateVision}
+        vision={vision}
+        toggleTitle="Provider OCR diferit"
+        toggleHintEnabled="OCR / vision folosește alt provider decât chat-ul."
+        toggleHintDisabled="OCR și chat folosesc același provider (de mai sus)."
+        onAnyChange={onAnyChange}
+        onToggle={onToggleSeparateVision}
+        onChangeVision={onChangeVision}
+      />
     </View>
   );
 }
@@ -235,17 +175,4 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 2,
   },
-  visionGroup: {
-    gap: 12,
-    paddingLeft: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: primary,
-  },
-  groupTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  bold: { fontWeight: '600' },
 });

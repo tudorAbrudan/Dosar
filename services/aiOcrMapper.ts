@@ -408,6 +408,21 @@ pad: policy_number="PAD-...", insurer="..."
 vaccin_animal: vaccine_type="Antirabic", vet_name="Dr. Pop"
 deparazitare: treatment_type="Externă", product_name="Frontline"
 bilet: categorie="Avion", venue="OTP→LHR", eveniment_artist="RO123"
+certificat_botez: Certificat emis de o parohie ortodoxă/catolică ce atestă săvârșirea Tainei Botezului. Formularul tipărit are spații completate de mână cu nume și date (frecvent ilegibile parțial — concentrează-te pe text near printed labels). Document permanent (NU expiră). Câmpurile completate de mână pot avea ortografie variată (cratime, diacritice, prescurtări).
+  - subject_name="ABRUDAN TUDOR-VASILE" — numele celui botezat (copilul). Apare după labelul tipărit „fiului/fiicei" și înainte de „a(l) d-lui". Păstrează cratimele dacă există („TUDOR-VASILE", „ION-ANDREI"). Toate literele majuscule așa cum sunt scrise de mână.
+  - baptism_date="14.05.1984" — data SĂVÂRȘIRII botezului (eveniment istoric, NU data eliberării certificatului). Apare după labelul „în ziua de" și înainte de „s-a săvârșit Sfânta Taină a Botezului". Format ZZ.LL.AAAA. ATENȚIE: NU confunda cu data nașterii (apare separat, după „fiind născut(ă) în ziua de"), nici cu data eliberării (apare la final, după „Drept care s-a eliberat acest certificat astăzi" — pune-o în issueDate, NU în baptism_date).
+  - baptism_name="TUDOR-VASILE" — numele primit LA botez (poate fi diferit de cel din certificatul de naștere). Apare după „primind din botez numele" și înainte de „asistând ca naș". Poate lipsi dacă numele de botez coincide cu cel civil — atunci omite câmpul.
+  - godparents="CÂNTA SIMONA" — numele nașilor. Apare după „asistând ca naș" și înainte de „domiciliat în localitatea" / „str." Dacă sunt mai mulți nași separați prin „și", concatenează cu „, " (ex. „POPESCU ION, POPESCU MARIA").
+  - church="Sfântul Dumitru, Florești" — biserica/parohia. Combină hramul (între ghilimele după „Parohia Bisericii Ortodoxe/Catolice Române") cu localitatea (după „din localitatea"). Format „Hram, Localitate".
+  - issueDate — data eliberării certificatului (după „Drept care s-a eliberat acest certificat astăzi"), NU data botezului. Format YYYY-MM-DD în câmpul issueDate, nu în fields.
+certificat_inregistrare: Certificat ONRC pentru firmă (SRL/SA/SNC) sau PFA/II/IF. Conține antet „CERTIFICAT DE ÎNREGISTRARE", „Cod Unic de Înregistrare", „Nr. de ordine în registrul comerțului".
+  - cui="38122455" — câmpul „Cod Unic de Înregistrare" (CUI/CIF). DOAR cifre, fără prefix „RO". 6-10 cifre.
+  - reg_com="F12/1096/22.08.2017" — câmpul „Nr. de ordine în registrul comerțului". Păstrează exact formatul de pe document (prefix 'J' pentru SRL/SA/SNC, 'F' pentru PFA/II/IF, 'C' pentru cooperative). Poate avea sufix doar an (ex. „J40/1234/2020") sau dată completă (ex. „F12/1096/22.08.2017") — capturează tot stringul așa cum apare.
+  - denumire="ABRUDAN TUDOR VASILE PERSOANĂ FIZICĂ AUTORIZATĂ" — câmpul „Firma" sau „Denumire". Pentru PFA include integral „PERSOANĂ FIZICĂ AUTORIZATĂ"; pentru SRL/SA păstrează forma juridică în denumire (ex. „ACME SRL"). Nu trunchia.
+autorizatie_activitate: tip_autorizatie="Sanitară" (Sanitară / ISU / Mediu / Construire / Funcționare), numar_autorizatie="1234/2023"
+act_constitutiv: denumire="ACME SRL" (include forma juridică), legal_form="SRL" (SRL / SA / PFA / II / IF / SNC / SCS / SCA)
+certificat_tva: cod_tva="RO12345678" (cu prefix RO dacă apare în document), denumire="ACME SRL"
+asigurare_profesionala: policy_number="RCP/2024/001234", insurer="Allianz" (asiguratorul emitent)
 
 ━━━ REGULI DATE ━━━
 

@@ -137,6 +137,7 @@ export default function SetariScreen() {
   const [aiVisionUrl, setAiVisionUrl] = useState('');
   const [aiVisionModel, setAiVisionModel] = useState('');
   const [aiVisionApiKey, setAiVisionApiKey] = useState('');
+  const [aiChatModelSupportsVision, setAiChatModelSupportsVision] = useState(false);
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [aiTestMessage, setAiTestMessage] = useState('');
   const [aiModalConsentChecked, setAiModalConsentChecked] = useState(false);
@@ -159,6 +160,7 @@ export default function SetariScreen() {
     visionUrl: '',
     visionModel: '',
     visionApiKey: '',
+    chatModelSupportsVision: false,
   });
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
@@ -183,6 +185,7 @@ export default function SetariScreen() {
       setAiVisionUrl(cfg.visionUrl);
       setAiVisionModel(cfg.visionModel);
       setAiVisionApiKey(cfg.visionApiKey);
+      setAiChatModelSupportsVision(cfg.chatModelSupportsVision);
       // Toggle „provider OCR diferit" e pornit dacă oricare din cele 3 câmpuri vision
       // a fost completat anterior; altfel oprit (default = același provider ca chat).
       const hasSeparate =
@@ -198,6 +201,7 @@ export default function SetariScreen() {
           visionUrl: cfg.visionUrl,
           visionModel: cfg.visionModel,
           visionApiKey: cfg.visionApiKey,
+          chatModelSupportsVision: cfg.chatModelSupportsVision,
         };
       }
     });
@@ -394,6 +398,7 @@ export default function SetariScreen() {
         visionUrl: aiVisionUrl,
         visionModel: aiVisionModel,
         visionApiKey: aiVisionApiKey,
+        chatModelSupportsVision: aiChatModelSupportsVision,
       };
     }
     if (aiProviderType === 'local' && type !== 'local') {
@@ -407,6 +412,7 @@ export default function SetariScreen() {
       setAiVisionUrl(savedExternalRef.current.visionUrl);
       setAiVisionModel(savedExternalRef.current.visionModel);
       setAiVisionApiKey(savedExternalRef.current.visionApiKey);
+      setAiChatModelSupportsVision(savedExternalRef.current.chatModelSupportsVision);
       const hasSeparate =
         savedExternalRef.current.visionUrl.trim() !== '' ||
         savedExternalRef.current.visionModel.trim() !== '' ||
@@ -416,10 +422,17 @@ export default function SetariScreen() {
       const defaults = aiProvider.PROVIDER_DEFAULTS[type];
       setAiProviderUrl(defaults.url);
       setAiProviderModel(defaults.model);
-      setAiVisionUrl('');
-      setAiVisionModel('');
-      setAiVisionApiKey('');
-      setAiSeparateVision(false);
+      // Pentru `local` păstrăm câmpurile vision (provider remote diferit) și
+      // toggle-ul existent — userul poate cupla chat local + vision remote.
+      // Pentru `builtin` / `none` resetăm vision (Pixtral built-in are vision
+      // implicit; `none` nu rulează nimic).
+      if (type !== 'local') {
+        setAiVisionUrl('');
+        setAiVisionModel('');
+        setAiVisionApiKey('');
+        setAiSeparateVision(false);
+      }
+      setAiChatModelSupportsVision(false);
     }
     setAiTestStatus('idle');
     setAiTestMessage('');
@@ -469,6 +482,7 @@ export default function SetariScreen() {
                 model: modelId,
                 visionUrl: '',
                 visionModel: '',
+                chatModelSupportsVision: false,
               });
             } catch (e) {
               await localModel.deleteModel(modelId);
@@ -518,6 +532,7 @@ export default function SetariScreen() {
                 model: aiProvider.PROVIDER_DEFAULTS.builtin.model,
                 visionUrl: '',
                 visionModel: '',
+                chatModelSupportsVision: false,
               });
             }
           },
@@ -536,6 +551,7 @@ export default function SetariScreen() {
       model: modelId,
       visionUrl: '',
       visionModel: '',
+      chatModelSupportsVision: false,
     });
   };
 
@@ -575,13 +591,18 @@ export default function SetariScreen() {
         Alert.alert('Acord necesar', 'Bifează acordul de utilizare AI pentru a continua.');
         return;
       }
-      const usesSeparateVision = aiProviderType === 'external' && aiSeparateVision;
+      // Vision provider separat e valid și pentru `local` (chat local + OCR remote),
+      // nu doar pentru `external`. Pentru `builtin`/`none` nu are sens (Pixtral
+      // built-in are vision implicit; `none` nu rulează nimic).
+      const usesSeparateVision =
+        (aiProviderType === 'external' || aiProviderType === 'local') && aiSeparateVision;
       await aiProvider.saveAiConfig({
         type: aiProviderType,
         url: aiProviderUrl,
         model: aiProviderModel,
         visionUrl: usesSeparateVision ? aiVisionUrl.trim() : '',
         visionModel: usesSeparateVision ? aiVisionModel.trim() : '',
+        chatModelSupportsVision: aiProviderType === 'external' ? aiChatModelSupportsVision : false,
       });
       await aiProvider.saveAiApiKey(aiApiKey);
       await aiProvider.saveAiVisionApiKey(usesSeparateVision ? aiVisionApiKey : '');
@@ -673,8 +694,20 @@ export default function SetariScreen() {
           setAiTestMessage('Niciun model local selectat. Descarcă și selectează un model.');
           return;
         }
-        setAiTestStatus('ok');
-        setAiTestMessage(`Model local „${selectedLocalModelId}" selectat.`);
+        const lines: string[] = [`✓ Chat: model local „${selectedLocalModelId}" selectat.`];
+        if (aiSeparateVision) {
+          const ocrResult = await probeOpenAiCompatible(
+            aiVisionUrl.trim(),
+            aiVisionApiKey.trim(),
+            aiVisionModel.trim()
+          );
+          lines.push(`${ocrResult.ok ? '✓' : '✗'} OCR remote: ${ocrResult.message}`);
+          setAiTestStatus(ocrResult.ok ? 'ok' : 'error');
+        } else {
+          lines.push('• OCR: indisponibil (modelele locale nu duc vision).');
+          setAiTestStatus('ok');
+        }
+        setAiTestMessage(lines.join('\n'));
         return;
       }
 
@@ -703,7 +736,7 @@ export default function SetariScreen() {
 
       // ─── Test 2: provider OCR (doar dacă e configurat separat) ────────────
       let ocrOk = true;
-      if (aiProviderType === 'external' && aiSeparateVision) {
+      if (aiSeparateVision) {
         const ocrResult = await probeOpenAiCompatible(
           aiVisionUrl.trim(),
           aiVisionApiKey.trim(),
@@ -1015,6 +1048,7 @@ export default function SetariScreen() {
         scheme={scheme}
         providerType={aiProviderType}
         chat={{ url: aiProviderUrl, apiKey: aiApiKey, model: aiProviderModel }}
+        chatModelSupportsVision={aiChatModelSupportsVision}
         separateVision={aiSeparateVision}
         vision={{ url: aiVisionUrl, apiKey: aiVisionApiKey, model: aiVisionModel }}
         testStatus={aiTestStatus}
@@ -1044,6 +1078,7 @@ export default function SetariScreen() {
           if (patch.model !== undefined) setAiVisionModel(patch.model);
         }}
         onToggleSeparateVision={setAiSeparateVision}
+        onToggleChatModelSupportsVision={setAiChatModelSupportsVision}
         onMarkTestStale={() => setAiTestStatus('idle')}
         onSelectLocalModel={handleSelectLocalModel}
         onDownloadModel={handleDownloadModel}
