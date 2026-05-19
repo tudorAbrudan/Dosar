@@ -49,6 +49,7 @@ const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   card: 'card_id',
   animal: 'animal_id',
   company: 'company_id',
+  medical_record: null,
 };
 
 export interface CreateDocumentInput {

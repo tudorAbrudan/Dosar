@@ -26,6 +26,7 @@ const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   card: 'Carduri bancare, abonamente',
   animal: 'Vaccinuri, deparazitare, vizite vet',
   company: 'Certificat înregistrare, acte constitutive, TVA',
+  medical_record: 'Analize, rețete, vaccinuri, imagistică',
 };
 
 interface EntitiesStepProps {

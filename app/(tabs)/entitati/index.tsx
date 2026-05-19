@@ -51,6 +51,7 @@ const ENTITY_ICON: Record<EntityType, IoniconName> = {
   card: 'card',
   animal: 'paw',
   company: 'business',
+  medical_record: 'medkit',
 };
 
 // check-hardcoded-entities-disable-next-cluster
@@ -61,6 +62,7 @@ const ENTITY_ICON_BG: Record<EntityType, string> = {
   card: iconColors.purple.bg,
   animal: iconColors.warning.bg,
   company: iconColors.indigo.bg,
+  medical_record: iconColors.primary.bg,
 };
 
 // check-hardcoded-entities-disable-next-cluster
@@ -71,6 +73,7 @@ const ENTITY_ICON_COLOR: Record<EntityType, string> = {
   card: iconColors.purple.fg,
   animal: iconColors.warning.fg,
   company: iconColors.indigo.fg,
+  medical_record: iconColors.primary.fg,
 };
 
 export default function EntitatiListScreen() {
@@ -117,6 +120,7 @@ export default function EntitatiListScreen() {
       card: 4,
       animal: 5,
       company: 6,
+      medical_record: 7,
     };
     const combined: TypedEntity[] = [
       ...persons.map(e => ({ item: e as AnyEntity, entityType: 'person' as EntityType })),

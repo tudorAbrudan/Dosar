@@ -55,6 +55,12 @@ export const DOC_ICON: Record<DocumentType, IoniconName> = {
   certificat_absolvire: 'ribbon-outline',
   certificat_curs: 'trophy-outline',
   adeverinta_studii: 'document-text-outline',
+  reteta_medicala: 'medkit-outline',
+  analize_medicale: 'flask-outline',
+  scrisoare_medicala: 'mail-outline',
+  bilet_externare: 'exit-outline',
+  imagistica: 'scan-outline',
+  vaccin_persoana: 'fitness-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };
