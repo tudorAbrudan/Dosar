@@ -107,8 +107,15 @@ export interface Company {
 
 export interface MedicalRecord {
   id: string;
-  person_id: string;          // FK la persons; 1:1 strict
+  // TODO(medical-merge): person_id există în schema Dosar (Task 4, FK la persons).
+  // În DosarMedical serviciul nu îl setează; Task 15 va reconcilia.
+  person_id?: string;
   name: string;
+  // TODO(medical-merge): phone/email există în DosarMedical direct pe record;
+  // în Dosar aceste câmpuri trăiesc pe `persons` (via person_id). Task 15 va
+  // reconcilia — până atunci sunt opționale ca să nu spargă serviciul copiat.
+  phone?: string;
+  email?: string;
   ai_consent_at: string | null;
   ai_consent_version: number;
   encryption_key_ref: string; // ex: 'v1'

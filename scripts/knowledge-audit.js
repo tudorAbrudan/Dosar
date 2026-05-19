@@ -78,6 +78,9 @@ const ENTRIES = {
     imageProcessing: { required: false },
     maintenancePresets: { required: false },
     manifestHash: { required: false },
+    // Medical services — copiate în F2 din DosarMedical; appKnowledge actualizat la Task 29.
+    medicalCrypto: { required: false },
+    medicalRecord: { required: false },
     ocrAutoRotate: { required: false },
     ocrExtractors: { required: false },
     ocrLayout: { required: false },
