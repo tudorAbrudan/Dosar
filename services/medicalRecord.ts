@@ -1,8 +1,9 @@
 /**
  * CRUD pentru entitatea `medical_record` — singura entitate user-facing din app.
  *
- * Stochează identitatea pacientului (`name`, opțional `phone` / `email`) plus
- * datele dosarului medical (consent AI, observații medicale, conversații).
+ * Stochează numele dosarului + FK la persoană (person_id) plus datele dosarului
+ * medical (consent AI, observații medicale, conversații). Relație 1:1 strictă
+ * cu tabelul `persons` (UNIQUE constraint pe person_id).
  *
  * Consent AI:
  * - `ai_consent_at` = ISO timestamp setat la primul accept din modalul de consent.
@@ -25,15 +26,10 @@ const MEDICAL_DOC_TYPES_SQL = `(
 // Fallback sort pentru entități care nu au rând în entity_order.
 const ORDER_FALLBACK = 1e18;
 
-// TODO(medical-merge): MedicalRecordRow include phone/email din DosarMedical.
-// În Dosar, schema SQLite din Task 4 nu are aceste coloane — ele trăiesc pe
-// tabelul `persons` (FK person_id). Task 15 (useEntities) va reconcilia.
-// Până atunci, SELECT * returnează NULL pentru coloane lipsă → comportament safe.
 interface MedicalRecordRow {
   id: string;
+  person_id: string;
   name: string;
-  phone: string | null;
-  email: string | null;
   ai_consent_at: string | null;
   ai_consent_version: number | null;
   encryption_key_ref: string;
@@ -44,9 +40,8 @@ interface MedicalRecordRow {
 function rowToRecord(r: MedicalRecordRow): MedicalRecord {
   return {
     id: r.id,
+    person_id: r.person_id,
     name: r.name,
-    phone: r.phone ?? undefined,
-    email: r.email ?? undefined,
     ai_consent_at: r.ai_consent_at,
     ai_consent_version: r.ai_consent_version ?? 1,
     encryption_key_ref: r.encryption_key_ref,
@@ -56,23 +51,19 @@ function rowToRecord(r: MedicalRecordRow): MedicalRecord {
 }
 
 export interface CreateMedicalRecordInput {
+  person_id: string;
   name: string;
-  phone?: string;
-  email?: string;
 }
 
 export async function createMedicalRecord(input: CreateMedicalRecordInput): Promise<MedicalRecord> {
   await ensureMedicalMasterKey();
   const id = generateId();
   const now = new Date().toISOString();
-  // TODO(medical-merge): INSERT include phone/email din DosarMedical.
-  // Schema Dosar (Task 4) nu are aceste coloane; are person_id în schimb.
-  // Task 15 va rescrie această funcție să accepte person_id și să ignore phone/email.
   await db.runAsync(
     `INSERT INTO medical_record
-       (id, name, phone, email, ai_consent_at, ai_consent_version, encryption_key_ref, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
-    [id, input.name, input.phone ?? null, input.email ?? null, MEDICAL_MASTER_KEY_REF, now, now]
+       (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, 1, ?, ?, ?)`,
+    [id, input.person_id, input.name, MEDICAL_MASTER_KEY_REF, now, now]
   );
   await assignNextOrder('medical_record', id);
   emit('entities:changed');
@@ -92,6 +83,20 @@ export async function getMedicalRecord(id: string): Promise<MedicalRecord | null
   return row ? rowToRecord(row) : null;
 }
 
+/**
+ * Caută dosarul medical asociat unei persoane. Datorită constrângerii UNIQUE pe
+ * `person_id`, relația e 1:1 — returnează null dacă nu există încă un dosar.
+ * Folosit de `useEntities.resolveEntityName` (Task 15) și de
+ * `documents.addDocument` la triggering medicalExtractor (Task 20).
+ */
+export async function getMedicalRecordByPersonId(personId: string): Promise<MedicalRecord | null> {
+  const row = await db.getFirstAsync<MedicalRecordRow>(
+    `SELECT * FROM medical_record WHERE person_id = ? LIMIT 1`,
+    [personId]
+  );
+  return row ? rowToRecord(row) : null;
+}
+
 export async function listMedicalRecords(): Promise<MedicalRecord[]> {
   const rows = await db.getAllAsync<MedicalRecordRow>(
     `SELECT m.* FROM medical_record m
@@ -104,8 +109,7 @@ export async function listMedicalRecords(): Promise<MedicalRecord[]> {
 
 export interface UpdateMedicalRecordInput {
   name?: string;
-  phone?: string | null;
-  email?: string | null;
+  person_id?: string;
 }
 
 export async function updateMedicalRecord(
@@ -118,13 +122,9 @@ export async function updateMedicalRecord(
     sets.push('name = ?');
     values.push(patch.name);
   }
-  if (patch.phone !== undefined) {
-    sets.push('phone = ?');
-    values.push(patch.phone ?? null);
-  }
-  if (patch.email !== undefined) {
-    sets.push('email = ?');
-    values.push(patch.email ?? null);
+  if (patch.person_id !== undefined) {
+    sets.push('person_id = ?');
+    values.push(patch.person_id);
   }
   if (sets.length === 0) return;
   const now = new Date().toISOString();
