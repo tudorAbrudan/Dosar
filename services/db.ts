@@ -190,6 +190,111 @@ try {
   // best-effort — tabele lipsă sau drop refuzat din alt motiv nu blochează pornirea
 }
 
+// Schema medical (reintegrare din DosarMedical, v3.5.x → v3.6+).
+// 6 tabele + 1 virtual FTS5 + 3 triggeri pentru sincronizarea summary → FTS.
+// Toate cu CREATE IF NOT EXISTS — idempotent. Câmpurile *_enc sunt BLOB criptat
+// AES-256-GCM (vezi medicalCrypto.ts când va fi copiat în F2).
+try {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS medical_record (
+      id TEXT PRIMARY KEY,
+      person_id TEXT NOT NULL UNIQUE REFERENCES persons(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      ai_consent_at TEXT,
+      ai_consent_version INTEGER DEFAULT 1,
+      encryption_key_ref TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_medrec_person ON medical_record(person_id);
+
+    CREATE TABLE IF NOT EXISTS medical_observations (
+      id TEXT PRIMARY KEY,
+      medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
+      source_document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
+      name_enc BLOB NOT NULL,
+      value_enc BLOB,
+      unit TEXT,
+      ref_min_enc BLOB,
+      ref_max_enc BLOB,
+      observed_at TEXT,
+      category TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      needs_review INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_medobs_record ON medical_observations(medical_record_id);
+    CREATE INDEX IF NOT EXISTS idx_medobs_observed_at ON medical_observations(observed_at);
+    CREATE INDEX IF NOT EXISTS idx_medobs_category ON medical_observations(category);
+
+    CREATE TABLE IF NOT EXISTS medical_chat_threads (
+      id TEXT PRIMARY KEY,
+      medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS medical_chat_messages (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL REFERENCES medical_chat_threads(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content_enc BLOB NOT NULL,
+      citations_json TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_medmsg_thread ON medical_chat_messages(thread_id);
+
+    CREATE TABLE IF NOT EXISTS medical_document_summaries (
+      document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+      summary TEXT NOT NULL,
+      generated_at TEXT NOT NULL,
+      model_used TEXT
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS medical_fts USING fts5(
+      document_id UNINDEXED,
+      medical_record_id UNINDEXED,
+      chunk_type,
+      chunk_text,
+      tokenize = 'unicode61 remove_diacritics 2'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS medical_fts_summary_ai
+    AFTER INSERT ON medical_document_summaries BEGIN
+      INSERT INTO medical_fts(document_id, medical_record_id, chunk_type, chunk_text)
+      VALUES (new.document_id, '', 'summary', new.summary);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS medical_fts_summary_au
+    AFTER UPDATE ON medical_document_summaries BEGIN
+      DELETE FROM medical_fts WHERE document_id = old.document_id AND chunk_type = 'summary';
+      INSERT INTO medical_fts(document_id, medical_record_id, chunk_type, chunk_text)
+      VALUES (new.document_id, '', 'summary', new.summary);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS medical_fts_summary_ad
+    AFTER DELETE ON medical_document_summaries BEGIN
+      DELETE FROM medical_fts WHERE document_id = old.document_id AND chunk_type = 'summary';
+    END;
+
+    CREATE TABLE IF NOT EXISTS medical_shares (
+      id TEXT PRIMARY KEY,
+      medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      doc_count INTEGER NOT NULL,
+      obs_count INTEGER NOT NULL,
+      revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_medshares_record ON medical_shares(medical_record_id);
+    CREATE INDEX IF NOT EXISTS idx_medshares_expires ON medical_shares(expires_at);
+  `);
+} catch {
+  // best-effort — FTS5 indisponibil sau schemă deja existentă nu blochează pornirea
+}
+
 // Inițializare cloud_state single-row (idempotent)
 try {
   const cloudStateRow = db.getFirstSync<{ id: number }>('SELECT id FROM cloud_state WHERE id = 1');

@@ -46,6 +46,17 @@ const EXCLUDED_TABLES = new Set([
   'chat_messages', // idem
   'document_entities', // junction table reconstruită automat din docs.createDocument
   'fuel_records_v2', // tabel temporar de migrare
+  // Medical — FTS virtual reconstruită la restore din summaries + ocr_text:
+  'medical_fts',
+  // Medical — TEMPORAR exclus până la F7 (Tasks 27-28) când backup.ts/cloudSync.ts
+  // primesc collectorii pentru tabelele medicale. ATUNCI: șterge cele 6 linii de aici
+  // și mută `medical_record → 'medicalRecords'` etc. în TABLE_TO_MANIFEST_FIELD.
+  'medical_record',
+  'medical_observations',
+  'medical_chat_threads',
+  'medical_chat_messages',
+  'medical_document_summaries',
+  'medical_shares',
 ]);
 
 // Mapping table snake_case → manifest field camelCase pentru tabele care

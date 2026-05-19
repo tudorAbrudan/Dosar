@@ -84,6 +84,12 @@ const EMOJI_MAP = {
   adeverinta_studii: '📄',
   altul: '📁',
   custom: '⭐',
+  reteta_medicala: '💊',
+  analize_medicale: '🔬',
+  scrisoare_medicala: '📋',
+  bilet_externare: '🏥',
+  imagistica: '🩻',
+  vaccin_persoana: '💉',
 };
 
 const HIGHLIGHTED_TYPES = new Set([
