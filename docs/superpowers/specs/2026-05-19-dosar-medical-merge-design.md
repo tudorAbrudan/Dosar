@@ -17,7 +17,7 @@ Aplicația **DosarMedical** (`/Users/ax/work/dosarMedical`, bundle `com.ax.dosar
 - Userul nu are timp să mențină 2 aplicații paralel.
 - Apare cerința nouă: **share dosar medical la medic** — pentru consultații punctuale, pacientul vrea să trimită un snapshot la un doctor specific.
 
-**Soluția propusă:** reintegrăm medicalul în Dosar ca `EntityType` nou (`medical_record`), readucând cele 6 tipuri de documente medicale. Adăugăm un singur feature nou major: **doctor share** (export PDF complet + share sheet nativ, fără infrastructură proprie). DosarMedical actual intră în maintenance mode.
+**Soluția propusă:** reintegrăm medicalul în Dosar ca `EntityType` nou (`medical_record`), readucând cele 6 tipuri de documente medicale. Adăugăm un singur feature nou major: **doctor share** (link 1h criptat E2E, blob opac pe Cloudflare R2, viewer static pe GitHub Pages — vezi §6.6). DosarMedical actual intră în maintenance mode.
 
 Predecesori utili (a se citi pentru context):
 - `/Users/ax/work/documents/docs/superpowers/specs/2026-05-03-medical-entity-rag-design.md` — spec-ul original „medical_record în Dosar" (înainte de split). Arhitectura propusă atunci este în mare parte recuperabilă, însă a fost implementată concret în DosarMedical.
@@ -31,11 +31,11 @@ Predecesori utili (a se citi pentru context):
 |---|---|---|
 | D1 | **Reintegrare în Dosar** ca `EntityType = 'medical_record'`, NU app separat | Mentenanță realistă pentru solo dev. 60-70% reciclabil din DosarMedical. |
 | D2 | **DosarMedical (acest repo) intră în maintenance mode.** Nu se publică în App Store. | Evităm 2 binare în paralel. La 6 luni decidem retragere completă (nu există useri publici acum). |
-| D3 | **Persoană fizică, fără SRL** — același risk profile ca Dosar curent | Datele Art. 9 nu trec prin servere proprii. Backup rămâne local + iCloud user. Doctor share = share nativ user → cloud-ul user-ului. |
+| D3 | **Persoană fizică, fără SRL** — același risk profile ca Dosar curent | Datele Art. 9 nu trec prin servere proprii. Backup rămâne local + iCloud user. Doctor share = blob criptat E2E pe Cloudflare R2 (processor declarat, vede doar opac), șters automat după 1h. |
 | D4 | **Cloud sync multi-device (cross-platform) — out of scope** | Dosar are deja iCloud backup. Cross-platform sync nu e cerut acum. |
 | D5 | **Apple Health / HealthKit — out of scope pentru MVP** | Adaugă 1-2 săpt fără valoare imediată (cere wearable). Adăugat în faza 2 dacă apare cerere. |
 | D6 | **Huawei AppGallery — out of scope** | Userii Huawei în RO sunt foarte puțini. YAGNI. |
-| D7 | **Doctor share = PDF + share sheet nativ**, NU link auto-expirabil cu viewer dedicat | Zero infrastructură. Doctorii preferă PDF oricum. Auto-expiry 1h ar necesita Cloudflare Worker — depășește scope-ul „no time to admin". |
+| D7 | **Doctor share = link criptat E2E pe Cloudflare Worker + R2, viewer pe GitHub Pages, TTL 1h** | Un dosar real are 20+ documente (~40-60MB). PDF unic embedded depășește limitele Gmail (25MB) și e greoi pe WhatsApp. Soluția cu link funcționează la orice volum, e zero-admin (Cloudflare e sandbox-uri serverless), e gratis sub 500 useri activi (free tier R2 + Workers). Cheia AES sta în URL fragment — nu pleacă la server, app-ul rămâne zero-knowledge față de Cloudflare. |
 | D8 | **Monetizare amânată** | MVP-ul iese gratis. Plată one-time €12-15 sau abonament se decid la 6 luni post-launch, pe baza tracțiunii. |
 | D9 | **Reciclăm cod direct, nu cherry-pick** | Copiem fișierele relevante din DosarMedical în Dosar și le adaptăm. Nu încercăm git cherry-pick (split-ul a curățat fișierele non-medicale). |
 
@@ -54,19 +54,21 @@ Predecesori utili (a se citi pentru context):
 7. App Lock dedicat pentru ecranul dosar medical (timeout 5 min, independent de App Lock global).
 8. GDPR consent: toggle global „Date medicale" + acceptare per dosar la activare AI.
 9. Câmpul `private_notes` pe `Document` nu pleacă la AI (deja respectat în Dosar — confirmat).
-10. **Doctor share:** buton „Partajează cu medicul" pe ecran detaliu dosar → generează PDF complet + folder atașamente → deschide share sheet nativ → user alege canal (iCloud, Drive, email, WhatsApp, AirDrop).
+10. **Doctor share:** buton „Partajează cu medicul" pe ecran detaliu dosar → generează snapshot ZIP (observații + documente originale) → criptează AES-256-GCM cu cheie efemeră → upload blob opac la Cloudflare R2 cu TTL 1h → app construiește link `https://<viewer>/#k=<key>&b=<blob-id>` → user copiază/trimite linkul prin orice canal (SMS, email, WhatsApp). Cheia stă în URL fragment, nu pleacă la server. Doctorul deschide linkul în browser → viewer static decriptează în memorie → randează Timeline + Documente. După 1h blob-ul e șters, linkul devine inaccesibil.
 11. Backup local + cloud existent extins să includă tabelele medicale + opțional cheia AES (criptată cu parola cloud).
 12. `appKnowledge.ts` extins cu descrierea funcției medicale + lista tipurilor medicale (auto-generată).
 
 ### Out of scope (faza 2 sau mai târziu)
 
 - Apple Health / HealthKit import.
-- Cloud sync cross-platform multi-device (relay propriu).
-- Link auto-expirabil pentru share (Cloudflare Worker + R2).
-- Viewer web dedicat (`dosar.app/v` pe GitHub Pages).
+- Cloud sync cross-platform multi-device pentru sesiuni complete (nu e același lucru cu share doctor — sync = aceleași date pe toate device-urile userului, dincolo de iCloud Apple-only).
+- Domain propriu pentru viewer (`dosar.app`) — MVP folosește `<account>.workers.dev` + GitHub Pages.
+- Specialități medicale ca taxonomie (cardiologie, ATI, neurologie). Vezi §11.2 — categoriile de observații sunt taxonomia reală.
+- Configurare TTL share (1h fix în MVP).
+- Watermark dinamic pe documente la share (cu numele doctorului, timestamp) — anti-leak. Tehnic posibil în viewer dar adaugă complexitate.
 - Huawei AppGallery / HMS.
 - Monetizare (paywall, abonament).
-- Doctor app dedicată (B2B).
+- Doctor app dedicată (B2B). Viewer-ul web acoperă MVP-ul.
 - Cont online / sharing între device-urile aceluiași user.
 - AI local (`llama.rn`) pentru observații medicale — rămâne BYOK la cloud provider (Mistral / OpenAI). Modelele locale există deja în Dosar dar nu se folosesc pentru extracție medicală în MVP (calitate insuficientă pentru observații structurate).
 
@@ -89,7 +91,17 @@ Predecesori utili (a se citi pentru context):
 | `medicalExtractor.ts` | Pipeline extracție observații (LLM, confidence-based) | copiat din DosarMedical |
 | `medicalChat.ts` | RAG hibrid + sendMessage per dosar | copiat din DosarMedical |
 | `medicalQueryAnalysis.ts` | Parsare query pentru retrieval | copiat din DosarMedical |
-| `medicalShare.ts` | **NOU** — generare PDF + folder atașamente pentru share doctor | scris from scratch |
+| `medicalShare.ts` | **NOU** — bundle ZIP (manifest + originale + thumbnails) + criptare AES-256-GCM + upload la Worker + construire link viewer | scris from scratch |
+| `medicalShareHistory.ts` | **NOU** — istoric share-uri active (DB tabel `medical_shares` cu id, expires_at, revoked_at) + revoke API | scris from scratch |
+
+### 4.2b Componente noi în repo (fără Expo) — `/Users/ax/work/documents/cloud/`
+
+| Folder | Rol | Deploy |
+|---|---|---|
+| `cloud/share-relay/` | Cloudflare Worker TypeScript: POST /upload, GET /download/:id, DELETE /share/:id, GET /health. Storage R2 + KV pentru rate-limiting. | Wrangler CLI → `<name>.<acct>.workers.dev` |
+| `cloud/share-viewer/` | Static viewer page (Vite + vanilla TS + JSZip + PDF.js). Parse URL fragment, fetch blob, decrypt cu Web Crypto, render Timeline + Documente. | Build → GitHub Pages branch sau Cloudflare Pages |
+
+Ambele folder-e au propriile `package.json`, `tsconfig.json`, teste și `README.md` cu pași de deploy. NU sunt parte din app-ul Expo — au lifecycle separat.
 
 ### 4.3 Module modificate (extensii)
 
@@ -304,6 +316,20 @@ CREATE VIRTUAL TABLE medical_fts USING fts5(
 -- 7) Triggeri pentru FTS auto-sync
 -- (insert/update/delete pe medical_document_summaries și pe documents.ocr_text)
 -- detaliile în implementation plan
+
+-- 8) Istoric share-uri active (pentru UI revoke + audit)
+CREATE TABLE medical_shares (
+  id TEXT PRIMARY KEY,            -- ID-ul blob-ului din R2
+  medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  doc_count INTEGER NOT NULL,
+  obs_count INTEGER NOT NULL,
+  revoked_at TEXT                 -- NULL = activ; populat la revoke manual
+);
+CREATE INDEX idx_medshares_record ON medical_shares(medical_record_id);
+CREATE INDEX idx_medshares_expires ON medical_shares(expires_at);
 ```
 
 **Note de schemă:**
@@ -371,29 +397,211 @@ CREATE VIRTUAL TABLE medical_fts USING fts5(
 - **Niciodată diagnostic.** Prompt-ul system include „Nu dai diagnostic clinic. Redirecționează spre medic specialist pentru întrebări de interpretare."
 - Mesajele se criptează la scriere, se decriptează la citire.
 
-### 6.6 Doctor share (NOU)
+### 6.6 Doctor share (NOU) — link 1h criptat E2E
 
-Flow:
-1. Din detaliu dosar: tap buton „🔗 Partajează cu medicul".
-2. Sheet cu opțiuni:
-   - **Cuprins (opțional):** toggle „Include observații recente (Timeline)", „Include documente recente", „Include rezumate AI", select interval (ultimele 3/6/12 luni / toate).
-   - Buton „Generează".
-3. App generează un **pachet share** într-un folder temporar:
-   - `dosar-medical_<nume>_<data>.pdf` — un PDF cu:
-     - Header: nume pacient + telefon + email + dată generare snapshot.
-     - Avertisment GDPR: „Acest document conține date medicale Art. 9. Tratează cu confidențialitate."
-     - Tabel observații recente (sortat pe categorie + dată), cu sparkline ASCII / SVG inline.
-     - Lista documente medicale (tip + dată + titlu + thumbnail).
-     - Rezumate AI per document (dacă există).
-     - Footer: „Snapshot generat la {data}. Pentru date actualizate, cereți pacientului un share nou."
-   - Folder `documente/` cu PDF-uri/imagini originale (analize, scrisori, bilete) — copiate, nu link-uri.
-4. App apelează **`expo-sharing.shareAsync()`** cu pachet zipped sau direct cu PDF-ul + acces multi-file.
-5. User alege canal: iCloud Drive, Google Drive, email, WhatsApp, AirDrop, Files app.
-6. App nu mai face nimic. **Tu nu vezi date.**
+**De ce nu PDF embedded:** un dosar real are 15-30 documente medicale. La 2-3MB/document (analize PDF + poze imagistică), un PDF unic ajunge la 40-80MB. Depășește limita Gmail (25MB) și e greoi pe WhatsApp. Soluția cu link funcționează la orice volum.
 
-**Privacy:** snapshot-ul e generat local și pleacă unde alege userul. Tu (developer) nu ai un server prin care trece. În privacy policy: „Funcția «Partajează cu medicul» generează un fișier local pe care utilizatorul îl distribuie folosind serviciile native ale dispozitivului (iCloud, Google Drive, email). Nu intermediem și nu stocăm acest fișier."
+#### Arhitectura
 
-**Generator PDF:** folosim `expo-print` (deja în dependențe pentru Dosar) + un template HTML generat dinamic.
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  APP (Dosar) — telefon pacient                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+       1. User tap „Partajează cu medicul"
+       2. Sheet config (interval, ce include)
+       3. App construiește bundle.zip:
+            - manifest.json (pacient + observații recente + index docs)
+            - documents/<id>.pdf|jpg (originale)
+            - thumbnails/<id>.jpg (preview-uri 200x200)
+       4. Cheie AES-256 random generată în memorie
+       5. ZIP criptat AES-256-GCM (cheie + nonce)
+       6. POST blob criptat la Worker
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  CLOUDFLARE WORKER (dosar-share-relay.<acct>.workers.dev)               │
+│  • POST /upload                                                          │
+│    - Acceptă blob ≤ 100MB                                                │
+│    - Generează UUID                                                      │
+│    - PUT în R2 cu metadata { expiresAt: now + 1h, sizeBytes }           │
+│    - Returnează { id, expiresAt }                                        │
+│  • GET /download/:id                                                     │
+│    - Verifică expiresAt                                                  │
+│    - Dacă expirat: DELETE din R2 + return 404                            │
+│    - Dacă valid: stream blob                                             │
+│  • R2 lifecycle rule: auto-delete obiecte > 24h (catch-all safeguard)   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+       7. App primește { id }
+       8. Construiește URL:
+            https://<viewer-domain>/#k=<base64-key>&n=<base64-nonce>&b=<id>
+       9. Copy în clipboard + share sheet nativ
+                                  │
+                                  ▼
+            User trimite link la doctor (SMS, WhatsApp, email)
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  DOCTOR — orice browser modern                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+       10. Tap link → deschide pagină statică (GitHub Pages)
+       11. JS citește #fragment (k, n, b) — NU pleacă la server
+       12. Fetch GET /download/:b — primește blob criptat
+       13. Web Crypto API decriptează în memorie cu k+n
+       14. JSZip extrage bundle
+       15. Render UI:
+            - Header pacient + dată snapshot + countdown „expiră în 47 min"
+            - Tab Timeline: observații cu sparkline (SVG)
+            - Tab Documente: listă cu thumbnail tap → modal PDF/imagine
+            - Footer: avertisment GDPR + buton „Cere date noi"
+                                  │
+       16. După 1h: blob șters, link → 404, viewer afișează „Link expirat"
+```
+
+#### Flow user pas cu pas (în app)
+
+1. Din ecran detaliu dosar: tap buton „🔗 Partajează cu medicul".
+2. Sheet de configurare:
+   - **Ce includ:** toggle pe „Observații recente" (default ON), „Documente originale" (default ON), „Rezumate AI" (default ON dacă există).
+   - **Interval:** select „Ultimele 3 luni / 6 luni / 12 luni / Toate" (default 6 luni).
+   - **Filtru tipuri:** checkbox per `MEDICAL_DOC_TYPES` (default toate ON).
+   - **Estimare dimensiune:** „~24 MB · 12 documente · 47 observații" (calculat live când user modifică toggle-uri).
+   - Buton „Generează link".
+3. **Progress modal:**
+   - „Pregătesc bundle... 1/4"
+   - „Comprim documente... 2/4"
+   - „Criptez... 3/4"
+   - „Trimit... 4/4 (în siguranță, criptat)"
+4. **Modal succes:**
+   - Link afișat cu copy button: `https://dosar.app/v/AbCdEf...`
+   - Mesaj: „Linkul e valabil 1 oră. După expirare, datele dispar automat. Doctorul nu are nevoie de cont sau aplicație."
+   - Buton „Copiază link" + buton „Trimite..." (deschide share sheet nativ cu textul linkului).
+   - Buton „Revoke acum" — apel `DELETE /share/:id` care șterge blob-ul imediat (panică, accident).
+5. **Istoric share-uri** (în ecran detaliu dosar, secțiune nouă): listă cu ID, dată, status (`activ` / `expirat` / `revoke`), buton revoke pe cele active.
+
+#### Bundle ZIP — structură
+
+```
+bundle.zip
+├── manifest.json          # JSON cu metadata (vezi mai jos)
+├── documents/
+│   ├── <doc-id-1>.pdf
+│   ├── <doc-id-2>.jpg
+│   └── ...
+└── thumbnails/
+    ├── <doc-id-1>.jpg     # 200x200 webp/jpg, calitate 70
+    └── ...
+```
+
+`manifest.json`:
+```json
+{
+  "version": 1,
+  "generatedAt": "2026-05-19T14:32:00Z",
+  "expiresAt": "2026-05-19T15:32:00Z",
+  "patient": {
+    "name": "Maria Pop",
+    "phone": "+40 ...",
+    "email": "maria@..."
+  },
+  "observations": [
+    {
+      "name": "HDL", "value": "62", "unit": "mg/dL",
+      "ref_min": "40", "ref_max": "80",
+      "observed_at": "2026-04-15", "category": "lipide",
+      "source_document_id": "<id>"
+    }
+  ],
+  "documents": [
+    {
+      "id": "<doc-id-1>",
+      "type": "analize_medicale",
+      "type_label": "Analize medicale",
+      "title": "Analize Synevo - profilul lipidic",
+      "issue_date": "2026-04-15",
+      "filename": "documents/<doc-id-1>.pdf",
+      "thumbnail": "thumbnails/<doc-id-1>.jpg",
+      "size_bytes": 1842340,
+      "summary": "Profil lipidic în limite normale. HDL ușor crescut..."
+    }
+  ]
+}
+```
+
+#### Criptare client-side
+
+- **Algoritm:** AES-256-GCM (același ca observations).
+- **Cheie:** 256-bit aleatoare per share, generată cu `crypto.getRandomValues`.
+- **Nonce:** 96-bit aleator per share.
+- **AAD:** `share-v1:<blob-id>` — împiedică reaplicarea blob-ului la alt ID.
+- **Encode în URL:** base64url (fără padding, URL-safe). Lungime tipică: cheie 43 chars, nonce 16 chars, blob-id ~22 chars. URL total ~120 chars — copy-paste-able.
+
+#### Cloudflare Worker — design minimal
+
+Repo layout nou: `/Users/ax/work/documents/cloud/share-relay/`
+
+```
+cloud/share-relay/
+├── package.json
+├── wrangler.toml          # config Cloudflare (account, R2 bucket binding)
+├── src/
+│   ├── index.ts           # router cu 3 endpoints
+│   └── r2.ts              # helper PUT/GET/DELETE cu metadata
+├── tests/
+│   └── index.test.ts
+└── README.md              # deploy guide pentru noi instalări
+```
+
+API:
+- `POST /upload` — body: encrypted blob (raw bytes). Returnează `{ id, expiresAt }`. Limita 100MB.
+- `GET /download/:id` — returnează blob criptat sau 404 dacă expirat.
+- `DELETE /share/:id` — șterge imediat (revoke).
+- `GET /health` — uptime check.
+
+Rate limit: max 10 upload-uri/IP/zi (anti-abuz). Stocat în Cloudflare KV (free tier suficient).
+
+#### Viewer static — design minimal
+
+Repo layout nou: `/Users/ax/work/documents/cloud/share-viewer/`
+
+```
+cloud/share-viewer/
+├── package.json
+├── vite.config.ts         # build static
+├── index.html
+├── src/
+│   ├── main.ts            # fragment parse + fetch + decrypt + render
+│   ├── ui/
+│   │   ├── header.ts
+│   │   ├── timeline.ts
+│   │   ├── sparkline.ts   # SVG inline (zero deps)
+│   │   ├── docs-list.ts
+│   │   └── doc-viewer.ts  # modal PDF/imagine
+│   ├── crypto.ts          # Web Crypto API wrapper
+│   └── styles.css
+└── README.md              # deploy guide pentru GitHub Pages
+```
+
+Dependențe minimale: `jszip` (decompresie ZIP), `pdf.js` (PDF viewer inline). Zero framework — vanilla TS. Bundle final ~150KB gzipped.
+
+Deploy: build → `dist/` → push la branch `gh-pages` în repo dedicat (sau folosește repo-ul existent `tudorabrudan.github.io` cu sub-path `/dosar-share/`).
+
+#### Domain (decizie deschisă)
+
+| Opțiune | URL viewer | URL relay | Cost | Verdict |
+|---|---|---|---|---|
+| **Default Cloudflare + GitHub** | `tudorabrudan.github.io/dosar-share/` | `dosar-share-relay.<account>.workers.dev` | $0 | ✅ MVP. workers.dev poate fi flagged de filtre email enterprise — risc mediu. |
+| **Domain propriu** | `dosar.app/v` | `dosar.app/api` | ~$10/an | ⚠️ Profesional dar opțional. Decizie la 6 luni post-launch. |
+
+**Pentru MVP: opțiunea 1.** Mutare pe domain propriu = ~1h muncă când decizi.
+
+#### Privacy & GDPR
+
+- Cloudflare R2 este **processor declarat** pentru blob-uri opace criptate E2E. Adăugăm în privacy policy: „Funcția «Partajează cu medicul» folosește Cloudflare R2 ca relay temporar (max 1 oră) pentru blob-uri criptate end-to-end. Cheia de decriptare nu părăsește dispozitivele tale — e încorporată în linkul pe care îl trimiți doctorului. Cloudflare nu poate accesa conținutul."
+- DPA Cloudflare: standard, pre-semnat la deploy (auto-acceptat la signup).
+- Tu (developer, persoană fizică) ești **controller** pentru: ID-uri blob + timestamps. NU controller pentru date medicale (criptate E2E, nu ai cheia).
+- Documentat în privacy policy: care date pleacă unde, ce reține Cloudflare, cât (max 1h + max 24h fallback).
 
 ### 6.7 App Lock medical
 
@@ -425,11 +633,12 @@ Regula globală din `app/.claude/rules/ai-privacy.md` continuă să se aplice:
 | Aspect | Implementare |
 |---|---|
 | Consent Art. 9 | Toggle global + per-dosar. Documentat în privacy policy. Înregistrat în `ai_consent_at`. |
-| Drept la ștergere | Existent — wipe dosar șterge cascade (tabele + fișiere + observații + chat). |
+| Drept la ștergere | Existent — wipe dosar șterge cascade (tabele + fișiere + observații + chat + share-uri active revocate). |
 | Drept la export | Backup ZIP local + cloud export (decriptat dacă userul are cheia). |
 | Minimizare | Numai categoriile de observații definite. Nu colectăm telemetrie. |
-| Data residency | Datele rămân pe device + în iCloud-ul userului. Nu există server propriu. |
-| DPA | Nu necesar (no third-party processor pentru date Art. 9). Pentru AI BYOK: privacy policy explică „dacă alegi un provider AI extern, datele tale medicale pleacă la acel provider conform termenilor lui — alege OpenAI/Mistral/Anthropic responsabil". |
+| Data residency | Datele medicale rămân pe device + în iCloud-ul userului. Blob-urile share criptate E2E stau temporar (max 1h) în Cloudflare R2 — opace pentru Cloudflare. |
+| Processor declarat | **Cloudflare** pentru relay temporar de blob-uri criptate E2E (share doctor). DPA Cloudflare e standard, pre-semnat la signup. AI provider BYOK (OpenAI/Mistral/Anthropic) e processor pentru utilizatorii care optează — declarat în privacy policy. |
+| Zero-knowledge față de processor | Cheia AES pentru share nu părăsește dispozitivul pacientului decât prin URL fragment trimis direct la doctor. Cloudflare nu poate decripta. |
 
 ### 7.4 Backup cloud — cheia AES medicală
 
@@ -458,7 +667,9 @@ Regula globală din `app/.claude/rules/ai-privacy.md` continuă să se aplice:
 | `components/medical/*` | `components/medical/*` | Copy folder întreg (timeline, sparkline, chat bubble). Verifică că folosesc `useColorScheme` din `@/components/useColorScheme`. |
 | `app/(tabs)/entitati/medical/[id].tsx` | `app/(tabs)/entitati/medical/[id].tsx` | Copy + adaptare la routing-ul Dosar. |
 | `types/index.ts` (porțiunea medicală) | merge în Dosar `types/index.ts` | Adăugare incrementală, nu replace. |
-| Generator PDF doctor share | `services/medicalShare.ts` | **NOU, nu există în DosarMedical.** Scris from scratch cu `expo-print`. |
+| Doctor share (bundle ZIP + criptare E2E + upload R2) | `services/medicalShare.ts` + `services/medicalShareHistory.ts` | **NOU, nu există în DosarMedical.** Scris from scratch cu `jszip` (RN), `@noble/ciphers` (criptare). |
+| Cloudflare Worker relay | `cloud/share-relay/` | **NOU.** Wrangler + TypeScript, R2 + KV. Vezi §4.2b. |
+| Viewer static | `cloud/share-viewer/` | **NOU.** Vite + vanilla TS + JSZip + PDF.js. Vezi §4.2b. |
 
 **Verificare critică:** după copiere, rulează:
 - `npm run type-check`
@@ -471,22 +682,26 @@ Regula globală din `app/.claude/rules/ai-privacy.md` continuă să se aplice:
 
 | Faza | Conținut | Durată | Output |
 |---|---|---|---|
-| **F1: Tipuri + schemă** | Adaugă `medical_record` în `EntityType`, cele 6 tipuri în `DocumentType`, migrare SQLite cu 5 tabele + FTS5. Audit scripts updatate. | 3-4 zile | `npm run audit` verde. App pornește, nimic vizibil nou. |
+| **F1: Tipuri + schemă** | Adaugă `medical_record` în `EntityType`, cele 6 tipuri în `DocumentType`, migrare SQLite cu 6 tabele (incl. `medical_shares`) + FTS5. Audit scripts updatate. | 3-4 zile | `npm run audit` verde. App pornește, nimic vizibil nou. |
 | **F2: Servicii medicale copiate** | Copy servicii din DosarMedical în Dosar, ajustare imports, type-check verde. | 3-4 zile | Servicii există dar neapelate din UI. |
 | **F3: Hook-uri + componente** | Hooks + components/medical copiate și ajustate. | 2-3 zile | Pieces disponibile dar nu wired. |
 | **F4: Ecran detaliu dosar** | `entitati/medical/[id].tsx` cu 3 tab-uri. Tab Timeline + Documente funcționale. Tab Chat schele. | 5-7 zile | User poate crea dosar, adăuga document, vedea observații extrase. |
 | **F5: Chat AI** | Wire `medicalChat.ts` + UI complet în tab Chat. Citații, threads. | 4-5 zile | Chat funcțional cu retrieval hibrid. |
 | **F6: Onboarding + Setări** | Pas onboarding opțional. Toggle consent global. Toggle backup cheie. App Lock medical. | 2-3 zile | Userul nou poate face flow complet. |
 | **F7: Backup + cloud sync extins** | `backup.ts` și `cloudSync.ts` includ tabelele medicale. Audit scripts. | 2-3 zile | Backup local + iCloud funcționează cross-device (same user, Apple-only). |
-| **F8: Doctor share** | `medicalShare.ts` cu generator PDF + share sheet. UI buton. Testare share către Files, email, WhatsApp. | 4-5 zile | User poate share complet la doctor. |
-| **F9: Polish + testare** | App Store screenshots, App Privacy labels, privacy policy update, smoke test end-to-end pe device fizic. | 5-7 zile | Build ready pentru TestFlight. |
+| **F8a: Cloudflare Worker relay** | Crează `cloud/share-relay/` cu wrangler, R2 bucket, KV namespace pentru rate-limit. Worker cu 4 endpoints. Teste unit. Deploy pe `<name>.workers.dev`. | 2-3 zile | Endpoint live, accept upload/download de blob criptat. |
+| **F8b: Viewer static** | Crează `cloud/share-viewer/` cu Vite + vanilla TS. Render Timeline + Documente + countdown TTL. Deploy pe GitHub Pages sub-path. | 4-5 zile | Pagină live; manual test cu blob de test funcționează în Safari + Chrome + browser mobil. |
+| **F8c: App integration share** | `services/medicalShare.ts` (bundle ZIP + criptare + upload). `services/medicalShareHistory.ts` (DB tabel + revoke). UI: buton + sheet config + progress + modal succes + ecran istoric share-uri. | 3-4 zile | User poate genera link funcțional, copiază, trimite la doctor; doctor deschide în browser, vede tot. Revoke + expiry funcționează. |
+| **F9: Polish + testare** | App Store screenshots, App Privacy labels, privacy policy update (incl. Cloudflare processor), smoke test end-to-end pe device fizic. | 5-7 zile | Build ready pentru TestFlight. |
 
-**Total estimat:** 30-41 zile lucrătoare ≈ **6-10 săptămâni part-time** (10-15h/săptămână).
+**Total estimat:** 35-48 zile lucrătoare ≈ **7-12 săptămâni part-time** (10-15h/săptămână).
 
 **Dependențe critice:**
 - F2 depinde de F1 (DB trebuie să existe).
 - F4 depinde de F2 + F3.
-- F8 e independent de F5 (poate paraleliza cu F6/F7).
+- F8a / F8b se pot paraleliza (Worker independent de viewer).
+- F8c depinde de F8a + F8b (app trebuie să știe URL-uri reale).
+- F8 (cluster) e independent de F5 — poate rula în paralel cu F5/F6/F7.
 - F9 e ultimul, depinde de tot.
 
 ---
@@ -499,7 +714,7 @@ Un task e considerat done când:
 - [ ] Pe device fizic iOS: user creează dosar medical, scanează 3 analize, vede observații extrase în Timeline cu sparkline.
 - [ ] Chat AI răspunde la întrebare „Cum a evoluat HDL-ul meu?" cu citații `OBS:...`.
 - [ ] Restore dintr-un backup pe device nou: dacă userul are cheia inclusă în backup + parola cloud, vede observațiile decriptate. Dacă nu, vede badge „date criptate, cheia lipsește".
-- [ ] Buton „Partajează cu medicul" generează PDF + atașamente, deschide share sheet, userul poate trimite cu success spre AirDrop și email.
+- [ ] Buton „Partajează cu medicul": user generează un link, îl trimite prin WhatsApp către alt device (simulator de doctor), doctor-ul deschide în browser și vede Timeline + documente decriptate. Revoke manual din app → linkul devine 404 imediat. După 1h fără revoke → expiră natural.
 - [ ] App Lock medical declanșează la intrare după 5 min inactivitate.
 - [ ] Privacy policy în Setări → Despre actualizată cu mențiuni Art. 9 + doctor share.
 - [ ] App Privacy labels în App Store Connect actualizate (Health Data → Yes, Used for app functionality, Not linked to user, Not used for tracking).
@@ -517,14 +732,21 @@ Un task e considerat done când:
 | Migrare SQLite eșuează pe device-uri existente Dosar | Migrarea e ALTER + CREATE doar (nu rename / drop). În try-catch per statement. Versionare standard. |
 | Calitate extracție LLM scade după update model | Confidence threshold (0.5/0.7) plus banner „revizuiește" pentru observații suspecte. Test corpus în `__tests__/medical/`. |
 | User pierde Keychain → date pierdute | Toggle „include cheie în backup cloud" explicat clar. Default OFF. Userul informat explicit la creare primul dosar. |
-| PDF generat e prea mare pentru email / WhatsApp | Comprimare imagini la 1600px max. Opțiune „doar observații, fără atașamente" în share sheet. |
+| Bundle share prea mare pentru free tier R2 | Limită hard 100MB per share (validată în Worker). Comprimare imagini la 1600px max + JPEG q70 pentru thumbnails. Cap 50 documente per share. La depășire: error clar „Prea multe documente, restrânge intervalul". |
 | Confuzia entitate: o persoană are deja documente medicale legate direct la `person` (din versiuni anterioare Dosar dinaintea split-ului) | Migrare 1: găsește persoanele cu documente medicale orfane (tip medical, fără `medical_record` asociat), oferă wizard „Crează dosar medical pentru X persoane". |
+| **Cloudflare free tier depășit la creștere user base** | Free tier permite ~500 useri activi/lună (calculat: 5 share-uri × 500 useri × 30MB blob = 75GB R2 lunar peak, dar cu TTL 1h storage instantaneu rămâne sub 10GB). Trigger upgrade la primul depășit: Workers Paid ($5/lună fix) + R2 standard ($0.015/GB după 10GB). La 5000 useri activi estimăm $10-15/lună. Monitoring lunar din dashboard Cloudflare. |
+| **`workers.dev` URL flagged ca suspect** de filtre email enterprise (Outlook, Gmail Workspace) | Pentru MVP acceptabil (target = utilizatori personali). Plan B: domain propriu `dosar.app` (~$10/an) cu CNAME la Worker — 1h muncă, opțional. |
+| **Doctor cu browser foarte vechi nu poate decripta** (Web Crypto API necesar) | Web Crypto e suportat în orice browser ≥ 2017 (Safari 11+, Chrome 37+, Firefox 34+, Edge 12+). Pentru cazuri marginale: viewer afișează mesaj clar „Browser-ul tău nu suportă criptarea modernă. Folosește Chrome/Safari/Firefox recent." |
+| **Pierderea cheii Cloudflare R2** | Cheia stă doar local pe dispozitivul pacientului per share (random per share). Nu există „cheia ta principală pe Cloudflare" — nu există ce să pierzi. Worker-ul foloseste credentials Cloudflare automat; dacă userul (developer) pierde contul, toate share-urile active se sting (max 1h impact). |
+| **Worker downtime** (Cloudflare incident) | App detectează POST eșuat → afișează „Serviciul de share temporar indisponibil. Încearcă din nou peste câteva minute." Bundle local nu e șters până la confirmare upload. Cloudflare uptime istoric > 99.99% — risc nesemnificativ. |
 
 ### 11.2 Non-decizii (de discutat la review)
 
 - **Locație ecran detaliu dosar:** `entitati/medical/[id].tsx` vs `entitati/[entityType]/[id].tsx` generic. Recomandare: dedicat (`medical/[id].tsx`) — Timeline + Chat sunt prea specifice pentru un detaliu generic.
 - **Pas onboarding default ON sau OFF:** dacă pas e default ON, userii non-medical vor da skip. Dacă e OFF (link discreet), unii nu vor descoperi. Recomandare: ON, dar cu opțiune „skip" foarte vizibilă.
 - **Limit observații per dosar:** rezonabil la 10.000? Sau infinit cu paginare? Recomandare: infinit, cu FTS5 ca să nu degradeze. Sparkline limitat la ultimele 20 valori per grup.
+- **Specialități medicale (cardiologie, ATI, neurologie, etc.) ca taxonomie:** NU pentru MVP. Cele 10 `OBSERVATION_CATEGORIES` (lipide, hepatice, tiroidiene, etc.) acoperă filtrarea reală pe valori medicale. Specialitățile se suprapun și ar forța userul să taggheze fiecare document — adoption rate prevăzut < 20%. Dacă în faza 2 apare cerere clară: tag-uri free-form (`tags?: string[]` pe `Document`), nu enum rigid.
+- **TTL share — fix 1h sau configurabil?** Recomandare: fix 1h pentru MVP. Configurabil (1h / 6h / 24h) în faza 2 dacă apare cerere. Auto-revoke după prima vizualizare = neimplementat (browserul poate refresh; nu detectăm „prima" vizualizare clean).
 
 ---
 
