@@ -108,6 +108,8 @@ const ENTRIES = {
     'entitati/fuel-stats': { required: true, keywords: ['statistici', 'carburant'] },
     'entitati/wizard-masina': { required: true, keywords: ['mașină', 'wizard'] },
     'entitati/wizard-proprietate': { required: true, keywords: ['proprietate'] },
+    'entitati/medical/[id]/index': { required: false },
+    'entitati/medical/[id]/review': { required: false },
 
     _layout: { required: false },
     'documente/_layout': { required: false },

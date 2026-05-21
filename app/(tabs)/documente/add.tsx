@@ -41,6 +41,7 @@ import {
   ENTITY_DOCUMENT_TYPES,
   ALL_ENTITY_TYPES,
   NO_EXPIRY_DOC_TYPES,
+  MEDICAL_DOC_TYPES,
 } from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
@@ -107,6 +108,8 @@ export default function AddDocumentScreen() {
     card_id?: string;
     animal_id?: string;
     company_id?: string;
+    medical_record_id?: string;
+    restrict_to?: string;
     type?: string;
     entityType?: string;
   }>();
@@ -118,9 +121,12 @@ export default function AddDocumentScreen() {
   const { visibleEntityTypes } = useVisibilitySettings();
   const { autoActivatedType, setAutoActivatedType, activateIfNeeded } = useAutoActivateDocType();
 
-  const [type, setType] = useState<DocumentType>((params.type as DocumentType) || 'altul');
+  const [type, setType] = useState<DocumentType>(
+    (params.type as DocumentType) ||
+      (params.restrict_to === 'medical' ? 'analize_medicale' : 'altul')
+  );
   // Marker: utilizatorul a fixat manual tipul (din params sau din picker).
-  const userManuallySetTypeRef = useRef<boolean>(Boolean(params.type));
+  const userManuallySetTypeRef = useRef<boolean>(Boolean(params.type) || params.restrict_to === 'medical');
   const [classifySheetVisible, setClassifySheetVisible] = useState(false);
   const [classifySheetTop3, setClassifySheetTop3] = useState<ClassifyCandidate[]>([]);
   const classifyResolverRef = useRef<((type: DocumentType | null) => void) | null>(null);
@@ -198,8 +204,16 @@ export default function AddDocumentScreen() {
   // Override entitate-aware: dacă există entități atașate, picker-ul afișează
   // tipurile relevante (ENTITY_DOCUMENT_TYPES[entity]) indiferent de setări;
   // altfel, comportament clasic filtrat pe setări.
-  const { visibleDocTypes: contextVisibleDocTypes } = useFilteredDocTypes(
+  const { visibleDocTypes: _baseVisibleDocTypes } = useFilteredDocTypes(
     attachedEntityTypes.length > 0 ? { entityTypes: attachedEntityTypes } : undefined
+  );
+  // Când restrict_to='medical', limitează picker-ul exclusiv la MEDICAL_DOC_TYPES.
+  const contextVisibleDocTypes = useMemo<DocumentType[]>(
+    () =>
+      params.restrict_to === 'medical'
+        ? _baseVisibleDocTypes.filter(t => (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(t))
+        : _baseVisibleDocTypes,
+    [params.restrict_to, _baseVisibleDocTypes]
   );
 
   // Auto-comută tab-ul picker-ului pe primul tip de entitate legat, dacă tab-ul
@@ -219,7 +233,8 @@ export default function AddDocumentScreen() {
   const cardId = params.card_id;
   const animalId = params.animal_id;
   const companyId = params.company_id;
-  const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId || companyId);
+  const medicalRecordId = params.medical_record_id;
+  const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId || companyId || medicalRecordId);
 
   useEffect(() => {
     if (entityLinks.length === 0) {

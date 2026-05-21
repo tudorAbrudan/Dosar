@@ -23,9 +23,9 @@ import { DraggableEntityList } from '@/components/DraggableEntityList';
 import { EntityListCard } from '@/components/entity/EntityListCard';
 import { VehiclePhotoCard } from '@/components/entity/VehiclePhotoCard';
 import type { EntityRef } from '@/services/entityOrder';
-import type { EntityType, Person, Property, Vehicle, Card, Animal, Company } from '@/types';
+import type { EntityType, Person, Property, Vehicle, Card, Animal, Company, MedicalRecord } from '@/types';
 
-type AnyEntity = Person | Property | Vehicle | Card | Animal | Company;
+type AnyEntity = Person | Property | Vehicle | Card | Animal | Company | MedicalRecord;
 type EntityTab = EntityType | 'all';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 type TypedEntity = { item: AnyEntity; entityType: EntityType };
@@ -41,6 +41,7 @@ const ALL_TABS: { key: EntityTab; label: string; icon: IoniconName }[] = [
   { key: 'card', label: 'Carduri', icon: 'card-outline' },
   { key: 'animal', label: 'Animale', icon: 'paw-outline' },
   { key: 'company', label: 'Firme', icon: 'business-outline' },
+  { key: 'medical_record', label: 'Dosare medicale', icon: 'medkit-outline' },
 ];
 
 // check-hardcoded-entities-disable-next-cluster
@@ -95,6 +96,7 @@ export default function EntitatiListScreen() {
     cards,
     animals,
     companies,
+    medicalRecords,
     globalOrderMap,
     loading,
     error,
@@ -129,6 +131,7 @@ export default function EntitatiListScreen() {
       ...cards.map(e => ({ item: e as AnyEntity, entityType: 'card' as EntityType })),
       ...animals.map(e => ({ item: e as AnyEntity, entityType: 'animal' as EntityType })),
       ...companies.map(e => ({ item: e as AnyEntity, entityType: 'company' as EntityType })),
+      ...medicalRecords.map(e => ({ item: e as AnyEntity, entityType: 'medical_record' as EntityType })),
     ];
     return combined.sort((a, b) => {
       const sa = globalOrderMap.get(`${a.entityType}:${a.item.id}`);
@@ -138,7 +141,7 @@ export default function EntitatiListScreen() {
       if (sb !== undefined) return 1;
       return TYPE_RANK[a.entityType] - TYPE_RANK[b.entityType];
     });
-  }, [persons, properties, vehicles, cards, animals, companies, globalOrderMap]);
+  }, [persons, properties, vehicles, cards, animals, companies, medicalRecords, globalOrderMap]);
 
   const rawTyped: TypedEntity[] = useMemo(
     () => (tab === 'all' ? allTyped : allTyped.filter(e => e.entityType === tab)),
@@ -186,7 +189,9 @@ export default function EntitatiListScreen() {
               ? 'animale'
               : tab === 'company'
                 ? 'firme'
-                : 'carduri'
+                : tab === 'medical_record'
+                  ? 'dosare medicale'
+                  : 'carduri'
   }`;
 
   const emptyIconName: IoniconName =
@@ -226,6 +231,14 @@ export default function EntitatiListScreen() {
     const { item, entityType } = typed;
     const vehiclePhoto = entityType === 'vehicle' ? (item as Vehicle).photo_uri : undefined;
 
+    const handleEntityPress = () => {
+      if (entityType === 'medical_record') {
+        router.push(`/(tabs)/entitati/medical/${item.id}`);
+      } else {
+        router.push(`/(tabs)/entitati/${item.id}`);
+      }
+    };
+
     if (vehiclePhoto) {
       const v = item as Vehicle;
       return (
@@ -234,7 +247,7 @@ export default function EntitatiListScreen() {
           name={v.name}
           plateNumber={v.plate_number}
           isActive={info.isActive}
-          onPress={() => router.push(`/(tabs)/entitati/${item.id}`)}
+          onPress={handleEntityPress}
           onLongPress={info.onLongPress}
         />
       );
@@ -249,7 +262,7 @@ export default function EntitatiListScreen() {
         iconColor={ENTITY_ICON_COLOR[entityType]}
         scheme={scheme}
         isActive={info.isActive}
-        onPress={() => router.push(`/(tabs)/entitati/${item.id}`)}
+        onPress={handleEntityPress}
         onLongPress={info.onLongPress}
       />
     );
