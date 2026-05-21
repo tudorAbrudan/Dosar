@@ -16,7 +16,7 @@ import { db, generateId } from './db';
 import { ensureMedicalMasterKey, MEDICAL_MASTER_KEY_REF } from './medicalCrypto';
 import { assignNextOrder, removeOrder } from './entityOrder';
 import { emit } from './events';
-import type { MedicalRecord } from '@/types';
+import type { MedicalRecord, Person } from '@/types';
 
 const MEDICAL_DOC_TYPES_SQL = `(
   'analize_medicale','reteta_medicala','scrisoare_medicala',
@@ -231,4 +231,19 @@ export async function hasActiveAiConsent(id: string): Promise<boolean> {
     [id]
   );
   return row?.ai_consent_at != null;
+}
+
+/**
+ * Persoane care au documente medicale (tip ∈ MEDICAL_DOC_TYPES) atașate
+ * direct prin person_id legacy, fără medical_record asociat. Folosit pentru
+ * banner-ul „Migrează la dosar medical" din Home (vezi MigrateOrphansWizard).
+ */
+export async function findPersonsWithOrphanMedicalDocs(): Promise<Person[]> {
+  return db.getAllAsync<Person>(`
+    SELECT DISTINCT p.* FROM persons p
+    JOIN documents d ON d.person_id = p.id
+    WHERE d.type IN ${MEDICAL_DOC_TYPES_SQL}
+      AND NOT EXISTS (SELECT 1 FROM medical_record m WHERE m.person_id = p.id)
+    ORDER BY p.name COLLATE NOCASE ASC
+  `);
 }
