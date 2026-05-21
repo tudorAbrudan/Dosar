@@ -126,7 +126,8 @@ export type ObservationCategory =
   | 'urinare'
   | 'microbiologie'
   | 'imunologie'
-  | 'biochimie';
+  | 'biochimie'
+  | 'altele';
 
 export const OBSERVATION_CATEGORIES: ObservationCategory[] = [
   'lipide',
@@ -139,6 +140,7 @@ export const OBSERVATION_CATEGORIES: ObservationCategory[] = [
   'microbiologie',
   'imunologie',
   'biochimie',
+  'altele',
 ];
 
 export const OBSERVATION_CATEGORY_LABELS: Record<ObservationCategory, string> = {
@@ -152,6 +154,7 @@ export const OBSERVATION_CATEGORY_LABELS: Record<ObservationCategory, string> = 
   microbiologie: 'Microbiologie',
   imunologie: 'Imunologie',
   biochimie: 'Biochimie',
+  altele: 'Altele',
 };
 
 export interface MedicalObservation {
@@ -167,7 +170,10 @@ export interface MedicalObservation {
   category: ObservationCategory;
   confidence: number;
   needs_review: boolean;
+  /** true dacă userul a editat manual valoarea după extracție AI. */
+  user_corrected: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface MedicalChatThread {
@@ -184,12 +190,23 @@ export interface Citation {
   doc_type?: DocumentType;
 }
 
+/** Tip rol mesaj chat medical. */
+export type MedicalChatRole = 'user' | 'assistant';
+
+/**
+ * Citație în răspunsul asistentului medical.
+ * Formatul din conținut: [OBS:id] sau [DOC:label|id].
+ */
+export type MedicalChatCitation =
+  | { type: 'observation'; id: string }
+  | { type: 'document'; id: string; label: string };
+
 export interface MedicalChatMessage {
   id: string;
   thread_id: string;
-  role: 'user' | 'assistant';
+  role: MedicalChatRole;
   content: string;          // decriptat
-  citations: Citation[];
+  citations: MedicalChatCitation[];
   created_at: string;
 }
 

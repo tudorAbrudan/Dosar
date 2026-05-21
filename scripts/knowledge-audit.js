@@ -81,6 +81,12 @@ const ENTRIES = {
     // Medical services — copiate în F2 din DosarMedical; appKnowledge actualizat la Task 29.
     medicalCrypto: { required: false },
     medicalRecord: { required: false },
+    medicalObservations: { required: false },
+    medicalFts: { required: false },
+    medicalQueryAnalysis: { required: false },
+    medicalExtractor: { required: false },
+    medicalChat: { required: false },
+    medicalChatThreads: { required: false },
     ocrAutoRotate: { required: false },
     ocrExtractors: { required: false },
     ocrLayout: { required: false },
