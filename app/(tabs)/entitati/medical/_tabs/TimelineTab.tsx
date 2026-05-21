@@ -28,6 +28,7 @@ const CATEGORY_LABELS: Record<ObservationCategory, string> = {
   urinare: 'Urinare',
   microbiologie: 'Microbiologie',
   imunologie: 'Imunologie',
+  biometric: 'Biometric',
   altele: 'Altele',
 };
 

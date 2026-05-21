@@ -20,6 +20,7 @@ import { extractText, extractCardInfo } from '@/services/ocr';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { ALL_ENTITY_TYPES, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
+import { CreateMedicalRecordModal } from '@/components/medical/CreateMedicalRecordModal';
 
 export default function AddEntityScreen() {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -57,6 +58,7 @@ export default function AddEntityScreen() {
   const [regCom, setRegCom] = useState('');
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [medicalModalVisible, setMedicalModalVisible] = useState(false);
 
   async function scanCard() {
     let uri: string;
@@ -155,12 +157,30 @@ export default function AddEntityScreen() {
             <Pressable
               key={key}
               style={({ pressed }) => [styles.typeButton, pressed && styles.buttonPressed]}
-              onPress={() => setChosenType(key)}
+              onPress={() => {
+                if (key === 'medical_record') {
+                  setMedicalModalVisible(true);
+                } else {
+                  setChosenType(key);
+                }
+              }}
             >
               <Text style={styles.typeButtonText}>{label}</Text>
             </Pressable>
           ))}
         </ScrollView>
+        <CreateMedicalRecordModal
+          visible={medicalModalVisible}
+          onClose={() => {
+            setMedicalModalVisible(false);
+            if (router.canGoBack()) router.back();
+            else router.replace('/(tabs)/entitati');
+          }}
+          onCreated={id => {
+            setMedicalModalVisible(false);
+            router.replace(`/(tabs)/entitati/medical/${id}`);
+          }}
+        />
       </View>
     );
   }

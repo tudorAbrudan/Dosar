@@ -796,13 +796,19 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     try {
       await db.runAsync(
         `INSERT OR REPLACE INTO medical_record
-          (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref,
+           blood_group, allergies, emergency_contact_name, emergency_contact_phone,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           r.id as string, r.person_id as string, r.name as string,
           (r.ai_consent_at as string | null) ?? null,
           ((r.ai_consent_version as number | null) ?? 1),
           r.encryption_key_ref as string,
+          (r.blood_group as string | null) ?? null,
+          (r.allergies as string | null) ?? null,
+          (r.emergency_contact_name as string | null) ?? null,
+          (r.emergency_contact_phone as string | null) ?? null,
           r.created_at as string, r.updated_at as string,
         ]
       );

@@ -112,6 +112,10 @@ export interface MedicalRecord {
   ai_consent_at: string | null;
   ai_consent_version: number;
   encryption_key_ref: string; // ex: 'v1'
+  blood_group?: string;
+  allergies?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
   created_at: string;
   updated_at: string;
 }
@@ -127,6 +131,9 @@ export type ObservationCategory =
   | 'microbiologie'
   | 'imunologie'
   | 'biochimie'
+  // Valori biometrice (greutate/kg, înălțime/cm etc.) — tracked as observations
+  // over time for the Timeline sparkline UX, not as static fields on medical_record.
+  | 'biometric'
   | 'altele';
 
 export const OBSERVATION_CATEGORIES: ObservationCategory[] = [
@@ -140,6 +147,7 @@ export const OBSERVATION_CATEGORIES: ObservationCategory[] = [
   'microbiologie',
   'imunologie',
   'biochimie',
+  'biometric',
   'altele',
 ];
 
@@ -154,6 +162,7 @@ export const OBSERVATION_CATEGORY_LABELS: Record<ObservationCategory, string> = 
   microbiologie: 'Microbiologie',
   imunologie: 'Imunologie',
   biochimie: 'Biochimie',
+  biometric: 'Biometric',
   altele: 'Altele',
 };
 

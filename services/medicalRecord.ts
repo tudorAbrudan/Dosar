@@ -33,6 +33,10 @@ interface MedicalRecordRow {
   ai_consent_at: string | null;
   ai_consent_version: number | null;
   encryption_key_ref: string;
+  blood_group: string | null;
+  allergies: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +49,10 @@ function rowToRecord(r: MedicalRecordRow): MedicalRecord {
     ai_consent_at: r.ai_consent_at,
     ai_consent_version: r.ai_consent_version ?? 1,
     encryption_key_ref: r.encryption_key_ref,
+    blood_group: r.blood_group ?? undefined,
+    allergies: r.allergies ?? undefined,
+    emergency_contact_name: r.emergency_contact_name ?? undefined,
+    emergency_contact_phone: r.emergency_contact_phone ?? undefined,
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -53,6 +61,10 @@ function rowToRecord(r: MedicalRecordRow): MedicalRecord {
 export interface CreateMedicalRecordInput {
   person_id: string;
   name: string;
+  blood_group?: string;
+  allergies?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
 }
 
 export async function createMedicalRecord(input: CreateMedicalRecordInput): Promise<MedicalRecord> {
@@ -61,9 +73,18 @@ export async function createMedicalRecord(input: CreateMedicalRecordInput): Prom
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO medical_record
-       (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, 1, ?, ?, ?)`,
-    [id, input.person_id, input.name, MEDICAL_MASTER_KEY_REF, now, now]
+       (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref,
+        blood_group, allergies, emergency_contact_name, emergency_contact_phone,
+        created_at, updated_at)
+     VALUES (?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, input.person_id, input.name, MEDICAL_MASTER_KEY_REF,
+      input.blood_group ?? null,
+      input.allergies ?? null,
+      input.emergency_contact_name ?? null,
+      input.emergency_contact_phone ?? null,
+      now, now,
+    ]
   );
   await assignNextOrder('medical_record', id);
   emit('entities:changed');
@@ -110,6 +131,10 @@ export async function listMedicalRecords(): Promise<MedicalRecord[]> {
 export interface UpdateMedicalRecordInput {
   name?: string;
   person_id?: string;
+  blood_group?: string | null;
+  allergies?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
 }
 
 export async function updateMedicalRecord(
@@ -117,7 +142,7 @@ export async function updateMedicalRecord(
   patch: UpdateMedicalRecordInput
 ): Promise<void> {
   const sets: string[] = [];
-  const values: (string | null)[] = [];
+  const values: (string | number | null)[] = [];
   if (patch.name !== undefined) {
     sets.push('name = ?');
     values.push(patch.name);
@@ -125,6 +150,22 @@ export async function updateMedicalRecord(
   if (patch.person_id !== undefined) {
     sets.push('person_id = ?');
     values.push(patch.person_id);
+  }
+  if (patch.blood_group !== undefined) {
+    sets.push('blood_group = ?');
+    values.push(patch.blood_group ?? null);
+  }
+  if (patch.allergies !== undefined) {
+    sets.push('allergies = ?');
+    values.push(patch.allergies ?? null);
+  }
+  if (patch.emergency_contact_name !== undefined) {
+    sets.push('emergency_contact_name = ?');
+    values.push(patch.emergency_contact_name ?? null);
+  }
+  if (patch.emergency_contact_phone !== undefined) {
+    sets.push('emergency_contact_phone = ?');
+    values.push(patch.emergency_contact_phone ?? null);
   }
   if (sets.length === 0) return;
   const now = new Date().toISOString();

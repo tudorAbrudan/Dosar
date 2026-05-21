@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, TextInput, StyleSheet, Switch, Alert, Pressable, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
 import { FormSheetModal } from '@/components/ui/FormSheetModal';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -32,12 +33,22 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
   const [saving, setSaving] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [showMedicalInfo, setShowMedicalInfo] = useState(false);
+  const [bloodGroup, setBloodGroup] = useState('');
+  const [allergies, setAllergies] = useState('');
+  const [emergencyContactName, setEmergencyContactName] = useState('');
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
 
   useEffect(() => {
     if (!visible) return;
     setSelectedPerson(null);
     setDosarName('');
     setAiToggle(false);
+    setShowMedicalInfo(false);
+    setBloodGroup('');
+    setAllergies('');
+    setEmergencyContactName('');
+    setEmergencyContactPhone('');
   }, [visible]);
 
   const canSave = selectedPerson !== null && dosarName.trim().length > 0;
@@ -59,6 +70,10 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
       const rec = await createMedicalRecord({
         person_id: selectedPerson.id,
         name: dosarName.trim(),
+        blood_group: bloodGroup.trim() || undefined,
+        allergies: allergies.trim() || undefined,
+        emergency_contact_name: emergencyContactName.trim() || undefined,
+        emergency_contact_phone: emergencyContactPhone.trim() || undefined,
       });
       if (aiToggle) {
         setPendingId(rec.id);
@@ -181,6 +196,74 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
             thumbColor={onPrimary}
           />
         </View>
+
+        {/* Secțiune colapsibilă: informații medicale */}
+        <Pressable
+          onPress={() => setShowMedicalInfo(v => !v)}
+          style={[styles.collapsibleHeader, { borderTopColor: palette.border }]}
+        >
+          <Text style={[styles.collapsibleTitle, { color: palette.text }]}>
+            Informații medicale (opțional)
+          </Text>
+          <Ionicons
+            name={showMedicalInfo ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={palette.textSecondary}
+          />
+        </Pressable>
+        {showMedicalInfo && (
+          <View style={{ gap: 12, paddingBottom: 12 }}>
+            {/* Grupa sanguină */}
+            <View>
+              <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
+                Grupa sanguină
+              </Text>
+              <TextInput
+                value={bloodGroup}
+                onChangeText={setBloodGroup}
+                placeholder="ex. A pozitiv, 0 negativ"
+                placeholderTextColor={palette.textSecondary}
+                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+              />
+            </View>
+            {/* Alergii */}
+            <View>
+              <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
+                Alergii cunoscute
+              </Text>
+              <TextInput
+                value={allergies}
+                onChangeText={setAllergies}
+                placeholder="ex. penicilină, fragi, polen"
+                placeholderTextColor={palette.textSecondary}
+                multiline
+                numberOfLines={2}
+                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, minHeight: 60 }]}
+              />
+            </View>
+            {/* Contact urgență */}
+            <View>
+              <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
+                Contact urgență (opțional)
+              </Text>
+              <TextInput
+                value={emergencyContactName}
+                onChangeText={setEmergencyContactName}
+                placeholder="Nume"
+                placeholderTextColor={palette.textSecondary}
+                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8 }]}
+              />
+              <TextInput
+                value={emergencyContactPhone}
+                onChangeText={setEmergencyContactPhone}
+                placeholder="Telefon"
+                placeholderTextColor={palette.textSecondary}
+                keyboardType="phone-pad"
+                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+              />
+            </View>
+          </View>
+        )}
       </FormSheetModal>
 
       <MedicalConsentModal
@@ -195,6 +278,15 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
 const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '600', marginTop: 4, marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16 },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 8,
+  },
+  collapsibleTitle: { fontSize: 16, fontWeight: '600' },
   emptyBox: {
     borderWidth: 1,
     borderRadius: 10,

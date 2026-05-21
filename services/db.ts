@@ -203,6 +203,10 @@ try {
       ai_consent_at TEXT,
       ai_consent_version INTEGER DEFAULT 1,
       encryption_key_ref TEXT NOT NULL,
+      blood_group TEXT,
+      allergies TEXT,
+      emergency_contact_name TEXT,
+      emergency_contact_phone TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
