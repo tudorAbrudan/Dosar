@@ -573,6 +573,12 @@ export const NO_EXPIRY_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentTy
   'diploma',
   'foaie_matricola',
   'certificat_absolvire',
+  // Medical — snapshot-uri punctuale; nu expiră formal. (Rețetele și vaccinurile
+  // au valabilitate / next-dose-due → rămân în afara setului.)
+  'analize_medicale',
+  'scrisoare_medicala',
+  'bilet_externare',
+  'imagistica',
   // Bonuri și vizite — evenimente trecute, fără expirare
   'bon_cumparaturi',
   'bon_parcare',
