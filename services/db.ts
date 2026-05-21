@@ -208,6 +208,8 @@ try {
     );
     CREATE INDEX IF NOT EXISTS idx_medrec_person ON medical_record(person_id);
 
+    -- user_corrected: distinguishes AI-extracted observations from manually-edited ones (Timeline UX)
+    -- updated_at: hygiene for future cloud sync conflict resolution; both are plaintext metadata, no PII
     CREATE TABLE IF NOT EXISTS medical_observations (
       id TEXT PRIMARY KEY,
       medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
@@ -221,7 +223,9 @@ try {
       category TEXT NOT NULL,
       confidence REAL NOT NULL,
       needs_review INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
+      user_corrected INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_medobs_record ON medical_observations(medical_record_id);
     CREATE INDEX IF NOT EXISTS idx_medobs_observed_at ON medical_observations(observed_at);
