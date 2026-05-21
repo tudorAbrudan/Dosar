@@ -7,20 +7,24 @@ import { SectionCard } from './SectionCard';
 
 interface SecuritateSectionProps {
   appLockEnabled: boolean;
+  medicalAppLockEnabled: boolean;
   scheme: 'light' | 'dark';
   onToggle: (value: boolean) => void;
+  onToggleMedicalLock: (value: boolean) => void;
 }
 
 export function SecuritateSection({
   appLockEnabled,
+  medicalAppLockEnabled,
   scheme,
   onToggle,
+  onToggleMedicalLock,
 }: SecuritateSectionProps) {
   const C = Colors[scheme];
   return (
     <>
       <SectionCard title="Securitate" scheme={scheme}>
-        <View style={styles.rowLast}>
+        <View style={styles.row}>
           <View style={styles.rowLeft}>
             <View style={[styles.rowIcon, { backgroundColor: iconColors.pink.bg }]}>
               <Ionicons name="lock-closed-outline" size={18} color={iconColors.pink.fg} />
@@ -39,6 +43,26 @@ export function SecuritateSection({
             thumbColor="#fff"
           />
         </View>
+        <View style={styles.rowLast}>
+          <View style={styles.rowLeft}>
+            <View style={[styles.rowIcon, { backgroundColor: iconColors.pink.bg }]}>
+              <Ionicons name="medkit-outline" size={18} color={iconColors.pink.fg} />
+            </View>
+            <View style={styles.rowLabelWrap}>
+              <Text style={[styles.rowLabel, { color: C.text }]}>App Lock pentru dosare medicale</Text>
+              <Text style={[styles.rowSub, { color: C.textSecondary }]}>
+                Cere autentificare la deschiderea unui dosar medical, independent de App Lock-ul
+                global. Timeout 5 minute.
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={medicalAppLockEnabled}
+            onValueChange={onToggleMedicalLock}
+            trackColor={{ false: C.border, true: primary }}
+            thumbColor="#fff"
+          />
+        </View>
       </SectionCard>
       {appLockEnabled && (
         <Text style={[styles.lockHint, { color: C.textSecondary }]}>
@@ -52,6 +76,14 @@ export function SecuritateSection({
 }
 
 const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'transparent',
+  },
   rowLast: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -60,7 +92,7 @@ const styles = StyleSheet.create({
   },
   rowLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
     gap: 12,
   },
@@ -71,6 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    marginTop: 2,
   },
   rowLabelWrap: { flex: 1 },
   rowLabel: { fontSize: 15, fontWeight: '500' },

@@ -16,6 +16,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary } from '@/theme/colors';
 import { BottomActionBar } from '@/components/BottomActionBar';
 import { FormSheetModal } from '@/components/ui/FormSheetModal';
+import AppLockScreen from '@/components/AppLockScreen';
+import { useMedicalLock } from '@/hooks/useMedicalLock';
 import { useMedicalRecord } from '@/hooks/useMedicalRecord';
 import { useEntities } from '@/hooks/useEntities';
 import { deleteMedicalRecord, updateMedicalRecord } from '@/services/medicalRecord';
@@ -40,6 +42,7 @@ export default function MedicalRecordDetail() {
   const router = useRouter();
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
+  const lock = useMedicalLock();
   const { record, stats, loading, error, refresh } = useMedicalRecord(id ?? null);
   const { persons } = useEntities();
   const [tab, setTab] = useState<TabKey>('timeline');
@@ -154,6 +157,17 @@ export default function MedicalRecordDetail() {
       },
     ]);
   }, [record, stats, router]);
+
+  // App Lock guard: afișat dacă lockEnabled e activ și ecranul e blocat
+  if (lock.lockEnabled && lock.locked) {
+    return (
+      <AppLockScreen
+        biometricAvailable={lock.biometricAvailable}
+        onUnlockBiometric={lock.unlockWithBiometric}
+        onUnlockPin={lock.unlockWithPin}
+      />
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>

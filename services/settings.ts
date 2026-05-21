@@ -197,6 +197,7 @@ export async function resetOnboarding(): Promise<void> {
 const KEY_AI_MEDICAL_ALLOWED = 'ai_medical_allowed';
 const KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY = 'cloud_backup_includes_medical_key';
 const KEY_MEDICAL_FTS_VERSION = 'medical_fts_version';
+const KEY_MEDICAL_APP_LOCK_ENABLED = 'medical_app_lock_enabled';
 
 export async function getAiMedicalAllowed(): Promise<boolean> {
   const v = await AsyncStorage.getItem(KEY_AI_MEDICAL_ALLOWED);
@@ -223,6 +224,16 @@ export async function getMedicalFtsVersion(): Promise<number> {
 
 export async function setMedicalFtsVersion(version: number): Promise<void> {
   await AsyncStorage.setItem(KEY_MEDICAL_FTS_VERSION, String(version));
+}
+
+export async function getMedicalAppLockEnabled(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_MEDICAL_APP_LOCK_ENABLED);
+  // Default: true — medical data always requires auth unless explicitly disabled
+  return v !== 'false';
+}
+
+export async function setMedicalAppLockEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_MEDICAL_APP_LOCK_ENABLED, enabled ? 'true' : 'false');
 }
 
 // ── Temă ──────────────────────────────────────────────────────────────────────

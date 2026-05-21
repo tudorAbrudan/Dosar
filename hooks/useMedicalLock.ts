@@ -10,12 +10,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useAppLock } from './useAppLock';
+import { getMedicalAppLockEnabled } from '@/services/settings';
 
 const MEDICAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface MedicalLockState {
   /** True dacă App Lock global e blocat SAU timeout-ul medical s-a scurs. */
   locked: boolean;
+  /**
+   * True dacă App Lock medical e activat (setare separată). Când false,
+   * ecranul medical nu afișează lock guard.
+   */
+  lockEnabled: boolean;
   /** True dacă biometric-ul e disponibil pe device. */
   biometricAvailable: boolean;
   /** Încercăm unlock cu biometric. La succes resetăm și timeout-ul medical. */
@@ -26,7 +32,12 @@ interface MedicalLockState {
 export function useMedicalLock(): MedicalLockState {
   const base = useAppLock();
   const [medicalLocked, setMedicalLocked] = useState(false);
+  const [medicalLockEnabled, setMedicalLockEnabled] = useState(true);
   const backgroundedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    getMedicalAppLockEnabled().then(setMedicalLockEnabled);
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
@@ -70,6 +81,7 @@ export function useMedicalLock(): MedicalLockState {
 
   return {
     locked: base.locked || medicalLocked,
+    lockEnabled: medicalLockEnabled,
     biometricAvailable: base.biometricAvailable,
     unlockWithBiometric,
     unlockWithPin,

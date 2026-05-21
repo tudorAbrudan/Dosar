@@ -124,6 +124,8 @@ export default function SetariScreen() {
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [aiConsentGiven, setAiConsentGiven] = useState(false);
+  const [aiMedicalAllowed, setAiMedicalAllowedState] = useState(false);
+  const [medicalAppLockEnabled, setMedicalAppLockEnabledState] = useState(true);
 
   // ── AI Provider ─────────────────────────────────────────────────────────────
   const [aiModalVisible, setAiModalVisible] = useState(false);
@@ -176,6 +178,8 @@ export default function SetariScreen() {
     settings.getPushEnabled().then(setPushEnabled);
     settings.getShowOrphansOnHome().then(setShowOrphans);
     settings.getAppLockEnabled().then(setAppLockEnabled);
+    settings.getAiMedicalAllowed().then(setAiMedicalAllowedState);
+    settings.getMedicalAppLockEnabled().then(setMedicalAppLockEnabledState);
     AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setAiConsentGiven(v === 'true'));
     aiProvider.getAiConfig().then(cfg => {
       setAiProviderType(cfg.type);
@@ -924,8 +928,13 @@ export default function SetariScreen() {
       >
         <SecuritateSection
           appLockEnabled={appLockEnabled}
+          medicalAppLockEnabled={medicalAppLockEnabled}
           scheme={scheme}
           onToggle={handleAppLockToggle}
+          onToggleMedicalLock={async v => {
+            await settings.setMedicalAppLockEnabled(v);
+            setMedicalAppLockEnabledState(v);
+          }}
         />
 
         <AspectSection
@@ -981,10 +990,15 @@ export default function SetariScreen() {
         <AsistentAiSection
           aiProviderType={aiProviderType}
           aiConsentGiven={aiConsentGiven}
+          aiMedicalAllowed={aiMedicalAllowed}
           scheme={scheme}
           onOpenAiModal={() => {
             setAiModalConsentChecked(aiConsentGiven);
             setAiModalVisible(true);
+          }}
+          onToggleAiMedical={async v => {
+            await settings.setAiMedicalAllowed(v);
+            setAiMedicalAllowedState(v);
           }}
         />
 
