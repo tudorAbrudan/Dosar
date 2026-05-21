@@ -326,3 +326,45 @@ export async function countObservations(recordId: string): Promise<number> {
   );
   return r?.c ?? 0;
 }
+
+export type ObservationStatus = 'normal' | 'high' | 'low' | 'criticalHigh' | 'criticalLow' | 'unknown';
+
+function parseNum(s: string | null | undefined): number | null {
+  if (s === null || s === undefined) return null;
+  const cleaned = s.replace(',', '.').trim();
+  if (!cleaned) return null;
+  const n = Number.parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Clasifică o observație pe baza valorii și intervalului de referință.
+ * Severitate: dacă valoarea depășește bound-ul cu >50% (din mărimea intervalului
+ * sau, dacă lipsește un bound, din valoarea bound-ului), e `criticalHigh/Low`.
+ * Altfel `high/low`. `unknown` când nu poate parsa (ex. valori
+ * „pozitiv"/„negativ").
+ */
+export function getObservationStatus(
+  value: string | null | undefined,
+  refMin: string | null | undefined,
+  refMax: string | null | undefined
+): ObservationStatus {
+  const v = parseNum(value);
+  const lo = parseNum(refMin);
+  const hi = parseNum(refMax);
+  if (v === null) return 'unknown';
+  if (lo === null && hi === null) return 'unknown';
+  const rangeWidth = lo !== null && hi !== null ? Math.max(hi - lo, 1e-9) : null;
+
+  if (hi !== null && v > hi) {
+    const overshoot = v - hi;
+    const ref = rangeWidth ?? hi;
+    return overshoot / Math.max(ref, 1e-9) > 0.5 ? 'criticalHigh' : 'high';
+  }
+  if (lo !== null && v < lo) {
+    const undershoot = lo - v;
+    const ref = rangeWidth ?? lo;
+    return undershoot / Math.max(ref, 1e-9) > 0.5 ? 'criticalLow' : 'low';
+  }
+  return 'normal';
+}

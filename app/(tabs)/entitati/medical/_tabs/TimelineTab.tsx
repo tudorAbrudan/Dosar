@@ -7,6 +7,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, primaryTint, statusColors } from '@/theme/colors';
 import { useMedicalObservations } from '@/hooks/useMedicalObservations';
 import { ObservationSparkline } from '@/components/medical/ObservationSparkline';
+import { getObservationStatus, type ObservationStatus } from '@/services/medicalObservations';
 import { OBSERVATION_CATEGORIES } from '@/types';
 import type { MedicalRecordStats } from '@/services/medicalRecord';
 import type { ObservationCategory } from '@/types';
@@ -129,24 +130,35 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
 
               <ObservationSparkline values={item.values} />
 
-              <View style={styles.cardFooter}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.lastValue, { color: palette.text }]}>
-                    Ultima: {last?.value ?? '—'}
-                    {item.unit ? ` ${item.unit}` : ''}
-                  </Text>
-                  {last?.observed_at ? (
-                    <Text style={[styles.dateText, { color: palette.textSecondary }]}>
-                      {last.observed_at}
-                    </Text>
-                  ) : null}
-                </View>
-                {item.ref_min || item.ref_max ? (
-                  <Text style={[styles.refText, { color: palette.textSecondary }]}>
-                    Ref: {item.ref_min ?? '?'}–{item.ref_max ?? '?'}
-                  </Text>
-                ) : null}
-              </View>
+              {(() => {
+                const status = getObservationStatus(last?.value, item.ref_min, item.ref_max);
+                const valueColor = statusToColor(status, palette.text);
+                const arrow = statusToArrow(status);
+                const a11yLabel = statusToA11yLabel(status);
+                return (
+                  <View style={styles.cardFooter}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.lastValue, { color: valueColor }]}>
+                        Ultima: {last?.value ?? '—'}
+                        {item.unit ? ` ${item.unit}` : ''}
+                        {arrow ? (
+                          <Text accessibilityLabel={a11yLabel}> {arrow}</Text>
+                        ) : null}
+                      </Text>
+                      {last?.observed_at ? (
+                        <Text style={[styles.dateText, { color: palette.textSecondary }]}>
+                          {last.observed_at}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {item.ref_min || item.ref_max ? (
+                      <Text style={[styles.refText, { color: palette.textSecondary }]}>
+                        Ref: {item.ref_min ?? '?'}–{item.ref_max ?? '?'}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })()}
 
               <Text style={[styles.category, { color: palette.textSecondary }]}>
                 {CATEGORY_LABELS[item.category]}
@@ -181,6 +193,53 @@ interface ChipProps {
   active: boolean;
   onPress(): void;
   palette: typeof light;
+}
+
+function statusToColor(status: ObservationStatus, defaultColor: string): string {
+  switch (status) {
+    case 'criticalHigh':
+    case 'criticalLow':
+      return statusColors.critical;
+    case 'high':
+    case 'low':
+      return statusColors.warning;
+    case 'normal':
+      return statusColors.ok;
+    default:
+      return defaultColor;
+  }
+}
+
+function statusToArrow(status: ObservationStatus): string {
+  switch (status) {
+    case 'criticalHigh':
+      return '↑↑';
+    case 'high':
+      return '↑';
+    case 'criticalLow':
+      return '↓↓';
+    case 'low':
+      return '↓';
+    default:
+      return '';
+  }
+}
+
+function statusToA11yLabel(status: ObservationStatus): string {
+  switch (status) {
+    case 'criticalHigh':
+      return 'mult peste interval';
+    case 'high':
+      return 'peste interval';
+    case 'criticalLow':
+      return 'mult sub interval';
+    case 'low':
+      return 'sub interval';
+    case 'normal':
+      return 'în interval';
+    default:
+      return '';
+  }
 }
 
 function CategoryChip({ label, active, onPress, palette }: ChipProps) {
