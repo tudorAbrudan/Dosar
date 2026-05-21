@@ -3,7 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, primaryTint, onPrimary } from '@/theme/colors';
+import { light, dark, primary, primaryTint, onPrimary, onPrimaryMuted } from '@/theme/colors';
 import type { MedicalChatMessage } from '@/types';
 
 interface Props {
@@ -51,7 +51,7 @@ export function MedicalChatBubble({ msg }: Props) {
 
   const bubbleBg = isUser ? primary : palette.surface;
   const textColor = isUser ? onPrimary : palette.text;
-  const chipBg = isUser ? 'rgba(255,255,255,0.18)' : primaryTint;
+  const chipBg = isUser ? onPrimaryMuted : primaryTint;
   const chipColor = isUser ? onPrimary : primary;
 
   return (

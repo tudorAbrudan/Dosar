@@ -342,6 +342,79 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     aliases: ['adeverință studii', 'adeverință student'],
     description: 'Adeverință de la o instituție de învățământ.',
   },
+  // ─── Medical (Art. 9 GDPR) ────────────────────────────────────────────────
+  reteta_medicala: {
+    label: DOCUMENT_TYPE_LABELS.reteta_medicala,
+    aliases: ['rețetă', 'rețetă medicală', 'prescripție', 'prescripție medicală', 'Rp.'],
+    description:
+      'Rețetă/prescripție medicală emisă de un medic — listă de medicamente cu posologie. Valabilă 30 zile de la emitere în RO.',
+    distinguishingMarks: [
+      'Antet „REȚETĂ" / „Rp." / „Prescripție medicală"',
+      'Listă medicamente cu doză și frecvență',
+      'Numele și parafa medicului prescriptor',
+      'Numele pacientului + CNP',
+    ],
+  },
+  analize_medicale: {
+    label: DOCUMENT_TYPE_LABELS.analize_medicale,
+    aliases: ['analize', 'analize medicale', 'buletin de analiză', 'rezultat laborator', 'Synevo', 'Regina Maria', 'MedLife'],
+    description:
+      'Buletin de analiză medicală (sânge, urină, hormonal, lipidic etc.) de la un laborator. Conține valori cu unități și intervale de referință. Snapshot punctual, NU expiră formal.',
+    distinguishingMarks: [
+      'Tabel cu coloane „Analiză / Valoare / Unitate / Interval de referință"',
+      'Antet laborator (Synevo, Regina Maria, MedLife, Bioclinica, etc.)',
+      'Nume pacient + CNP + data recoltării',
+      'Valori numerice cu unități (mg/dL, mmol/L, U/L, μIU/mL)',
+    ],
+  },
+  scrisoare_medicala: {
+    label: DOCUMENT_TYPE_LABELS.scrisoare_medicala,
+    aliases: ['scrisoare medicală', 'recomandare medicală', 'aviz medical', 'opinie specialist'],
+    description:
+      'Scrisoare medicală narativă de la un medic specialist către medicul de familie sau pacient. Conține diagnostic, recomandări, plan terapeutic. NU expiră.',
+    distinguishingMarks: [
+      'Antet cabinet/spital + numele medicului specialist',
+      'Text narativ structurat (Diagnostic / Recomandări / Tratament)',
+      'Numele pacientului + data consultației',
+      'Semnătură + parafă medic',
+    ],
+  },
+  bilet_externare: {
+    label: DOCUMENT_TYPE_LABELS.bilet_externare,
+    aliases: ['bilet de externare', 'externare', 'bilet ieșire spital', 'epicriză'],
+    description:
+      'Bilet de externare emis la finalul unei internări în spital. Conține diagnostic, evoluție pe parcursul spitalizării, tratament la externare. NU expiră.',
+    distinguishingMarks: [
+      'Antet spital + numele secției',
+      'Datele internării și externării',
+      'Secțiuni „Diagnostic la internare/externare", „Anamneza", „Evoluție", „Recomandări"',
+      'Numărul foii de observație',
+    ],
+  },
+  imagistica: {
+    label: DOCUMENT_TYPE_LABELS.imagistica,
+    aliases: ['imagistică', 'radiografie', 'RMN', 'CT', 'ecografie', 'mamografie', 'scintigrafie'],
+    description:
+      'Rezultat imagistic (RX, RMN, CT, ecografie, mamografie, scintigrafie) cu descrierea radiologului. Snapshot punctual, NU expiră.',
+    distinguishingMarks: [
+      'Cuvinte cheie: „Radiografie", „RMN", „CT", „Ecografie", „Mamografie"',
+      'Antet centru de imagistică',
+      'Secțiunea „Descriere / Concluzie" semnată de medicul radiolog',
+      'Identificator examen + numele pacientului',
+    ],
+  },
+  vaccin_persoana: {
+    label: DOCUMENT_TYPE_LABELS.vaccin_persoana,
+    aliases: ['vaccin', 'certificat vaccinare', 'adeverință vaccinare', 'carnet vaccinări'],
+    description:
+      'Certificat sau adeverință de vaccinare pentru o persoană. Conține tipul vaccinului, lotul, data administrării. Atenție: anumite vaccinuri au validitate (febră galbenă 10 ani, gripă sezonier) — câmpul expiry poate marca data următoarei doze.',
+    distinguishingMarks: [
+      'Cuvinte „VACCIN" / „VACCINARE" / „CERTIFICAT VACCINARE"',
+      'Tipul vaccinului (BCG, DTPa, ROR, HPV, gripă, COVID-19 etc.)',
+      'Numărul lotului (Lot/Batch)',
+      'Data administrării + numele cabinetului/centrului',
+    ],
+  },
 };
 
 export function getRegistryEntry(type: DocumentType): AiTypeEntry {

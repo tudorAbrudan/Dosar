@@ -74,17 +74,23 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
           <View>
             {reviewCount > 0 ? (
               <Pressable
-                style={[styles.banner, { backgroundColor: '#FFF3CD', borderColor: '#FFE69C' }]}
+                style={[
+                  styles.banner,
+                  {
+                    backgroundColor: statusColors.warningSurface,
+                    borderColor: statusColors.warning,
+                  },
+                ]}
                 onPress={() => router.push(`/(tabs)/entitati/medical/${recordId}/review`)}
               >
                 <Ionicons name="warning-outline" size={18} color={statusColors.warning} />
-                <Text style={[styles.bannerText, { color: '#664D03' }]}>
+                <Text style={[styles.bannerText, { color: palette.text }]}>
                   {reviewCount}{' '}
                   {reviewCount === 1
                     ? 'valoare extrasă are nevoie de verificare'
                     : 'valori extrase au nevoie de verificare'}
                 </Text>
-                <Ionicons name="chevron-forward" size={18} color="#664D03" />
+                <Ionicons name="chevron-forward" size={18} color={palette.text} />
               </Pressable>
             ) : null}
 

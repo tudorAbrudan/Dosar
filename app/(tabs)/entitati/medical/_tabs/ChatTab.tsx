@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, primaryTint, onPrimary } from '@/theme/colors';
+import { light, dark, primary, primaryTint, onPrimary, statusColors } from '@/theme/colors';
 import { useMedicalChat, useMedicalChatThreads } from '@/hooks/useMedicalChat';
 import { MedicalChatBubble } from '@/components/medical/MedicalChatBubble';
 import { MedicalConsentModal } from '@/components/medical/MedicalConsentModal';
@@ -196,8 +196,10 @@ export function ChatTab({ record }: Props) {
         }
         ListFooterComponent={
           error ? (
-            <View style={[styles.errorBanner, { backgroundColor: '#FFEBEE' }]}>
-              <Text style={{ color: '#C62828', fontSize: 13 }}>{error}</Text>
+            <View
+              style={[styles.errorBanner, { backgroundColor: statusColors.criticalSurfaceDark }]}
+            >
+              <Text style={{ color: statusColors.critical, fontSize: 13 }}>{error}</Text>
             </View>
           ) : null
         }

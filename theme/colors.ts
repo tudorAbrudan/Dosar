@@ -11,6 +11,9 @@ export const primaryMuted = '#E8F0D8';
 export const primaryTint = 'rgba(163, 184, 108, 0.16)';
 /** Text/icon color for content placed on `primary` background (CTAs on primary). */
 export const onPrimary = '#FFFFFF';
+/** Subtle highlight chip color for content overlaid on `primary` background
+ *  (e.g. citation chip inside a chat bubble that's already painted primary). */
+export const onPrimaryMuted = 'rgba(255,255,255,0.18)';
 
 /** Paleta severity pentru status bar auto */
 export const statusColors = {
