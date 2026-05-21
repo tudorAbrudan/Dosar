@@ -14,6 +14,7 @@ import { BackupStep } from '@/components/onboarding/BackupStep';
 import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
 import { DocsStep } from '@/components/onboarding/DocsStep';
 import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
+import { MedicalAiStep } from '@/components/onboarding/MedicalAiStep';
 import { NotificationsStep } from '@/components/onboarding/NotificationsStep';
 import { SecurityStep } from '@/components/onboarding/SecurityStep';
 import { SummaryStep } from '@/components/onboarding/SummaryStep';
@@ -45,7 +46,8 @@ const NOTIFICATIONS = 6;
 const BACKUP = 7;
 const CLOUD_BACKUP = 8;
 const AI_STEP = 9;
-const SUMMARY = 10;
+const MEDICAL = 10;
+const SUMMARY = 11;
 
 interface Props {
   onComplete: () => void;
@@ -73,6 +75,8 @@ function stepTitle(step: number): string {
       return 'Backup automat';
     case AI_STEP:
       return 'Asistent AI';
+    case MEDICAL:
+      return 'Dosar medical';
     case SUMMARY:
       return 'Rezumat';
     default:
@@ -102,6 +106,8 @@ function stepSubtitle(step: number): string {
       return 'Salvare automată în iCloud-ul tău. Datele rămân la tine — Apple le păstrează în contul tău.';
     case AI_STEP:
       return 'Complet opțional. Datele tale rămân pe dispozitiv — AI-ul e activat doar când îl folosești.';
+    case MEDICAL:
+      return 'Vrei să folosești Dosar și pentru documente medicale (opțional)?';
     case SUMMARY:
       return 'Verifică setările. Poți modifica totul din Setări oricând.';
     default:
@@ -156,6 +162,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
     BACKUP,
     CLOUD_BACKUP,
     AI_STEP,
+    MEDICAL,
     SUMMARY,
   ];
   const currentIdx = Math.max(0, activeSteps.indexOf(step));
@@ -467,6 +474,8 @@ export default function OnboardingWizard({ onComplete }: Props) {
             onToggleConsent={() => setAiConsentChecked(v => !v)}
           />
         )}
+
+        {step === MEDICAL && <MedicalAiStep onNext={gotoNextActive} />}
 
         {step === SUMMARY && (
           <SummaryStep

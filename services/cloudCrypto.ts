@@ -137,7 +137,7 @@ function bytesToUtf8(bytes: Uint8Array): string {
 
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   if (typeof globalThis.btoa === 'function') {
     let bin = '';
     for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -163,7 +163,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return out;
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   if (typeof globalThis.atob === 'function') {
     const bin = globalThis.atob(b64);
     const out = new Uint8Array(bin.length);

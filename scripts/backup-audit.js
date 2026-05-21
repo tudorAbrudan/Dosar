@@ -46,6 +46,8 @@ const EXCLUDED_TABLES = new Set([
   'chat_messages', // idem
   'document_entities', // junction table reconstruită automat din docs.createDocument
   'fuel_records_v2', // tabel temporar de migrare
+  // Medical — FTS virtual reconstruită la restore din summaries + ocr_text:
+  'medical_fts',
 ]);
 
 // Mapping table snake_case → manifest field camelCase pentru tabele care
@@ -56,6 +58,12 @@ const TABLE_TO_MANIFEST_FIELD = {
   vehicle_maintenance_tasks: 'maintenanceTasks',
   document_pages: 'documentPages',
   entity_order: 'entityOrder',
+  medical_record: 'medicalRecords',
+  medical_observations: 'medicalObservations',
+  medical_chat_threads: 'medicalChatThreads',
+  medical_chat_messages: 'medicalChatMessages',
+  medical_document_summaries: 'medicalDocumentSummaries',
+  medical_shares: 'medicalShares',
 };
 
 function snakeToCamel(s) {

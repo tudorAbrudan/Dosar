@@ -157,13 +157,21 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
       'certificat nastere',
       'extras nastere',
       'extras de naștere',
+      'consiliul popular',
+      'comitetul executiv',
+      'republica socialistă românia',
+      'seria N.C.',
+      'starea civilă',
     ],
     description:
-      'Certificat de naștere emis de starea civilă. NU are termen de expirare — valabil permanent.',
+      'Certificat de naștere emis de Starea Civilă (Consiliul Local / Direcția de Evidență a Persoanelor) — orice variantă, INCLUSIV cele vechi din era comunistă cu antet „REPUBLICA SOCIALISTĂ ROMÂNIA" și „CONSILIUL POPULAR / COMITETUL EXECUTIV". NU are termen de expirare — valabil permanent. Decisiv: emis de stat (NU de biserică — vezi certificat_botez), are CNP-ul și data nașterii a unei persoane.',
     distinguishingMarks: [
-      'Cuvântul „NAȘTERE" / „CERTIFICAT DE NAȘTERE"',
-      'CNP-ul născutului',
-      'Numele părinților',
+      'Titlul mare „CERTIFICAT DE NAȘTERE" (centrat, font mare)',
+      'Antet de stat: „ROMÂNIA" / „REPUBLICA SOCIALISTĂ ROMÂNIA" / „Consiliul Popular" / „Direcția de Evidență a Persoanelor"',
+      'Câmp „CODUL NUMERIC PERSONAL" sau „CNP" cu 13 cifre (sau 11 pe variantele vechi pre-1979)',
+      'Secțiune „PĂRINȚII" cu nume tată și mamă',
+      'Câmp „Data nașterii" și „Locul nașterii copilului"',
+      'Câmp „Seria" + „nr." pe spate sau la final',
     ],
   },
   certificat_casatorie: {
@@ -184,10 +192,24 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
   },
   certificat_botez: {
     label: DOCUMENT_TYPE_LABELS.certificat_botez,
-    aliases: ['certificat de botez', 'certificat botez', 'act botez'],
+    aliases: [
+      'certificat de botez',
+      'certificat botez',
+      'act botez',
+      'taină botez',
+      'sfânta taină a botezului',
+      'parohia',
+    ],
     description:
-      'Certificat de botez emis de biserică. NU are termen de expirare — valabil permanent.',
-    distinguishingMarks: ['Cuvântul „BOTEZ"', 'Numele preotului', 'Numele nașilor'],
+      'Certificat eliberat de o biserică (PAROHIA/ARHIEPISCOPIA ortodoxă/catolică/etc.) ce atestă săvârșirea Tainei Botezului. Antet TIPĂRIT „CERTIFICAT DE BOTEZ" în titlul mare, plus emiterea unei parohii (semn-cheie). ATENȚIE: certificatul de botez REFERĂ numărul certificatului de naștere („Certificatul de Nastere nr. ...") — acea mențiune NU îl face certificat de naștere. Decisive: emisă de biserică, NU de Starea Civilă. NU expiră.',
+    distinguishingMarks: [
+      'Titlul mare „CERTIFICAT DE BOTEZ" (de obicei centrat)',
+      'Antet „PAROHIA BISERICII" / „ARHIEPISCOPIA" / „MITROPOLIA" / parohie ortodoxă/catolică',
+      'Mențiunea „Sfânta Taină a Botezului"',
+      'Numele preotului paroh + semnătură (pe stânga jos sau dreapta)',
+      'Numele nașilor (după „asistând ca naș")',
+      'Numele primit la botez (după „primind din botez numele")',
+    ],
   },
   garantie: {
     label: DOCUMENT_TYPE_LABELS.garantie,

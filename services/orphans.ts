@@ -39,6 +39,7 @@ const ENTITY_LABEL_FOR_HINT: Record<EntityType, string> = {
   card: 'card',
   animal: 'animal',
   company: 'firmă',
+  medical_record: 'dosar medical',
 };
 
 // Tipuri care pot exista valid fără entitate atașată: tipuri generice

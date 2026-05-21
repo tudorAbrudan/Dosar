@@ -29,12 +29,19 @@ import type {
   DocumentPage,
   EntityType,
   FuelRecord,
+  MedicalChatThread,
+  MedicalDocumentSummary,
+  MedicalRecord,
+  MedicalShare,
   Person,
   Property,
   SnapshotFrequency,
   Vehicle,
   VehicleMaintenanceTask,
 } from '@/types';
+import { bytesToBase64 } from './cloudCrypto';
+import { getCloudBackupIncludesMedicalKey } from './settings';
+import { exportMasterKeyBase64, hasMedicalMasterKey, importMasterKeyBase64 } from './medicalCrypto';
 
 const CLOUD_ROOT = 'Dosar';
 const MANIFEST_PATH = `${CLOUD_ROOT}/manifest.json`;
@@ -62,6 +69,13 @@ interface ManifestPayload {
   documents: Document[];
   documentPages: DocumentPage[];
   entityOrder: { entity_type: EntityType; entity_id: string; sort_order: number }[];
+  medicalRecords: MedicalRecord[];
+  medicalObservations: any[]; // BLOB columns base64-encoded
+  medicalChatThreads: MedicalChatThread[];
+  medicalChatMessages: any[]; // content_enc base64-encoded
+  medicalDocumentSummaries: MedicalDocumentSummary[];
+  medicalShares: MedicalShare[];
+  _security?: { medical_key?: string };
 }
 
 async function buildManifestPayload(): Promise<ManifestPayload> {
@@ -78,6 +92,12 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     allPages,
     customTypes,
     entityOrder,
+    medicalRecords,
+    medicalObservations,
+    medicalChatThreads,
+    medicalChatMessages,
+    medicalDocumentSummaries,
+    medicalShares,
   ] = await Promise.all([
     entities.getPersons(),
     entities.getProperties(),
@@ -93,9 +113,38 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     db.getAllAsync<{ entity_type: EntityType; entity_id: string; sort_order: number }>(
       'SELECT entity_type, entity_id, sort_order FROM entity_order'
     ),
+    db.getAllAsync<MedicalRecord>('SELECT * FROM medical_record'),
+    db.getAllAsync<any>('SELECT * FROM medical_observations'),
+    db.getAllAsync<MedicalChatThread>('SELECT * FROM medical_chat_threads'),
+    db.getAllAsync<any>('SELECT * FROM medical_chat_messages'),
+    db.getAllAsync<MedicalDocumentSummary>('SELECT * FROM medical_document_summaries'),
+    db.getAllAsync<MedicalShare>('SELECT * FROM medical_shares'),
   ]);
 
-  return {
+  // Encode BLOB columns as base64 strings for JSON serialization
+  const toBytes = (v: Uint8Array | ArrayBuffer | null | undefined): Uint8Array | null => {
+    if (!v) return null;
+    if (v instanceof Uint8Array) return v;
+    return new Uint8Array(v as ArrayBuffer);
+  };
+  const blobToB64 = (v: any): string | null => {
+    const b = toBytes(v);
+    return b ? bytesToBase64(b) : null;
+  };
+
+  const obsForPayload = medicalObservations.map((o: any) => ({
+    ...o,
+    name_enc: blobToB64(o.name_enc),
+    value_enc: blobToB64(o.value_enc),
+    ref_min_enc: blobToB64(o.ref_min_enc),
+    ref_max_enc: blobToB64(o.ref_max_enc),
+  }));
+  const msgsForPayload = medicalChatMessages.map((m: any) => ({
+    ...m,
+    content_enc: blobToB64(m.content_enc),
+  }));
+
+  const payload: ManifestPayload = {
     version: MANIFEST_VERSION,
     exportDate: new Date().toISOString(),
     persons,
@@ -110,7 +159,28 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     documents,
     documentPages: allPages,
     entityOrder,
+    medicalRecords,
+    medicalObservations: obsForPayload,
+    medicalChatThreads,
+    medicalChatMessages: msgsForPayload,
+    medicalDocumentSummaries,
+    medicalShares,
   };
+
+  // 28c — optionally include encrypted medical master key
+  try {
+    const include = await getCloudBackupIncludesMedicalKey();
+    const sessionKey = getSessionKey();
+    if (include && sessionKey && (await hasMedicalMasterKey())) {
+      const masterB64 = await exportMasterKeyBase64();
+      const cipher = await encryptString(masterB64, sessionKey);
+      payload._security = { medical_key: cipher };
+    }
+  } catch (e) {
+    console.warn('[cloudSync] medical_key inclusion failed:', e);
+  }
+
+  return payload;
 }
 
 /**
@@ -929,6 +999,19 @@ export async function restoreFromCloud(
   }
 
   onProgress?.({ phase: 'apply', current: 0, total: 1, bytesDone, bytesTotal });
+
+  // 28d — restore medical master key if present in _security
+  if (typeof (payload as any)._security?.medical_key === 'string' && getSessionKey()) {
+    try {
+      const masterB64 = await decryptString(
+        (payload as any)._security.medical_key,
+        getSessionKey()!
+      );
+      await importMasterKeyBase64(masterB64);
+    } catch (e) {
+      console.warn('[cloudSync] medical_key import failed:', e);
+    }
+  }
 
   await applyManifest(payload, { wipeFirst: true });
   onProgress?.({ phase: 'apply', current: 1, total: 1, bytesDone, bytesTotal });

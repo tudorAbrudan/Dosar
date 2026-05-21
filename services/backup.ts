@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import JSZip from 'jszip';
-import type { DocumentType, EntityType } from '@/types';
+import type { DocumentType, EntityType, MedicalRecord, MedicalChatThread, MedicalDocumentSummary, MedicalShare } from '@/types';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -13,6 +13,7 @@ import { toFileUri, toRelativePath } from './fileUtils';
 import { onRestoreSuccess } from './reviewPrompt';
 import { db, generateId } from './db';
 import { emit } from './events';
+import { bytesToBase64, base64ToBytes } from './cloudCrypto';
 
 /**
  * Citește un fișier ca base64. Returnează null dacă nu există sau nu poate fi citit.
@@ -128,6 +129,45 @@ export async function exportBackup(): Promise<void> {
     ),
   ]);
 
+  const [
+    medicalRecords,
+    medicalObservations,
+    medicalChatThreads,
+    medicalChatMessages,
+    medicalDocumentSummaries,
+    medicalShares,
+  ] = await Promise.all([
+    db.getAllAsync<MedicalRecord>('SELECT * FROM medical_record'),
+    db.getAllAsync<any>('SELECT * FROM medical_observations'),
+    db.getAllAsync<MedicalChatThread>('SELECT * FROM medical_chat_threads'),
+    db.getAllAsync<any>('SELECT * FROM medical_chat_messages'),
+    db.getAllAsync<MedicalDocumentSummary>('SELECT * FROM medical_document_summaries'),
+    db.getAllAsync<MedicalShare>('SELECT * FROM medical_shares'),
+  ]);
+
+  // Encode BLOB columns as base64 strings (JSON cannot serialize Uint8Array / Buffer)
+  const toBytes = (v: Uint8Array | ArrayBuffer | null | undefined): Uint8Array | null => {
+    if (!v) return null;
+    if (v instanceof Uint8Array) return v;
+    return new Uint8Array(v as ArrayBuffer);
+  };
+  const blobToB64 = (v: any): string | null => {
+    const b = toBytes(v);
+    return b ? bytesToBase64(b) : null;
+  };
+
+  const obsForExport = medicalObservations.map((o: any) => ({
+    ...o,
+    name_enc: blobToB64(o.name_enc),
+    value_enc: blobToB64(o.value_enc),
+    ref_min_enc: blobToB64(o.ref_min_enc),
+    ref_max_enc: blobToB64(o.ref_max_enc),
+  }));
+  const msgsForExport = medicalChatMessages.map((m: any) => ({
+    ...m,
+    content_enc: blobToB64(m.content_enc),
+  }));
+
   const personNames = new Map(persons.map(p => [p.id, p.name]));
   const vehicleNames = new Map(vehicles.map(v => [v.id, v.name]));
   const propertyNames = new Map(properties.map(p => [p.id, p.name]));
@@ -158,7 +198,7 @@ export async function exportBackup(): Promise<void> {
   }
 
   const manifest = {
-    version: 12,
+    version: 13,
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -173,6 +213,12 @@ export async function exportBackup(): Promise<void> {
     documentPages: allPages,
     entityOrder,
     fileMap,
+    medicalRecords,
+    medicalObservations: obsForExport,
+    medicalChatThreads,
+    medicalChatMessages: msgsForExport,
+    medicalDocumentSummaries,
+    medicalShares,
   };
 
   const zip = new JSZip();
@@ -392,7 +438,12 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
         if (p.id) personMap.set(p.id as string, existingId);
         skipped++;
       } else {
-        const created = await entities.createPerson((p.name as string) || 'Persoană');
+        const created = await entities.createPerson(
+          (p.name as string) || 'Persoană',
+          (p.phone as string | null) ?? undefined,
+          (p.email as string | null) ?? undefined,
+          (p.date_of_birth as string | null) ?? undefined
+        );
         if (p.id) personMap.set(p.id as string, created.id);
         existingPersonByName.set(nameKey, created.id);
         imported++;
@@ -742,6 +793,135 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     }
   }
 
+  // ── Restaurare tabele medicale ──────────────────────────────────────────────
+  const b64ToBlob = (s: string | null | undefined): Uint8Array | null =>
+    s ? base64ToBytes(s) : null;
+
+  for (const r of (payload.medicalRecords as AnyRecord[]) ?? []) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_record
+          (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref,
+           blood_group, allergies, emergency_contact_name, emergency_contact_phone,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          r.id as string, r.person_id as string, r.name as string,
+          (r.ai_consent_at as string | null) ?? null,
+          ((r.ai_consent_version as number | null) ?? 1),
+          r.encryption_key_ref as string,
+          (r.blood_group as string | null) ?? null,
+          (r.allergies as string | null) ?? null,
+          (r.emergency_contact_name as string | null) ?? null,
+          (r.emergency_contact_phone as string | null) ?? null,
+          r.created_at as string, r.updated_at as string,
+        ]
+      );
+    } catch (e) {
+      errors.push(`Dosar medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+  for (const o of (payload.medicalObservations as AnyRecord[]) ?? []) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_observations
+          (id, medical_record_id, source_document_id, name_enc, value_enc, unit,
+           ref_min_enc, ref_max_enc, observed_at, category, confidence, needs_review,
+           user_corrected, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          o.id as string, o.medical_record_id as string,
+          (o.source_document_id as string | null) ?? null,
+          b64ToBlob(o.name_enc as string | null),
+          b64ToBlob(o.value_enc as string | null),
+          (o.unit as string | null) ?? null,
+          b64ToBlob(o.ref_min_enc as string | null),
+          b64ToBlob(o.ref_max_enc as string | null),
+          (o.observed_at as string | null) ?? null,
+          o.category as string,
+          o.confidence as number,
+          o.needs_review ? 1 : 0,
+          o.user_corrected ? 1 : 0,
+          o.created_at as string, o.updated_at as string,
+        ]
+      );
+    } catch (e) {
+      errors.push(`Observație medicală: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+  for (const t of (payload.medicalChatThreads as AnyRecord[]) ?? []) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_chat_threads
+          (id, medical_record_id, title, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          t.id as string, t.medical_record_id as string, t.title as string,
+          t.created_at as string, t.updated_at as string,
+        ]
+      );
+    } catch (e) {
+      errors.push(`Thread chat medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+  for (const m of (payload.medicalChatMessages as AnyRecord[]) ?? []) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_chat_messages
+          (id, thread_id, role, content_enc, citations_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          m.id as string, m.thread_id as string, m.role as string,
+          b64ToBlob(m.content_enc as string | null),
+          (m.citations_json as string | null) ?? null,
+          m.created_at as string,
+        ]
+      );
+    } catch (e) {
+      errors.push(`Mesaj chat medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+  for (const s of (payload.medicalDocumentSummaries as AnyRecord[]) ?? []) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_document_summaries
+          (document_id, summary, generated_at, model_used)
+         VALUES (?, ?, ?, ?)`,
+        [
+          s.document_id as string, s.summary as string, s.generated_at as string,
+          (s.model_used as string | null) ?? null,
+        ]
+      );
+    } catch (e) {
+      errors.push(`Sumar document medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+  for (const sh of (payload.medicalShares as AnyRecord[]) ?? []) {
+    try {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO medical_shares
+          (id, medical_record_id, created_at, expires_at, size_bytes, doc_count, obs_count, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          sh.id as string, sh.medical_record_id as string,
+          sh.created_at as string, sh.expires_at as string,
+          sh.size_bytes as number, sh.doc_count as number, sh.obs_count as number,
+          (sh.revoked_at as string | null) ?? null,
+        ]
+      );
+    } catch (e) {
+      errors.push(`Share medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Rebuild medical_fts from documents.ocr_text + medical_document_summaries
+  try {
+    const { rebuildFtsFromExistingData } = await import('./medicalFts');
+    await rebuildFtsFromExistingData();
+  } catch {
+    // FTS rebuild e opțional — nu blochează restore-ul
+  }
+
   try {
     await onRestoreSuccess(imported);
   } catch {
@@ -758,6 +938,13 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
  */
 async function wipeUserData(): Promise<void> {
   await db.execAsync(`
+    DELETE FROM medical_fts;
+    DELETE FROM medical_shares;
+    DELETE FROM medical_chat_messages;
+    DELETE FROM medical_chat_threads;
+    DELETE FROM medical_observations;
+    DELETE FROM medical_document_summaries;
+    DELETE FROM medical_record;
     DELETE FROM document_pages;
     DELETE FROM document_entities;
     DELETE FROM documents;

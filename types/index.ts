@@ -39,6 +39,13 @@ export type DocumentType =
   | 'certificat_absolvire'
   | 'certificat_curs'
   | 'adeverinta_studii'
+  // Medical
+  | 'reteta_medicala'
+  | 'analize_medicale'
+  | 'scrisoare_medicala'
+  | 'bilet_externare'
+  | 'imagistica'
+  | 'vaccin_persoana'
   | 'altul'
   | 'custom';
 
@@ -53,6 +60,7 @@ export interface Person {
   name: string;
   phone?: string;
   email?: string;
+  date_of_birth?: string;  // ISO date YYYY-MM-DD
   createdAt: string;
 }
 
@@ -94,6 +102,140 @@ export interface Company {
   cui?: string; // cod unic de înregistrare
   reg_com?: string; // nr. registru comerț (ex: J40/1234/2020)
   createdAt: string;
+}
+
+// ─── Medical (Art. 9 GDPR) ────────────────────────────────────────────────────
+
+export interface MedicalRecord {
+  id: string;
+  person_id: string;          // FK la persons; 1:1 strict
+  name: string;
+  ai_consent_at: string | null;
+  ai_consent_version: number;
+  encryption_key_ref: string; // ex: 'v1'
+  blood_group?: string;
+  allergies?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ObservationCategory =
+  | 'lipide'
+  | 'hematologie'
+  | 'tiroidiene'
+  | 'hormonal'
+  | 'hepatice'
+  | 'renale'
+  | 'urinare'
+  | 'microbiologie'
+  | 'imunologie'
+  | 'biochimie'
+  // Valori biometrice (greutate/kg, înălțime/cm etc.) — tracked as observations
+  // over time for the Timeline sparkline UX, not as static fields on medical_record.
+  | 'biometric'
+  | 'altele';
+
+export const OBSERVATION_CATEGORIES: ObservationCategory[] = [
+  'lipide',
+  'hematologie',
+  'tiroidiene',
+  'hormonal',
+  'hepatice',
+  'renale',
+  'urinare',
+  'microbiologie',
+  'imunologie',
+  'biochimie',
+  'biometric',
+  'altele',
+];
+
+export const OBSERVATION_CATEGORY_LABELS: Record<ObservationCategory, string> = {
+  lipide: 'Lipide',
+  hematologie: 'Hematologie',
+  tiroidiene: 'Tiroidiene',
+  hormonal: 'Hormonal',
+  hepatice: 'Hepatice',
+  renale: 'Renale',
+  urinare: 'Urinare',
+  microbiologie: 'Microbiologie',
+  imunologie: 'Imunologie',
+  biochimie: 'Biochimie',
+  biometric: 'Biometric',
+  altele: 'Altele',
+};
+
+export interface MedicalObservation {
+  id: string;
+  medical_record_id: string;
+  source_document_id: string | null;
+  name: string;              // decriptat
+  value: string | null;      // decriptat; string ca să accepte "pozitiv"/"negativ" + numeric
+  unit: string | null;       // plaintext
+  ref_min: string | null;    // decriptat
+  ref_max: string | null;    // decriptat
+  observed_at: string | null; // plaintext (sortare)
+  category: ObservationCategory;
+  confidence: number;
+  needs_review: boolean;
+  /** true dacă userul a editat manual valoarea după extracție AI. */
+  user_corrected: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MedicalChatThread {
+  id: string;
+  medical_record_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Citation {
+  type: 'OBS' | 'DOC';
+  id: string;
+  doc_type?: DocumentType;
+}
+
+/** Tip rol mesaj chat medical. */
+export type MedicalChatRole = 'user' | 'assistant';
+
+/**
+ * Citație în răspunsul asistentului medical.
+ * Formatul din conținut: [OBS:id] sau [DOC:label|id].
+ */
+export type MedicalChatCitation =
+  | { type: 'observation'; id: string }
+  | { type: 'document'; id: string; label: string };
+
+export interface MedicalChatMessage {
+  id: string;
+  thread_id: string;
+  role: MedicalChatRole;
+  content: string;          // decriptat
+  citations: MedicalChatCitation[];
+  created_at: string;
+}
+
+export interface MedicalDocumentSummary {
+  document_id: string;
+  summary: string;
+  generated_at: string;
+  model_used: string | null;
+}
+
+export interface MedicalShare {
+  id: string;
+  medical_record_id: string;
+  created_at: string;
+  expires_at: string;
+  size_bytes: number;
+  doc_count: number;
+  obs_count: number;
+  revoked_at: string | null;
 }
 
 /**
@@ -219,7 +361,8 @@ export type EntityType =
   | 'vehicle'
   | 'card'
   | 'animal'
-  | 'company';
+  | 'company'
+  | 'medical_record';
 
 // Tipurile de entități pe care utilizatorul le poate activa/dezactiva din
 // Setări → Vizibilitate sau adăuga din ecranul „Adaugă entitate".
@@ -230,6 +373,7 @@ export const ALL_ENTITY_TYPES: EntityType[] = [
   'card',
   'animal',
   'company',
+  'medical_record',
 ];
 
 /**
@@ -244,6 +388,7 @@ export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   card: 'Card',
   animal: 'Animal',
   company: 'Firmă',
+  medical_record: 'Dosar medical',
 };
 
 /**
@@ -257,6 +402,7 @@ export const ENTITY_TYPE_EMOJI: Record<EntityType, string> = {
   card: '💳',
   animal: '🐾',
   company: '🏢',
+  medical_record: '🏥',
 };
 
 // Lista completă a tipurilor standard (fără 'custom') — apare în Setări
@@ -268,6 +414,13 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'certificat_casatorie',
   'certificat_botez',
   'card_sanatate',
+  // Medical
+  'reteta_medicala',
+  'analize_medicale',
+  'scrisoare_medicala',
+  'bilet_externare',
+  'imagistica',
+  'vaccin_persoana',
   'talon',
   'carte_auto',
   'rca',
@@ -342,6 +495,25 @@ export const REPEATABLE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentT
   'bilet',
   // Curs — se pot face multiple
   'certificat_curs',
+  // Medical — se repetă (analize periodice, rețete recurente, vaccinuri anuale, imagistică)
+  'analize_medicale',
+  'vaccin_persoana',
+  'imagistica',
+  'reteta_medicala',
+]);
+
+/**
+ * Tipuri de documente medicale (categoria specială Art. 9 GDPR).
+ * Folosit pentru: filtrarea picker-ului în detaliu medical_record,
+ * triggering medicalExtractor.extractAsync, sanitizare AI privacy.
+ */
+export const MEDICAL_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
+  'reteta_medicala',
+  'analize_medicale',
+  'scrisoare_medicala',
+  'bilet_externare',
+  'imagistica',
+  'vaccin_persoana',
 ]);
 
 // Tipuri active implicit pentru utilizatori noi — doar ce folosesc cei mai mulți
@@ -401,6 +573,12 @@ export const NO_EXPIRY_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentTy
   'diploma',
   'foaie_matricola',
   'certificat_absolvire',
+  // Medical — snapshot-uri punctuale; nu expiră formal. (Rețetele și vaccinurile
+  // au valabilitate / next-dose-due → rămân în afara setului.)
+  'analize_medicale',
+  'scrisoare_medicala',
+  'bilet_externare',
+  'imagistica',
   // Bonuri și vizite — evenimente trecute, fără expirare
   'bon_cumparaturi',
   'bon_parcare',
@@ -448,6 +626,12 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   certificat_absolvire: 'Certificat absolvire',
   certificat_curs: 'Certificat curs',
   adeverinta_studii: 'Adeverință studii',
+  reteta_medicala: 'Rețetă medicală',
+  analize_medicale: 'Analize medicale',
+  scrisoare_medicala: 'Scrisoare medicală',
+  bilet_externare: 'Bilet de externare',
+  imagistica: 'Imagistică',
+  vaccin_persoana: 'Vaccin',
   altul: 'Altele',
   custom: 'Tip personalizat',
 };
@@ -515,6 +699,17 @@ export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
     'altul',
     'custom',
   ],
+  medical_record: [
+    'reteta_medicala',
+    'analize_medicale',
+    'scrisoare_medicala',
+    'bilet_externare',
+    'imagistica',
+    'vaccin_persoana',
+    'card_sanatate',
+    'altul',
+    'custom',
+  ],
 };
 
 /**
@@ -558,6 +753,13 @@ export const DOC_PRIMARY_ENTITY: Partial<Record<DocumentType, EntityType>> = {
   act_constitutiv: 'company',
   certificat_tva: 'company',
   asigurare_profesionala: 'company',
+  // Medical
+  reteta_medicala: 'medical_record',
+  analize_medicale: 'medical_record',
+  scrisoare_medicala: 'medical_record',
+  bilet_externare: 'medical_record',
+  imagistica: 'medical_record',
+  vaccin_persoana: 'medical_record',
 };
 
 export function getDocumentLabel(

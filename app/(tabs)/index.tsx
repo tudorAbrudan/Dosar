@@ -36,6 +36,8 @@ import { resolveDocumentEntityName } from '@/services/documentEntityName';
 import { isStaleExpired } from '@/services/expiry';
 import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
 import { CloudBackupBanner } from '@/components/CloudBackupBanner';
+import { findPersonsWithOrphanMedicalDocs } from '@/services/medicalRecord';
+import { MigrateOrphansWizard } from '@/components/medical/MigrateOrphansWizard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -88,11 +90,19 @@ export default function HomeScreen() {
   const [duplicateGroups, setDuplicateGroups] = useState<Document[][]>([]);
   const backfillDoneRef = useRef(false);
   const cloud = useCloudRestoreDetector();
+  const [orphanMedicalCount, setOrphanMedicalCount] = useState(0);
+  const [showMigrateWizard, setShowMigrateWizard] = useState(false);
 
   useEffect(() => {
     if (backfillDoneRef.current) return;
     backfillDoneRef.current = true;
     backfillFileHashes().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    findPersonsWithOrphanMedicalDocs()
+      .then(list => setOrphanMedicalCount(list.length))
+      .catch(() => {});
   }, []);
 
   useFocusEffect(
@@ -209,6 +219,27 @@ export default function HomeScreen() {
             onRestore={() => router.push('/cloud-backup?action=restore')}
             onDismiss={cloud.dismiss}
           />
+        )}
+
+        {/* ── Banner migrare documente medicale orfane ── */}
+        {orphanMedicalCount > 0 && (
+          <Pressable
+            onPress={() => setShowMigrateWizard(true)}
+            style={[
+              styles.medicalOrphanBanner,
+              { backgroundColor: C.card, borderColor: C.primary },
+            ]}
+          >
+            <Ionicons name="medkit-outline" size={18} color={C.primary} style={{ marginRight: 8 }} />
+            <RNText style={[styles.medicalOrphanText, { color: C.text }]}>
+              {'Ai '}
+              <RNText style={{ fontWeight: '700' }}>{orphanMedicalCount}</RNText>
+              {orphanMedicalCount === 1
+                ? ' persoană cu documente medicale fără dosar dedicat. Atinge pentru a crea dosare.'
+                : ' persoane cu documente medicale fără dosar dedicat. Atinge pentru a crea dosare.'}
+            </RNText>
+            <Ionicons name="chevron-forward" size={14} color={C.textSecondary} />
+          </Pressable>
         )}
 
         {/* ── Rezumat + acțiuni (card integrat) ── */}
@@ -528,6 +559,12 @@ export default function HomeScreen() {
 
         <RNView style={styles.bottomPad} />
       </ScrollView>
+
+      <MigrateOrphansWizard
+        visible={showMigrateWizard}
+        onClose={() => setShowMigrateWizard(false)}
+        onDone={() => setOrphanMedicalCount(0)}
+      />
     </RNView>
   );
 }
@@ -681,4 +718,19 @@ const styles = StyleSheet.create({
   },
   dupDocInfo: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   dupDeleteBtn: { padding: 8 },
+
+  // Medical orphan banner
+  medicalOrphanBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  medicalOrphanText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
 });

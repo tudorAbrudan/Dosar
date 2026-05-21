@@ -43,6 +43,7 @@ const DEFAULT_GROUP_LABELS: Record<EntityType, string> = {
   card: 'Carduri',
   animal: 'Animale',
   company: 'Firme',
+  medical_record: 'Dosare medicale',
 };
 
 export function LinkEntityOverlay({

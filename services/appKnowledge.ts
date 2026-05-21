@@ -62,6 +62,17 @@ const DOC_CATEGORIES: { label: string; types: string[] }[] = [
     types: ['vaccin_animal', 'deparazitare', 'vizita_vet'],
   },
   {
+    label: 'Medical',
+    types: [
+      'reteta_medicala',
+      'analize_medicale',
+      'scrisoare_medicala',
+      'bilet_externare',
+      'imagistica',
+      'vaccin_persoana',
+    ],
+  },
+  {
     label: 'Firmă / PFA',
     types: [
       'certificat_inregistrare',
@@ -190,5 +201,13 @@ Aplicația verifică automat la pornire dacă există o versiune mai nouă pe Ap
 - Bazează-te doar pe datele utilizatorului de mai jos; nu inventa.
 - Când menționezi un document specific, include ID-ul în format [ID:xxx].
 - Dacă există mai multe documente de același tip pentru aceeași entitate, cel mai recent (emis/expiră mai târziu) conține datele actuale.
-- NU ai acces la conținutul „Notă privată" al niciunui document — acel câmp nu-ți este transmis intenționat, indiferent de întrebare.`;
+- NU ai acces la conținutul „Notă privată" al niciunui document — acel câmp nu-ți este transmis intenționat, indiferent de întrebare.
+
+## Dosar medical
+
+- Entitate "Dosar medical" 1:1 cu o persoană. Stochează observații extrase din analize, vaccinuri, rețete, scrisori medicale, imagistică.
+- Toate datele sensibile sunt criptate local (AES-256-GCM, cheia în Keychain). Datele nu pleacă la AI fără consimțământul utilizatorului (per dosar + global din Setări → Asistent AI).
+- Timeline: grupare după parametru (HDL, TSH etc.), evoluție în timp cu sparkline, drill-down la documentul sursă.
+- Chat AI scoped pe dosar: răspunde cu citații obligatorii ([OBS:id] sau [DOC:tip|id]), niciodată diagnostic clinic.
+- Adăugare document medical: Entități → Dosar medical → tap pe dosar → tab Documente → "+". Picker tipuri restrâns la analize/rețete/etc.`;
 }

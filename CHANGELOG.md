@@ -14,6 +14,33 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.6.0] (2026-05-21) — build 57
+
+### Adăugat — Dosar medical (reintegrare completă)
+- **Entitate nouă `Dosar medical`** (1:1 cu o persoană): listă în Entități, ecran detaliu cu 3 tab-uri (Timeline · Documente · Chat AI).
+- **6 tipuri noi de documente medicale**: Rețetă medicală, Analize medicale, Scrisoare medicală, Bilet de externare, Imagistică, Vaccin persoană.
+- **Extracție automată observații AI**: la scanarea unui document medical, AI-ul extrage valori (HDL, TSH, glicemie etc.) cu confidence threshold și le adaugă în Timeline. Categorii: lipide, hematologie, tiroidiene, hormonal, hepatice, renale, urinare, microbiologie, imunologie, biochimie, biometric, altele.
+- **Timeline cu sparkline + indicator de interval**: per parametru, vezi evoluția în timp + culoare automată după referință (verde = în interval, portocaliu = ↑/↓, roșu = ↑↑/↓↓ peste 50%).
+- **Chat AI scoped pe dosar** cu retrieval hibrid (FTS5 pe OCR + observații decriptate în memorie) și citații obligatorii `[OBS:id]` / `[DOC:tip|id]`.
+- **Criptare AES-256-GCM** locală pentru observații + mesaje chat (cheie 256-bit în Keychain, AAD = medical_record.id). Toggle „Date medicale (Art. 9 GDPR)" în Setări → Asistent AI; consent per dosar la prima activare AI.
+- **App Lock dedicat** pentru ecranele medicale (5 min timeout, independent de App Lock global). Toggle în Setări → Securitate.
+- **Câmpuri pacient**: grupa sanguină, alergii (afișate prominent cu badge ⚠️), persoană de contact urgență (telefon tappable).
+- **Backup cloud al cheii medicale** (opțional, default OFF): cheia AES e criptată cu parola cloud și inclusă în manifest — restore automat pe device nou.
+- **Onboarding step opțional** pentru activarea AI medical.
+- **Wizard migrare**: detectează persoanele cu documente medicale orfane (legacy `person_id`) și oferă crearea automată a dosarelor.
+
+### Adăugat — alte îmbunătățiri
+- **`Person.date_of_birth`** (data nașterii) — câmp opțional în editorul persoanelor, folosit pentru afișarea vârstei în detaliul dosarului medical.
+- **Categorii biometrice** pentru observații: Greutate / Înălțime se urmăresc ca observații în timp (sparkline), nu ca atribut static.
+
+### Reparat
+- **Certificat naștere — varianta veche** ("REPUBLICA SOCIALISTĂ ROMÂNIA / CONSILIUL POPULAR") detectat și clasificat corect. 8 câmpuri extrase: CNP, părinți, data + locul nașterii, nr. înregistrare, serie certificat.
+- **Certificat botez** — clasificare îmbunătățită (anti-confuzie cu certificat naștere) + 5 câmpuri noi extrase: father_name, mother_name, birth_date, document_number, priest_name.
+- **Tipurile medicale care nu expiră** (analize, scrisoare medicală, bilet externare, imagistică) — eliminat câmpul „Data expirare" din formularul de adăugare.
+
+### Schimbat
+- Schema SQLite: 6 tabele noi (`medical_record`, `medical_observations`, `medical_chat_threads`, `medical_chat_messages`, `medical_document_summaries`, `medical_shares`) + virtual FTS5 `medical_fts` + 3 trigger-i sync summary→FTS. Backup local (ZIP) și cloud (iCloud manifest v13) propagă toate cele 6.
+
 ## [3.5.2] (2026-05-18) — build 56
 
 ### Adăugat

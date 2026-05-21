@@ -88,6 +88,7 @@ export default function EntityDetailScreen() {
   const [editRegCom, setEditRegCom] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editDateOfBirth, setEditDateOfBirth] = useState('');
   const [editPhotoUri, setEditPhotoUri] = useState<string | undefined>(undefined);
   const [editPlate, setEditPlate] = useState('');
   const [editFuelType, setEditFuelType] = useState<'diesel' | 'benzina' | 'gpl' | 'electric'>(
@@ -243,6 +244,7 @@ export default function EntityDetailScreen() {
       if (entityKind === 'person_id' && person) {
         setEditPhone(person.phone ?? '');
         setEditEmail(person.email ?? '');
+        setEditDateOfBirth(person.date_of_birth ?? '');
       }
     }
     if (entityKind === 'vehicle_id') {
@@ -330,7 +332,8 @@ export default function EntityDetailScreen() {
           id!,
           editName.trim(),
           editPhone.trim() || undefined,
-          editEmail.trim() || undefined
+          editEmail.trim() || undefined,
+          editDateOfBirth || undefined
         );
       else if (entityKind === 'property_id') await updateProperty(id!, editName.trim());
       else if (entityKind === 'vehicle_id') {
@@ -604,9 +607,11 @@ export default function EntityDetailScreen() {
             scheme={scheme}
             phone={editPhone}
             email={editEmail}
+            dateOfBirth={editDateOfBirth}
             disabled={editLoading}
             onChangePhone={setEditPhone}
             onChangeEmail={setEditEmail}
+            onChangeDateOfBirth={setEditDateOfBirth}
           />
         )}
 

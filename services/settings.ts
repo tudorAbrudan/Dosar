@@ -192,6 +192,50 @@ export async function resetOnboarding(): Promise<void> {
   await AsyncStorage.setItem(KEY_VISIBLE_ENTITY_TYPES, JSON.stringify([...ALL_ENTITY_TYPES]));
 }
 
+// ── Medical AI + FTS ─────────────────────────────────────────────────────────
+
+const KEY_AI_MEDICAL_ALLOWED = 'ai_medical_allowed';
+const KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY = 'cloud_backup_includes_medical_key';
+const KEY_MEDICAL_FTS_VERSION = 'medical_fts_version';
+const KEY_MEDICAL_APP_LOCK_ENABLED = 'medical_app_lock_enabled';
+
+export async function getAiMedicalAllowed(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_AI_MEDICAL_ALLOWED);
+  return v === 'true';
+}
+
+export async function setAiMedicalAllowed(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_AI_MEDICAL_ALLOWED, enabled ? 'true' : 'false');
+}
+
+export async function getCloudBackupIncludesMedicalKey(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY);
+  return v === 'true';
+}
+
+export async function setCloudBackupIncludesMedicalKey(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_CLOUD_BACKUP_INCLUDES_MEDICAL_KEY, enabled ? 'true' : 'false');
+}
+
+export async function getMedicalFtsVersion(): Promise<number> {
+  const v = await AsyncStorage.getItem(KEY_MEDICAL_FTS_VERSION);
+  return v ? Number.parseInt(v, 10) : 0;
+}
+
+export async function setMedicalFtsVersion(version: number): Promise<void> {
+  await AsyncStorage.setItem(KEY_MEDICAL_FTS_VERSION, String(version));
+}
+
+export async function getMedicalAppLockEnabled(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_MEDICAL_APP_LOCK_ENABLED);
+  // Default: true — medical data always requires auth unless explicitly disabled
+  return v !== 'false';
+}
+
+export async function setMedicalAppLockEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_MEDICAL_APP_LOCK_ENABLED, enabled ? 'true' : 'false');
+}
+
 // ── Temă ──────────────────────────────────────────────────────────────────────
 
 export type ThemePreference = 'light' | 'dark' | 'auto';

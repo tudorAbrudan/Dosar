@@ -78,6 +78,14 @@ const ENTRIES = {
     imageProcessing: { required: false },
     maintenancePresets: { required: false },
     manifestHash: { required: false },
+    // Medical services — copiate în F2 din DosarMedical; appKnowledge actualizat la Task 29.
+    medicalCrypto: { required: false },
+    medicalRecord: { required: false },
+    medicalObservations: { required: false },
+    medicalFts: { required: false },
+    medicalQueryAnalysis: { required: false },
+    medicalExtractor: { required: false },
+    medicalChat: { required: false },
     ocrAutoRotate: { required: false },
     ocrExtractors: { required: false },
     ocrLayout: { required: false },
@@ -100,6 +108,8 @@ const ENTRIES = {
     'entitati/fuel-stats': { required: true, keywords: ['statistici', 'carburant'] },
     'entitati/wizard-masina': { required: true, keywords: ['mașină', 'wizard'] },
     'entitati/wizard-proprietate': { required: true, keywords: ['proprietate'] },
+    'entitati/medical/[id]/index': { required: false },
+    'entitati/medical/[id]/review': { required: false },
 
     _layout: { required: false },
     'documente/_layout': { required: false },

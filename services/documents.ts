@@ -8,7 +8,7 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
-import { ALL_ENTITY_TYPES } from '@/types';
+import { ALL_ENTITY_TYPES, MEDICAL_DOC_TYPES } from '@/types';
 
 // Detecția de duplicat folosește prefixul OCR normalizat. Sub acest prag în
 // caractere (după normalizare) nu auto-flagăm — header-ele scurte au prea
@@ -49,6 +49,7 @@ const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   card: 'card_id',
   animal: 'animal_id',
   company: 'company_id',
+  medical_record: null,
 };
 
 export interface CreateDocumentInput {
@@ -330,6 +331,49 @@ export async function getVehicleIdentifiers(): Promise<
   return map;
 }
 
+/**
+ * Fire-and-forget: extrage observații medicale dintr-un document nou creat.
+ * Condiții (toate trebuie îndeplinite):
+ *   1. doc.type ∈ MEDICAL_DOC_TYPES
+ *   2. toggle global AI medical ON (settings)
+ *   3. documentul e legat la un medical_record (direct via entity_links sau
+ *      indirect via legacyPersonId → getMedicalRecordByPersonId)
+ *   4. dosarul medical are ai_consent_at setat
+ *
+ * Dynamic imports → evită circular dep (medicalExtractor → documents).
+ * Spec §6.3.
+ */
+async function triggerMedicalExtraction(
+  documentId: string,
+  entityLinks: DocumentEntityLink[],
+  legacyPersonId: string | null
+): Promise<void> {
+  try {
+    const { getAiMedicalAllowed } = await import('./settings');
+    if (!(await getAiMedicalAllowed())) return;
+
+    const { getMedicalRecord, getMedicalRecordByPersonId } = await import('./medicalRecord');
+
+    let recordId: string | null = null;
+    const direct = entityLinks.find(l => l.entityType === 'medical_record');
+    if (direct) {
+      recordId = direct.entityId;
+    } else if (legacyPersonId) {
+      const r = await getMedicalRecordByPersonId(legacyPersonId);
+      recordId = r?.id ?? null;
+    }
+    if (!recordId) return;
+
+    const rec = await getMedicalRecord(recordId);
+    if (!rec || !rec.ai_consent_at) return;
+
+    const { extractAsync } = await import('./medicalExtractor');
+    extractAsync(documentId);
+  } catch (e) {
+    console.warn('[documents] medical extraction trigger failed:', e);
+  }
+}
+
 export async function createDocument(input: CreateDocumentInput): Promise<Document> {
   const id = generateId();
   const created_at = new Date().toISOString();
@@ -370,6 +414,13 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   const entityLinks = buildEntityLinksFromInput(input);
   if (entityLinks.length > 0) {
     await saveEntityLinks(id, entityLinks);
+  }
+
+  // Medical extractor trigger — async, non-blocking. Spec §6.3.
+  // Conditions: doc type ∈ MEDICAL_DOC_TYPES + linked to a medical_record
+  // (via entity_links) + global AI medical consent ON + per-record AI consent given.
+  if ((MEDICAL_DOC_TYPES as ReadonlySet<string>).has(input.type)) {
+    void triggerMedicalExtraction(id, entityLinks, input.person_id ?? null);
   }
 
   try {
