@@ -60,6 +60,7 @@ export interface Person {
   name: string;
   phone?: string;
   email?: string;
+  date_of_birth?: string;  // ISO date YYYY-MM-DD
   createdAt: string;
 }
 

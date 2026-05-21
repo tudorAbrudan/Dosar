@@ -434,6 +434,13 @@ try {
 } catch {
   // coloana există deja
 }
+// Migrare: adaugă date_of_birth la persons (folosit pentru calcul vârstă
+// în detaliul dosar medical + viitoare reminders specifice vârstei).
+try {
+  db.execSync('ALTER TABLE persons ADD COLUMN date_of_birth TEXT');
+} catch {
+  // coloana există deja
+}
 
 // Migrare: adaugă file_hash la documents pentru detecție duplicate
 try {

@@ -1,5 +1,5 @@
 /**
- * Câmpuri suplimentare în modalul de editare persoană (telefon + email).
+ * Câmpuri suplimentare în modalul de editare persoană (telefon + email + data nașterii).
  * Numele e gestionat separat în parent.
  */
 import { StyleSheet, View } from 'react-native';
@@ -7,23 +7,28 @@ import { StyleSheet, View } from 'react-native';
 import { ThemedTextInput } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { Text } from '@/components/Themed';
+import { DatePickerField } from '@/components/DatePickerField';
 
 interface PersonEditFieldsProps {
   scheme: 'light' | 'dark';
   phone: string;
   email: string;
+  dateOfBirth: string;
   disabled: boolean;
   onChangePhone: (value: string) => void;
   onChangeEmail: (value: string) => void;
+  onChangeDateOfBirth: (value: string) => void;
 }
 
 export function PersonEditFields({
   scheme,
   phone,
   email,
+  dateOfBirth,
   disabled,
   onChangePhone,
   onChangeEmail,
+  onChangeDateOfBirth,
 }: PersonEditFieldsProps) {
   const C = Colors[scheme];
   return (
@@ -51,6 +56,12 @@ export function PersonEditFields({
           editable={!disabled}
         />
       </View>
+      <DatePickerField
+        label="Data nașterii (opțional)"
+        value={dateOfBirth}
+        onChange={onChangeDateOfBirth}
+        disabled={disabled}
+      />
     </>
   );
 }

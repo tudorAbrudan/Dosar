@@ -438,7 +438,12 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
         if (p.id) personMap.set(p.id as string, existingId);
         skipped++;
       } else {
-        const created = await entities.createPerson((p.name as string) || 'Persoană');
+        const created = await entities.createPerson(
+          (p.name as string) || 'Persoană',
+          (p.phone as string | null) ?? undefined,
+          (p.email as string | null) ?? undefined,
+          (p.date_of_birth as string | null) ?? undefined
+        );
         if (p.id) personMap.set(p.id as string, created.id);
         existingPersonByName.set(nameKey, created.id);
         imported++;

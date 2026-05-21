@@ -252,6 +252,19 @@ export default function MedicalRecordDetail() {
                   <Ionicons name="person-outline" size={15} color={palette.textSecondary} />
                   <Text style={[styles.patientPersonName, { color: palette.text }]}>
                     {linkedPerson.name}
+                    {(() => {
+                      if (!linkedPerson.date_of_birth) return null;
+                      try {
+                        const ageYears = Math.floor(
+                          (Date.now() - new Date(linkedPerson.date_of_birth).getTime()) /
+                          (365.25 * 24 * 3600 * 1000)
+                        );
+                        if (isNaN(ageYears) || ageYears < 0) return null;
+                        return ` · ${ageYears} ani`;
+                      } catch {
+                        return null;
+                      }
+                    })()}
                   </Text>
                   <Ionicons name="chevron-forward" size={14} color={palette.textSecondary} />
                 </Pressable>

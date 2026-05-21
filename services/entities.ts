@@ -19,9 +19,10 @@ export async function getPersons(): Promise<Person[]> {
     name: string;
     phone: string | null;
     email: string | null;
+    date_of_birth: string | null;
     created_at: string;
   }>(
-    `SELECT p.id, p.name, p.phone, p.email, p.created_at
+    `SELECT p.id, p.name, p.phone, p.email, p.date_of_birth, p.created_at
      FROM persons p
      LEFT JOIN entity_order eo ON eo.entity_type = 'person' AND eo.entity_id = p.id
      ORDER BY COALESCE(eo.sort_order, ?) ASC, p.created_at DESC`,
@@ -32,6 +33,7 @@ export async function getPersons(): Promise<Person[]> {
     name: r.name,
     phone: r.phone ?? undefined,
     email: r.email ?? undefined,
+    date_of_birth: r.date_of_birth ?? undefined,
     createdAt: r.created_at,
   }));
 }
@@ -95,16 +97,21 @@ export async function getCards(): Promise<Card[]> {
   }));
 }
 
-export async function createPerson(name: string, phone?: string, email?: string): Promise<Person> {
+export async function createPerson(
+  name: string,
+  phone?: string,
+  email?: string,
+  date_of_birth?: string
+): Promise<Person> {
   const id = generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
-    'INSERT INTO persons (id, name, phone, email, created_at) VALUES (?, ?, ?, ?, ?)',
-    [id, name, phone ?? null, email ?? null, created_at]
+    'INSERT INTO persons (id, name, phone, email, date_of_birth, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, name, phone ?? null, email ?? null, date_of_birth ?? null, created_at]
   );
   await assignNextOrder('person', id);
   emit('entities:changed');
-  return { id, name, phone, email, createdAt: created_at };
+  return { id, name, phone, email, date_of_birth, createdAt: created_at };
 }
 
 export async function createProperty(name: string): Promise<Property> {
@@ -149,14 +156,13 @@ export async function updatePerson(
   id: string,
   name: string,
   phone?: string,
-  email?: string
+  email?: string,
+  date_of_birth?: string
 ): Promise<void> {
-  await db.runAsync('UPDATE persons SET name = ?, phone = ?, email = ? WHERE id = ?', [
-    name,
-    phone ?? null,
-    email ?? null,
-    id,
-  ]);
+  await db.runAsync(
+    'UPDATE persons SET name = ?, phone = ?, email = ?, date_of_birth = ? WHERE id = ?',
+    [name, phone ?? null, email ?? null, date_of_birth ?? null, id]
+  );
   emit('entities:changed');
 }
 
