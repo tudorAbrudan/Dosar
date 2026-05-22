@@ -46,7 +46,8 @@ function buildFileMap(
   propertyNames: Map<string, string>,
   cardNames: Map<string, string>,
   animalNames: Map<string, string>,
-  companyNames: Map<string, string>
+  companyNames: Map<string, string>,
+  customTypeNames: Map<string, string>
 ): Record<string, string> {
   const fileMap: Record<string, string> = {};
   const docById = new Map(allDocuments.map(d => [d.id, d]));
@@ -61,10 +62,21 @@ function buildFileMap(
     return 'General';
   }
 
-  function zipPath(entityName: string, docType: DocumentType, diskRelPath: string): string {
+  function docTypeFolder(doc: (typeof allDocuments)[number]): string {
+    // Pentru tipurile custom folosim numele real (ex „BCAA Card") în loc de
+    // label-ul generic „Tip personalizat" — altfel toate documentele custom
+    // ajung în același folder.
+    if (doc.type === 'custom' && doc.custom_type_id) {
+      const customName = customTypeNames.get(doc.custom_type_id);
+      if (customName) return customName;
+    }
+    return DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type;
+  }
+
+  function zipPath(entityName: string, doc: (typeof allDocuments)[number], diskRelPath: string): string {
     const filename = diskRelPath.split('/').pop() ?? diskRelPath;
     const ef = sanitizeFolderName(entityName);
-    const tf = sanitizeFolderName(DOCUMENT_TYPE_LABELS[docType] ?? docType);
+    const tf = sanitizeFolderName(docTypeFolder(doc));
     return `${ef}/${tf}/${filename}`;
   }
 
@@ -72,7 +84,7 @@ function buildFileMap(
     if (!doc.file_path) continue;
     const rel = toRelativePath(doc.file_path);
     if (!fileMap[rel]) {
-      fileMap[rel] = zipPath(entityFolder(doc), doc.type, rel);
+      fileMap[rel] = zipPath(entityFolder(doc), doc, rel);
     }
   }
 
@@ -82,7 +94,7 @@ function buildFileMap(
     if (fileMap[rel]) continue;
     const parentDoc = docById.get(page.document_id);
     if (parentDoc) {
-      fileMap[rel] = zipPath(entityFolder(parentDoc), parentDoc.type, rel);
+      fileMap[rel] = zipPath(entityFolder(parentDoc), parentDoc, rel);
     } else {
       fileMap[rel] = rel; // fallback: cale originală
     }
@@ -176,6 +188,7 @@ export async function exportBackup(): Promise<void> {
   );
   const animalNames = new Map(animals.map(a => [a.id, a.name]));
   const companyNames = new Map(companies.map(c => [c.id, c.name]));
+  const customTypeNames = new Map(customTypes.map(ct => [ct.id, ct.name]));
 
   const fileMap = buildFileMap(
     documents,
@@ -185,7 +198,8 @@ export async function exportBackup(): Promise<void> {
     propertyNames,
     cardNames,
     animalNames,
-    companyNames
+    companyNames,
+    customTypeNames
   );
 
   // Task 17: include vehicle photos in ZIP

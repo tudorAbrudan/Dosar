@@ -90,6 +90,8 @@ const EMOJI_MAP = {
   bilet_externare: '🏥',
   imagistica: '🩻',
   vaccin_persoana: '💉',
+  fisa_consultatie: '🩺',
+  bilet_trimitere: '📨',
 };
 
 const HIGHLIGHTED_TYPES = new Set([

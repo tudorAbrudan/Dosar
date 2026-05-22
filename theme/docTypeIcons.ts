@@ -61,6 +61,8 @@ export const DOC_ICON: Record<DocumentType, IoniconName> = {
   bilet_externare: 'exit-outline',
   imagistica: 'scan-outline',
   vaccin_persoana: 'fitness-outline',
+  fisa_consultatie: 'clipboard-outline',
+  bilet_trimitere: 'arrow-redo-outline',
   altul: 'document-outline',
   custom: 'document-outline',
 };

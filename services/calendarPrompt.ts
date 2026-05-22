@@ -19,6 +19,9 @@ interface ExpiryPromptOptions {
   expiryDate: string;
   entityName: string | undefined;
   note: string | undefined;
+  /** Label de afișat în titlul evenimentului — opțional, vezi
+   *  `CalendarEventOptions.displayLabel`. */
+  displayLabel?: string;
   /** Rulat după ce userul răspunde, indiferent de alegere (Nu / Adăugat). */
   onDone: () => void;
 }
@@ -53,6 +56,7 @@ export function promptAddExpiryReminder(opts: ExpiryPromptOptions): void {
             entityName: opts.entityName,
             documentId: opts.documentId,
             note: opts.note,
+            displayLabel: opts.displayLabel,
           });
           if (id) {
             await setDocumentCalendarEventId(opts.documentId, id);

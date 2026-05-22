@@ -8,16 +8,19 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import Colors from '@/constants/Colors';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
-import type { Document } from '@/types';
+import { getDocumentLabel } from '@/types';
+import type { CustomDocumentType, Document } from '@/types';
 
 interface DocumentRowProps {
   doc: Document;
   scheme: 'light' | 'dark';
+  /** Lista tipurilor custom — necesară pentru a afișa numele real al unui
+   * document de tip `custom` în loc de label-ul generic „Tip personalizat". */
+  customTypes: CustomDocumentType[];
   onPress: () => void;
 }
 
-export function DocumentRow({ doc, scheme, onPress }: DocumentRowProps) {
+export function DocumentRow({ doc, scheme, customTypes, onPress }: DocumentRowProps) {
   const C = Colors[scheme];
   return (
     <Pressable
@@ -30,7 +33,7 @@ export function DocumentRow({ doc, scheme, onPress }: DocumentRowProps) {
     >
       <View style={styles.text}>
         <Text style={[styles.type, { color: C.text }]}>
-          {DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type}
+          {getDocumentLabel(doc, customTypes)}
         </Text>
         {doc.issue_date && (
           <Text style={[styles.meta, { color: C.textSecondary }]}>Emis: {doc.issue_date}</Text>

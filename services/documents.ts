@@ -8,7 +8,7 @@ import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
-import { ALL_ENTITY_TYPES, MEDICAL_DOC_TYPES } from '@/types';
+import { ALL_ENTITY_TYPES, MEDICAL_DOC_TYPES, NO_EXPIRY_DOC_TYPES } from '@/types';
 
 // Detecția de duplicat folosește prefixul OCR normalizat. Sub acest prag în
 // caractere (după normalizare) nu auto-flagăm — header-ele scurte au prea
@@ -168,13 +168,22 @@ function buildEntityLinksFromInput(input: {
 }
 
 function mapRow(r: Row, pages?: DocumentPage[]): Document {
+  const type = r.type as DocumentType;
+  // Defense-in-depth: chiar dacă o coloană DB are valoare stale (cod vechi care
+  // a scris fără gate, AI cu hallucination pe permanent docs, import dintr-un
+  // backup vechi), nu expunem niciodată `expiry_date` pentru tipuri care nu
+  // expiră real (certificat naștere/căsătorie/botez, diplome, acte proprietate,
+  // documente medicale snapshot, bonuri, vizite vet). Filtrul aici acoperă
+  // automat Expirări, Home, notificări, calendar — fără să modificăm DB.
+  const expiryDate =
+    r.expiry_date && !NO_EXPIRY_DOC_TYPES.has(type) ? r.expiry_date : undefined;
   return {
     id: r.id,
     main_orientation_locked: r.main_orientation_locked === 1,
-    type: r.type as DocumentType,
+    type,
     custom_type_id: r.custom_type_id ?? undefined,
     issue_date: r.issue_date ?? undefined,
-    expiry_date: r.expiry_date ?? undefined,
+    expiry_date: expiryDate,
     note: r.note ?? undefined,
     file_path: r.file_path ?? undefined,
     metadata: r.metadata ? (JSON.parse(r.metadata) as Record<string, string>) : undefined,
@@ -421,6 +430,11 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   // (via entity_links) + global AI medical consent ON + per-record AI consent given.
   if ((MEDICAL_DOC_TYPES as ReadonlySet<string>).has(input.type)) {
     void triggerMedicalExtraction(id, entityLinks, input.person_id ?? null);
+  } else if (entityLinks.some(l => l.entityType === 'medical_record')) {
+    // Tip non-medical (`custom`, `altul`, etc.) atașat manual la un dosar
+    // medical → indexează în FTS pentru chat medical, fără extracție per-type
+    // (custom/altul nu au prompt AI specific). Vezi `indexDocumentForMedicalChat`.
+    void import('./medicalFts').then(m => m.indexDocumentForMedicalChat(id)).catch(() => {});
   }
 
   try {
@@ -684,6 +698,13 @@ export async function addEntityLinkToDocument(
       ]);
     }
   }
+  // Dacă linkul nou e către un dosar medical, indexează în FTS pentru chat
+  // medical. Necesar pentru tipuri non-medicale (custom, altul) — tipurile
+  // medicale standard sunt deja indexate prin medicalExtractor.extractAsync.
+  // Apelul e idempotent: rescrie chunks-urile pentru toate dosarele legate.
+  if (link.entityType === 'medical_record') {
+    void import('./medicalFts').then(m => m.indexDocumentForMedicalChat(documentId)).catch(() => {});
+  }
   emit('documents:changed');
   emit('links:changed');
 }
@@ -707,6 +728,12 @@ export async function removeEntityLinkFromDocument(
       remaining?.entity_id ?? null,
       documentId,
     ]);
+  }
+  // Dacă se șterge un link către dosar medical, re-index ca să elimine chunks
+  // pentru dosarul respectiv. `indexDocumentForMedicalChat` curăță tot și
+  // reinsereazã doar pentru dosarele rămase legate.
+  if (link.entityType === 'medical_record') {
+    void import('./medicalFts').then(m => m.indexDocumentForMedicalChat(documentId)).catch(() => {});
   }
   emit('documents:changed');
   emit('links:changed');

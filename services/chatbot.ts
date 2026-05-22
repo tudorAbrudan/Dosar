@@ -2,7 +2,8 @@ import { getPersons, getProperties, getVehicles, getCards, getAnimals } from './
 // `getDocumentsForAI` strips private_notes. NU folosi `getDocuments` aici —
 // vezi `.claude/rules/ai-privacy.md`.
 import { getDocumentsForAI } from './documents';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { getCustomTypes } from './customTypes';
+import { getDocumentLabel } from '@/types';
 import type { DocumentType, Document, Vehicle } from '@/types';
 import { buildAppKnowledge } from './appKnowledge';
 import { sendAiRequest, getAiConfig } from './aiProvider';
@@ -55,7 +56,22 @@ const KEYWORD_TO_TYPES: { keywords: string[]; types: DocumentType[] }[] = [
   { keywords: ['pad', 'asigurare locuinta', 'asigurare locuință'], types: ['pad'] },
   { keywords: ['vaccin', 'vaccinare'], types: ['vaccin_animal'] },
   { keywords: ['deparazitare', 'antiparazitar'], types: ['deparazitare'] },
-  { keywords: ['veterinar', 'vet', 'consultatie', 'consultație'], types: ['vizita_vet'] },
+  { keywords: ['veterinar', 'vet', 'cabinet veterinar', 'consult animal'], types: ['vizita_vet'] },
+  {
+    keywords: ['fisa consultatie', 'fișă consultație', 'fisa de consultatie', 'consult medic'],
+    types: ['fisa_consultatie'],
+  },
+  {
+    keywords: [
+      'bilet trimitere',
+      'bilet de trimitere',
+      'trimitere medic',
+      'trimitere specialist',
+      'trimitere investigatii',
+      'referral',
+    ],
+    types: ['bilet_trimitere'],
+  },
   { keywords: ['bilet', 'zbor', 'avion', 'tren', 'concert'], types: ['bilet'] },
   { keywords: ['abonament'], types: ['abonament'] },
   { keywords: ['impozit'], types: ['impozit_proprietate'] },
@@ -391,13 +407,14 @@ async function buildContext(
   docMap: Map<string, string>;
   tasks: TaskRequirement[];
 }> {
-  const [persons, properties, vehicles, cards, animals, documents] = await Promise.all([
+  const [persons, properties, vehicles, cards, animals, documents, customTypes] = await Promise.all([
     getPersons(),
     getProperties(),
     getVehicles(),
     getCards(),
     getAnimals(),
     getDocumentsForAI(),
+    getCustomTypes(),
   ]);
 
   const noData =
@@ -533,7 +550,7 @@ async function buildContext(
       cards.find(c => c.id === doc.card_id)?.nickname ??
       animals.find(a => a.id === doc.animal_id)?.name ??
       null;
-    const label = DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type;
+    const label = getDocumentLabel(doc, customTypes);
     const expiry = doc.expiry_date ? ` | expiră: ${doc.expiry_date}` : '';
     const issued = doc.issue_date ? ` | emis: ${doc.issue_date}` : '';
     const entityStr = entity ? ` (${entity})` : '';
@@ -617,7 +634,7 @@ async function buildContext(
   // Hartă id → label pentru post-procesare răspuns AI
   const docMap = new Map<string, string>();
   for (const doc of documents) {
-    docMap.set(doc.id, DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type);
+    docMap.set(doc.id, getDocumentLabel(doc, customTypes));
   }
 
   return { contextText: lines.join('\n'), filtered: isFiltered, docMap, tasks };

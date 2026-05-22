@@ -21,9 +21,10 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { isExpired, isStaleExpired } from '@/services/expiry';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import { resolveDocumentEntityName } from '@/services/documentEntityName';
 import type { Document } from '@/types';
+import { useCustomTypes } from '@/hooks/useCustomTypes';
 
 function sortByExpiryAsc(a: Document, b: Document): number {
   return (a.expiry_date ?? '').localeCompare(b.expiry_date ?? '');
@@ -66,6 +67,7 @@ export default function ExpirariScreen() {
 
   const { documents, loading, refresh } = useDocuments();
   const { persons, properties, vehicles, cards, animals, companies } = useEntities();
+  const { customTypes } = useCustomTypes();
   const { visibleDocTypes } = useVisibilitySettings();
   const [showStale, setShowStale] = useState(false);
 
@@ -124,7 +126,7 @@ export default function ExpirariScreen() {
         {/* Middle: text */}
         <RNView style={styles.cardContent}>
           <RNText style={[styles.cardTitle, { color: C.text }]} numberOfLines={1}>
-            {DOCUMENT_TYPE_LABELS[doc.type]}
+            {getDocumentLabel(doc, customTypes)}
           </RNText>
           {entityName && (
             <RNText style={[styles.cardSub, { color: C.textSecondary }]} numberOfLines={1}>

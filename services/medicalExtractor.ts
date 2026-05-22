@@ -212,6 +212,19 @@ Pentru fiecare concluzie majoră: name (regiune/organ + tip examen),
 value (concluzia textuală scurtă, max 200 char), observed_at (data examenului),
 category="altele", confidence ≤ 0.7. Răspunde DOAR JSON: {"observations": [...]}.`;
 
+const SYSTEM_FISA_CONSULTATIE = `Extractor fișe de consultație medicală (ambulator/cabinet).
+Pentru fiecare diagnostic, recomandare sau plan terapeutic scris explicit:
+name (eticheta, ex „Diagnostic", „Recomandare", „Plan tratament"),
+value (textul exact, max 200 caractere), observed_at (data consultației),
+category="altele", confidence ≤ 0.7. Răspunde DOAR JSON: {"observations": [...]}.`;
+
+const SYSTEM_BILET_TRIMITERE = `Extractor bilete de trimitere CNAS.
+Pentru fiecare diagnostic, specialitate recomandată sau tip de investigație:
+name (eticheta, ex „Diagnostic", „Cod ICD-10", „Specialitate trimis", „Investigație"),
+value (textul exact, max 200 caractere — pentru ICD-10 doar codul, ex „I10"),
+observed_at (data emiterii biletului), category="altele",
+confidence ≤ 0.7. Răspunde DOAR JSON: {"observations": [...]}.`;
+
 const SYSTEM_BY_TYPE: Partial<Record<DocumentType, string>> = {
   analize_medicale: SYSTEM_ANALIZE,
   reteta_medicala: SYSTEM_RETETA,
@@ -219,6 +232,8 @@ const SYSTEM_BY_TYPE: Partial<Record<DocumentType, string>> = {
   scrisoare_medicala: SYSTEM_SCRISOARE,
   bilet_externare: SYSTEM_BILET,
   imagistica: SYSTEM_IMAGISTICA,
+  fisa_consultatie: SYSTEM_FISA_CONSULTATIE,
+  bilet_trimitere: SYSTEM_BILET_TRIMITERE,
 };
 
 export function getSystemPromptForType(docType: DocumentType): string | null {
@@ -582,7 +597,8 @@ export interface BatchProgress {
 
 const MEDICAL_DOC_TYPES_SQL = `(
   'analize_medicale','reteta_medicala','scrisoare_medicala',
-  'bilet_externare','imagistica','vaccin_persoana'
+  'bilet_externare','imagistica','vaccin_persoana','fisa_consultatie',
+  'bilet_trimitere'
 )`;
 
 /**

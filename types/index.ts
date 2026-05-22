@@ -46,6 +46,8 @@ export type DocumentType =
   | 'bilet_externare'
   | 'imagistica'
   | 'vaccin_persoana'
+  | 'fisa_consultatie'
+  | 'bilet_trimitere'
   | 'altul'
   | 'custom';
 
@@ -421,6 +423,8 @@ export const STANDARD_DOC_TYPES: DocumentType[] = [
   'bilet_externare',
   'imagistica',
   'vaccin_persoana',
+  'fisa_consultatie',
+  'bilet_trimitere',
   'talon',
   'carte_auto',
   'rca',
@@ -495,11 +499,14 @@ export const REPEATABLE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentT
   'bilet',
   // Curs — se pot face multiple
   'certificat_curs',
-  // Medical — se repetă (analize periodice, rețete recurente, vaccinuri anuale, imagistică)
+  // Medical — se repetă (analize periodice, rețete recurente, vaccinuri anuale, imagistică,
+  // consultații succesive la specialist, bilete de trimitere multiple)
   'analize_medicale',
   'vaccin_persoana',
   'imagistica',
   'reteta_medicala',
+  'fisa_consultatie',
+  'bilet_trimitere',
 ]);
 
 /**
@@ -514,6 +521,8 @@ export const MEDICAL_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType
   'bilet_externare',
   'imagistica',
   'vaccin_persoana',
+  'fisa_consultatie',
+  'bilet_trimitere',
 ]);
 
 // Tipuri active implicit pentru utilizatori noi — doar ce folosesc cei mai mulți
@@ -563,22 +572,38 @@ export const NO_EXPIRY_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentTy
   // Proprietate — nu expiră (drepturi permanente)
   'act_proprietate',
   'cadastru',
+  // Factură — documentul fiscal e valabil permanent ca dovadă; scadența de
+  // plată e o caracteristică a OBLIGAȚIEI, nu a documentului, și rămâne în
+  // `metadata.due_date` (vizibilă în detail, fără reminder calendar).
+  'factura',
+  // Contract — documentul ca atare e o dovadă permanentă a înțelegerii; data
+  // de încheiere a contractului (chirie expiră, muncă determinată etc.) este
+  // un atribut al obligației, nu al documentului. Userul poate stoca data în
+  // `note` sau ca memo separat dacă vrea reminder.
+  'contract',
   // Vehicul — CIV nu expiră (doar talonul are ITP)
   'carte_auto',
   // Firmă — acte constitutive permanente
   'certificat_inregistrare',
   'act_constitutiv',
   'certificat_tva',
-  // Studii — diplomele și certificatele de absolvire sunt permanente
+  // Studii — diplomele, certificatele de absolvire/curs și adeverințele de
+  // studii (de regulă atestă absolvirea) sunt documente permanente — fără
+  // termen real de expirare. Adeverințele „sunt elev/student" cu valabilitate
+  // 3-6 luni sunt edge case → user-ul setează manual în câmpul „Notă" data
+  // recomandată de re-emitere (sau folosește un memo separat).
   'diploma',
   'foaie_matricola',
   'certificat_absolvire',
+  'certificat_curs',
+  'adeverinta_studii',
   // Medical — snapshot-uri punctuale; nu expiră formal. (Rețetele și vaccinurile
   // au valabilitate / next-dose-due → rămân în afara setului.)
   'analize_medicale',
   'scrisoare_medicala',
   'bilet_externare',
   'imagistica',
+  'fisa_consultatie',
   // Bonuri și vizite — evenimente trecute, fără expirare
   'bon_cumparaturi',
   'bon_parcare',
@@ -632,6 +657,8 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   bilet_externare: 'Bilet de externare',
   imagistica: 'Imagistică',
   vaccin_persoana: 'Vaccin',
+  fisa_consultatie: 'Fișă consultație',
+  bilet_trimitere: 'Bilet de trimitere',
   altul: 'Altele',
   custom: 'Tip personalizat',
 };
@@ -706,6 +733,8 @@ export const ENTITY_DOCUMENT_TYPES: Record<EntityType, DocumentType[]> = {
     'bilet_externare',
     'imagistica',
     'vaccin_persoana',
+    'fisa_consultatie',
+    'bilet_trimitere',
     'card_sanatate',
     'altul',
     'custom',
@@ -760,6 +789,8 @@ export const DOC_PRIMARY_ENTITY: Partial<Record<DocumentType, EntityType>> = {
   bilet_externare: 'medical_record',
   imagistica: 'medical_record',
   vaccin_persoana: 'medical_record',
+  fisa_consultatie: 'medical_record',
+  bilet_trimitere: 'medical_record',
 };
 
 export function getDocumentLabel(

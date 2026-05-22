@@ -23,8 +23,9 @@ import { useEntities } from '@/hooks/useEntities';
 import { useDocuments } from '@/hooks/useDocuments';
 import { getDocuments, linkDocumentToEntity } from '@/services/documents';
 import { toFileUri, toRelativePath } from '@/services/fileUtils';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { Document as DocType, DocumentType } from '@/types';
+import { useCustomTypes } from '@/hooks/useCustomTypes';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
@@ -68,6 +69,7 @@ export default function EntityDetailScreen() {
     updateCompany,
   } = useEntities();
   const { getDocumentsByEntity } = useDocuments();
+  const { customTypes } = useCustomTypes();
 
   const [documents, setDocuments] = useState<DocType[]>([]);
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -507,6 +509,7 @@ export default function EntityDetailScreen() {
             key={doc.id}
             doc={doc}
             scheme={scheme}
+            customTypes={customTypes}
             onPress={() =>
               router.push({
                 pathname: '/(tabs)/documente/[id]',
@@ -563,6 +566,7 @@ export default function EntityDetailScreen() {
         visible={linkDocVisible}
         unlinkedDocs={unlinkedDocs}
         scheme={scheme}
+        customTypes={customTypes}
         onClose={() => setLinkDocVisible(false)}
         onLink={handleLinkDoc}
       />

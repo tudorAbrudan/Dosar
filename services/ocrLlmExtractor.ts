@@ -37,7 +37,30 @@ const TALON_EXPIRY_RULE = `expiry_date pentru "talon" = data ULTIMEI inspecții 
 
   Confuzii uzuale OCR: 0↔6, 0↔8, 1↔7, 2↔7. Dacă o dată pare în trecut pe o ștampilă recentă, recheck anul (ex. "2028" citit "2023").`;
 
+const BILET_TRIMITERE_EXPIRY_RULE = `expiry_date pentru "bilet_trimitere" = data_emiterii + 30 zile (afecțiune ACUTĂ/SUBACUTĂ) sau + 90 zile (afecțiune CRONICĂ). Reguli CNAS Romania:
+
+  1. Citește câmpul „Tip afecțiune" / „Acut" / „Subacut" / „Cronic" / „Acut-Subacut-Cronic" de pe bilet. De obicei e o casetă cu opțiuni bifate sau scrise „A"/„S"/„C".
+  2. Dacă afecțiune e ACUTĂ sau SUBACUTĂ (sau "A" / "S" bifat): expiry_date = issue_date + 30 zile.
+  3. Dacă afecțiune e CRONICĂ (sau "C" bifat): expiry_date = issue_date + 90 zile.
+  4. Dacă tip-ul nu poate fi citit cu certitudine: alege 30 zile (conservator — userul setează manual dacă e cronic).
+  5. Calculează expiry_date numeric (ZZ + 30 sau 90 → next month/months). Format final: YYYY-MM-DD.
+
+  În metadata adaugă obligatoriu:
+  - tip_afectiune: "acuta" | "subacuta" | "cronica" (sau null dacă nu poți citi)
+  - diagnostic_cod: codul ICD-10/CIM-10 dacă apare (ex „I10", „M54.5", „K29.7")
+  - specialitate: specialitatea/tipul investigației recomandată (ex „Cardiologie", „Ecografie abdominală", „Hemoleucogramă")
+  - medic_emitent: numele medicului care a emis biletul (dacă apare lizibil)
+
+  EXCEPȚIE: dacă pe document nu apare data emiterii, expiry_date rămâne null.`;
+
 const TYPE_CONFIG: Partial<Record<DocumentType, TypeConfig>> = {
+  bilet_trimitere: {
+    fieldsHint:
+      'tip_afectiune ("acuta" | "subacuta" | "cronica"), diagnostic_cod (ICD-10/CIM-10, ex „I10"), diagnostic_text (descrierea diagnosticului), specialitate (specialitatea/investigația recomandată), medic_emitent (numele medicului emitent), unitate_emitenta (cabinet/policlinică), serie_numar (serie + nr. bilet, regim special CNAS), tip_bilet ("specialitate" | "investigatii")',
+    noteInstruction:
+      'Listează: Tip bilet (consultație specialitate / investigații), Diagnostic + cod ICD-10, Specialitate/investigație recomandată, Tip afecțiune (acut/cronic) + valabilitate, Medic emitent, Unitate emitentă, Serie/număr. Max 15 rânduri.',
+    expiryRule: BILET_TRIMITERE_EXPIRY_RULE,
+  },
   talon: {
     fieldsHint:
       'plate (nr. înmatriculare format "B 123 ABC"), marca (VW/Dacia etc.), model, vin (17 caractere, fără I/O/Q), itp_expiry_date (formatul ZZ.LL.AAAA, DOAR dacă expiry_date e completat — vezi regula de mai jos despre ștampila ITP)',

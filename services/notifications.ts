@@ -2,7 +2,8 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as settings from './settings';
 import { getDocumentsExpiringIn } from './documents';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { getCustomTypes } from './customTypes';
+import { getDocumentLabel } from '@/types';
 
 const NOTIF_CHANNEL_ID = 'expirari';
 
@@ -52,7 +53,10 @@ export async function scheduleExpirationReminders(): Promise<void> {
   await ensureChannel();
 
   const days = await settings.getNotificationDays();
-  const docs = await getDocumentsExpiringIn(days);
+  const [docs, customTypes] = await Promise.all([
+    getDocumentsExpiringIn(days),
+    getCustomTypes(),
+  ]);
 
   await Notifications.cancelAllScheduledNotificationsAsync();
 
@@ -75,10 +79,11 @@ export async function scheduleExpirationReminders(): Promise<void> {
     const asigraUrl = asigraUrls[doc.type];
     const isInsurance = !!asigraUrl;
 
+    const docLabel = getDocumentLabel(doc, customTypes);
     const title = isInsurance ? 'Asigurarea expiră curând' : 'Document expiră curând';
     const body = isInsurance
-      ? `${DOCUMENT_TYPE_LABELS[doc.type]} expiră pe ${doc.expiry_date}. Compară prețuri pe asigra.ro`
-      : `${DOCUMENT_TYPE_LABELS[doc.type]} expiră pe ${doc.expiry_date}`;
+      ? `${docLabel} expiră pe ${doc.expiry_date}. Compară prețuri pe asigra.ro`
+      : `${docLabel} expiră pe ${doc.expiry_date}`;
 
     await Notifications.scheduleNotificationAsync({
       content: {

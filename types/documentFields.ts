@@ -19,7 +19,7 @@ export interface FieldDef {
  */
 export const EXPIRY_FIELD_LABEL: Partial<Record<DocumentType, string>> = {
   talon: 'Scadență ITP',
-  factura: 'Scadență',
+  bilet_trimitere: 'Valabil până la',
 };
 
 /**

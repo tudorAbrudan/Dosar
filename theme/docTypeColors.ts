@@ -57,6 +57,8 @@ export const DOC_ICON_BG: Record<DocumentType, string> = {
   bilet_externare: iconColors.teal.bg,
   imagistica: iconColors.indigo.bg,
   vaccin_persoana: iconColors.primaryDark.bg,
+  fisa_consultatie: iconColors.primary.bg,
+  bilet_trimitere: iconColors.warning.bg,
   altul: iconColors.neutral.bg,
   custom: iconColors.neutral.bg,
 };
@@ -108,6 +110,8 @@ export const DOC_ICON_COLOR: Record<DocumentType, string> = {
   bilet_externare: iconColors.teal.fg,
   imagistica: iconColors.indigo.fg,
   vaccin_persoana: iconColors.primaryDark.fg,
+  fisa_consultatie: iconColors.primary.fg,
+  bilet_trimitere: iconColors.warning.fg,
   altul: iconColors.neutral.fg,
   custom: iconColors.neutral.fg,
 };

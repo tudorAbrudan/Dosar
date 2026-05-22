@@ -54,6 +54,13 @@ export interface CalendarEventOptions {
   entityName?: string;
   documentId?: string;
   note?: string;
+  /**
+   * Label de afișat în titlul evenimentului. Caller-ul îl compune cu
+   * `getDocumentLabel(doc, customTypes)` ca să returneze numele real al
+   * tipurilor custom („BCAA Card") în loc de label-ul generic („Tip
+   * personalizat"). Dacă lipsește, fallback la `DOCUMENT_TYPE_LABELS[docType]`.
+   */
+  displayLabel?: string;
 }
 
 /**
@@ -68,7 +75,7 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
     const calendarId = await getDefaultCalendarId();
     if (!calendarId) return null;
 
-    const typeLabel = DOCUMENT_TYPE_LABELS[opts.docType] ?? opts.docType;
+    const typeLabel = opts.displayLabel ?? DOCUMENT_TYPE_LABELS[opts.docType] ?? opts.docType;
     const title = opts.entityName
       ? `Expiră ${typeLabel} – ${opts.entityName}`
       : `Expiră ${typeLabel}`;
@@ -124,7 +131,7 @@ export async function updateExpiryCalendarEvent(
   if (!CalendarModule) return null;
 
   try {
-    const typeLabel = DOCUMENT_TYPE_LABELS[opts.docType] ?? opts.docType;
+    const typeLabel = opts.displayLabel ?? DOCUMENT_TYPE_LABELS[opts.docType] ?? opts.docType;
     const title = opts.entityName
       ? `Expiră ${typeLabel} – ${opts.entityName}`
       : `Expiră ${typeLabel}`;

@@ -6,13 +6,14 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
-import type { Document } from '@/types';
+import { getDocumentLabel } from '@/types';
+import type { CustomDocumentType, Document } from '@/types';
 
 interface LinkDocumentModalProps {
   visible: boolean;
   unlinkedDocs: Document[];
   scheme: 'light' | 'dark';
+  customTypes: CustomDocumentType[];
   onClose: () => void;
   onLink: (docId: string) => void;
 }
@@ -21,6 +22,7 @@ export function LinkDocumentModal({
   visible,
   unlinkedDocs,
   scheme,
+  customTypes,
   onClose,
   onLink,
 }: LinkDocumentModalProps) {
@@ -43,7 +45,7 @@ export function LinkDocumentModal({
                   onPress={() => onLink(d.id)}
                 >
                   <Text style={[styles.rowType, { color: C.primary }]}>
-                    {DOCUMENT_TYPE_LABELS[d.type] ?? d.type}
+                    {getDocumentLabel(d, customTypes)}
                   </Text>
                   {d.note ? (
                     <Text

@@ -70,6 +70,8 @@ const DOC_CATEGORIES: { label: string; types: string[] }[] = [
       'bilet_externare',
       'imagistica',
       'vaccin_persoana',
+      'fisa_consultatie',
+      'bilet_trimitere',
     ],
   },
   {

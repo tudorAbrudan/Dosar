@@ -20,7 +20,8 @@ import type { MedicalRecord, Person } from '@/types';
 
 const MEDICAL_DOC_TYPES_SQL = `(
   'analize_medicale','reteta_medicala','scrisoare_medicala',
-  'bilet_externare','imagistica','vaccin_persoana'
+  'bilet_externare','imagistica','vaccin_persoana','fisa_consultatie',
+  'bilet_trimitere'
 )`;
 
 // Fallback sort pentru entități care nu au rând în entity_order.
@@ -245,12 +246,13 @@ export async function getMedicalRecordStats(id: string): Promise<MedicalRecordSt
     [id]
   );
 
-  // Documente medicale legate de acest dosar (prin document_entities).
+  // Toate documentele legate la acest dosar — inclusiv tipuri non-medicale
+  // (custom, altul) pe care userul le-a atașat manual ca relevante medical.
+  // Chat-ul medical le caută; contorul reflectă această realitate.
   const docsRow = await db.getFirstAsync<{ c: number }>(
     `SELECT COUNT(DISTINCT d.id) as c FROM documents d
      JOIN document_entities de ON de.document_id = d.id
-     WHERE de.entity_type = 'medical_record' AND de.entity_id = ?
-       AND d.type IN ${MEDICAL_DOC_TYPES_SQL}`,
+     WHERE de.entity_type = 'medical_record' AND de.entity_id = ?`,
     [id]
   );
 

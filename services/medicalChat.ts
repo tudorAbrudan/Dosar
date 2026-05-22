@@ -22,7 +22,9 @@ import { listObservationsByRecord } from './medicalObservations';
 import { getDocumentById } from './documents';
 import { sendAiRequest } from './aiProvider';
 import { emit } from './events';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { getDocumentLabel } from '@/types';
+import { getCustomTypes } from './customTypes';
+import type { CustomDocumentType } from '@/types';
 import type {
   MedicalChatThread,
   MedicalChatMessage,
@@ -211,15 +213,21 @@ export interface RetrievedContext {
   documentChunks: RetrievedDocChunk[];
 }
 
-function docLabelFromType(type: DocumentType): string {
-  return DOCUMENT_TYPE_LABELS[type] ?? type;
+function docLabel(
+  doc: { type: DocumentType; custom_type_id?: string },
+  customTypes: CustomDocumentType[]
+): string {
+  return getDocumentLabel(doc, customTypes);
 }
 
 export async function retrieveContext(recordId: string, query: string): Promise<RetrievedContext> {
   const a = analyzeQuery(query);
 
   // Set A: structured lookup pe observații decriptate
-  const allObs = await listObservationsByRecord(recordId);
+  const [allObs, customTypes] = await Promise.all([
+    listObservationsByRecord(recordId),
+    getCustomTypes(),
+  ]);
   const normTerms = a.searchTerms.map(t => normalizeName(t));
   const matched = allObs.filter(o => {
     const n = normalizeName(o.name);
@@ -285,7 +293,7 @@ export async function retrieveContext(recordId: string, query: string): Promise<
     if (a.to && doc.issue_date && doc.issue_date > a.to) continue;
     docChunks.push({
       documentId: doc.id,
-      label: docLabelFromType(doc.type),
+      label: docLabel(doc, customTypes),
       observedAt: doc.issue_date ?? null,
       text: h.chunk_text,
     });

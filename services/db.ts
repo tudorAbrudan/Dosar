@@ -423,6 +423,44 @@ try {
   // Migrare deja aplicată sau eroare neesențială
 }
 
+// Migrare: cleanup legături orfan în document_entities.
+// `document_entities.entity_id` e doar TEXT fără FK CASCADE, deci când o
+// entitate e ștearsă (înainte de fix-ul pe delete*() din entities.ts), legătura
+// rămâne și apare în UI ca UUID nerezolvabil. Această migrare rulează la
+// fiecare pornire — sigur (idempotentă) și ieftină.
+try {
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'person' AND entity_id NOT IN (SELECT id FROM persons)
+  `);
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'vehicle' AND entity_id NOT IN (SELECT id FROM vehicles)
+  `);
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'property' AND entity_id NOT IN (SELECT id FROM properties)
+  `);
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'card' AND entity_id NOT IN (SELECT id FROM cards)
+  `);
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'animal' AND entity_id NOT IN (SELECT id FROM animals)
+  `);
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'company' AND entity_id NOT IN (SELECT id FROM companies)
+  `);
+  db.execSync(`
+    DELETE FROM document_entities
+    WHERE entity_type = 'medical_record' AND entity_id NOT IN (SELECT id FROM medical_record)
+  `);
+} catch {
+  // Cleanup safe; eroare doar dacă o tabelă lipsește (nu se aplică).
+}
+
 // Migrare: adaugă phone, email la persons dacă nu există
 try {
   db.execSync('ALTER TABLE persons ADD COLUMN phone TEXT');

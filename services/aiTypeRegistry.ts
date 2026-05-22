@@ -415,6 +415,51 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
       'Data administrării + numele cabinetului/centrului',
     ],
   },
+  fisa_consultatie: {
+    label: DOCUMENT_TYPE_LABELS.fisa_consultatie,
+    aliases: [
+      'fișă consultație',
+      'fișă de consultație',
+      'fisa de consultatie',
+      'fisa consultatie',
+      'consultație medicală',
+      'consult medical',
+      'raport consultație',
+    ],
+    description:
+      'Fișă emisă de medic la finalul unei consultații în ambulator/cabinet. Conține datele pacientului, anamneza, examenul clinic, diagnosticul și recomandările. Diferită de scrisoarea medicală (acolo medicul scrie altui medic) și de biletul de externare (acolo pacientul iese din spital). Snapshot punctual, NU expiră.',
+    distinguishingMarks: [
+      'Antet clinică/spital + cuvântul „FIȘĂ DE CONSULTAȚIE" / „FIȘA DE CONSULTAȚIE"',
+      'Tabel cu date pacient (Nume, Prenume, CNP, Adresa, Cod pacient)',
+      'Secțiuni: „Antecedente", „Examen clinic", „Diagnostic", „Recomandări"',
+      'Numele și parafa medicului consultant + data consultației',
+      'NU conține „epicriză" (specific bilet externare) sau „prescriu" (specific rețetă)',
+    ],
+  },
+  bilet_trimitere: {
+    label: DOCUMENT_TYPE_LABELS.bilet_trimitere,
+    aliases: [
+      'bilet de trimitere',
+      'bilet trimitere',
+      'trimitere medicală',
+      'trimitere specialist',
+      'trimitere investigații',
+      'trimitere paraclinic',
+      'referral medical',
+    ],
+    description:
+      'Bilet de trimitere CNAS emis de medicul de familie (sau alt medic) pentru consultație la specialist sau pentru investigații paraclinice (analize, RX, RMN, CT, ecografie etc.). Document de regim special cu serie+număr și bar code. EXPIRĂ în 30 zile pentru afecțiuni acute/subacute și 90 zile pentru afecțiuni cronice — citește câmpul „Tip afecțiune" / „Acut / Cronic" și calculează expiry_date = data_emiterii + 30 sau 90 zile.',
+    distinguishingMarks: [
+      'Antet „BILET DE TRIMITERE" + tip („pentru consultație specialitate" / „pentru investigații paraclinice")',
+      'Serie + număr (regim special, ex „BT 1234567")',
+      'Bar code corespunzător seriei/numărului',
+      'Câmp „Cod diagnostic" cu format ICD-10 / CIM-10 (ex „I10", „M54.5")',
+      'Câmp „Specialitate" sau „Tip investigație" (ex „Cardiologie", „Hemoleucogramă completă")',
+      'Casetă „Tip afecțiune" sau „Acut / Subacut / Cronic" — determină valabilitatea (30 vs 90 zile)',
+      'Casa de asigurări de sănătate + nr. contract furnizor CNAS',
+      'NU confunda cu „bilet de externare" (acolo apare „epicriză", interval internare, secție)',
+    ],
+  },
 };
 
 export function getRegistryEntry(type: DocumentType): AiTypeEntry {

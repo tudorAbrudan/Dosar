@@ -9,6 +9,7 @@
 import { extractText } from '@/services/ocr';
 import * as FileSystem from 'expo-file-system/legacy';
 import { EncodingType } from 'expo-file-system/legacy';
+import { compressImageToBase64ForAi } from '@/services/imageProcessing';
 
 // Import lazy pentru a evita crash dacă modulul nativ nu e disponibil în build
 let _getPdfPageCount: ((filePath: string) => Promise<number>) | null = null;
@@ -123,10 +124,12 @@ export async function renderPdfFirstPageForVision(fileUri: string): Promise<stri
   const uri = fileUri.startsWith('file://') ? fileUri : `file://${fileUri}`;
   let imageUri: string | null = null;
   try {
-    // scale 2.0 = ~200 DPI, mai clar pentru vision AI
+    // scale 2.0 = ~200 DPI — randare clară pentru AI, dar produce JPEG mare
+    // pentru A4 (1654x2338 px). Trecem prin `compressImageToBase64ForAi` care
+    // resize-uiește la 2048px width + q=0.8 → payload <1 MB. Necesar pentru
+    // iOS NSURLSession care respinge upload-uri mari cu „Network request failed".
     imageUri = await _renderPdfPage(uri, 0, 2.0);
-    const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
-    return base64;
+    return await compressImageToBase64ForAi(imageUri);
   } catch (e) {
     console.log('[pdfOcr] renderForVision eroare:', e instanceof Error ? e.message : String(e));
     return null;

@@ -75,8 +75,16 @@ export default function EditDocumentScreen() {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
-  const { companies, persons, properties, vehicles, cards, animals, resolveEntityName } =
-    useEntities();
+  const {
+    companies,
+    persons,
+    properties,
+    vehicles,
+    cards,
+    animals,
+    medicalRecords,
+    resolveEntityName,
+  } = useEntities();
 
   const [doc, setDoc] = useState<DocType | null>(null);
   const [loadingDoc, setLoadingDoc] = useState(true);
@@ -686,11 +694,16 @@ export default function EditDocumentScreen() {
     try {
       // ocr_text NU se include — e gestionat exclusiv prin setDocumentOcrText
       // (manual OCR, AI vision, edit text). updateDocument partial îl lasă neatins.
+      // expiry_date: dacă tipul curent e NO_EXPIRY, trimitem `undefined` —
+      // updateDocument vede cheia prezentă și scrie SQL NULL (vezi comentariul
+      // de la signature). Necesar pentru că UI ascunde input-ul când userul
+      // schimbă tipul, dar ref-ul reține valoarea veche.
+      const isNoExpiry = NO_EXPIRY_DOC_TYPES.has(type);
       await updateDocument(doc.id, {
         type,
         custom_type_id: type === 'custom' ? (customTypeId ?? undefined) : undefined,
         issue_date: issueDate.trim() || undefined,
-        expiry_date: expiryDateRef.current.trim() || undefined,
+        expiry_date: isNoExpiry ? undefined : expiryDateRef.current.trim() || undefined,
         note: note.trim() || undefined,
         file_path: doc.file_path,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
@@ -709,7 +722,9 @@ export default function EditDocumentScreen() {
         return;
       }
 
-      const finalExpiry = expiryDateRef.current.trim();
+      // Pentru tipuri NO_EXPIRY ignorăm ref-ul (poate conține stale) — fără
+      // eveniment de calendar pentru documente fără expirare reală.
+      const finalExpiry = isNoExpiry ? '' : expiryDateRef.current.trim();
       const isBilet = type === 'bilet';
       const biletDate = isBilet ? metadata.event_date?.trim() : undefined;
       const hasEvent = doc.calendar_event_id;
@@ -732,6 +747,7 @@ export default function EditDocumentScreen() {
             entityName: entityName ?? undefined,
             documentId: doc.id,
             note: note.trim() || undefined,
+            displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
           });
           if (newId && newId !== hasEvent) await setDocumentCalendarEventId(doc.id, newId);
         } else {
@@ -767,6 +783,7 @@ export default function EditDocumentScreen() {
           expiryDate: finalExpiry,
           entityName: entityName ?? undefined,
           note: note.trim() || undefined,
+          displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
           onDone: navigateBack,
         });
         return;
@@ -951,13 +968,18 @@ export default function EditDocumentScreen() {
         entityLinks={entityLinks}
         groups={{
           // check-hardcoded-entities-disable-next-cluster
-          // Mapping caller-specific: card-urile au label format diferit (nickname + last4).
+          // Mapping caller-specific: card-urile au label format diferit (nickname + last4),
+          // iar dosarele medicale afișează numele + persoana titulară (1:1 cu Person).
           person: persons.map(p => ({ id: p.id, label: p.name })),
           vehicle: vehicles.map(v => ({ id: v.id, label: v.name })),
           property: properties.map(p => ({ id: p.id, label: p.name })),
           card: cards.map(c => ({ id: c.id, label: `${c.nickname ?? ''} ····${c.last4}` })),
           animal: animals.map(a => ({ id: a.id, label: a.name })),
           company: companies.map(c => ({ id: c.id, label: c.name })),
+          medical_record: medicalRecords.map(r => {
+            const owner = persons.find(p => p.id === r.person_id);
+            return { id: r.id, label: owner ? `${r.name} (${owner.name})` : r.name };
+          }),
         }}
         onAdd={handleAddEntityLink}
         onClose={() => setLinkEntityVisible(false)}

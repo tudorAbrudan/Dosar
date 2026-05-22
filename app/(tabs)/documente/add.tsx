@@ -42,6 +42,7 @@ import {
   ALL_ENTITY_TYPES,
   NO_EXPIRY_DOC_TYPES,
   MEDICAL_DOC_TYPES,
+  getDocumentLabel,
 } from '@/types';
 import type { Document } from '@/types';
 import type { DocumentType, EntityType, DocumentEntityLink } from '@/types';
@@ -1094,6 +1095,7 @@ export default function AddDocumentScreen() {
           expiryDate: finalExpiry,
           entityName,
           note: note.trim() || undefined,
+          displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
           onDone: navigateBack,
         });
         return;
@@ -1208,6 +1210,7 @@ export default function AddDocumentScreen() {
         {duplicateDoc && (
           <DuplicateBanner
             doc={duplicateDoc}
+            customTypes={customTypes}
             onPress={() => router.push(`/(tabs)/documente/${duplicateDoc.id}`)}
           />
         )}
@@ -1287,6 +1290,7 @@ export default function AddDocumentScreen() {
                 expiryDate,
                 entityName: undefined,
                 note: note.trim() || undefined,
+                displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
               });
               if (!id)
                 Alert.alert(

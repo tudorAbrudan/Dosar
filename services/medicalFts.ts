@@ -31,7 +31,7 @@ import { getMedicalFtsVersion, setMedicalFtsVersion } from './settings';
  *   v3: eliminare chunks observații din FTS (spec §6.5); schema medical_fts
  *       cu document_id + chunk_type în loc de source_type + source_id.
  */
-export const CURRENT_FTS_VERSION = 3;
+export const CURRENT_FTS_VERSION = 4;
 
 /** Tipul unui chunk FTS: 'ocr' = text brut document, 'summary' = rezumat AI. */
 export type ChunkType = 'ocr' | 'summary';
@@ -57,6 +57,56 @@ export async function insertChunks(chunks: ChunkInsert[]): Promise<void> {
 
 export async function deleteChunksByDocument(documentId: string): Promise<void> {
   await db.runAsync('DELETE FROM medical_fts WHERE document_id = ?', [documentId]);
+}
+
+/**
+ * Re-indexează un document pentru chat-ul medical: șterge chunks vechi, citește
+ * `note` + `ocr_text` din DB, generează chunks noi pentru fiecare dosar medical
+ * la care e legat documentul. Sigur să fie apelat pe orice document — dacă nu
+ * e legat la niciun dosar medical, doar curăță chunks-uri vechi (eventual).
+ *
+ * Folosit pentru tipurile NON-medicale (`custom`, `altul`) pe care userul le
+ * leagă manual la un dosar medical. Pentru tipurile medicale standard,
+ * `medicalExtractor.extractAsync` face deja insertChunks ca parte din extracție.
+ */
+export async function indexDocumentForMedicalChat(documentId: string): Promise<void> {
+  await deleteChunksByDocument(documentId);
+
+  const links = await db.getAllAsync<{ entity_id: string }>(
+    "SELECT entity_id FROM document_entities WHERE document_id = ? AND entity_type = 'medical_record'",
+    [documentId]
+  );
+  if (links.length === 0) return;
+
+  const doc = await db.getFirstAsync<{ note: string | null; ocr_text: string | null }>(
+    'SELECT note, ocr_text FROM documents WHERE id = ?',
+    [documentId]
+  );
+  if (!doc) return;
+
+  for (const { entity_id: medicalRecordId } of links) {
+    if (doc.note && doc.note.trim().length > 0) {
+      await insertChunks([
+        {
+          document_id: documentId,
+          medical_record_id: medicalRecordId,
+          chunk_type: 'summary',
+          chunk_text: `Rezumat document: ${doc.note.trim()}`,
+        },
+      ]);
+    }
+    if (doc.ocr_text && doc.ocr_text.trim().length > 0) {
+      const chunks = chunkText(doc.ocr_text);
+      await insertChunks(
+        chunks.map(t => ({
+          document_id: documentId,
+          medical_record_id: medicalRecordId,
+          chunk_type: 'ocr' as const,
+          chunk_text: t,
+        }))
+      );
+    }
+  }
 }
 
 export async function deleteChunksByRecord(recordId: string): Promise<void> {
@@ -138,12 +188,15 @@ export async function rebuildFtsFromExistingData(): Promise<void> {
     ocr_text: string | null;
     note: string | null;
   }
+  // Orice document legat la un dosar medical e indexat pentru chat — inclusiv
+  // tipuri non-medicale (`custom`, `altul`) pe care userul le-a atașat manual
+  // ca relevante medical (ex „Card vaccinări", fișă specifică). Filtrul de tip
+  // a fost eliminat în versiunea 4 a indexului.
   const docs = await db.getAllAsync<DocRow>(
     `SELECT DISTINCT d.id, de.entity_id AS mr_id, d.ocr_text, d.note
      FROM documents d
      JOIN document_entities de ON de.document_id = d.id AND de.entity_type = 'medical_record'
-     WHERE d.type IN ('analize_medicale','reteta_medicala','scrisoare_medicala','bilet_externare','imagistica','vaccin_persoana')
-       AND ((d.ocr_text IS NOT NULL AND d.ocr_text != '')
+     WHERE ((d.ocr_text IS NOT NULL AND d.ocr_text != '')
          OR (d.note IS NOT NULL AND d.note != ''))`
   );
 

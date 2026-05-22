@@ -647,12 +647,23 @@ export function detectDocumentType(text: string): DocumentType | null {
   if (/contract/.test(t)) return 'contract';
   if (/garantie|garan[tț]ie|warranty|certificat de garan[tț]ie/.test(t)) return 'garantie';
   if (/bon fiscal|chitant[aă]|receipt/.test(t)) return 'bon_cumparaturi';
+  // ORDINE: „bilet de trimitere" (medical CNAS) ÎNAINTE de regex-ul generic
+  // „bilet|ticket|boarding pass" — altfel un bilet medical e clasificat ca
+  // bilet de eveniment/călătorie.
+  if (/bilet de trimitere|bilet trimitere/.test(t)) return 'bilet_trimitere';
   if (/bilet|ticket|boarding pass/.test(t)) return 'bilet';
   if (/abonament|subscri/.test(t)) return 'abonament';
   if (/stingator|extinctor/.test(t)) return 'stingator_incendiu';
   if (/vaccin|vaccinare/.test(t)) return 'vaccin_animal';
   if (/deparazitare|antiparazitar/.test(t)) return 'deparazitare';
-  if (/consultat|veterinar|clinica veterinara/.test(t)) return 'vizita_vet';
+  // ORDINE: fișa de consultație ÎNAINTE de vizita_vet — altfel „consultație" de
+  // pe documente medicale umane (fișă consultație medic ambulator) declanșează
+  // fals vizita_vet. Pattern-ul medical e specific (FIȘA DE CONSULTAȚIE), iar
+  // vet-ul cere acum explicit „vet"/„veterinar"/„clinică veterinară".
+  if (/fi[sș][aă] de consulta[tț]ie|fi[sș][aă] consulta[tț]ie/.test(t))
+    return 'fisa_consultatie';
+  if (/veterinar|clinic[aă] veterinar[aă]|cabinet veterinar|\bvet\b/.test(t))
+    return 'vizita_vet';
 
   return null;
 }

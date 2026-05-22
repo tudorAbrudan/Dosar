@@ -1,12 +1,16 @@
 import { Pressable, Text, StyleSheet } from 'react-native';
-import type { Document } from '@/types';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
+import type { CustomDocumentType, Document } from '@/types';
+import { getDocumentLabel } from '@/types';
 import { useColorScheme } from '@/components/useColorScheme';
 import { statusColors } from '@/theme/colors';
 import Colors from '@/constants/Colors';
 
 interface DuplicateBannerProps {
   doc: Document;
+  /** Tipurile custom — necesare pentru a afișa numele real al unui document
+   *  de tip `custom` în loc de label-ul generic „Tip personalizat".
+   *  Optional pentru retro-compat — fallback la generic dacă lipsește. */
+  customTypes?: CustomDocumentType[];
   onPress: () => void;
 }
 
@@ -15,7 +19,7 @@ interface DuplicateBannerProps {
  * (același tip + dată emitere) pentru aceeași entitate. La tap deschide
  * documentul existent.
  */
-export function DuplicateBanner({ doc, onPress }: DuplicateBannerProps) {
+export function DuplicateBanner({ doc, customTypes, onPress }: DuplicateBannerProps) {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const C = Colors[scheme];
 
@@ -36,7 +40,7 @@ export function DuplicateBanner({ doc, onPress }: DuplicateBannerProps) {
         Document similar găsit
       </Text>
       <Text style={[styles.body, { color: C.text }]}>
-        Există deja un document de tip „{DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type}"
+        Există deja un document de tip „{getDocumentLabel(doc, customTypes ?? [])}"
         {doc.issue_date ? ` din ${doc.issue_date}` : ''} pentru această entitate.
       </Text>
       <Text style={[styles.link, { color: statusColors.warning }]}>

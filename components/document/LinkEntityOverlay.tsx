@@ -27,8 +27,14 @@ interface LinkEntityOverlayProps {
   visible: boolean;
   scheme: 'light' | 'dark';
   entityLinks: DocumentEntityLink[];
-  /** Entități grupate pe tip — caller produce label-ul potrivit per tip. */
-  groups: Partial<Record<EntityType, NamedEntity[]>>;
+  /**
+   * Entități grupate pe tip — caller produce label-ul potrivit per tip.
+   * Cheile sunt exhaustive (Record, nu Partial) ca să forțeze toți callerii
+   * să trateze fiecare EntityType — tab-ul rămâne ascuns dacă lista e goală.
+   * Dacă adăugăm un EntityType nou, TypeScript va eșua aici și callerii vor
+   * fi forțați să-l includă.
+   */
+  groups: Record<EntityType, NamedEntity[]>;
   /** Plural / label de afișat pentru fiecare grup (overrride opțional). */
   groupLabels?: Partial<Record<EntityType, string>>;
   onAdd: (link: DocumentEntityLink) => void;

@@ -1,6 +1,7 @@
 import { db } from './db';
-import { DOC_PRIMARY_ENTITY, DOCUMENT_TYPE_LABELS } from '@/types';
+import { DOC_PRIMARY_ENTITY, getDocumentLabel } from '@/types';
 import type { DocumentType, EntityType } from '@/types';
+import { getCustomTypes } from './customTypes';
 import { iconColors } from '@/theme/iconColors';
 
 export type OrphanGroupKey =
@@ -75,22 +76,25 @@ interface DocOrphanRow {
 }
 
 async function findDocumentsWithoutEntity(): Promise<OrphanItem[]> {
-  const rows = await db.getAllAsync<DocOrphanRow>(
-    `SELECT
-       d.id,
-       d.type,
-       d.custom_type_id,
-       d.issue_date,
-       d.created_at,
-       (SELECT COUNT(*) FROM document_entities de WHERE de.document_id = d.id) AS has_links,
-       CASE
-         WHEN d.person_id IS NOT NULL OR d.property_id IS NOT NULL OR d.vehicle_id IS NOT NULL
-           OR d.card_id IS NOT NULL OR d.animal_id IS NOT NULL OR d.company_id IS NOT NULL
-         THEN 1 ELSE 0
-       END AS any_legacy
-     FROM documents d
-     ORDER BY d.created_at DESC`
-  );
+  const [rows, customTypes] = await Promise.all([
+    db.getAllAsync<DocOrphanRow>(
+      `SELECT
+         d.id,
+         d.type,
+         d.custom_type_id,
+         d.issue_date,
+         d.created_at,
+         (SELECT COUNT(*) FROM document_entities de WHERE de.document_id = d.id) AS has_links,
+         CASE
+           WHEN d.person_id IS NOT NULL OR d.property_id IS NOT NULL OR d.vehicle_id IS NOT NULL
+             OR d.card_id IS NOT NULL OR d.animal_id IS NOT NULL OR d.company_id IS NOT NULL
+           THEN 1 ELSE 0
+         END AS any_legacy
+       FROM documents d
+       ORDER BY d.created_at DESC`
+    ),
+    getCustomTypes(),
+  ]);
 
   const items: OrphanItem[] = [];
   for (const r of rows) {
@@ -98,7 +102,10 @@ async function findDocumentsWithoutEntity(): Promise<OrphanItem[]> {
     const docType = r.type as DocumentType;
     if (TYPES_VALID_WITHOUT_ENTITY.has(docType)) continue;
 
-    const typeLabel = DOCUMENT_TYPE_LABELS[docType] ?? docType;
+    const typeLabel = getDocumentLabel(
+      { type: docType, custom_type_id: r.custom_type_id ?? undefined },
+      customTypes
+    );
     const dateStr = r.issue_date ?? r.created_at.slice(0, 10);
 
     let hint: string;

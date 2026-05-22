@@ -56,7 +56,7 @@ import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
 import { DuplicateGroupsCard } from '@/components/document/DuplicateGroupsCard';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
-import { getDocumentLabel, ENTITY_TYPE_EMOJI } from '@/types';
+import { getDocumentLabel, ENTITY_TYPE_EMOJI, NO_EXPIRY_DOC_TYPES } from '@/types';
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
@@ -302,13 +302,18 @@ export default function DocumentDetailScreen() {
       const info = extractDocumentInfo(text);
       const summary = formatOcrSummary(text, info);
 
+      const effectiveType =
+        detectedType && detectedType !== 'altul' && detectedType !== 'custom'
+          ? detectedType
+          : currentDoc.type;
+      // Pentru tipuri NO_EXPIRY (certificate stare civilă, diplome, acte
+      // proprietate, etc.), nu scriem niciodată expiry_date — chiar dacă OCR
+      // a găsit o dată în text (cel mai probabil e data emiterii).
+      const allowExpiry = !NO_EXPIRY_DOC_TYPES.has(effectiveType);
       const updates: Parameters<typeof updateDocument>[1] = {
-        type:
-          detectedType && detectedType !== 'altul' && detectedType !== 'custom'
-            ? detectedType
-            : currentDoc.type,
+        type: effectiveType,
         issue_date: info.issue_date ?? currentDoc.issue_date,
-        expiry_date: info.expiry_date ?? currentDoc.expiry_date,
+        expiry_date: allowExpiry ? (info.expiry_date ?? currentDoc.expiry_date) : undefined,
         note: !currentDoc.note && summary ? summary : currentDoc.note,
         file_path: currentDoc.file_path,
         auto_delete: currentDoc.auto_delete,
@@ -473,7 +478,10 @@ export default function DocumentDetailScreen() {
       // Extracție structurată per tip document (folosim tipul detectat dacă există)
       const effectiveType = (typeChanged ? detectedType : doc?.type) ?? doc?.type ?? 'altul';
       const extracted = extractFieldsForType(effectiveType, combinedText);
-      const newExpiry = extracted.expiry_date ?? info.expiry_date;
+      // Pentru tipuri NO_EXPIRY (certificate stare civilă, diplome, acte etc.)
+      // ignorăm orice expiry_date extras din OCR — de regulă e data emiterii.
+      const allowExpiry = !NO_EXPIRY_DOC_TYPES.has(effectiveType);
+      const newExpiry = allowExpiry ? (extracted.expiry_date ?? info.expiry_date) : undefined;
       const newIssue = extracted.issue_date ?? info.issue_date;
 
       // Rezumat câmpuri găsite pentru alert
@@ -509,10 +517,16 @@ export default function DocumentDetailScreen() {
                 : 'Aplică pe document',
               onPress: async () => {
                 const mergedMeta = { ...(doc!.metadata ?? {}), ...extracted.metadata };
+                // Dacă tipul efectiv e NO_EXPIRY, scriem explicit `undefined`
+                // ca să curățăm orice expiry stale; altfel păstrăm valoarea
+                // existentă dacă OCR nu a găsit ceva nou.
+                const finalExpiry = allowExpiry
+                  ? (newExpiry ?? doc!.expiry_date)
+                  : undefined;
                 await updateDocument(doc!.id, {
                   type: typeChanged ? effectiveType : doc!.type,
                   issue_date: newIssue ?? doc!.issue_date,
-                  expiry_date: newExpiry ?? doc!.expiry_date,
+                  expiry_date: finalExpiry,
                   note: !doc!.note && summary ? summary : doc!.note,
                   file_path: doc!.file_path,
                   auto_delete: doc!.auto_delete,
@@ -584,6 +598,7 @@ export default function DocumentDetailScreen() {
         entityName: undefined,
         documentId: doc.id,
         note: doc.note,
+        displayLabel: getDocumentLabel(doc, customTypes),
       };
       const calId = existingId
         ? await updateExpiryCalendarEvent(existingId, opts)
@@ -843,13 +858,16 @@ export default function DocumentDetailScreen() {
                 </View>
               </DocumentDetailRow>
               {doc.issue_date && <DocumentDetailRow label="Data emisiune" value={doc.issue_date} />}
-              {doc.expiry_date && (
+              {/* Display safety: chiar dacă DB are expiry_date stale (înainte
+                  ca tipul să fie marcat NO_EXPIRY, sau migrat dintr-un format
+                  vechi), nu îl afișăm pentru tipuri care, real, nu expiră. */}
+              {doc.expiry_date && !NO_EXPIRY_DOC_TYPES.has(doc.type) && (
                 <DocumentDetailRow
                   label={EXPIRY_FIELD_LABEL[doc.type] ?? 'Data expirare'}
                   value={doc.expiry_date}
                 />
               )}
-              {doc.expiry_date && (
+              {doc.expiry_date && !NO_EXPIRY_DOC_TYPES.has(doc.type) && (
                 <DocumentDetailRow>
                   <Pressable
                     style={[

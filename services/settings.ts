@@ -126,13 +126,55 @@ export async function clearAppLockPin(): Promise<void> {
 
 const KEY_VISIBLE_ENTITY_TYPES = 'settings_visible_entity_types';
 const KEY_VISIBLE_DOC_TYPES = 'settings_visible_doc_types';
+/**
+ * Flag versionat: la fiecare wave de tipuri „late-added" bump versiunea (ex
+ * `..._v2`) ca să forțeze backfill-ul să ruleze din nou pe utilizatorii care
+ * au flag-ul vechi setat. Forma curentă acoperă wave-ul v1 = `medical_record`.
+ */
+const KEY_LATE_BACKFILL_DONE = 'settings_late_entity_backfill_v1';
+
+/**
+ * Tipuri de entități adăugate ÎN APP DUPĂ ce mulți utilizatori au customizat
+ * lista de vizibilitate prin Onboarding sau Setări. Aceste tipuri nu pot fi
+ * „debifate conștient" — pur și simplu nu existau la momentul customizării.
+ *
+ * Backfill-ul rulează O SINGURĂ DATĂ per user (gated de KEY_LATE_BACKFILL_DONE).
+ * După prima rulare, dacă userul debifează explicit unul, alegerea e respectată
+ * la următoarele citiri. Pentru un wave nou de tipuri adăugate târziu, bump
+ * versiunea din KEY_LATE_BACKFILL_DONE și adaugă cheia aici.
+ *
+ * NU adăuga aici tipuri care implică risc de privacy / opt-in explicit
+ * (medical_record e OK pentru că dosarul în sine nu conține date — doar pentru
+ * documente atașate se cere consent AI separat în onboarding-ul medical).
+ */
+const LATE_ADDED_ENTITY_TYPES: EntityType[] = ['medical_record'];
 
 export async function getVisibleEntityTypes(): Promise<EntityType[]> {
   const v = await AsyncStorage.getItem(KEY_VISIBLE_ENTITY_TYPES);
-  if (!v) return [...ALL_ENTITY_TYPES];
+  if (!v) {
+    // Fresh user — toate vizibile. Marcăm backfill-ul ca rulat ca să nu-l
+    // mai aplicăm dacă userul debifează ulterior un tip late-added.
+    await AsyncStorage.setItem(KEY_LATE_BACKFILL_DONE, '1');
+    return [...ALL_ENTITY_TYPES];
+  }
   try {
     const parsed = JSON.parse(v) as EntityType[];
-    return parsed.length > 0 ? parsed : [...ALL_ENTITY_TYPES];
+    const stored = parsed.length > 0 ? parsed : [...ALL_ENTITY_TYPES];
+
+    // Backfill ruleaza o singură dată per user.
+    const backfillDone = await AsyncStorage.getItem(KEY_LATE_BACKFILL_DONE);
+    if (backfillDone) return stored;
+
+    const missing = LATE_ADDED_ENTITY_TYPES.filter(t => !stored.includes(t));
+    if (missing.length === 0) {
+      // Tipurile sunt deja în stored — marcăm flag-ul ca să sărim verificarea.
+      await AsyncStorage.setItem(KEY_LATE_BACKFILL_DONE, '1');
+      return stored;
+    }
+    const merged = [...stored, ...missing];
+    await AsyncStorage.setItem(KEY_VISIBLE_ENTITY_TYPES, JSON.stringify(merged));
+    await AsyncStorage.setItem(KEY_LATE_BACKFILL_DONE, '1');
+    return merged;
   } catch {
     return [...ALL_ENTITY_TYPES];
   }
@@ -140,6 +182,10 @@ export async function getVisibleEntityTypes(): Promise<EntityType[]> {
 
 export async function setVisibleEntityTypes(types: EntityType[]): Promise<void> {
   await AsyncStorage.setItem(KEY_VISIBLE_ENTITY_TYPES, JSON.stringify(types));
+  // Userul a interactionat conștient cu setarea — orice tip absent reflectă
+  // decizie informată. Marcam backfill-ul ca rulat ca să nu re-activăm la
+  // următoarea citire.
+  await AsyncStorage.setItem(KEY_LATE_BACKFILL_DONE, '1');
   emit('settings:changed');
 }
 

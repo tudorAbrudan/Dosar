@@ -24,7 +24,8 @@ import { useEntities } from '@/hooks/useEntities';
 import { deleteMedicalRecord, updateMedicalRecord } from '@/services/medicalRecord';
 import { getDocuments, addEntityLinkToDocument } from '@/services/documents';
 import { db } from '@/services/db';
-import { MEDICAL_DOC_TYPES, DOCUMENT_TYPE_LABELS } from '@/types';
+import { MEDICAL_DOC_TYPES, DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
+import { useCustomTypes } from '@/hooks/useCustomTypes';
 import type { Document, DocumentType } from '@/types';
 import { TimelineTab } from '../_tabs/TimelineTab';
 import { DocumenteTab } from '../_tabs/DocumenteTab';
@@ -46,6 +47,7 @@ export default function MedicalRecordDetail() {
   const lock = useMedicalLock();
   const { record, stats, loading, error, refresh } = useMedicalRecord(id ?? null);
   const { persons } = useEntities();
+  const { customTypes } = useCustomTypes();
   const [tab, setTab] = useState<TabKey>('timeline');
   const [linkDocVisible, setLinkDocVisible] = useState(false);
   const [unlinkedMedDocs, setUnlinkedMedDocs] = useState<Document[]>([]);
@@ -366,7 +368,7 @@ export default function MedicalRecordDetail() {
                     onPress={() => handleLinkDoc(d.id)}
                   >
                     <Text style={[styles.linkDocType, { color: primary }]}>
-                      {DOCUMENT_TYPE_LABELS[d.type as DocumentType] ?? d.type}
+                      {getDocumentLabel(d, customTypes)}
                     </Text>
                     {d.issue_date ? (
                       <Text

@@ -1,5 +1,5 @@
 import { db, generateId } from './db';
-import type { Person, Property, Vehicle, Card, Animal, Company } from '@/types';
+import type { Person, Property, Vehicle, Card, Animal, Company, EntityType } from '@/types';
 import * as FileSystem from 'expo-file-system/legacy';
 import { toFileUri } from './fileUtils';
 import { assignNextOrder, removeOrder } from './entityOrder';
@@ -224,7 +224,21 @@ export async function updateCard(
   emit('entities:changed');
 }
 
+/**
+ * Curăță legăturile junction pentru entitatea ștearsă. Tabela `document_entities`
+ * nu are FK ON DELETE CASCADE pe entity_id (e doar TEXT, fără referință), deci
+ * trebuie șters manual înainte/după DELETE-ul pe tabela entității. Altfel rămân
+ * legături orfan care apar în UI ca UUID-uri și nu pot fi rezolvate la nume.
+ */
+async function cleanupEntityLinks(entityType: EntityType, entityId: string): Promise<void> {
+  await db.runAsync(
+    'DELETE FROM document_entities WHERE entity_type = ? AND entity_id = ?',
+    [entityType, entityId]
+  );
+}
+
 export async function deletePerson(id: string): Promise<void> {
+  await cleanupEntityLinks('person', id);
   await db.runAsync('DELETE FROM persons WHERE id = ?', [id]);
   await removeOrder('person', id);
   emit('entities:changed');
@@ -233,6 +247,7 @@ export async function deletePerson(id: string): Promise<void> {
 }
 
 export async function deleteProperty(id: string): Promise<void> {
+  await cleanupEntityLinks('property', id);
   await db.runAsync('DELETE FROM properties WHERE id = ?', [id]);
   await removeOrder('property', id);
   emit('entities:changed');
@@ -259,6 +274,7 @@ export async function deleteVehicle(id: string): Promise<void> {
   } catch {
     // Nu blocăm ștergerea entității dacă ștergerea fișierului eșuează
   }
+  await cleanupEntityLinks('vehicle', id);
   await db.runAsync('DELETE FROM vehicles WHERE id = ?', [id]);
   await removeOrder('vehicle', id);
 
@@ -275,6 +291,7 @@ export async function deleteVehicle(id: string): Promise<void> {
 }
 
 export async function deleteCard(id: string): Promise<void> {
+  await cleanupEntityLinks('card', id);
   await db.runAsync('DELETE FROM cards WHERE id = ?', [id]);
   await removeOrder('card', id);
   emit('entities:changed');
@@ -318,6 +335,7 @@ export async function updateAnimal(id: string, name: string, species: string): P
 }
 
 export async function deleteAnimal(id: string): Promise<void> {
+  await cleanupEntityLinks('animal', id);
   await db.runAsync('DELETE FROM animals WHERE id = ?', [id]);
   await removeOrder('animal', id);
   emit('entities:changed');
@@ -380,6 +398,7 @@ export async function updateCompany(
 }
 
 export async function deleteCompany(id: string): Promise<void> {
+  await cleanupEntityLinks('company', id);
   await db.runAsync('DELETE FROM companies WHERE id = ?', [id]);
   await removeOrder('company', id);
   emit('entities:changed');
