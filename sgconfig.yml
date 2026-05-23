@@ -1,0 +1,28 @@
+# ast-grep configuration pentru Dosar
+#
+# Rulează: `npx ast-grep scan` (sau direct `ast-grep scan`)
+# Editor support: VSCode → extensia „ast-grep"
+#
+# Reguli organizate per categorie în rules/. Adaugă reguli noi cu:
+#   ast-grep new rule
+#
+# Doc: https://ast-grep.github.io/guide/scan-project.html
+
+ruleDirs:
+  - .ast-grep/rules
+
+# Foldere ignorate (build artifacts, generated, deps)
+ignores:
+  - node_modules/**
+  - ios/**
+  - android/**
+  - .expo/**
+  - .worktrees/**
+  - dist/**
+  - build/**
+  - coverage/**
+  - __tests__/**
+  - __mocks__/**
+  - docs/**.html
+  - scripts/**.js
+  - app/+not-found.tsx

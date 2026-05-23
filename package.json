@@ -21,7 +21,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "setup-hooks": "git config core.hooksPath scripts/hooks && echo '✓ Pre-commit hook activ. Skip o singură dată: git commit --no-verify'",
-    "audit": "npm run type-check && node scripts/backup-audit.js --strict && node scripts/check-hardcoded-entities.js && node scripts/knowledge-audit.js --strict",
+    "lint:ast": "ast-grep scan",
+    "audit": "npm run type-check && node scripts/backup-audit.js --strict && node scripts/check-hardcoded-entities.js && node scripts/knowledge-audit.js --strict && npm run lint:ast",
     "test:eslint-rules": "node --test eslint-local-rules/rules.test.js",
     "release": "standard-version",
     "release:dry": "standard-version --dry-run"

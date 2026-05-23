@@ -345,7 +345,11 @@ export default function EditDocumentScreen() {
           `[runAiImageAnalysis] classify: type=${classify.type} conf=${classify.confidence.toFixed(2)} current=${type} top3=${classify.top3.map(t => `${t.type}:${t.confidence.toFixed(2)}`).join(',')}`
         );
         if (classify.type !== 'altul' && classify.type !== type && classify.confidence >= 0.5) {
+          // classify.type vine din aiClassifier care returnează DOAR
+          // STANDARD_DOC_TYPES (niciodată `custom`) — vezi VALID_TYPES din
+          // aiClassifier.ts. Label-ul generic e safe aici.
           const oldLabel = DOCUMENT_TYPE_LABELS[type] ?? type;
+          // ast-grep-ignore: no-document-type-labels-direct
           const newLabel = DOCUMENT_TYPE_LABELS[classify.type] ?? classify.type;
           const confLabel = `${Math.round(classify.confidence * 100)}%`;
           const confirmed = await new Promise<boolean>(resolve => {

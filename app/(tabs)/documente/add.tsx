@@ -979,7 +979,7 @@ export default function AddDocumentScreen() {
 
   async function handleSubmit() {
     if (duplicateDoc) {
-      const typeName = DOCUMENT_TYPE_LABELS[duplicateDoc.type] ?? duplicateDoc.type;
+      const typeName = getDocumentLabel(duplicateDoc, customTypes);
       const action = await new Promise<'save' | 'update' | null>(resolve => {
         Alert.alert(
           'Document similar există',

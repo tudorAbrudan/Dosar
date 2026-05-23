@@ -1,0 +1,24 @@
+id: no-document-type-labels-direct
+language: tsx
+severity: error
+message: >-
+  Nu indexa `DOCUMENT_TYPE_LABELS` cu `.type` al unui document — pentru tipurile
+  `custom` returnează „Tip personalizat" în loc de numele real al tipului custom.
+  Folosește `getDocumentLabel(doc, customTypes)` (vezi types/index.ts) și
+  asigură-te că parentul are acces la `customTypes` prin `useCustomTypes()`.
+note: >-
+  Excepție: e OK să indexezi cu o variabilă `DocumentType` literală care nu
+  poate fi `custom` (ex. label pentru un picker fix de tipuri standard).
+rule:
+  # `DOCUMENT_TYPE_LABELS[X.type]` — acoperă și cazul `?? X.type` ca fallback
+  # (substring match al expresiei de indexing, fără să raporteze dublu).
+  pattern: DOCUMENT_TYPE_LABELS[$DOC.type]
+files:
+  - "app/**/*.tsx"
+  - "app/**/*.ts"
+  - "components/**/*.tsx"
+  - "components/**/*.ts"
+ignores:
+  # Componente care afișează DOAR rezultatul AI classify (aiClassifier returnează
+  # exclusiv STANDARD_DOC_TYPES — niciodată `custom`).
+  - "components/ClassifyConfirmSheet.tsx"

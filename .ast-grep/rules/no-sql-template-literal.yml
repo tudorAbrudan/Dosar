@@ -1,0 +1,23 @@
+id: no-sql-template-literal
+language: ts
+severity: error
+message: >-
+  Nu interpola variabile direct în SQL — folosește `?` și pasează valorile ca
+  array în al doilea argument. Template literals cu ${} în SQL = SQL injection
+  potențial + bug-uri la valori cu caractere speciale.
+note: >-
+  Excepție: e OK să interpolezi NUME DE COLOANE/TABELE (controlate de cod, nu de
+  user) ca să construiești SQL dinamic. Anti-patternul ținta e interpolarea de
+  VALORI provenite din input/state.
+rule:
+  any:
+    # db.runAsync(`...${...}...`, ...)
+    - pattern: db.runAsync(`$$$ ${$VAL} $$$`, $$$)
+    - pattern: db.getAllAsync(`$$$ ${$VAL} $$$`, $$$)
+    - pattern: db.getFirstAsync(`$$$ ${$VAL} $$$`, $$$)
+    - pattern: db.execAsync(`$$$ ${$VAL} $$$`)
+files:
+  - "services/**/*.ts"
+ignores:
+  # db.ts are SQL dinamic pentru migrări (numele coloanelor sunt hardcoded acolo).
+  - "services/db.ts"

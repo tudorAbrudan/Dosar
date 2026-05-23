@@ -1,0 +1,22 @@
+id: no-react-native-use-color-scheme
+language: tsx
+severity: error
+message: >-
+  Importă `useColorScheme` din `@/components/useColorScheme`, NU din
+  `react-native`. Hook-ul din react-native ignoră preferința „Aspect" din
+  Setări (Auto / Deschis / Întunecat) și forțează tema sistemului — vezi
+  rules/design.md §1.
+note: >-
+  Singura excepție: `app/_layout.tsx` care folosește hook-ul nativ ca
+  `useColorSchemeNative` pentru a alimenta ThemePreferenceContext.
+rule:
+  pattern: import { useColorScheme } from 'react-native'
+files:
+  - "app/**/*.tsx"
+  - "app/**/*.ts"
+  - "components/**/*.tsx"
+  - "components/**/*.ts"
+  - "hooks/**/*.ts"
+  - "hooks/**/*.tsx"
+ignores:
+  - "app/_layout.tsx"

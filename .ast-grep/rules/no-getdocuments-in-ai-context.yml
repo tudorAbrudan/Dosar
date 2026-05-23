@@ -1,0 +1,20 @@
+id: no-getdocuments-in-ai-context
+language: tsx
+severity: error
+message: >-
+  `getDocuments()` returnează documente CU `private_notes`. Pentru orice flow AI
+  (chatbot, OCR LLM, classifier, sumarizare) folosește `getDocumentsForAI()` sau
+  `sanitizeDocumentForAI(doc)` — vezi rules/ai-privacy.md.
+note: >-
+  Câmpul private_notes conține date strict sensibile (CVV, PIN, parole). Scurgere
+  la AI = bug de securitate, nu UX.
+rule:
+  pattern: getDocuments()
+# Doar în servicii care fac apeluri AI / chatbot.
+files:
+  - "services/chatbot.ts"
+  - "services/medicalChat.ts"
+  - "services/medicalExtractor.ts"
+  - "services/aiOcrMapper.ts"
+  - "services/ocrLlmExtractor.ts"
+  - "services/aiClassifier.ts"
