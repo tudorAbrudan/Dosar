@@ -7,11 +7,18 @@
 #
 # Rulează în ordinea:
 #   1. TypeScript type-check
-#   2. backup-audit (--strict)         — tabele SQLite ↔ backup/cloud
-#   3. check-hardcoded-entities (--strict) — anti-hardcode EntityType
-#   4. knowledge-audit (--strict)      — appKnowledge.ts ↔ services/screens
-#   5. update-site                     — regenerează docs/ + README din types
-#   6. Stage docs/README dacă au fost modificate de regenerare.
+#   2. backup-audit (--strict)              — tabele SQLite ↔ backup/cloud
+#   3. check-hardcoded-entities (--strict)   — anti-hardcode EntityType
+#   4. knowledge-audit (--strict)            — appKnowledge.ts ↔ services/screens
+#   5. hook-contract-audit (warn)            — {loading, error, refresh}
+#   6. catch-pattern-audit (--strict)        — instanceof Error guard
+#   7. alter-table-trycatch-audit (--strict) — ALTER TABLE în try
+#   8. modal-input-audit (warn)              — Modal transparent cu input
+#   9. expo-public-secrets-audit (warn)      — EXPO_PUBLIC_* cu nume de secret
+#  10. pin-secure-store-audit (--strict)     — PIN în AsyncStorage
+#  11. lint:ast (ast-grep)                   — SQL injection, AI privacy, theme, doc types
+#  12. update-site                           — regenerează docs/ + README din types
+#  13. Stage docs/README dacă au fost modificate de regenerare.
 #
 # La eșec, abort și raportează prima eroare.
 
@@ -30,6 +37,27 @@ node scripts/check-hardcoded-entities.js --strict
 
 echo "▸ Knowledge audit (strict)..."
 node scripts/knowledge-audit.js --strict
+
+echo "▸ Hook contract audit (warn — 7 violări preexistente)..."
+node scripts/hook-contract-audit.js
+
+echo "▸ Catch pattern audit (strict)..."
+node scripts/catch-pattern-audit.js --strict
+
+echo "▸ ALTER TABLE try-catch audit (strict)..."
+node scripts/alter-table-trycatch-audit.js --strict
+
+echo "▸ Modal-input audit (warn — 2 violări preexistente)..."
+node scripts/modal-input-audit.js
+
+echo "▸ EXPO_PUBLIC secrets audit (warn în hook — finding critic în .env)..."
+node scripts/expo-public-secrets-audit.js
+
+echo "▸ PIN SecureStore audit (strict)..."
+node scripts/pin-secure-store-audit.js --strict
+
+echo "▸ ast-grep scan (lint:ast)..."
+npm run -s lint:ast
 
 echo "▸ Site / docs / README regen..."
 node scripts/update-site.js
