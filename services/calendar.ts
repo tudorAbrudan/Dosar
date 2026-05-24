@@ -468,11 +468,12 @@ export async function addMedicalRecommendationCalendarEvent(
       endDate: eventEnd,
       notes,
       alarms: [{ relativeOffset: -60 * 24 }], // notificare cu 1 zi (24h) înainte
+      url: opts.documentId ? `acte:///documente/${opts.documentId}` : undefined,
+      timeZone: 'Europe/Bucharest',
     });
 
     return eventId ?? null;
-  } catch (e) {
-    console.warn('[calendar] addMedicalRecommendationCalendarEvent failed:', e);
+  } catch {
     return null;
   }
 }
