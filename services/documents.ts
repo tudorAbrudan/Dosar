@@ -1049,12 +1049,13 @@ export async function getPendingReminders(documentId: string): Promise<Actionabl
   try {
     const parsed = JSON.parse(row.pending_reminders_json) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (i): i is ActionableItem =>
-        typeof i === 'object' &&
-        i !== null &&
-        typeof (i as ActionableItem).label === 'string'
-    );
+    return parsed.filter((i): i is ActionableItem => {
+      if (typeof i !== 'object' || i === null) return false;
+      const item = i as { label?: unknown; suggested_date_iso?: unknown };
+      if (typeof item.label !== 'string') return false;
+      if (item.suggested_date_iso !== null && typeof item.suggested_date_iso !== 'string') return false;
+      return true;
+    });
   } catch {
     return [];
   }
