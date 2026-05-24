@@ -153,15 +153,15 @@ export default function DocumentDetailScreen() {
   } | null>(null);
   const [reExtracting, setReExtracting] = useState(false);
 
-  const handleReExtractMedical = useCallback(async () => {
-    if (!doc) return;
-    setReExtracting(true);
-    try {
+  const runReExtractAndReport = useCallback(
+    async (docId: string) => {
       const { extractFromDocument } = await import('@/services/medicalExtractor');
-      const result = await extractFromDocument(doc.id);
-      // Refresh state din DB după extracție.
-      const updated = await getDocumentById(doc.id);
+      const result = await extractFromDocument(docId);
+      const updated = await getDocumentById(docId);
       setDoc(updated);
+      // Și refresh entity links ca să se vadă noul medical_record în diagnostic.
+      const links = await getDocumentEntityLinks(docId);
+      setEntityLinks(links);
       const itemsCount = updated?.pending_reminders_json
         ? (() => {
             try {
@@ -183,6 +183,71 @@ export default function DocumentDetailScreen() {
           .filter(Boolean)
           .join('\n')
       );
+    },
+    []
+  );
+
+  const handleReExtractMedical = useCallback(async () => {
+    if (!doc) return;
+    setReExtracting(true);
+    try {
+      // Verifică dacă documentul are deja un link la medical_record.
+      const links = await getDocumentEntityLinks(doc.id);
+      const hasMedicalLink = links.some(l => l.entityType === 'medical_record');
+
+      if (!hasMedicalLink) {
+        // Caută dosarele medicale existente.
+        const { listMedicalRecords } = await import('@/services/medicalRecord');
+        const records = await listMedicalRecords();
+        if (records.length === 0) {
+          Alert.alert(
+            'Niciun dosar medical',
+            'Documentul nu poate fi extras pentru că nu există niciun dosar medical. Creează unul în Entități → Adaugă → Dosar medical, apoi încearcă din nou.'
+          );
+          setReExtracting(false);
+          return;
+        }
+        if (records.length === 1) {
+          // Un singur dosar — asociază automat și continuă.
+          const { addEntityLinkToDocument } = await import('@/services/documents');
+          await addEntityLinkToDocument(doc.id, {
+            entityType: 'medical_record',
+            entityId: records[0].id,
+          });
+        } else {
+          // Multi-record — prompt user să aleagă.
+          Alert.alert(
+            'Alege dosarul medical',
+            `Documentul nu e legat la niciun dosar medical. Există ${records.length} dosare. Alege unul pentru a continua:`,
+            [
+              { text: 'Anulează', style: 'cancel', onPress: () => setReExtracting(false) },
+              ...records.slice(0, 4).map(r => ({
+                text: r.name,
+                onPress: async () => {
+                  try {
+                    const { addEntityLinkToDocument } = await import('@/services/documents');
+                    await addEntityLinkToDocument(doc.id, {
+                      entityType: 'medical_record',
+                      entityId: r.id,
+                    });
+                    await runReExtractAndReport(doc.id);
+                  } catch (e) {
+                    Alert.alert(
+                      'Eroare',
+                      e instanceof Error ? e.message : 'Eroare necunoscută'
+                    );
+                  } finally {
+                    setReExtracting(false);
+                  }
+                },
+              })),
+            ]
+          );
+          return; // Wait for user choice — handlers above set setReExtracting(false).
+        }
+      }
+
+      await runReExtractAndReport(doc.id);
     } catch (e) {
       Alert.alert(
         'Eroare re-extragere',
@@ -191,7 +256,7 @@ export default function DocumentDetailScreen() {
     } finally {
       setReExtracting(false);
     }
-  }, [doc]);
+  }, [doc, runReExtractAndReport]);
 
   useEffect(() => {
     if (!id) return;
@@ -1138,6 +1203,16 @@ export default function DocumentDetailScreen() {
             <Text style={[styles.diagText, { color: palette.text }]}>
               <Text style={{ fontWeight: '700' }}>OCR text:</Text>{' '}
               {doc.ocr_text ? `${doc.ocr_text.length} chars` : '(gol)'}
+            </Text>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>Entități legate:</Text>{' '}
+              {entityLinks.length === 0
+                ? '(niciuna — extragerea va eșua cu no_record)'
+                : entityLinks.map(l => `${l.entityType}:${l.entityId.slice(0, 8)}`).join(', ')}
+            </Text>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>Legat la dosar medical:</Text>{' '}
+              {entityLinks.some(l => l.entityType === 'medical_record') ? 'DA ✓' : 'NU ✗'}
             </Text>
             {doc.pending_reminders_json ? (
               <Text
