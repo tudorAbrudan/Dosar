@@ -132,6 +132,8 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
       onClose={() => onClose('skipped')}
       onSave={handleSave}
       saving={saving}
+      saveLabel="Adaugă selectate"
+      cancelLabel="Sari"
     >
       <Text style={[styles.intro, { color: palette.textSecondary }]}>
         AI a detectat {items.length}{' '}
