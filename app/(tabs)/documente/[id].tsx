@@ -18,7 +18,7 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import { DocumentDetailCard } from '@/components/DocumentDetailCard';
 import { DocumentDetailRow } from '@/components/DocumentDetailRow';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg, statusColors } from '@/theme/colors';
 import {
   getDocumentById,
   deleteDocument,
@@ -152,6 +152,26 @@ export default function DocumentDetailScreen() {
     recordId: string;
   } | null>(null);
   const [reExtracting, setReExtracting] = useState(false);
+  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number } | null>(null);
+
+  // Citește utilizarea AI zilnică pentru diagnostic.
+  useEffect(() => {
+    if (!doc || !MEDICAL_DOC_TYPES.has(doc.type)) return;
+    (async () => {
+      try {
+        const { getAiUsageToday, DAILY_AI_LIMIT, getAiConfig } = await import('@/services/aiProvider');
+        const cfg = await getAiConfig();
+        if (cfg.type !== 'builtin') {
+          setAiUsage({ used: 0, limit: -1 }); // -1 = no limit (cheie externă)
+          return;
+        }
+        const used = await getAiUsageToday();
+        setAiUsage({ used, limit: DAILY_AI_LIMIT });
+      } catch {
+        setAiUsage(null);
+      }
+    })();
+  }, [doc?.id, doc?.type]);
 
   const runReExtractAndReport = useCallback(
     async (docId: string) => {
@@ -1225,6 +1245,28 @@ export default function DocumentDetailScreen() {
               <Text style={{ fontWeight: '700' }}>Legat la dosar medical:</Text>{' '}
               {entityLinks.some(l => l.entityType === 'medical_record') ? 'DA ✓' : 'NU ✗'}
             </Text>
+            {aiUsage ? (
+              <Text
+                style={[
+                  styles.diagText,
+                  {
+                    color:
+                      aiUsage.limit > 0 && aiUsage.used >= aiUsage.limit
+                        ? statusColors.critical
+                        : palette.text,
+                  },
+                ]}
+              >
+                <Text style={{ fontWeight: '700' }}>Utilizare AI azi:</Text>{' '}
+                {aiUsage.limit === -1
+                  ? `${aiUsage.used} (cheie externă, fără limită)`
+                  : `${aiUsage.used} / ${aiUsage.limit}${
+                      aiUsage.used >= aiUsage.limit
+                        ? ' ⚠ LIMITĂ ATINSĂ — extracția va da fail'
+                        : ''
+                    }`}
+              </Text>
+            ) : null}
             {doc.pending_reminders_json ? (
               <Text
                 style={[styles.diagText, { color: palette.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11 }]}
