@@ -85,6 +85,7 @@ const ENTRIES = {
     medicalFts: { required: false },
     medicalQueryAnalysis: { required: false },
     medicalExtractor: { required: false },
+    medicalAiSummary: { required: false },
     medicalChat: { required: false },
     ocrAutoRotate: { required: false },
     ocrExtractors: { required: false },
