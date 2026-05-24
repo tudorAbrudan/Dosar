@@ -410,3 +410,69 @@ export async function deleteMaintenanceCalendarEvent(eventId: string): Promise<v
     // deja șters sau calendar inaccesibil
   }
 }
+
+export interface MedicalRecommendationEventOptions {
+  /** Text complet recomandare. */
+  label: string;
+  /** Data la care se programează evenimentul (YYYY-MM-DD). */
+  scheduledDate: string;
+  /** Tip document (label uman, ex „Scrisoare medicală"). */
+  sourceDocumentType: string;
+  /** Data documentului sursă (YYYY-MM-DD). */
+  sourceDocumentDate: string | null;
+  /** Numele dosarului medical (ex „Dosar Tudor"). */
+  recordName: string;
+  /** ID document pentru referință în calendar (deep-linking fază 2). */
+  documentId: string;
+}
+
+/**
+ * Adaugă în calendar un eveniment pentru o recomandare medicală cu termen.
+ * Format body conform spec 2026-05-24 §8.6 / D15.
+ * Returnează ID-ul evenimentului sau null dacă calendar nu e disponibil
+ * (permisiune refuzată / modul nelinkat).
+ */
+export async function addMedicalRecommendationCalendarEvent(
+  opts: MedicalRecommendationEventOptions
+): Promise<string | null> {
+  if (!CalendarModule) return null;
+
+  try {
+    const calendarId = await getDefaultCalendarId();
+    if (!calendarId) return null;
+
+    const labelTrunc = opts.label.length > 40 ? `${opts.label.slice(0, 40)}…` : opts.label;
+    const title = `Recomandare medicală — ${labelTrunc}`;
+
+    const sourceLine = opts.sourceDocumentDate
+      ? `Sursă: ${opts.sourceDocumentType} din ${opts.sourceDocumentDate}`
+      : `Sursă: ${opts.sourceDocumentType}`;
+
+    const notes = [
+      opts.label,
+      '',
+      sourceLine,
+      `Dosar: ${opts.recordName}`,
+      '',
+      `Document ID: ${opts.documentId}`,
+    ].join('\n');
+
+    // Eveniment all-day-ish la data scheduledDate, ora 09:00 → 10:00 (slot scurt vizibil).
+    const eventDate = new Date(`${opts.scheduledDate}T09:00:00`);
+    const eventEnd = new Date(eventDate);
+    eventEnd.setHours(10, 0, 0, 0);
+
+    const eventId = await CalendarModule.createEventAsync(calendarId, {
+      title,
+      startDate: eventDate,
+      endDate: eventEnd,
+      notes,
+      alarms: [{ relativeOffset: -60 * 24 }], // notificare cu 1 zi (24h) înainte
+    });
+
+    return eventId ?? null;
+  } catch (e) {
+    console.warn('[calendar] addMedicalRecommendationCalendarEvent failed:', e);
+    return null;
+  }
+}
