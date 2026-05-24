@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, FlatList, Pressable, StyleSheet, RefreshControl, ScrollView } from 'react-native';
+import { View, FlatList, Pressable, StyleSheet, RefreshControl, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
@@ -121,8 +121,32 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
         }
         renderItem={({ item }) => {
           const last = item.values[item.values.length - 1];
+          const uniqueDocIds = [
+            ...new Set(item.values.map(v => v.source_document_id).filter(Boolean)),
+          ] as string[];
+
+          const onTap = () => {
+            if (uniqueDocIds.length === 0) return;
+            if (uniqueDocIds.length === 1) {
+              router.push(`/(tabs)/documente/${uniqueDocIds[0]}`);
+              return;
+            }
+            Alert.alert(
+              'Surse multiple',
+              'Această valoare apare în mai multe documente. Alege unul:',
+              [
+                ...uniqueDocIds.slice(0, 5).map((id, idx) => ({
+                  text: `Document ${idx + 1}`,
+                  onPress: () => router.push(`/(tabs)/documente/${id}`),
+                })),
+                { text: 'Anulează', style: 'cancel' as const },
+              ]
+            );
+          };
+
           return (
-            <View
+            <Pressable
+              onPress={onTap}
               style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
             >
               <View style={styles.cardHeader}>
@@ -169,7 +193,7 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
               <Text style={[styles.category, { color: palette.textSecondary }]}>
                 {CATEGORY_LABELS[item.category]}
               </Text>
-            </View>
+            </Pressable>
           );
         }}
         ListEmptyComponent={
