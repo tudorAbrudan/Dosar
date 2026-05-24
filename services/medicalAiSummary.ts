@@ -59,22 +59,34 @@ Reguli actionable_items:
 - label = text aproape verbatim, max 80 caractere.
 - actionable_items poate fi [].`;
 
-const FORBIDDEN_WORDS = [
-  'grav',
-  'urgent',
-  'periculos',
-  'risc',
+// Fraze care indică interpretare clinică din partea AI-ului.
+// Substring matching pe cuvinte simple ar cauza false positives — „risc"
+// apare verbatim în documente medicale legitime („factor de risc",
+// „evaluare risc"), la fel „urgent" („se prezintă urgent în 24h" — citat
+// din doctor). Folosim fraze multi-cuvânt care DOAR un AI interpretiv le-ar
+// produce, nu un medic care scrie verbatim.
+const FORBIDDEN_PHRASES = [
   'risc crescut',
-  'normal e',
+  'risc moderat',
+  'risc scăzut',
+  'risc cardiovascular',
+  'foarte grav',
+  'extrem de',
+  'e periculos',
+  'pune în pericol',
+  'situație gravă',
+  'normal pentru',
+  'e normal',
   'e bun',
   'e rău',
-  'recomandăm să',
-  'ar trebui',
+  'fără probleme',
+  'totul e ok',
+  'nu e nimic',
 ];
 
 function containsForbiddenWords(text: string): boolean {
   const lower = text.toLowerCase();
-  return FORBIDDEN_WORDS.some(w => lower.includes(w));
+  return FORBIDDEN_PHRASES.some(p => lower.includes(p));
 }
 
 function isValidIsoDate(s: string | null | undefined): boolean {
