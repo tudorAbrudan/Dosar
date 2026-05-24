@@ -171,6 +171,16 @@ export default function DocumentDetailScreen() {
             }
           })()
         : 0;
+      const debugStr = result.debug
+        ? `\n\nDEBUG:\n${[
+            result.debug.ocr_len !== undefined ? `ocr_len: ${result.debug.ocr_len}` : '',
+            result.debug.llm_response_sample
+              ? `llm_error/sample:\n${result.debug.llm_response_sample.slice(0, 400)}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n')}`
+        : '';
       Alert.alert(
         'Re-extragere terminată',
         [
@@ -179,6 +189,7 @@ export default function DocumentDetailScreen() {
           `Rezumat AI: ${updated?.ai_summary ? `${updated.ai_summary.length} chars` : 'gol'}`,
           `Reminders pending: ${itemsCount}`,
           updated?.pending_reminders_json ? `\nJSON: ${updated.pending_reminders_json}` : '',
+          debugStr,
         ]
           .filter(Boolean)
           .join('\n')
