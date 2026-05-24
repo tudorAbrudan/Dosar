@@ -112,7 +112,8 @@ Reguli:
 - "type" trebuie să fie EXACT unul din id-urile listate mai sus (ex. "pad", "rca", "asigurare_personala")
 - confidence reflectă cât de sigur ești că documentul e de acel tip
 - top3 conține cei mai probabili 3 candidați în ordine descrescătoare a confidence-ului
-- Dacă nu ești deloc sigur, folosește "altul" cu confidence mic`;
+- Dacă nu ești deloc sigur, folosește "altul" cu confidence mic
+- PRIORITATE TITLU vs MENȚIUNI ADMINISTRATIVE: titlul documentului (apare ca antet central, ex „SCRISOARE MEDICALĂ", „CONTRACT", „BILET DE EXTERNARE", „FACTURĂ", „FIȘĂ DE CONSULTAȚIE") are PRIORITATE absolută față de keyword-uri răzlețe din antet care sunt doar referințe administrative (ex „Contract / convenție Nr X" lângă „CAS"/„CNAS" e un număr de contract servicii medicale, NU înseamnă că documentul e tip „contract"). Dacă apar amândouă, alege tipul indicat de titlul central + conținutul documentului (părți/clauze pentru contract real vs diagnostic/recomandări pentru scrisoare medicală).`;
 }
 
 /**

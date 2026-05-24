@@ -123,7 +123,16 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
   contract: {
     label: DOCUMENT_TYPE_LABELS.contract,
     aliases: ['contract', 'chirie', 'închiriere', 'prestări servicii', 'vânzare-cumpărare'],
-    description: 'Contract civil sau comercial (chirie, prestări servicii, vânzare etc.).',
+    description:
+      'Contract civil sau comercial (chirie, prestări servicii, vânzare etc.). Document de sine stătător cu părți, clauze și semnături — NU este un alt document care doar conține un număr de contract administrativ în antet.',
+    distinguishingMarks: [
+      'Titlul „CONTRACT" sau „CONVENȚIE" ca antet central al documentului (nu doar număr de înregistrare în colț)',
+      'Părți contractante listate cu nume complet + CNP/CUI (Locatar/Locator, Cumpărător/Vânzător, Prestator/Beneficiar)',
+      'Articole sau clauze numerotate (Art. 1, Art. 2, ...) sau secțiuni „Obiectul contractului", „Durata", „Prețul"',
+      'Termen/durată + valoare/preț precizate explicit',
+      'Semnături + ștampile ale părților la final',
+      'NEGATIV: dacă singura mențiune „Contract / convenție Nr X" apare doar ca număr administrativ în antet (lângă „CAS", „CNAS", denumire furnizor de servicii medicale), iar documentul are conținut medical (diagnostic, recomandări, scrisoare către alt medic), NU este contract — verifică tipurile medicale (scrisoare_medicala, bilet_externare, fisa_consultatie).',
+    ],
   },
   card: {
     label: DOCUMENT_TYPE_LABELS.card,
@@ -373,10 +382,12 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     description:
       'Scrisoare medicală narativă de la un medic specialist către medicul de familie sau pacient. Conține diagnostic, recomandări, plan terapeutic. NU expiră.',
     distinguishingMarks: [
-      'Antet cabinet/spital + numele medicului specialist',
-      'Text narativ structurat (Diagnostic / Recomandări / Tratament)',
-      'Numele pacientului + data consultației',
-      'Semnătură + parafă medic',
+      'Titlul „SCRISOARE MEDICALĂ" central, ca antet principal al documentului (chiar dacă mai sus apare un număr de contract servicii „Contract/convenție Nr X" către CAS/CNAS — acela e doar referință administrativă)',
+      'Antet cabinet medical/spital + numele medicului specialist + specialitatea (Neurologie/Cardiologie/etc.)',
+      'Adresare „Către Dr. [Nume]" sau „Stimate(ă) coleg(ă)" la începutul corpului',
+      'Text narativ structurat (Diagnostic / Anamneza / Examinări paraclinice / Recomandări / Tratament)',
+      'Numele pacientului + data consultației + CNP/cod asigurat',
+      'Semnătură + parafă medic la final',
     ],
   },
   bilet_externare: {
@@ -385,6 +396,7 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
     description:
       'Bilet de externare emis la finalul unei internări în spital. Conține diagnostic, evoluție pe parcursul spitalizării, tratament la externare. NU expiră.',
     distinguishingMarks: [
+      'Titlul „BILET DE EXTERNARE" sau „EPICRIZĂ" ca antet principal',
       'Antet spital + numele secției',
       'Datele internării și externării',
       'Secțiuni „Diagnostic la internare/externare", „Anamneza", „Evoluție", „Recomandări"',
