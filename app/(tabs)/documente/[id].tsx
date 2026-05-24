@@ -32,8 +32,12 @@ import {
   lockPageOrientation,
   lockMainOrientation,
   setDocumentCalendarEventId,
+  setMedicalRemindersPromptedAt,
+  setPendingReminders,
+  getPendingReminders,
 } from '@/services/documents';
-import type { DocumentDuplicates } from '@/services/documents';
+import type { DocumentDuplicates, ActionableItem } from '@/services/documents';
+import { MedicalRemindersModal } from '@/components/medical/MedicalRemindersModal';
 import type { DocumentEntityLink, EntityType } from '@/types';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import { retentionLabel } from '@/services/documentRetention';
@@ -92,6 +96,10 @@ export default function DocumentDetailScreen() {
     byOcrPrefix: [],
   });
   const [focusNonce, setFocusNonce] = useState(0);
+  const [reminderModalProps, setReminderModalProps] = useState<{
+    items: ActionableItem[];
+    recordId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -132,6 +140,52 @@ export default function DocumentDetailScreen() {
         .then(setDuplicates)
         .catch(() => {});
     }, [id])
+  );
+
+  // Detectează pending reminders medicale și deschide modalul (spec 2026-05-24 §9).
+  // Doar prima dată (medical_reminders_prompted_at nul), doar dacă există date
+  // viitoare (D14) și document legat de un medical_record.
+  useEffect(() => {
+    if (!doc) return;
+    if (doc.medical_reminders_prompted_at) return;
+    if (entityLinks.length === 0) return;
+    const medicalLink = entityLinks.find(l => l.entityType === 'medical_record');
+    if (!medicalLink) return;
+    const recordId = medicalLink.entityId;
+    let cancelled = false;
+    (async () => {
+      const items = await getPendingReminders(doc.id);
+      if (cancelled) return;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const future = items.filter(
+        i => i.suggested_date_iso !== null && i.suggested_date_iso >= todayIso
+      );
+      if (future.length === 0) return;
+      setReminderModalProps({ items: future, recordId });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, entityLinks]);
+
+  const handleReminderClose = useCallback(
+    async (_decision: 'added' | 'skipped') => {
+      if (!doc) return;
+      try {
+        await setMedicalRemindersPromptedAt(doc.id, new Date().toISOString());
+        await setPendingReminders(doc.id, null);
+      } catch {
+        // best-effort — modalul se închide oricum
+      }
+      setReminderModalProps(null);
+      try {
+        const updated = await getDocumentById(doc.id);
+        if (updated) setDoc(updated);
+      } catch {
+        // refresh best-effort
+      }
+    },
+    [doc]
   );
 
   const allPages = useMemo(() => {
@@ -932,6 +986,24 @@ export default function DocumentDetailScreen() {
           )}
         </DocumentDetailCard>
 
+        {doc.ai_summary ? (
+          <View
+            style={[
+              styles.aiSection,
+              { borderColor: palette.border, backgroundColor: palette.card },
+            ]}
+          >
+            <View style={styles.aiSectionHeader}>
+              <Ionicons name="sparkles-outline" size={16} color={primary} />
+              <Text style={[styles.aiSectionTitle, { color: palette.text }]}>Rezumat AI</Text>
+            </View>
+            <Text style={[styles.aiSummaryBody, { color: palette.text }]}>{doc.ai_summary}</Text>
+            <Text style={[styles.aiSummaryDisclaimer, { color: palette.textSecondary }]}>
+              Generat automat, nu înlocuiește consultul medical.
+            </Text>
+          </View>
+        ) : null}
+
         <DocumentDetailCard
           tone="sensitive"
           header={
@@ -1040,6 +1112,15 @@ export default function DocumentDetailScreen() {
         initialIndex={fullscreenIndex}
         onClose={() => setFullscreenIndex(null)}
       />
+      {reminderModalProps && doc ? (
+        <MedicalRemindersModal
+          visible={true}
+          items={reminderModalProps.items}
+          documentId={doc.id}
+          recordId={reminderModalProps.recordId}
+          onClose={handleReminderClose}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1094,4 +1175,9 @@ const styles = StyleSheet.create({
     borderColor: primary,
   },
   asigaBtnText: { color: primary, fontSize: 14, fontWeight: '600' },
+  aiSection: { marginVertical: 12, padding: 14, borderRadius: 10, borderWidth: 1 },
+  aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  aiSectionTitle: { fontSize: 14, fontWeight: '700' },
+  aiSummaryBody: { fontSize: 14, lineHeight: 20 },
+  aiSummaryDisclaimer: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
 });
