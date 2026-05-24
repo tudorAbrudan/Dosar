@@ -557,6 +557,11 @@ export async function extractFromDocument(
       }
     }
   } catch (e) {
+    // silent-ai-catch-ok: AI summary e un nice-to-have non-blocking — dacă
+    // eșuează, observațiile sunt deja inserate (status=ok) și restul UX
+    // continuă. Userul vede „Rezumat AI: gol" pe document și poate apăsa
+    // „Re-extrage" pentru a re-încerca. Eroarea principală (extracție
+    // observații) e deja surface-uită prin status returnat de funcție.
     console.warn('[medicalExtractor] AI summary step failed (non-blocking):', e);
   }
 
@@ -779,6 +784,11 @@ export async function batchReExtract(
       });
       console.warn(`[medicalExtractor.batch] ${id} → ${r.status}, +${r.inserted} obs`);
     } catch (e) {
+      // silent-ai-catch-ok: în batch processing, fiecare doc eșuat e
+      // contorizat în progress.failed și raportat în progress.reports cu
+      // mesajul de eroare. UI-ul afișează raportul prin „Vezi detalii
+      // ultima extracție" (DocumenteTab). Surfacing-ul vizibil per doc
+      // (Alert per item) ar fi disruptiv în batch.
       console.warn('[medicalExtractor] batch item failed:', e);
       progress.failed++;
       progress.reports.push({

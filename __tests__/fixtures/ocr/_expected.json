@@ -1,0 +1,10 @@
+{
+  "scrisoare-medicala-cnas": {
+    "description": "Scrisoare medicală CNAS cu antet 'Contract/convenție Nr 240' — caz din lipsa: clasifica greșit ca contract",
+    "expected_type": "scrisoare_medicala",
+    "expected_min_actionable_items": 1,
+    "expected_summary_must_contain": ["Hb", "13"],
+    "expected_summary_must_not_contain": ["risc crescut", "foarte grav"],
+    "document_date": "2026-05-19"
+  }
+}

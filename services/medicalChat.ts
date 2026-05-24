@@ -413,6 +413,9 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
   try {
     answer = await sendAiRequest(aiMessages, 1000, 'chat');
   } catch (e) {
+    // silent-ai-catch-ok: eroarea AI devine mesajul răspunsului afișat în
+    // chat (vezi answer = `Asistentul AI nu e disponibil: ${e.message}`),
+    // deci e vizibilă userului prin canalul natural al feature-ului.
     console.warn('[medicalChat] sendAiRequest failed:', e);
     answer =
       e instanceof Error

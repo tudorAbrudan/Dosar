@@ -63,6 +63,15 @@ node scripts/pin-secure-store-audit.js --strict
 echo "▸ Medical AI summary isolation audit (strict)..."
 node scripts/medical-ai-summary-isolation-audit.js --strict
 
+echo "▸ Silent AI catch audit (no console.warn-only on AI errors)..."
+node scripts/silent-ai-catch-audit.js --strict
+
+echo "▸ Classifier divergence audit (regex vs AI fixture sync)..."
+node scripts/classifier-divergence-audit.js --strict
+
+echo "▸ Calendar event consistency audit (timeZone + url + site link)..."
+node scripts/calendar-event-consistency-audit.js --strict
+
 echo "▸ ast-grep scan (lint:ast)..."
 npm run -s lint:ast
 

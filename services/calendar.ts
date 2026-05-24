@@ -317,7 +317,8 @@ function buildMaintenanceNotes(task: VehicleMaintenanceTask, vehicleName: string
     lines.push(`Notă: ${task.note}`);
   }
   lines.push('');
-  lines.push(`Reamintire de la Dosar · ${APP_STORE_URL}`);
+  lines.push(`Reamintire de la Dosar · ${SITE_URL}`);
+  lines.push(`App Store: ${APP_STORE_URL}`);
   return lines.join('\n');
 }
 
