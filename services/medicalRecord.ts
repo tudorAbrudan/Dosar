@@ -16,6 +16,7 @@ import { db, generateId } from './db';
 import { ensureMedicalMasterKey, MEDICAL_MASTER_KEY_REF } from './medicalCrypto';
 import { assignNextOrder, removeOrder } from './entityOrder';
 import { emit } from './events';
+import { getPendingReminders, type ActionableItem } from './documents';
 import type { MedicalRecord, Person } from '@/types';
 
 const MEDICAL_DOC_TYPES_SQL = `(
@@ -289,4 +290,50 @@ export async function findPersonsWithOrphanMedicalDocs(): Promise<Person[]> {
       AND NOT EXISTS (SELECT 1 FROM medical_record m WHERE m.person_id = p.id)
     ORDER BY p.name COLLATE NOCASE ASC
   `);
+}
+
+export interface PendingReminderDoc {
+  documentId: string;
+  items: ActionableItem[];
+}
+
+/**
+ * Returnează documentele legate de un dosar medical care au `pending_reminders_json`
+ * populat ȘI `medical_reminders_prompted_at IS NULL` ȘI cel puțin un item cu
+ * `suggested_date_iso >= today` (D14 — past dates filtrate complet).
+ *
+ * Folosit de UI-ul de dosar medical (`entitati/medical/[id]`) la mount pentru a
+ * decide dacă deschide `MedicalRemindersModal`.
+ */
+export async function getDocumentsWithPendingReminders(
+  recordId: string
+): Promise<PendingReminderDoc[]> {
+  const todayIso = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const rows = await db.getAllAsync<{
+    document_id: string;
+    pending_reminders_json: string | null;
+    medical_reminders_prompted_at: string | null;
+  }>(
+    `SELECT d.id AS document_id, d.pending_reminders_json, d.medical_reminders_prompted_at
+     FROM documents d
+     JOIN document_entities de ON de.document_id = d.id
+     WHERE de.entity_type = 'medical_record'
+       AND de.entity_id = ?
+       AND d.pending_reminders_json IS NOT NULL
+       AND d.medical_reminders_prompted_at IS NULL`,
+    [recordId]
+  );
+
+  const result: PendingReminderDoc[] = [];
+  for (const r of rows) {
+    const items = await getPendingReminders(r.document_id);
+    const future = items.filter(
+      i => i.suggested_date_iso !== null && i.suggested_date_iso >= todayIso
+    );
+    if (future.length > 0) {
+      result.push({ documentId: r.document_id, items: future });
+    }
+  }
+  return result;
 }
