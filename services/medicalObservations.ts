@@ -258,6 +258,7 @@ export interface ObservationGroup {
     value: string | null;
     observed_at: string | null;
     needs_review: boolean;
+    source_document_id: string | null;
   }[];
   ref_min: string | null;
   ref_max: string | null;
@@ -271,11 +272,19 @@ export interface ObservationGroup {
  * Ordine grupuri: după `last_observed_at` descrescător (cel mai recent primul).
  * Ordine valori în grup: după `observed_at` crescător (cronologic ascendent, ca
  * sparkline-ul să curgă de la stânga la dreapta).
+ *
+ * `options.includeNarrative` (default `false`): dacă `true`, include și
+ * observațiile cu `category === 'altele'` (recomandări, diagnostice, plan).
+ * Timeline-ul din UI vrea doar analize → default exclude narrative.
  */
-export async function groupByName(recordId: string): Promise<ObservationGroup[]> {
+export async function groupByName(
+  recordId: string,
+  options?: { includeNarrative?: boolean }
+): Promise<ObservationGroup[]> {
   const all = await listObservationsByRecord(recordId);
+  const filtered = options?.includeNarrative ? all : all.filter((o) => o.category !== 'altele');
   const map = new Map<string, ObservationGroup>();
-  for (const o of all) {
+  for (const o of filtered) {
     const key = o.name.trim().toLowerCase();
     let g = map.get(key);
     if (!g) {
@@ -295,6 +304,7 @@ export async function groupByName(recordId: string): Promise<ObservationGroup[]>
       value: o.value,
       observed_at: o.observed_at,
       needs_review: o.needs_review,
+      source_document_id: o.source_document_id,
     });
     if (o.observed_at && (!g.last_observed_at || o.observed_at > g.last_observed_at)) {
       g.last_observed_at = o.observed_at;
