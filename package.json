@@ -108,9 +108,11 @@
   },
   "devDependencies": {
     "@testing-library/react-native": "^13.3.3",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^30.0.0",
     "@types/jszip": "^3.4.0",
     "@types/react": "~19.2.2",
+    "better-sqlite3": "^12.10.0",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~8.0.0",
     "eslint-config-prettier": "^9.1.0",
