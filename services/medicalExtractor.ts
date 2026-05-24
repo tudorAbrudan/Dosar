@@ -547,8 +547,13 @@ export async function extractFromDocument(
       const aiResult = await generateAiSummary(truncated, freshDoc.issue_date ?? null);
       await setDocumentAiSummary(documentId, aiResult.summary_md || null);
 
-      if (aiResult.actionable_items.length > 0 && !freshDoc.medical_reminders_prompted_at) {
-        await setPendingReminders(documentId, JSON.stringify(aiResult.actionable_items));
+      if (!freshDoc.medical_reminders_prompted_at) {
+        await setPendingReminders(
+          documentId,
+          aiResult.actionable_items.length > 0
+            ? JSON.stringify(aiResult.actionable_items)
+            : null
+        );
       }
     }
   } catch (e) {
