@@ -5,9 +5,17 @@
  * caută substringul numelui (normalizat fără diacritice) în textul OCR și
  * întoarce match-ul cu cel mai lung nume găsit. Card-urile sunt excluse —
  * numerele de card nu se potrivesc nominal cu textul OCR.
+ *
+ * IMPORTANT — Filtrare după tip document:
+ * Dacă `documentType` e furnizat, doar tipurile de entități compatibile cu
+ * acel tip de document (per `ENTITY_DOCUMENT_TYPES`) sunt considerate. Asta
+ * previne bug-uri de tipul „document medical legat la proprietate" (regresia
+ * 2026-05-24 cu o scrisoare medicală care a făcut match pe adresa proprietății
+ * pentru că numele proprietății era mai lung decât al persoanei).
  */
 
-import type { EntityType } from '@/types';
+import { ENTITY_DOCUMENT_TYPES } from '@/types';
+import type { DocumentType, EntityType } from '@/types';
 
 interface EntityCandidate {
   id: string;
@@ -42,14 +50,28 @@ function normalize(s: string): string {
     .trim();
 }
 
+function buildAllowedEntitySet(documentType: DocumentType): Set<EntityType> {
+  const allowed = new Set<EntityType>();
+  for (const [entityType, docTypes] of Object.entries(ENTITY_DOCUMENT_TYPES) as [
+    EntityType,
+    DocumentType[],
+  ][]) {
+    if (docTypes.includes(documentType)) allowed.add(entityType);
+  }
+  return allowed;
+}
+
 export function matchEntityInOcr(
   ocrText: string,
-  sources: EntityMatchSources
+  sources: EntityMatchSources,
+  documentType?: DocumentType
 ): EntityMatchResult | null {
   const normOcr = normalize(ocrText);
   const candidates: EntityMatchResult[] = [];
+  const allowed = documentType ? buildAllowedEntitySet(documentType) : null;
 
   const check = (entityType: EntityType, items: EntityCandidate[]) => {
+    if (allowed && !allowed.has(entityType)) return;
     for (const item of items) {
       const normName = normalize(item.name);
       if (normName.length < 2) continue;

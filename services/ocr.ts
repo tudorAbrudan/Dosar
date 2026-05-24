@@ -629,41 +629,88 @@ export function extractDocumentInfo(text: string): DocumentInfo {
 export function detectDocumentType(text: string): DocumentType | null {
   const t = text.toLowerCase();
 
+  // ── Medical documents (verificate ÎNTÂI — titlul medical are prioritate
+  //    asupra cuvintelor administrative gen „contract" care apar pe scrisori
+  //    medicale CNAS ca număr de contract servicii) ──────────────────────────
+  if (/scrisoare medical[aă]/.test(t)) return 'scrisoare_medicala';
+  if (/bilet de externare|bilet externare|epicriz[aă]/.test(t)) return 'bilet_externare';
+  if (/bilet de trimitere|bilet trimitere/.test(t)) return 'bilet_trimitere';
+  if (/fi[sș][aă] de consulta[tț]ie|fi[sș][aă] consulta[tț]ie/.test(t))
+    return 'fisa_consultatie';
+  if (/re[tț]et[aă] medical[aă]|prescrip[tț]ie medical[aă]|rp\/?\s*medicament/.test(t))
+    return 'reteta_medicala';
+  // Imagistică: RMN/CT/ecografie/radiografie + secțiunea „Concluzie" sau
+  // „Descriere" + medic radiolog. Indicatorii sunt cumulativi.
+  if (/(rmn|ct|computer tomograf|tomografie|ecografie|ecografic|radiografie|mamografie|scintigrafie)/.test(t)) {
+    if (/concluzie|descriere|radiolog|imagistic[aă]/.test(t)) return 'imagistica';
+  }
+  // Analize: indicatori clari + valori cu unități + referință.
+  if (
+    /(hemoleucogram[aă]|biochimie|hemoglobin[aă]|glicemie|lipidogram[aă]|tsh|t3|t4|colesterol|transaminaze|ureea|creatinin[aă])/.test(
+      t
+    )
+  ) {
+    if (/valori? de referin[tț][aă]|interval (de )?referin[tț][aă]|limit[aă] (laboratorului|normal[aă])/.test(t))
+      return 'analize_medicale';
+  }
+  // Vaccin uman: separat de vaccin_animal. „Vaccin"/„Vaccinare" + nume vaccin
+  // uman + cabinet, NU cuvinte veterinare.
+  if (
+    /(vaccin|vaccinare|certificat (de )?vaccinare)/.test(t) &&
+    !/veterinar|clinic[aă] veterinar[aă]|cabinet veterinar|\bvet\b/.test(t) &&
+    /(bcg|dtpa|ror|hpv|grip[aă]|covid|hepatit[aă] [ab]|td|tdap|polio|pneumococ)/.test(t)
+  ) {
+    return 'vaccin_persoana';
+  }
+
+  // ── Vehicul ───────────────────────────────────────────────────────────────
   if (/asigurare.*obligatorie|r\.c\.a\.|asigurare rca|\brca\b/.test(t)) return 'rca';
   if (/\bcasco\b/.test(t)) return 'casco';
   if (/inspec[tț]ie tehnic[aă]|inspec[tț]ie periodic[aă]|\bitp\b/.test(t)) return 'itp';
-  if (/carte de identitate|buletin de identitate|c\.i\.|identity card/.test(t)) return 'buletin';
-  if (/pa[sş]aport|passport/.test(t)) return 'pasaport';
-  if (/permis de conducere|driving licen[sc]e/.test(t)) return 'permis_auto';
   if (/vignet[aă]|rovinieta/.test(t)) return 'vigneta';
   if (/carte de identitate a vehiculului|\bciv\b/.test(t)) return 'carte_auto';
   if (/\btalon\b|certificat de [îi]nmatriculare/.test(t)) return 'talon';
+
+  // ── Persoană (acte identitate) ────────────────────────────────────────────
+  if (/carte de identitate|buletin de identitate|c\.i\.|identity card/.test(t)) return 'buletin';
+  if (/pa[sş]aport|passport/.test(t)) return 'pasaport';
+  if (/permis de conducere|driving licen[sc]e/.test(t)) return 'permis_auto';
+
+  // ── Proprietate ───────────────────────────────────────────────────────────
   if (/act de proprietate|contract de v[âa]nzare[\-\s]cump[aă]rare/.test(t))
     return 'act_proprietate';
   if (/num[aă]r cadastral|extras de carte funciar[aă]/.test(t)) return 'cadastru';
   if (/asigurare.*dezastre|politi[aă] pad|\bpad\b/.test(t)) return 'pad';
-  if (/factur[aă]|invoice/.test(t)) return 'factura';
   if (/impozit.*proprietate|tax.*property/.test(t)) return 'impozit_proprietate';
-  if (/contract/.test(t)) return 'contract';
-  if (/garantie|garan[tț]ie|warranty|certificat de garan[tț]ie/.test(t)) return 'garantie';
+
+  // ── Facturi/bonuri ────────────────────────────────────────────────────────
+  if (/factur[aă]|invoice/.test(t)) return 'factura';
   if (/bon fiscal|chitant[aă]|receipt/.test(t)) return 'bon_cumparaturi';
-  // ORDINE: „bilet de trimitere" (medical CNAS) ÎNAINTE de regex-ul generic
-  // „bilet|ticket|boarding pass" — altfel un bilet medical e clasificat ca
-  // bilet de eveniment/călătorie.
-  if (/bilet de trimitere|bilet trimitere/.test(t)) return 'bilet_trimitere';
+
+  // ── Contract (STRICT — necesită titlu central + indicator de tip contract,
+  //    NU doar mențiunea cuvântului „contract" undeva în text. Asta evită
+  //    fals pozitive pe documente medicale CNAS care au „Contract/convenție
+  //    Nr X" ca referință administrativă) ─────────────────────────────────────
+  if (
+    /(^|\n)\s*contract\s+(de\s+)?(prest[aă]ri serv|[îi]nchiriere|chirie|v[âa]nzare|cump[aă]rare|servicii|munc[aă]|colaborare|comodat|mandat|consign[aă]) /.test(
+      t
+    )
+  )
+    return 'contract';
+
+  if (/garantie|garan[tț]ie|warranty|certificat de garan[tț]ie/.test(t)) return 'garantie';
   if (/bilet|ticket|boarding pass/.test(t)) return 'bilet';
   if (/abonament|subscri/.test(t)) return 'abonament';
   if (/stingator|extinctor/.test(t)) return 'stingator_incendiu';
-  if (/vaccin|vaccinare/.test(t)) return 'vaccin_animal';
-  if (/deparazitare|antiparazitar/.test(t)) return 'deparazitare';
-  // ORDINE: fișa de consultație ÎNAINTE de vizita_vet — altfel „consultație" de
-  // pe documente medicale umane (fișă consultație medic ambulator) declanșează
-  // fals vizita_vet. Pattern-ul medical e specific (FIȘA DE CONSULTAȚIE), iar
-  // vet-ul cere acum explicit „vet"/„veterinar"/„clinică veterinară".
-  if (/fi[sș][aă] de consulta[tț]ie|fi[sș][aă] consulta[tț]ie/.test(t))
-    return 'fisa_consultatie';
-  if (/veterinar|clinic[aă] veterinar[aă]|cabinet veterinar|\bvet\b/.test(t))
+
+  // ── Veterinar (DUPĂ medical uman, ca să nu prindă scrisorile medicale) ───
+  if (/veterinar|clinic[aă] veterinar[aă]|cabinet veterinar|\bvet\b/.test(t)) {
+    if (/vaccin|vaccinare/.test(t)) return 'vaccin_animal';
+    if (/deparazitare|antiparazitar/.test(t)) return 'deparazitare';
     return 'vizita_vet';
+  }
+  // Fallback dacă cuvintele veterinare lipsesc dar apar termeni specifici
+  if (/deparazitare|antiparazitar/.test(t)) return 'deparazitare';
 
   return null;
 }
