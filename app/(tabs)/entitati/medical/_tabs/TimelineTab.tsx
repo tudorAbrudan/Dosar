@@ -6,11 +6,26 @@ import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, primaryTint, statusColors } from '@/theme/colors';
 import { useMedicalObservations } from '@/hooks/useMedicalObservations';
+import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { ObservationSparkline } from '@/components/medical/ObservationSparkline';
 import { getObservationStatus, type ObservationStatus } from '@/services/medicalObservations';
-import { OBSERVATION_CATEGORIES } from '@/types';
+import { OBSERVATION_CATEGORIES, getDocumentLabel } from '@/types';
+import { getDocumentById } from '@/services/documents';
 import type { MedicalRecordStats } from '@/services/medicalRecord';
 import type { ObservationCategory } from '@/types';
+
+function formatDocDateRo(iso: string | null | undefined): string {
+  if (!iso) return '?';
+  try {
+    return new Date(iso).toLocaleDateString('ro-RO', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
 
 interface Props {
   recordId: string;
@@ -38,6 +53,7 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
   const { groups, needsReviewCount, loading, refresh } = useMedicalObservations(recordId);
+  const { customTypes } = useCustomTypes();
   const [filterCategory, setFilterCategory] = useState<ObservationCategory | null>(null);
 
   const filteredGroups = useMemo(() => {
@@ -125,18 +141,25 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
             ...new Set(item.values.map(v => v.source_document_id).filter(Boolean)),
           ] as string[];
 
-          const onTap = () => {
+          const onTap = async () => {
             if (uniqueDocIds.length === 0) return;
             if (uniqueDocIds.length === 1) {
               router.push(`/(tabs)/documente/${uniqueDocIds[0]}`);
               return;
             }
+            const topIds = uniqueDocIds.slice(0, 5);
+            const docs = await Promise.all(topIds.map(id => getDocumentById(id)));
+            const labels = docs.map((d, idx) => {
+              if (!d) return `Document ${idx + 1}`;
+              const typeLabel = getDocumentLabel(d, customTypes);
+              return `${typeLabel} — ${formatDocDateRo(d.issue_date)}`;
+            });
             Alert.alert(
               'Surse multiple',
               'Această valoare apare în mai multe documente. Alege unul:',
               [
-                ...uniqueDocIds.slice(0, 5).map((id, idx) => ({
-                  text: `Document ${idx + 1}`,
+                ...topIds.map((id, idx) => ({
+                  text: labels[idx] ?? `Document ${idx + 1}`,
                   onPress: () => router.push(`/(tabs)/documente/${id}`),
                 })),
                 { text: 'Anulează', style: 'cancel' as const },
