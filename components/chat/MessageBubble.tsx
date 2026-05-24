@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, Alert, StyleSheet } from 'react-native';
 import type { ChatMessage } from '@/services/chatbot';
-import { SelectTextModal, type SelectTextModalColors } from './SelectTextModal';
+import { SelectTextModal } from './SelectTextModal';
 
 export interface ConversationMessage extends ChatMessage {
   id?: string;
@@ -9,7 +9,9 @@ export interface ConversationMessage extends ChatMessage {
 
 const LINK_REGEX = /\[ID:([^\]]+)\]|\[DOC:([^|]+)\|([^\]]+)\]|\[ENT:([^|]+)\|([^|]+)\|([^\]]+)\]/g;
 
-export interface MessageBubbleColors extends SelectTextModalColors {
+export interface MessageBubbleColors {
+  surface: string;
+  border: string;
   primary: string;
   text: string;
 }
@@ -163,7 +165,6 @@ export function MessageBubble({
       <SelectTextModal
         visible={showSelectModal}
         text={message.content}
-        colors={colors}
         onClose={() => setShowSelectModal(false)}
       />
     </>

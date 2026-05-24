@@ -391,7 +391,6 @@ export default function ChatScreen() {
       <RenameModal
         visible={renameTarget !== null}
         initialName={renameTarget?.name ?? ''}
-        colors={colors}
         onConfirm={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}
       />
