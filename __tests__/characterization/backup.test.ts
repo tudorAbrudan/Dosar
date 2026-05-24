@@ -23,6 +23,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let applyManifest: typeof import('@/services/backup').applyManifest;
 let isImportInProgress: typeof import('@/services/backup').isImportInProgress;
+let getDocuments: typeof import('@/services/documents').getDocuments;
 beforeAll(() => {
   jest.resetModules();
   jest.isolateModules(() => {
@@ -31,6 +32,8 @@ beforeAll(() => {
     const backup = require('@/services/backup');
     applyManifest = backup.applyManifest;
     isImportInProgress = backup.isImportInProgress;
+    const documents = require('@/services/documents');
+    getDocuments = documents.getDocuments;
   });
 });
 
@@ -281,6 +284,126 @@ describe('backup applyManifest — wipeFirst', () => {
 
     expect((await db.getAllAsync('SELECT id FROM cloud_state')).length).toBe(1);
     expect((await db.getAllAsync('SELECT file_path FROM pending_uploads')).length).toBe(1);
+  });
+});
+
+describe('backup applyManifest — medical AI fields round-trip', () => {
+  it('imports ai_summary, medical_reminders_prompted_at, pending_reminders_json on documents', async () => {
+    const remindersJson = JSON.stringify([
+      { label: 'control glicemie', suggested_date_iso: '2026-08-24' },
+    ]);
+
+    await applyManifest({
+      documents: [
+        {
+          id: 'doc-1',
+          type: 'analize_medicale',
+          issue_date: '2026-05-24',
+          expiry_date: null,
+          created_at: '2026-05-24T00:00:00Z',
+          ai_summary: '**Rezumat:** test',
+          medical_reminders_prompted_at: '2026-05-24T10:00:00Z',
+          pending_reminders_json: remindersJson,
+        },
+      ],
+    });
+
+    const row = testDb._raw
+      .prepare(
+        'SELECT ai_summary, medical_reminders_prompted_at, pending_reminders_json FROM documents WHERE type = ? AND issue_date = ?'
+      )
+      .get('analize_medicale', '2026-05-24') as {
+      ai_summary: string | null;
+      medical_reminders_prompted_at: string | null;
+      pending_reminders_json: string | null;
+    } | undefined;
+
+    expect(row).toBeDefined();
+    expect(row!.ai_summary).toBe('**Rezumat:** test');
+    expect(row!.medical_reminders_prompted_at).toBe('2026-05-24T10:00:00Z');
+    expect(JSON.parse(row!.pending_reminders_json as string)).toEqual([
+      { label: 'control glicemie', suggested_date_iso: '2026-08-24' },
+    ]);
+  });
+
+  it('exports the 3 medical AI fields via getDocuments (export side of round-trip)', async () => {
+    // Seed: insert document directly cu cele 3 câmpuri populate.
+    const remindersJson = JSON.stringify([
+      { label: 'control', suggested_date_iso: '2026-08-24' },
+    ]);
+    testDb._raw
+      .prepare(
+        `INSERT INTO documents (id, type, issue_date, expiry_date, created_at,
+                                ai_summary, medical_reminders_prompted_at, pending_reminders_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'doc-export',
+        'analize_medicale',
+        '2026-05-24',
+        null,
+        '2026-05-24T00:00:00Z',
+        '**Rezumat:** export-test',
+        '2026-05-24T10:00:00Z',
+        remindersJson
+      );
+
+    // Export-side: `getDocuments()` e sursa pe care exportBackup + buildManifestPayload
+    // o folosesc. Verificăm că cele 3 câmpuri sunt surfaced prin mapRow.
+    const allDocs = await getDocuments();
+    const doc = allDocs.find((d: { id: string }) => d.id === 'doc-export');
+    expect(doc).toBeDefined();
+    expect(doc!.ai_summary).toBe('**Rezumat:** export-test');
+    expect(doc!.medical_reminders_prompted_at).toBe('2026-05-24T10:00:00Z');
+    expect(doc!.pending_reminders_json).toBe(remindersJson);
+  });
+
+  it('round-trip: export via getDocuments → applyManifest preserves all 3 fields', async () => {
+    const remindersJson = JSON.stringify([
+      { label: 'reevaluare TSH', suggested_date_iso: '2026-11-24' },
+    ]);
+
+    // Seed-uim documentul direct în DB cu cele 3 câmpuri populate.
+    testDb._raw
+      .prepare(
+        `INSERT INTO documents (id, type, issue_date, expiry_date, created_at,
+                                ai_summary, medical_reminders_prompted_at, pending_reminders_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'doc-rt',
+        'analize_medicale',
+        '2026-05-24',
+        null,
+        '2026-05-24T00:00:00Z',
+        '**Rezumat:** roundtrip',
+        '2026-05-24T10:00:00Z',
+        remindersJson
+      );
+
+    // Simulăm export-ul: citim documentele cum o face exportBackup / buildManifestPayload.
+    const exportedDocs = await getDocuments();
+    expect(exportedDocs.find((d: { id: string }) => d.id === 'doc-rt')).toBeDefined();
+
+    // Wipe + reimport prin applyManifest cu payload-ul construit din export.
+    await applyManifest({ documents: exportedDocs }, { wipeFirst: true });
+
+    const row = testDb._raw
+      .prepare(
+        'SELECT ai_summary, medical_reminders_prompted_at, pending_reminders_json FROM documents WHERE type = ? AND issue_date = ?'
+      )
+      .get('analize_medicale', '2026-05-24') as {
+      ai_summary: string | null;
+      medical_reminders_prompted_at: string | null;
+      pending_reminders_json: string | null;
+    } | undefined;
+
+    expect(row).toBeDefined();
+    expect(row!.ai_summary).toBe('**Rezumat:** roundtrip');
+    expect(row!.medical_reminders_prompted_at).toBe('2026-05-24T10:00:00Z');
+    expect(JSON.parse(row!.pending_reminders_json as string)).toEqual([
+      { label: 'reevaluare TSH', suggested_date_iso: '2026-11-24' },
+    ]);
   });
 });
 

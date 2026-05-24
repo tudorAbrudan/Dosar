@@ -785,6 +785,28 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
       if (d.calendar_event_id) {
         await docs.setDocumentCalendarEventId(created.id, d.calendar_event_id as string);
       }
+      // Propagăm coloanele AI medical (spec 2026-05-24): rezumat AI, timestamp prompt
+      // reminders, JSON tranzitoriu cu actionable items. Nu pleacă prin createDocument
+      // pentru că sunt populate doar de pipeline-ul medical, nu la creare manuală.
+      if (
+        d.ai_summary != null ||
+        d.medical_reminders_prompted_at != null ||
+        d.pending_reminders_json != null
+      ) {
+        await db.runAsync(
+          `UPDATE documents
+             SET ai_summary = ?,
+                 medical_reminders_prompted_at = ?,
+                 pending_reminders_json = ?
+           WHERE id = ?`,
+          [
+            (d.ai_summary as string | null | undefined) ?? null,
+            (d.medical_reminders_prompted_at as string | null | undefined) ?? null,
+            (d.pending_reminders_json as string | null | undefined) ?? null,
+            created.id,
+          ]
+        );
+      }
       imported++;
     } catch (e) {
       errors.push(`Document "${d.type}": ${e instanceof Error ? e.message : 'eroare'}`);

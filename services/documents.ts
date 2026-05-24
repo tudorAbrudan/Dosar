@@ -96,6 +96,9 @@ type Row = {
   private_notes: string | null;
   main_orientation_locked: number | null;
   calendar_event_id: string | null;
+  ai_summary: string | null;
+  medical_reminders_prompted_at: string | null;
+  pending_reminders_json: string | null;
   created_at: string;
 };
 
@@ -199,6 +202,9 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
     file_hash: r.file_hash ?? undefined,
     private_notes: r.private_notes ?? undefined,
     calendar_event_id: r.calendar_event_id ?? undefined,
+    ai_summary: r.ai_summary ?? undefined,
+    medical_reminders_prompted_at: r.medical_reminders_prompted_at ?? undefined,
+    pending_reminders_json: r.pending_reminders_json ?? undefined,
     created_at: r.created_at,
   };
 }
