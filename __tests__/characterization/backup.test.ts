@@ -23,11 +23,21 @@ jest.mock('expo-sqlite', () => {
 });
 
 import { applySchemaToTestDb } from '../helpers/testDbSetup';
-import { db } from '@/services/db';
-import { applyManifest, isImportInProgress } from '@/services/backup';
 import type { TestDb } from '../helpers/testDb';
 
-const testDb = db as unknown as TestDb;
+let db: typeof import('@/services/db').db;
+let testDb: TestDb;
+let applyManifest: typeof import('@/services/backup').applyManifest;
+let isImportInProgress: typeof import('@/services/backup').isImportInProgress;
+beforeAll(() => {
+  jest.isolateModules(() => {
+    db = require('@/services/db').db as typeof db;
+    testDb = db as unknown as TestDb;
+    const backup = require('@/services/backup');
+    applyManifest = backup.applyManifest;
+    isImportInProgress = backup.isImportInProgress;
+  });
+});
 
 function resetSchema(): void {
   const tables = testDb._raw

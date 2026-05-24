@@ -26,10 +26,20 @@ jest.mock('expo-sqlite', () => {
 });
 
 import { applySchemaToTestDb } from '../helpers/testDbSetup';
-import { db } from '@/services/db';
 import type { TestDb } from '../helpers/testDb';
 
-const testDb = db as unknown as TestDb;
+// Reset modules + isolated require ca să forțăm db.ts să se reîncarce cu mock-ul
+// LOCAL al acestui fișier (overriding mock-ul global din setup.ts). Fără asta,
+// rularea sequențială (jest --runInBand) folosește instanța db cache-uită de
+// primul test file care a importat db.ts.
+let db: typeof import('@/services/db').db;
+let testDb: TestDb;
+beforeAll(() => {
+  jest.isolateModules(() => {
+    db = require('@/services/db').db as typeof db;
+    testDb = db as unknown as TestDb;
+  });
+});
 
 function resetSchema(): void {
   const tables = testDb._raw

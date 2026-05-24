@@ -24,11 +24,21 @@ jest.mock('expo-sqlite', () => {
 });
 
 import { applySchemaToTestDb } from '../helpers/testDbSetup';
-import { db } from '@/services/db';
-import { enqueueFileUpload, dequeueFileDelete } from '@/services/cloudSync';
 import type { TestDb } from '../helpers/testDb';
 
-const testDb = db as unknown as TestDb;
+let db: typeof import('@/services/db').db;
+let testDb: TestDb;
+let enqueueFileUpload: typeof import('@/services/cloudSync').enqueueFileUpload;
+let dequeueFileDelete: typeof import('@/services/cloudSync').dequeueFileDelete;
+beforeAll(() => {
+  jest.isolateModules(() => {
+    db = require('@/services/db').db as typeof db;
+    testDb = db as unknown as TestDb;
+    const cs = require('@/services/cloudSync');
+    enqueueFileUpload = cs.enqueueFileUpload;
+    dequeueFileDelete = cs.dequeueFileDelete;
+  });
+});
 
 function resetSchema(): void {
   const tables = testDb._raw
