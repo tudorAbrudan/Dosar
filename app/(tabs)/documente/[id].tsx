@@ -18,7 +18,7 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import { DocumentDetailCard } from '@/components/DocumentDetailCard';
 import { DocumentDetailRow } from '@/components/DocumentDetailRow';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg, statusColors } from '@/theme/colors';
+import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import {
   getDocumentById,
   deleteDocument,
@@ -152,26 +152,6 @@ export default function DocumentDetailScreen() {
     recordId: string;
   } | null>(null);
   const [reExtracting, setReExtracting] = useState(false);
-  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number } | null>(null);
-
-  // Citește utilizarea AI zilnică pentru diagnostic.
-  useEffect(() => {
-    if (!doc || !MEDICAL_DOC_TYPES.has(doc.type)) return;
-    (async () => {
-      try {
-        const { getAiUsageToday, DAILY_AI_LIMIT, getAiConfig } = await import('@/services/aiProvider');
-        const cfg = await getAiConfig();
-        if (cfg.type !== 'builtin') {
-          setAiUsage({ used: 0, limit: -1 }); // -1 = no limit (cheie externă)
-          return;
-        }
-        const used = await getAiUsageToday();
-        setAiUsage({ used, limit: DAILY_AI_LIMIT });
-      } catch {
-        setAiUsage(null);
-      }
-    })();
-  }, [doc?.id, doc?.type]);
 
   const runReExtractAndReport = useCallback(
     async (docId: string) => {
@@ -191,28 +171,27 @@ export default function DocumentDetailScreen() {
             }
           })()
         : 0;
-      const debugStr = result.debug
-        ? `\n\nDEBUG:\n${[
-            result.debug.ocr_len !== undefined ? `ocr_len: ${result.debug.ocr_len}` : '',
-            result.debug.llm_response_sample
-              ? `llm_error/sample:\n${result.debug.llm_response_sample.slice(0, 400)}`
-              : '',
-          ]
-            .filter(Boolean)
-            .join('\n')}`
-        : '';
+      // Pentru eșec (status='failed') arătăm doar mesajul AI ca să știe userul
+      // de ce (de obicei: limită zilnică atinsă sau cheie API expirată).
+      if (result.status === 'failed') {
+        const aiError = result.debug?.llm_response_sample ?? 'Eroare necunoscută la apelul AI.';
+        Alert.alert(
+          'Extragere AI eșuată',
+          `${aiError.slice(0, 300)}\n\nVerifică Setări → Asistent AI dacă ai cheie validă sau limită rămasă.`
+        );
+        return;
+      }
+      // Pentru ne-eșec arătăm sumar succint.
       Alert.alert(
         'Re-extragere terminată',
         [
           `Status: ${result.status}`,
-          `Observații inserate: ${result.inserted}`,
-          `Rezumat AI: ${updated?.ai_summary ? `${updated.ai_summary.length} chars` : 'gol'}`,
-          `Reminders pending: ${itemsCount}`,
-          updated?.pending_reminders_json ? `\nJSON: ${updated.pending_reminders_json}` : '',
-          debugStr,
-        ]
-          .filter(Boolean)
-          .join('\n')
+          `Observații extrase: ${result.inserted}`,
+          updated?.ai_summary ? 'Rezumat AI generat ✓' : 'Rezumat AI: nu a fost generat',
+          itemsCount > 0
+            ? `${itemsCount} recomandări cu termen — deschide dosarul medical pentru calendar`
+            : 'Niciun reminder cu termen explicit',
+        ].join('\n')
       );
     },
     []
@@ -1192,100 +1171,27 @@ export default function DocumentDetailScreen() {
           </View>
         ) : null}
 
-        {/* Diagnostic AI — doar pentru documente medicale. Arată starea reală a
-            extracției ca să nu fie magie neagră ce se întâmplă în background. */}
+        {/* Buton minimal de re-extragere AI pentru documente medicale.
+            Util când userul vrea să re-ruleze extracția (ex: după ce adăugat
+            propria cheie AI sau corectat tipul documentului). */}
         {MEDICAL_DOC_TYPES.has(doc.type) ? (
-          <View
+          <Pressable
             style={[
-              styles.aiSection,
-              { borderColor: palette.border, backgroundColor: palette.card },
+              styles.calendarBtn,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.background,
+                marginVertical: 12,
+              },
             ]}
+            onPress={handleReExtractMedical}
+            disabled={reExtracting}
           >
-            <View style={styles.aiSectionHeader}>
-              <Ionicons name="bug-outline" size={16} color={palette.textSecondary} />
-              <Text style={[styles.aiSectionTitle, { color: palette.text }]}>
-                Diagnostic AI (medical)
-              </Text>
-            </View>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>Rezumat AI:</Text>{' '}
-              {doc.ai_summary ? `${doc.ai_summary.length} chars` : '(gol — extracția nu a rulat sau a eșuat)'}
+            <Text style={{ fontSize: 18 }}>{reExtracting ? '⏳' : '🔄'}</Text>
+            <Text style={[styles.calendarBtnLabel, { color: primary }]}>
+              {reExtracting ? 'Re-extragere în curs…' : 'Re-extrage AI (medical)'}
             </Text>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>Pending reminders:</Text>{' '}
-              {doc.pending_reminders_json
-                ? `${(() => {
-                    try {
-                      return JSON.parse(doc.pending_reminders_json).length;
-                    } catch {
-                      return '?';
-                    }
-                  })()} items`
-                : '(gol)'}
-            </Text>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>Reminders prompted at:</Text>{' '}
-              {doc.medical_reminders_prompted_at ?? '(nu)'}
-            </Text>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>Data document (issue_date):</Text>{' '}
-              {doc.issue_date ?? '(neset)'}
-            </Text>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>OCR text:</Text>{' '}
-              {doc.ocr_text ? `${doc.ocr_text.length} chars` : '(gol)'}
-            </Text>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>Entități legate:</Text>{' '}
-              {entityLinks.length === 0
-                ? '(niciuna — extragerea va eșua cu no_record)'
-                : entityLinks.map(l => `${l.entityType}:${l.entityId.slice(0, 8)}`).join(', ')}
-            </Text>
-            <Text style={[styles.diagText, { color: palette.text }]}>
-              <Text style={{ fontWeight: '700' }}>Legat la dosar medical:</Text>{' '}
-              {entityLinks.some(l => l.entityType === 'medical_record') ? 'DA ✓' : 'NU ✗'}
-            </Text>
-            {aiUsage ? (
-              <Text
-                style={[
-                  styles.diagText,
-                  {
-                    color:
-                      aiUsage.limit > 0 && aiUsage.used >= aiUsage.limit
-                        ? statusColors.critical
-                        : palette.text,
-                  },
-                ]}
-              >
-                <Text style={{ fontWeight: '700' }}>Utilizare AI azi:</Text>{' '}
-                {aiUsage.limit === -1
-                  ? `${aiUsage.used} (cheie externă, fără limită)`
-                  : `${aiUsage.used} / ${aiUsage.limit}${
-                      aiUsage.used >= aiUsage.limit
-                        ? ' ⚠ LIMITĂ ATINSĂ — extracția va da fail'
-                        : ''
-                    }`}
-              </Text>
-            ) : null}
-            {doc.pending_reminders_json ? (
-              <Text
-                style={[styles.diagText, { color: palette.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11 }]}
-                numberOfLines={6}
-              >
-                {doc.pending_reminders_json}
-              </Text>
-            ) : null}
-            <Pressable
-              style={[styles.calendarBtn, { borderColor: primary, backgroundColor: palette.background, marginTop: 12 }]}
-              onPress={handleReExtractMedical}
-              disabled={reExtracting}
-            >
-              <Text style={{ fontSize: 18 }}>{reExtracting ? '⏳' : '🔄'}</Text>
-              <Text style={[styles.calendarBtnLabel, { color: primary }]}>
-                {reExtracting ? 'Re-extragere în curs…' : 'Re-extrage AI (medical)'}
-              </Text>
-            </Pressable>
-          </View>
+          </Pressable>
         ) : null}
 
         <DocumentDetailCard
@@ -1463,5 +1369,4 @@ const styles = StyleSheet.create({
   aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   aiSectionTitle: { fontSize: 14, fontWeight: '700' },
   aiSummaryDisclaimer: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
-  diagText: { fontSize: 12, lineHeight: 18, marginBottom: 2 },
 });

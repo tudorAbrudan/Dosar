@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { DocumentType, VehicleMaintenanceTask } from '@/types';
-import { APP_STORE_URL } from '@/constants/AppLinks';
+import { APP_STORE_URL, SITE_URL } from '@/constants/AppLinks';
 
 // expo-calendar necesită build nativ (expo prebuild + expo run:ios).
 // Importăm cu require pentru a nu crăpa app-ul dacă modulul nativ nu e linkat.
@@ -448,10 +448,10 @@ export async function addMedicalRecommendationCalendarEvent(
       ? `Sursă: ${opts.sourceDocumentType} din ${opts.sourceDocumentDate}`
       : `Sursă: ${opts.sourceDocumentType}`;
 
-    // Notes include URL ca text vizibil ÎN PLUS față de câmpul URL al eventului.
-    // Câmpul URL e tap-abil dar nu prea vizibil în iOS Calendar. URL ca text aici
-    // e o referință explicită pentru user — pe iOS custom schemes nu sunt auto-
-    // detectate ca link-uri în notes, dar restul textului explică unde să apese.
+    // Notes: includem un link HTTPS clickable (auto-detectat de Google/iOS
+    // Calendar) spre site-ul de prezentare al aplicației. Custom URL schemes
+    // gen `acte://` NU sunt clickable în Google Calendar — userul vede doar
+    // text. Site-ul GitHub Pages e auto-linkified.
     const deepLink = `acte:///documente/${opts.documentId}`;
     const notes = [
       opts.label,
@@ -459,8 +459,8 @@ export async function addMedicalRecommendationCalendarEvent(
       sourceLine,
       `Dosar: ${opts.recordName}`,
       '',
-      `Deschide în Dosar: ${deepLink}`,
-      '(apasă pe câmpul URL de mai jos pentru a deschide documentul)',
+      `Aplicația: ${SITE_URL}`,
+      `Deschidere directă: ${deepLink}`,
     ].join('\n');
 
     // Eveniment all-day-ish la data scheduledDate, ora 09:00 → 10:00 (slot scurt vizibil).
