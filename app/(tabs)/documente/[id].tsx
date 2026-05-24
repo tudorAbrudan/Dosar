@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
 import { StyleSheet, ScrollView, Alert, Pressable, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -66,6 +66,52 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
 import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
+
+// Minimal markdown subset for AI summary rendering.
+// Supports `**bold**` inline + `- ` bullet lines. Anything else = plain paragraph.
+function renderInlineMarkdown(text: string): ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return (
+        <Text key={idx} style={{ fontWeight: '700' }}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    return part;
+  });
+}
+
+function renderMarkdown(text: string, textColor: string): ReactNode {
+  const lines = text.split('\n');
+  return lines.map((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return <Text key={idx} style={{ height: 8 }} />;
+    }
+    if (trimmed.startsWith('- ')) {
+      const content = trimmed.slice(2);
+      return (
+        <Text
+          key={idx}
+          style={{ color: textColor, fontSize: 14, lineHeight: 20, marginBottom: 4 }}
+        >
+          {'•  '}
+          {renderInlineMarkdown(content)}
+        </Text>
+      );
+    }
+    return (
+      <Text
+        key={idx}
+        style={{ color: textColor, fontSize: 14, lineHeight: 20, marginBottom: 4 }}
+      >
+        {renderInlineMarkdown(trimmed)}
+      </Text>
+    );
+  });
+}
 
 export default function DocumentDetailScreen() {
   const { id, from, entityId } = useLocalSearchParams<{
@@ -997,7 +1043,7 @@ export default function DocumentDetailScreen() {
               <Ionicons name="sparkles-outline" size={16} color={primary} />
               <Text style={[styles.aiSectionTitle, { color: palette.text }]}>Rezumat AI</Text>
             </View>
-            <Text style={[styles.aiSummaryBody, { color: palette.text }]}>{doc.ai_summary}</Text>
+            {renderMarkdown(doc.ai_summary, palette.text)}
             <Text style={[styles.aiSummaryDisclaimer, { color: palette.textSecondary }]}>
               Generat automat, nu înlocuiește consultul medical.
             </Text>
@@ -1178,6 +1224,5 @@ const styles = StyleSheet.create({
   aiSection: { marginVertical: 12, padding: 14, borderRadius: 10, borderWidth: 1 },
   aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   aiSectionTitle: { fontSize: 14, fontWeight: '700' },
-  aiSummaryBody: { fontSize: 14, lineHeight: 20 },
   aiSummaryDisclaimer: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
 });
