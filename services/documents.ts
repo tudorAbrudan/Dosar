@@ -986,3 +986,76 @@ export async function lockPageOrientation(pageId: string): Promise<void> {
 export async function lockMainOrientation(documentId: string): Promise<void> {
   await db.runAsync('UPDATE documents SET main_orientation_locked = 1 WHERE id = ?', [documentId]);
 }
+
+/**
+ * Setează `ai_summary` pe document. NU intră în FTS / chat (spec 2026-05-24 §8).
+ * Apelat de `medicalExtractor` după generare AI; suprascris la re-extracție.
+ */
+export async function setDocumentAiSummary(
+  documentId: string,
+  summary: string | null
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE documents SET ai_summary = ? WHERE id = ?',
+    [summary, documentId]
+  );
+  emit('entities:changed');
+}
+
+/**
+ * Marchează că userul a primit modalul de calendar reminders pentru acest document
+ * (indiferent dacă a adăugat sau a sărit). Blochează re-prompt (spec D10).
+ */
+export async function setMedicalRemindersPromptedAt(
+  documentId: string,
+  iso: string
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE documents SET medical_reminders_prompted_at = ? WHERE id = ?',
+    [iso, documentId]
+  );
+  emit('entities:changed');
+}
+
+/**
+ * Setează JSON-ul tranzitoriu cu `actionable_items` pentru modal (D13).
+ * `null` la închiderea modalului.
+ */
+export async function setPendingReminders(
+  documentId: string,
+  json: string | null
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE documents SET pending_reminders_json = ? WHERE id = ?',
+    [json, documentId]
+  );
+  emit('entities:changed');
+}
+
+export interface ActionableItem {
+  label: string;
+  suggested_date_iso: string | null;
+}
+
+/**
+ * Citește și parsează `pending_reminders_json`. Returnează [] la null sau JSON invalid.
+ */
+export async function getPendingReminders(documentId: string): Promise<ActionableItem[]> {
+  const row = await db.getFirstAsync<{ pending_reminders_json: string | null }>(
+    'SELECT pending_reminders_json FROM documents WHERE id = ?',
+    [documentId]
+  );
+  if (!row?.pending_reminders_json) return [];
+  try {
+    const parsed = JSON.parse(row.pending_reminders_json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (i): i is ActionableItem =>
+        typeof i === 'object' &&
+        i !== null &&
+        typeof (i as ActionableItem).label === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
