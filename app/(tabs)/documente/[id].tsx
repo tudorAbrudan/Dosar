@@ -60,7 +60,12 @@ import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
 import { DuplicateGroupsCard } from '@/components/document/DuplicateGroupsCard';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { processDocumentImage } from '@/services/imageProcessing';
-import { getDocumentLabel, ENTITY_TYPE_EMOJI, NO_EXPIRY_DOC_TYPES } from '@/types';
+import {
+  getDocumentLabel,
+  ENTITY_TYPE_EMOJI,
+  NO_EXPIRY_DOC_TYPES,
+  MEDICAL_DOC_TYPES,
+} from '@/types';
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
@@ -146,6 +151,47 @@ export default function DocumentDetailScreen() {
     items: ActionableItem[];
     recordId: string;
   } | null>(null);
+  const [reExtracting, setReExtracting] = useState(false);
+
+  const handleReExtractMedical = useCallback(async () => {
+    if (!doc) return;
+    setReExtracting(true);
+    try {
+      const { extractFromDocument } = await import('@/services/medicalExtractor');
+      const result = await extractFromDocument(doc.id);
+      // Refresh state din DB după extracție.
+      const updated = await getDocumentById(doc.id);
+      setDoc(updated);
+      const itemsCount = updated?.pending_reminders_json
+        ? (() => {
+            try {
+              return JSON.parse(updated.pending_reminders_json).length;
+            } catch {
+              return 0;
+            }
+          })()
+        : 0;
+      Alert.alert(
+        'Re-extragere terminată',
+        [
+          `Status: ${result.status}`,
+          `Observații inserate: ${result.inserted}`,
+          `Rezumat AI: ${updated?.ai_summary ? `${updated.ai_summary.length} chars` : 'gol'}`,
+          `Reminders pending: ${itemsCount}`,
+          updated?.pending_reminders_json ? `\nJSON: ${updated.pending_reminders_json}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
+    } catch (e) {
+      Alert.alert(
+        'Eroare re-extragere',
+        e instanceof Error ? e.message : 'Eroare necunoscută'
+      );
+    } finally {
+      setReExtracting(false);
+    }
+  }, [doc]);
 
   useEffect(() => {
     if (!id) return;
@@ -1050,6 +1096,70 @@ export default function DocumentDetailScreen() {
           </View>
         ) : null}
 
+        {/* Diagnostic AI — doar pentru documente medicale. Arată starea reală a
+            extracției ca să nu fie magie neagră ce se întâmplă în background. */}
+        {MEDICAL_DOC_TYPES.has(doc.type) ? (
+          <View
+            style={[
+              styles.aiSection,
+              { borderColor: palette.border, backgroundColor: palette.card },
+            ]}
+          >
+            <View style={styles.aiSectionHeader}>
+              <Ionicons name="bug-outline" size={16} color={palette.textSecondary} />
+              <Text style={[styles.aiSectionTitle, { color: palette.text }]}>
+                Diagnostic AI (medical)
+              </Text>
+            </View>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>Rezumat AI:</Text>{' '}
+              {doc.ai_summary ? `${doc.ai_summary.length} chars` : '(gol — extracția nu a rulat sau a eșuat)'}
+            </Text>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>Pending reminders:</Text>{' '}
+              {doc.pending_reminders_json
+                ? `${(() => {
+                    try {
+                      return JSON.parse(doc.pending_reminders_json).length;
+                    } catch {
+                      return '?';
+                    }
+                  })()} items`
+                : '(gol)'}
+            </Text>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>Reminders prompted at:</Text>{' '}
+              {doc.medical_reminders_prompted_at ?? '(nu)'}
+            </Text>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>Data document (issue_date):</Text>{' '}
+              {doc.issue_date ?? '(neset)'}
+            </Text>
+            <Text style={[styles.diagText, { color: palette.text }]}>
+              <Text style={{ fontWeight: '700' }}>OCR text:</Text>{' '}
+              {doc.ocr_text ? `${doc.ocr_text.length} chars` : '(gol)'}
+            </Text>
+            {doc.pending_reminders_json ? (
+              <Text
+                style={[styles.diagText, { color: palette.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11 }]}
+                numberOfLines={6}
+              >
+                {doc.pending_reminders_json}
+              </Text>
+            ) : null}
+            <Pressable
+              style={[styles.calendarBtn, { borderColor: primary, backgroundColor: palette.background, marginTop: 12 }]}
+              onPress={handleReExtractMedical}
+              disabled={reExtracting}
+            >
+              <Text style={{ fontSize: 18 }}>{reExtracting ? '⏳' : '🔄'}</Text>
+              <Text style={[styles.calendarBtnLabel, { color: primary }]}>
+                {reExtracting ? 'Re-extragere în curs…' : 'Re-extrage AI (medical)'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <DocumentDetailCard
           tone="sensitive"
           header={
@@ -1225,4 +1335,5 @@ const styles = StyleSheet.create({
   aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   aiSectionTitle: { fontSize: 14, fontWeight: '700' },
   aiSummaryDisclaimer: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
+  diagText: { fontSize: 12, lineHeight: 18, marginBottom: 2 },
 });

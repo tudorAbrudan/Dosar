@@ -448,13 +448,19 @@ export async function addMedicalRecommendationCalendarEvent(
       ? `Sursă: ${opts.sourceDocumentType} din ${opts.sourceDocumentDate}`
       : `Sursă: ${opts.sourceDocumentType}`;
 
+    // Notes include URL ca text vizibil ÎN PLUS față de câmpul URL al eventului.
+    // Câmpul URL e tap-abil dar nu prea vizibil în iOS Calendar. URL ca text aici
+    // e o referință explicită pentru user — pe iOS custom schemes nu sunt auto-
+    // detectate ca link-uri în notes, dar restul textului explică unde să apese.
+    const deepLink = `acte:///documente/${opts.documentId}`;
     const notes = [
       opts.label,
       '',
       sourceLine,
       `Dosar: ${opts.recordName}`,
       '',
-      `Document ID: ${opts.documentId}`,
+      `Deschide în Dosar: ${deepLink}`,
+      '(apasă pe câmpul URL de mai jos pentru a deschide documentul)',
     ].join('\n');
 
     // Eveniment all-day-ish la data scheduledDate, ora 09:00 → 10:00 (slot scurt vizibil).
