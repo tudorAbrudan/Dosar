@@ -10,18 +10,12 @@
  *   - paths diferite produc rânduri separate
  */
 
-jest.mock('expo-sqlite', () => {
-  let instance: ReturnType<typeof import('../helpers/testDb').createTestDbInstance> | null = null;
-  return {
-    openDatabaseSync: () => {
-      if (!instance) {
-        const { createTestDbInstance } = require('../helpers/testDb');
-        instance = createTestDbInstance();
-      }
-      return instance;
-    },
-  };
-});
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: () => {
+    const { createTestDbInstance } = require('../helpers/testDb');
+    return createTestDbInstance();
+  },
+}));
 
 import { applySchemaToTestDb } from '../helpers/testDbSetup';
 import type { TestDb } from '../helpers/testDb';
@@ -31,6 +25,7 @@ let testDb: TestDb;
 let enqueueFileUpload: typeof import('@/services/cloudSync').enqueueFileUpload;
 let dequeueFileDelete: typeof import('@/services/cloudSync').dequeueFileDelete;
 beforeAll(() => {
+  jest.resetModules();
   jest.isolateModules(() => {
     db = require('@/services/db').db as typeof db;
     testDb = db as unknown as TestDb;
@@ -41,24 +36,21 @@ beforeAll(() => {
 });
 
 function resetSchema(): void {
+  // Vezi nota din db.test.ts despre DELETE vs DROP — folosim DELETE pentru stabilitate.
   const tables = testDb._raw
-    .prepare("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'index')")
-    .all() as { name: string; type: string }[];
+    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+    .all() as { name: string }[];
   testDb._raw.pragma('foreign_keys = OFF');
   for (const t of tables) {
     if (t.name.startsWith('sqlite_')) continue;
+    if (t.name === 'medical_fts') continue;
     try {
-      if (t.type === 'index') {
-        testDb._raw.exec(`DROP INDEX IF EXISTS ${t.name}`);
-      } else {
-        testDb._raw.exec(`DROP TABLE IF EXISTS ${t.name}`);
-      }
+      testDb._raw.exec(`DELETE FROM ${t.name}`);
     } catch {
-      /* virtual tables */
+      /* shadow tables FTS, virtual */
     }
   }
   testDb._raw.pragma('foreign_keys = ON');
-  applySchemaToTestDb(testDb);
 }
 
 beforeEach(resetSchema);

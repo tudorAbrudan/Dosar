@@ -49,6 +49,10 @@ export function createTestDbInstance() {
       const stmt = sqlite.prepare(sql);
       return (stmt.get(...(flatten(params) as never[])) as T) ?? null;
     },
+    getAllSync<T = unknown>(sql: string, ...params: unknown[]): T[] {
+      const stmt = sqlite.prepare(sql);
+      return stmt.all(...(flatten(params) as never[])) as T[];
+    },
     async withTransactionAsync(fn: () => Promise<void>): Promise<void> {
       sqlite.exec('BEGIN');
       try {

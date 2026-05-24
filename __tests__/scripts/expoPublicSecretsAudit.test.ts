@@ -9,9 +9,9 @@ describe('expo-public-secrets-audit', () => {
     expect(auditEnvLine('EXPO_PUBLIC_APP_VERSION=1.2.3', 1, '.env')).toBeNull();
   });
 
-  it('flags EXPO_PUBLIC_MISTRAL_API_KEY', () => {
-    const v = auditEnvLine('EXPO_PUBLIC_MISTRAL_API_KEY=sk-...', 5, '.env');
-    expect(v?.name).toBe('EXPO_PUBLIC_MISTRAL_API_KEY');
+  it('flags EXPO_PUBLIC_OPENAI_API_KEY (not in allowlist)', () => {
+    const v = auditEnvLine('EXPO_PUBLIC_OPENAI_API_KEY=sk-...', 5, '.env');
+    expect(v?.name).toBe('EXPO_PUBLIC_OPENAI_API_KEY');
     expect(v?.trigger).toBe('KEY');
   });
 
@@ -31,6 +31,15 @@ describe('expo-public-secrets-audit', () => {
     const src = `export default { extra: { EXPO_PUBLIC_GH_TOKEN: process.env.GH_TOKEN } };`;
     const v = auditConfigSource(src, 'app.config.ts');
     expect(v.some((x: { name: string }) => x.name === 'EXPO_PUBLIC_GH_TOKEN')).toBe(true);
+  });
+
+  it('skips allowlisted EXPO_PUBLIC_MISTRAL_API_KEY in env', () => {
+    expect(auditEnvLine('EXPO_PUBLIC_MISTRAL_API_KEY=sk-xxx', 1, '.env')).toBeNull();
+  });
+
+  it('skips allowlisted EXPO_PUBLIC_MISTRAL_API_KEY in config', () => {
+    const src = `extra: { EXPO_PUBLIC_MISTRAL_API_KEY: process.env.MISTRAL_API_KEY }`;
+    expect(auditConfigSource(src, 'app.config.ts')).toEqual([]);
   });
 
   it('does not double-report same name in config source', () => {

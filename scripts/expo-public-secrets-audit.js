@@ -24,6 +24,23 @@ const TRIGGERS = ['KEY', 'TOKEN', 'SECRET', 'PASSWORD', 'APIKEY', 'PRIVKEY', 'PR
 const ENV_FILES = ['.env', '.env.local', '.env.production', '.env.development'];
 const CONFIG_FILES = ['app.config.ts', 'app.config.js', 'app.json'];
 
+/**
+ * Allowlist explicit pentru chei acceptate intenționat în bundle public.
+ * Modifică DOAR cu motiv documentat în comentariu.
+ *
+ * Securitate: orice cheie aici ESTE vizibilă utilizatorilor care dezarhivează
+ * .ipa/.apk. Acceptabil doar dacă:
+ *   1. Cheia are quota/cost limit cunoscut și acceptat.
+ *   2. Revocarea + rotația cheii e un proces planificat (nu „dacă se întâmplă").
+ *   3. Nu poate fi abuzată ca să acceseze date altor utilizatori.
+ */
+const ALLOWED_NAMES = new Set([
+  // Decis 2026-05-24: chei Mistral rămân în bundle deocamdată; quota pe cont
+  // controlată din dashboard, fără date utilizator expuse prin endpoint.
+  // Re-evaluare la următoarea revizie de securitate.
+  'EXPO_PUBLIC_MISTRAL_API_KEY',
+]);
+
 function detectTrigger(name) {
   const upper = name.toUpperCase();
   return TRIGGERS.find(t => upper.includes(t)) ?? null;
@@ -36,6 +53,7 @@ function auditEnvLine(line, lineNumber, file) {
   const eq = trimmed.indexOf('=');
   if (eq === -1) return null;
   const name = trimmed.slice(0, eq).trim();
+  if (ALLOWED_NAMES.has(name)) return null;
   const trigger = detectTrigger(name);
   if (!trigger) return null;
   return { file, line: lineNumber, name, trigger };
@@ -50,6 +68,7 @@ function auditConfigSource(source, file) {
     const name = m[0];
     if (seen.has(name)) continue;
     seen.add(name);
+    if (ALLOWED_NAMES.has(name)) continue;
     const trigger = detectTrigger(name);
     if (!trigger) continue;
     const line = source.slice(0, m.index).split('\n').length;
@@ -105,4 +124,4 @@ if (require.main === module) {
   if (args.has('--strict') && v.length > 0) process.exit(1);
 }
 
-module.exports = { audit, auditEnvLine, auditConfigSource, format };
+module.exports = { audit, auditEnvLine, auditConfigSource, format, ALLOWED_NAMES };
