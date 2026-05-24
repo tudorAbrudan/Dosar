@@ -21,8 +21,19 @@ import AppLockScreen from '@/components/AppLockScreen';
 import { useMedicalLock } from '@/hooks/useMedicalLock';
 import { useMedicalRecord } from '@/hooks/useMedicalRecord';
 import { useEntities } from '@/hooks/useEntities';
-import { deleteMedicalRecord, updateMedicalRecord } from '@/services/medicalRecord';
-import { getDocuments, addEntityLinkToDocument } from '@/services/documents';
+import {
+  deleteMedicalRecord,
+  updateMedicalRecord,
+  getDocumentsWithPendingReminders,
+  type PendingReminderDoc,
+} from '@/services/medicalRecord';
+import {
+  getDocuments,
+  addEntityLinkToDocument,
+  setMedicalRemindersPromptedAt,
+  setPendingReminders,
+} from '@/services/documents';
+import { MedicalRemindersModal } from '@/components/medical/MedicalRemindersModal';
 import { db } from '@/services/db';
 import { MEDICAL_DOC_TYPES, DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
@@ -51,6 +62,37 @@ export default function MedicalRecordDetail() {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'timeline');
   const [linkDocVisible, setLinkDocVisible] = useState(false);
   const [unlinkedMedDocs, setUnlinkedMedDocs] = useState<Document[]>([]);
+
+  // ── Pending reminders modal (D13)
+  const [reminderModal, setReminderModal] = useState<PendingReminderDoc | null>(null);
+
+  useEffect(() => {
+    if (!record) return;
+    let cancelled = false;
+    (async () => {
+      const pending = await getDocumentsWithPendingReminders(record.id);
+      if (cancelled || pending.length === 0) return;
+      setReminderModal(pending[0]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [record?.id]);
+
+  const handleReminderClose = useCallback(
+    async (_decision: 'added' | 'skipped') => {
+      if (!reminderModal) return;
+      try {
+        await setMedicalRemindersPromptedAt(reminderModal.documentId, new Date().toISOString());
+        await setPendingReminders(reminderModal.documentId, null);
+      } catch {
+        // best-effort — modal closes anyway
+      }
+      setReminderModal(null);
+      await refresh();
+    },
+    [reminderModal, refresh]
+  );
 
   // Edit dosar
   const [editVisible, setEditVisible] = useState(false);
@@ -498,6 +540,17 @@ export default function MedicalRecordDetail() {
           />
         </View>
       </FormSheetModal>
+
+      {/* ── Pending reminders modal (D13) ── */}
+      {reminderModal && record ? (
+        <MedicalRemindersModal
+          visible={true}
+          items={reminderModal.items}
+          documentId={reminderModal.documentId}
+          recordId={record.id}
+          onClose={handleReminderClose}
+        />
+      ) : null}
     </View>
   );
 }
