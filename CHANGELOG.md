@@ -14,6 +14,23 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.8.0] (2026-05-24) — build 59
+
+### Adăugat — Rezumat AI + Reminders în calendar pentru documente medicale
+- **Rezumat AI** generat automat la upload pentru documente medicale (scrisori medicale, bilete externare, fișe consultație, bilete trimitere, analize, imagistică). Apare ca secțiune dedicată „Rezumat AI" pe document, formatat cu titluri și bullets — recomandări verbatim + valori out-of-range (ex: „Hb 13 — sub limita 13.2"). Independent de chat-ul medical (nu intră în context AI).
+- **Modal Reminders în Calendar:** la prima vizitare a dosarului medical sau a documentului, dacă AI-ul a detectat recomandări cu termen explicit („control la 12 luni"), apare un modal cu listă bifabilă. Confirmarea adaugă evenimente în iOS Calendar / Google Calendar cu titlu, sursă (document + dată), nume dosar și link spre site-ul aplicației.
+- **Buton „Re-extrage AI (medical)"** pe documentele medicale — re-rulează extracția manual (util după ce userul a adăugat propria cheie AI sau corectat tipul). Auto-leagă la dosarul medical dacă există unul singur.
+- **Timeline curățat:** doar analize și valori cu evoluție numerică. Recomandările și diagnosticele apar acum în Rezumat AI pe document, nu amestecate ca grupuri sparkline.
+- **Tap pe valoare în Timeline → deschide documentul sursă** (cu picker dacă există mai multe surse).
+
+### Reparat — clasificator și extracție
+- `detectDocumentType` (heuristic-ul rapid de la OCR) detectează acum corect tipurile medicale: `scrisoare_medicala`, `bilet_externare`, `imagistica`, `analize_medicale`, `reteta_medicala`, `vaccin_persoana`. Înainte, cuvântul „Contract" dintr-un antet administrativ („Contract/convenție Nr X" pe scrisori medicale CNAS) clasifica greșit întreg documentul ca tip „Contract" → extracția medicală nu se mai declanșa niciodată.
+- `aiClassifier` are regulă nouă de prioritate: titlul central al documentului bate keyword-urile răzlețe.
+- Auto-link entitate filtrează acum prin `ENTITY_DOCUMENT_TYPES` — documente medicale nu mai sunt asociate accidental la „proprietate" pe potrivire de adresă.
+
+### Privacy
+- Audit script nou `medical-ai-summary-isolation-audit.js` care blochează la build orice scurgere de `ai_summary` / `pending_reminders_json` în context-ul chat / FTS.
+
 ## [3.6.0] (2026-05-21) — build 57
 
 ### Adăugat — Dosar medical (reintegrare completă)
