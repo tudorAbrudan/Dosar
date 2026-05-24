@@ -60,4 +60,27 @@ describe('hook-contract-audit', () => {
     `;
     expect(auditSource('hooks/useThing.ts', src)).toEqual([]);
   });
+
+  it('uses last top-level return, not inner returns from nested arrows', () => {
+    const src = `
+      export function useThing() {
+        const mapped = items.map(raw => {
+          return { ...raw, onPress: () => {} };
+        });
+        return { items: mapped, loading: false, error: null, refresh: () => {} };
+      }
+    `;
+    expect(auditSource('hooks/useThing.ts', src)).toEqual([]);
+  });
+
+  it('accepts ...state spread as proof of contract presence', () => {
+    const src = `
+      interface State { loading: boolean; error: string | null; data: string[] }
+      export function useThing() {
+        const [state] = useState<State>({ loading: false, error: null, data: [] });
+        return { ...state, refresh: () => {} };
+      }
+    `;
+    expect(auditSource('hooks/useThing.ts', src)).toEqual([]);
+  });
 });

@@ -38,8 +38,8 @@ node scripts/check-hardcoded-entities.js --strict
 echo "▸ Knowledge audit (strict)..."
 node scripts/knowledge-audit.js --strict
 
-echo "▸ Hook contract audit (warn — 7 violări preexistente)..."
-node scripts/hook-contract-audit.js
+echo "▸ Hook contract audit (strict)..."
+node scripts/hook-contract-audit.js --strict
 
 echo "▸ Catch pattern audit (strict)..."
 node scripts/catch-pattern-audit.js --strict
