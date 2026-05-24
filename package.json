@@ -23,7 +23,7 @@
     "test:characterization": "jest __tests__/characterization/ --runInBand",
     "setup-hooks": "git config core.hooksPath scripts/hooks && echo '✓ Pre-commit hook activ. Skip o singură dată: git commit --no-verify'",
     "lint:ast": "ast-grep scan",
-    "audit": "npm run type-check && node scripts/backup-audit.js --strict && node scripts/check-hardcoded-entities.js && node scripts/knowledge-audit.js --strict && node scripts/hook-contract-audit.js --strict && node scripts/catch-pattern-audit.js --strict && node scripts/alter-table-trycatch-audit.js --strict && node scripts/modal-input-audit.js --strict && node scripts/expo-public-secrets-audit.js --strict && node scripts/pin-secure-store-audit.js --strict && node scripts/file-size-audit.js && node scripts/worktree-age-audit.js && npm run test:characterization && npm run lint:ast",
+    "audit": "npm run type-check && node scripts/backup-audit.js --strict && node scripts/check-hardcoded-entities.js && node scripts/knowledge-audit.js --strict && node scripts/hook-contract-audit.js --strict && node scripts/catch-pattern-audit.js --strict && node scripts/alter-table-trycatch-audit.js --strict && node scripts/db-destructive-init-audit.js --strict && node scripts/modal-input-audit.js --strict && node scripts/expo-public-secrets-audit.js --strict && node scripts/pin-secure-store-audit.js --strict && node scripts/file-size-audit.js && node scripts/worktree-age-audit.js && npm run test:characterization && npm run lint:ast",
     "test:eslint-rules": "node --test eslint-local-rules/rules.test.js",
     "release": "standard-version",
     "release:dry": "standard-version --dry-run"

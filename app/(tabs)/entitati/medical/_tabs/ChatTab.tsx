@@ -174,7 +174,7 @@ export function ChatTab({ record }: Props) {
         data={messages}
         keyExtractor={m => m.id}
         contentContainerStyle={{ paddingVertical: 12 }}
-        renderItem={({ item }) => <MedicalChatBubble msg={item} />}
+        renderItem={({ item }) => <MedicalChatBubble msg={item} recordId={record.id} />}
         ListEmptyComponent={
           <View style={styles.emptyChat}>
             <Text style={[styles.suggestTitle, { color: palette.textSecondary }]}>

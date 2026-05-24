@@ -331,6 +331,15 @@ export default function OnboardingWizard({ onComplete }: Props) {
     });
     if (aiProviderChoice === 'external') {
       await aiProvider.saveAiApiKey(aiExternalApiKey);
+      // Persist snapshot „Cheie proprie" ca să reziste comutărilor ulterioare
+      // de provider din Setări. Vezi services/aiProvider.ts pentru context.
+      await aiProvider.saveExternalChatSnapshot({
+        url: aiExternalUrl,
+        model: aiExternalModel,
+        visionUrl: '',
+        visionModel: '',
+        chatModelSupportsVision: false,
+      });
     }
     await settings.setOnboardingDone();
     onComplete();

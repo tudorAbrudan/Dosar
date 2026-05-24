@@ -176,20 +176,6 @@ db.execSync(`
   CREATE INDEX IF NOT EXISTS idx_pending_uploads_attempts ON pending_uploads(attempt_count);
 `);
 
-// Cleanup: tabele medical din versiunile 3.3.0–3.5.0 (entitatea „Dosar medical")
-// au fost migrate într-o aplicație separată. Le ștergem pentru a curăța DB-ul.
-try {
-  db.execSync(`
-    DROP TABLE IF EXISTS medical_chat_messages;
-    DROP TABLE IF EXISTS medical_chat_threads;
-    DROP TABLE IF EXISTS medical_observations;
-    DROP TABLE IF EXISTS medical_record;
-    DROP TABLE IF EXISTS medical_chunks_fts;
-  `);
-} catch {
-  // best-effort — tabele lipsă sau drop refuzat din alt motiv nu blochează pornirea
-}
-
 // Schema medical (reintegrare din DosarMedical, v3.5.x → v3.6+).
 // 6 tabele + 1 virtual FTS5 + 3 triggeri pentru sincronizarea summary → FTS.
 // Toate cu CREATE IF NOT EXISTS — idempotent. Câmpurile *_enc sunt BLOB criptat

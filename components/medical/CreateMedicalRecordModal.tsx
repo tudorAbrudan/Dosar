@@ -79,7 +79,9 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
         setPendingId(rec.id);
         setShowConsent(true);
       } else {
-        onClose();
+        // onCreated din parent face deja setMedicalModalVisible(false) + navigare
+        // către dosar — onClose() suplimentar ar provoca router.back() care
+        // ar suprascrie router.replace, lăsând user-ul pe ecran fără feedback.
         onCreated(rec.id);
       }
     } catch (e) {
@@ -87,26 +89,31 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
     } finally {
       setSaving(false);
     }
-  }, [saving, canSave, selectedPerson, dosarName, aiToggle, onCreated, onClose]);
+  }, [saving, canSave, selectedPerson, dosarName, aiToggle, bloodGroup, allergies, emergencyContactName, emergencyContactPhone, onCreated]);
 
   const handleConsentAccept = useCallback(async () => {
-    if (!pendingId) return;
+    if (!pendingId) {
+      setShowConsent(false);
+      onClose();
+      return;
+    }
     try {
       await setAiConsent(pendingId);
-      onCreated(pendingId);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva consimțământul.');
     }
     setShowConsent(false);
+    const id = pendingId;
     setPendingId(null);
-    onClose();
+    onCreated(id);
   }, [pendingId, onCreated, onClose]);
 
   const handleConsentReject = useCallback(() => {
-    if (pendingId) onCreated(pendingId); // dosar creat fără AI
     setShowConsent(false);
+    const id = pendingId;
     setPendingId(null);
-    onClose();
+    if (id) onCreated(id); // dosar creat fără AI
+    else onClose();
   }, [pendingId, onCreated, onClose]);
 
   return (

@@ -113,6 +113,16 @@ const KEY_CHAT_MODEL_SUPPORTS_VISION = 'ai_chat_model_supports_vision';
 const SECURE_KEY_API_KEY = 'ai_provider_api_key';
 const SECURE_KEY_VISION_API_KEY = 'ai_provider_vision_api_key';
 
+// Snapshot persistent al configului „Cheie API proprie" (external). Stocat
+// separat de configul activ, astfel încât comutarea spre „Dosar AI" și înapoi
+// la „Cheie proprie" să NU piardă URL/model/vision pe care userul le-a setat.
+// apiKey + visionApiKey rămân în SecureStore (independent de tip).
+const KEY_EXT_SNAP_URL = 'ai_external_snapshot_url';
+const KEY_EXT_SNAP_MODEL = 'ai_external_snapshot_model';
+const KEY_EXT_SNAP_VISION_URL = 'ai_external_snapshot_vision_url';
+const KEY_EXT_SNAP_VISION_MODEL = 'ai_external_snapshot_vision_model';
+const KEY_EXT_SNAP_CHAT_VISION = 'ai_external_snapshot_chat_vision';
+
 // ─── Citire / scriere config ──────────────────────────────────────────────────
 
 export async function getAiConfig(): Promise<AiProviderConfig> {
@@ -206,6 +216,63 @@ export async function saveAiVisionApiKey(key: string): Promise<void> {
   } else {
     await SecureStore.deleteItemAsync(SECURE_KEY_VISION_API_KEY);
   }
+}
+
+// ─── Snapshot config extern (persistă peste comutări de provider) ────────────
+
+export interface ExternalChatSnapshot {
+  url: string;
+  model: string;
+  apiKey: string;
+  visionUrl: string;
+  visionModel: string;
+  visionApiKey: string;
+  chatModelSupportsVision: boolean;
+}
+
+/**
+ * Persistă config-ul „Cheie API proprie" (URL, model, vision*) separat de
+ * config-ul activ. Apelat la fiecare Save din modalul AI ca să reziste
+ * comutărilor între provideri și restart-urilor de app.
+ *
+ * `apiKey` și `visionApiKey` rămân în SecureStore (nu se duplică aici).
+ */
+export async function saveExternalChatSnapshot(
+  snap: Omit<ExternalChatSnapshot, 'apiKey' | 'visionApiKey'>
+): Promise<void> {
+  await AsyncStorage.multiSet([
+    [KEY_EXT_SNAP_URL, snap.url],
+    [KEY_EXT_SNAP_MODEL, snap.model],
+    [KEY_EXT_SNAP_VISION_URL, snap.visionUrl],
+    [KEY_EXT_SNAP_VISION_MODEL, snap.visionModel],
+    [KEY_EXT_SNAP_CHAT_VISION, snap.chatModelSupportsVision ? 'true' : 'false'],
+  ]);
+}
+
+/**
+ * Citește snapshot-ul „Cheie API proprie". Folosit la mount în Setări pentru a
+ * pre-popula formularul când userul comută la „Cheie proprie", fără să piardă
+ * ce setase anterior.
+ */
+export async function getExternalChatSnapshot(): Promise<ExternalChatSnapshot> {
+  const [url, model, visionUrl, visionModel, chatVision, apiKey, visionApiKey] = await Promise.all([
+    AsyncStorage.getItem(KEY_EXT_SNAP_URL),
+    AsyncStorage.getItem(KEY_EXT_SNAP_MODEL),
+    AsyncStorage.getItem(KEY_EXT_SNAP_VISION_URL),
+    AsyncStorage.getItem(KEY_EXT_SNAP_VISION_MODEL),
+    AsyncStorage.getItem(KEY_EXT_SNAP_CHAT_VISION),
+    getAiApiKey(),
+    getAiVisionApiKey(),
+  ]);
+  return {
+    url: url ?? '',
+    model: model ?? '',
+    apiKey,
+    visionUrl: visionUrl ?? '',
+    visionModel: visionModel ?? '',
+    visionApiKey,
+    chatModelSupportsVision: chatVision === 'true',
+  };
 }
 
 // ─── Validare config ──────────────────────────────────────────────────────────

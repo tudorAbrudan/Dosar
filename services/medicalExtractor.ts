@@ -560,10 +560,23 @@ export function extractAsync(documentId: string): void {
 export interface BatchEstimate {
   total_documents: number;
   estimated_calls: number;
+  /** Câte documente au deja observații extrase (vor fi sărite dacă `skipAlreadyExtracted`). */
+  already_extracted: number;
+  /** Câte documente vor fi efectiv procesate după filtrarea opts. */
+  to_process: number;
   /** Păstrat pentru compat UI — întotdeauna null (fără limită zilnică). */
   remaining_today: number | null;
   /** Întotdeauna false: nu mai există provider builtin cu limită zilnică. */
   blocked_by_limit: boolean;
+}
+
+export interface BatchOptions {
+  /**
+   * Sare peste documentele care au cel puțin o observație inserată anterior.
+   * Default `false` (re-procesează tot) — UI-ul pasează `true` pentru fluxul
+   * „extrage doar documente noi" și `false` pentru „re-extrage tot".
+   */
+  skipAlreadyExtracted?: boolean;
 }
 
 export interface BatchDocReport {
@@ -624,30 +637,53 @@ async function getMedicalDocIds(recordId: string): Promise<string[]> {
   return rows.map(r => r.id);
 }
 
-export async function estimateBatch(recordId: string): Promise<BatchEstimate> {
+export async function estimateBatch(
+  recordId: string,
+  opts: BatchOptions = {}
+): Promise<BatchEstimate> {
   const ids = await getMedicalDocIds(recordId);
   const total = ids.length;
 
-  // Numără câte docs n-au OCR — vor consuma 1 apel extra (AI vision fallback).
-  let docsWithoutOcr = 0;
+  // Câte docs au deja observații inserate.
+  let alreadyExtracted = 0;
+  let idsToProcess = ids;
   if (total > 0) {
     const placeholders = ids.map(() => '?').join(',');
+    const extractedRows = await db.getAllAsync<{ source_document_id: string }>(
+      `SELECT DISTINCT source_document_id FROM medical_observations
+       WHERE source_document_id IN (${placeholders})`,
+      ids
+    );
+    const extractedSet = new Set(extractedRows.map(r => r.source_document_id));
+    alreadyExtracted = extractedSet.size;
+    if (opts.skipAlreadyExtracted) {
+      idsToProcess = ids.filter(id => !extractedSet.has(id));
+    }
+  }
+
+  // Numără câte docs (din cele care vor fi efectiv procesate) n-au OCR —
+  // vor consuma 1 apel extra (AI vision fallback).
+  let docsWithoutOcr = 0;
+  if (idsToProcess.length > 0) {
+    const placeholders = idsToProcess.map(() => '?').join(',');
     const row = await db.getFirstAsync<{ n: number }>(
       `SELECT COUNT(*) AS n FROM documents
        WHERE id IN (${placeholders})
          AND (ocr_text IS NULL OR LENGTH(TRIM(ocr_text)) = 0)`,
-      ids
+      idsToProcess
     );
     docsWithoutOcr = row?.n ?? 0;
   }
 
   // 1 apel/doc pentru extracție medicală + 1 apel suplimentar pentru fiecare
   // doc fără OCR (fallback vision care produce textul OCR).
-  const estimated = total + docsWithoutOcr;
+  const estimated = idsToProcess.length + docsWithoutOcr;
 
   return {
     total_documents: total,
     estimated_calls: estimated,
+    already_extracted: alreadyExtracted,
+    to_process: idsToProcess.length,
     remaining_today: null,
     blocked_by_limit: false,
   };
@@ -663,9 +699,20 @@ export async function estimateBatch(recordId: string): Promise<BatchEstimate> {
 export async function batchReExtract(
   recordId: string,
   onProgress?: (p: BatchProgress) => void,
-  shouldCancel?: () => boolean
+  shouldCancel?: () => boolean,
+  opts: BatchOptions = {}
 ): Promise<BatchProgress> {
-  const ids = await getMedicalDocIds(recordId);
+  let ids = await getMedicalDocIds(recordId);
+  if (opts.skipAlreadyExtracted && ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    const extractedRows = await db.getAllAsync<{ source_document_id: string }>(
+      `SELECT DISTINCT source_document_id FROM medical_observations
+       WHERE source_document_id IN (${placeholders})`,
+      ids
+    );
+    const extractedSet = new Set(extractedRows.map(r => r.source_document_id));
+    ids = ids.filter(id => !extractedSet.has(id));
+  }
   const progress: BatchProgress = {
     total: ids.length,
     done: 0,

@@ -126,7 +126,7 @@ export function ConversationView({
   }
 
   function handleIdPress(id: string) {
-    router.push(`/(tabs)/documente/${id}`);
+    router.push(`/(tabs)/documente/${id}?from=chat`);
   }
 
   function handleEntityPress(id: string) {

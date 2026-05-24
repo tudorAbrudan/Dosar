@@ -704,6 +704,11 @@ export async function addEntityLinkToDocument(
   // Apelul e idempotent: rescrie chunks-urile pentru toate dosarele legate.
   if (link.entityType === 'medical_record') {
     void import('./medicalFts').then(m => m.indexDocumentForMedicalChat(documentId)).catch(() => {});
+    // Simetrie cu createDocument: asocierea la un dosar medical declanșează
+    // extracția observațiilor în background. Guard-uit intern de toggle AI
+    // medical + ai_consent_at pe dosar. Idempotent (șterge observațiile vechi
+    // pe acest document înainte de re-insert).
+    void triggerMedicalExtraction(documentId, [link], null);
   }
   emit('documents:changed');
   emit('links:changed');

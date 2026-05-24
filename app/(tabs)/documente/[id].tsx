@@ -745,6 +745,18 @@ export default function DocumentDetailScreen() {
       // La fel: curățăm stack-ul documente, apoi mergem la entitate.
       router.navigate('/(tabs)/documente');
       router.navigate(`/(tabs)/entitati/${entityId}`);
+    } else if (from === 'medical' && entityId) {
+      router.navigate('/(tabs)/documente');
+      router.navigate(`/(tabs)/entitati/medical/${entityId}?tab=documente`);
+    } else if (from === 'medical-chat' && entityId) {
+      router.navigate('/(tabs)/documente');
+      router.navigate(`/(tabs)/entitati/medical/${entityId}?tab=chat`);
+    } else if (from === 'expirari') {
+      router.navigate('/(tabs)/documente');
+      router.navigate('/(tabs)/expirari');
+    } else if (from === 'chat') {
+      router.navigate('/(tabs)/documente');
+      router.navigate('/(tabs)/chat');
     } else {
       router.canGoBack() ? router.back() : router.navigate('/(tabs)/documente');
     }

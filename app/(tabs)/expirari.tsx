@@ -115,7 +115,7 @@ export default function ExpirariScreen() {
           { backgroundColor: C.card, shadowColor: C.cardShadow, borderLeftColor: borderColor },
           pressed && styles.cardPressed,
         ]}
-        onPress={() => router.push(`/(tabs)/documente/${doc.id}`)}
+        onPress={() => router.push(`/(tabs)/documente/${doc.id}?from=expirari`)}
         android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
       >
         {/* Left: type icon */}

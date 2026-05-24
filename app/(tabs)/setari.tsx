@@ -197,17 +197,12 @@ export default function SetariScreen() {
         cfg.visionModel.trim() !== '' ||
         cfg.visionApiKey.trim() !== '';
       setAiSeparateVision(hasSeparate);
-      if (cfg.type === 'external') {
-        savedExternalRef.current = {
-          url: cfg.url,
-          model: cfg.model,
-          apiKey: cfg.apiKey,
-          visionUrl: cfg.visionUrl,
-          visionModel: cfg.visionModel,
-          visionApiKey: cfg.visionApiKey,
-          chatModelSupportsVision: cfg.chatModelSupportsVision,
-        };
-      }
+    });
+    // Snapshot „Cheie proprie" — persistat în AsyncStorage + SecureStore, deci
+    // populat indiferent de tipul activ. Astfel, comutarea spre „Dosar AI" și
+    // înapoi nu pierde URL/model/cheia API setate anterior.
+    aiProvider.getExternalChatSnapshot().then(snap => {
+      savedExternalRef.current = snap;
     });
     // Modele locale
     void (async () => {
@@ -608,8 +603,47 @@ export default function SetariScreen() {
         visionModel: usesSeparateVision ? aiVisionModel.trim() : '',
         chatModelSupportsVision: aiProviderType === 'external' ? aiChatModelSupportsVision : false,
       });
-      await aiProvider.saveAiApiKey(aiApiKey);
-      await aiProvider.saveAiVisionApiKey(usesSeparateVision ? aiVisionApiKey : '');
+      // Cheile API din SecureStore le modificăm DOAR când userul e activ în
+      // modul în care contează — altfel comutarea spre „Dosar AI" ar șterge
+      // cheia externă din SecureStore (saveAiApiKey('') = delete). Cheia
+      // externă rămâne valabilă chiar dacă userul testează temporar Dosar AI.
+      if (aiProviderType === 'external') {
+        await aiProvider.saveAiApiKey(aiApiKey);
+      }
+      if ((aiProviderType === 'external' || aiProviderType === 'local') && usesSeparateVision) {
+        await aiProvider.saveAiVisionApiKey(aiVisionApiKey);
+      }
+      // Snapshot „Cheie proprie" — persistat la fiecare Save indiferent de
+      // tipul activ. Dacă userul e pe external, sursa = state-ul curent. Dacă
+      // a comutat la builtin/none/local, sursa = ref-ul memorat la tranziție.
+      const snapSource =
+        aiProviderType === 'external'
+          ? {
+              url: aiProviderUrl,
+              model: aiProviderModel,
+              visionUrl: aiVisionUrl.trim(),
+              visionModel: aiVisionModel.trim(),
+              chatModelSupportsVision: aiChatModelSupportsVision,
+            }
+          : {
+              url: savedExternalRef.current.url,
+              model: savedExternalRef.current.model,
+              visionUrl: savedExternalRef.current.visionUrl,
+              visionModel: savedExternalRef.current.visionModel,
+              chatModelSupportsVision: savedExternalRef.current.chatModelSupportsVision,
+            };
+      await aiProvider.saveExternalChatSnapshot(snapSource);
+      // Actualizează ref-ul în memorie cu valorile tocmai salvate, astfel încât
+      // următoarea comutare spre „Cheie proprie" în aceeași sesiune să citească
+      // sursa de adevăr fără re-mount.
+      savedExternalRef.current = {
+        ...snapSource,
+        apiKey: aiProviderType === 'external' ? aiApiKey : savedExternalRef.current.apiKey,
+        visionApiKey:
+          (aiProviderType === 'external' || aiProviderType === 'local') && usesSeparateVision
+            ? aiVisionApiKey
+            : savedExternalRef.current.visionApiKey,
+      };
       // Dacă noul provider nu e local, eliberează contextul llama dacă mai e
       // încărcat. Acoperă cazul în care userul a comutat radio-ul prin alte
       // căi (auto-restore, onboarding) fără să treacă prin handleAiProviderSelect.

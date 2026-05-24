@@ -40,7 +40,7 @@ const TAB_LABELS: Record<TabKey, string> = {
 };
 
 export default function MedicalRecordDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: TabKey }>();
   const router = useRouter();
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
@@ -48,7 +48,7 @@ export default function MedicalRecordDetail() {
   const { record, stats, loading, error, refresh } = useMedicalRecord(id ?? null);
   const { persons } = useEntities();
   const { customTypes } = useCustomTypes();
-  const [tab, setTab] = useState<TabKey>('timeline');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'timeline');
   const [linkDocVisible, setLinkDocVisible] = useState(false);
   const [unlinkedMedDocs, setUnlinkedMedDocs] = useState<Document[]>([]);
 

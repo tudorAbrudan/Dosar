@@ -47,6 +47,9 @@ node scripts/catch-pattern-audit.js --strict
 echo "▸ ALTER TABLE try-catch audit (strict)..."
 node scripts/alter-table-trycatch-audit.js --strict
 
+echo "▸ DB destructive init audit (strict)..."
+node scripts/db-destructive-init-audit.js --strict
+
 echo "▸ Modal-input audit (strict)..."
 node scripts/modal-input-audit.js --strict
 

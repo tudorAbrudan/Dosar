@@ -327,6 +327,37 @@ export async function countObservations(recordId: string): Promise<number> {
   return r?.c ?? 0;
 }
 
+export interface DocumentObservationStats {
+  total: number;
+  needsReview: number;
+}
+
+/**
+ * Returnează un Map document_id → {total, needsReview} pentru toate
+ * observațiile dintr-un dosar. Folosit de UI ca indicator de status al
+ * extracției per document. Câmpurile COUNT / needs_review nu sunt criptate.
+ */
+export async function getObservationCountsByDocument(
+  recordId: string
+): Promise<Map<string, DocumentObservationStats>> {
+  const rows = await db.getAllAsync<{
+    source_document_id: string;
+    total: number;
+    review: number;
+  }>(
+    `SELECT source_document_id, COUNT(*) AS total, SUM(needs_review) AS review
+     FROM medical_observations
+     WHERE medical_record_id = ? AND source_document_id IS NOT NULL
+     GROUP BY source_document_id`,
+    [recordId]
+  );
+  const map = new Map<string, DocumentObservationStats>();
+  for (const r of rows) {
+    map.set(r.source_document_id, { total: r.total, needsReview: r.review ?? 0 });
+  }
+  return map;
+}
+
 export type ObservationStatus = 'normal' | 'high' | 'low' | 'criticalHigh' | 'criticalLow' | 'unknown';
 
 function parseNum(s: string | null | undefined): number | null {

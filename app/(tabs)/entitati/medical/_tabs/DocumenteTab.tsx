@@ -13,9 +13,13 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary } from '@/theme/colors';
+import { light, dark, primary, statusColors } from '@/theme/colors';
 import { db } from '@/services/db';
 import { batchReExtract, estimateBatch, type BatchDocReport } from '@/services/medicalExtractor';
+import {
+  getObservationCountsByDocument,
+  type DocumentObservationStats,
+} from '@/services/medicalObservations';
 import { on as subscribe } from '@/services/events';
 import {
   MEDICAL_DOC_TYPES,
@@ -106,6 +110,49 @@ interface BatchState {
   noConsent: number;
 }
 
+interface ExtractBadge {
+  label: string;
+  bg: string;
+  fg: string;
+  border: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  a11y: string;
+}
+
+function computeBadge(
+  stats: DocumentObservationStats | undefined,
+  palette: typeof light
+): ExtractBadge {
+  if (!stats || stats.total === 0) {
+    return {
+      label: '—',
+      bg: palette.surface,
+      fg: palette.textSecondary,
+      border: palette.border,
+      icon: 'remove-outline',
+      a11y: 'Niciun rezultat extras',
+    };
+  }
+  if (stats.needsReview > 0) {
+    return {
+      label: `${stats.total} (${stats.needsReview}?)`,
+      bg: statusColors.warningSurface,
+      fg: statusColors.warning,
+      border: statusColors.warning,
+      icon: 'alert-circle-outline',
+      a11y: `${stats.total} observații extrase, ${stats.needsReview} de verificat`,
+    };
+  }
+  return {
+    label: `${stats.total}`,
+    bg: `${primary}22`,
+    fg: primary,
+    border: primary,
+    icon: 'checkmark-circle-outline',
+    a11y: `${stats.total} observații extrase`,
+  };
+}
+
 const STATUS_LABEL: Record<string, string> = {
   ok: 'OK',
   no_data: 'fără date',
@@ -123,6 +170,7 @@ export function DocumenteTab({ record }: Props) {
   const palette = scheme === 'dark' ? dark : light;
 
   const [docs, setDocs] = useState<DocRow[]>([]);
+  const [obsCounts, setObsCounts] = useState<Map<string, DocumentObservationStats>>(new Map());
   const [batchState, setBatchState] = useState<BatchState>({
     running: false,
     cancelled: false,
@@ -140,17 +188,21 @@ export function DocumenteTab({ record }: Props) {
   const loadDocs = useCallback(async () => {
     const medicalDocTypesArr = Array.from(MEDICAL_DOC_TYPES);
     const placeholders = medicalDocTypesArr.map(() => '?').join(',');
-    const rows = await db.getAllAsync<DocRow>(
-      `SELECT DISTINCT d.id, d.type, d.issue_date, d.note, d.metadata
-       FROM documents d
-       JOIN document_entities de ON de.document_id = d.id
-       WHERE d.type IN (${placeholders})
-         AND de.entity_type = 'medical_record'
-         AND de.entity_id = ?
-       ORDER BY d.issue_date DESC, d.created_at DESC`,
-      [...medicalDocTypesArr, record.id]
-    );
+    const [rows, counts] = await Promise.all([
+      db.getAllAsync<DocRow>(
+        `SELECT DISTINCT d.id, d.type, d.issue_date, d.note, d.metadata
+         FROM documents d
+         JOIN document_entities de ON de.document_id = d.id
+         WHERE d.type IN (${placeholders})
+           AND de.entity_type = 'medical_record'
+           AND de.entity_id = ?
+         ORDER BY d.issue_date DESC, d.created_at DESC`,
+        [...medicalDocTypesArr, record.id]
+      ),
+      getObservationCountsByDocument(record.id),
+    ]);
     setDocs(rows);
+    setObsCounts(counts);
   }, [record.id]);
 
   useEffect(() => {
@@ -158,21 +210,38 @@ export function DocumenteTab({ record }: Props) {
   }, [loadDocs]);
 
   useEffect(() => {
-    const off = subscribe('documents:changed', () => loadDocs());
-    return () => off();
+    const offDocs = subscribe('documents:changed', () => loadDocs());
+    const offEntities = subscribe('entities:changed', () => loadDocs());
+    return () => {
+      offDocs();
+      offEntities();
+    };
   }, [loadDocs]);
 
-  const onReExtract = useCallback(async () => {
+  const onReExtract = useCallback(async (skipAlreadyExtracted: boolean) => {
     if (batchState.running) return;
     try {
-      const e = await estimateBatch(record.id);
+      const e = await estimateBatch(record.id, { skipAlreadyExtracted });
       if (e.total_documents === 0) {
         Alert.alert('Niciun document', 'Nu ai documente medicale de procesat.');
         return;
       }
+      if (e.to_process === 0) {
+        Alert.alert(
+          'Toate documentele au fost procesate',
+          `Cele ${e.already_extracted} documente au deja observații extrase. Folosește „Re-extrage TOATE" dacă vrei să rulezi din nou peste ele.`
+        );
+        return;
+      }
+      const title = skipAlreadyExtracted
+        ? 'Extrage observații'
+        : 'Re-extrage TOATE observațiile';
+      const skipNote = skipAlreadyExtracted && e.already_extracted > 0
+        ? `\n(${e.already_extracted} documente cu observații deja extrase vor fi sărite.)`
+        : '';
       Alert.alert(
-        'Re-extrage observații',
-        `Vor fi procesate ${e.total_documents} documente (~${e.estimated_calls} apeluri AI). Continui?`,
+        title,
+        `Vor fi procesate ${e.to_process} documente (~${e.estimated_calls} apeluri AI).${skipNote}\n\nContinui?`,
         [
           { text: 'Anulează', style: 'cancel' },
           {
@@ -182,7 +251,7 @@ export function DocumenteTab({ record }: Props) {
               setBatchState({
                 running: true,
                 cancelled: false,
-                total: e.total_documents,
+                total: e.to_process,
                 done: 0,
                 failed: 0,
                 inserted: 0,
@@ -193,11 +262,13 @@ export function DocumenteTab({ record }: Props) {
               batchReExtract(
                 record.id,
                 p => setBatchState({ ...p, running: true }),
-                () => cancelledRef.value
+                () => cancelledRef.value,
+                { skipAlreadyExtracted }
               )
                 .then(final => {
                   setBatchState({ ...final, running: false });
                   setDiagnosticReports(final.reports);
+                  void loadDocs();
                   const title = final.cancelled
                     ? 'Operație anulată'
                     : final.inserted > 0
@@ -237,7 +308,7 @@ export function DocumenteTab({ record }: Props) {
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut estima costul.');
     }
-  }, [record.id, batchState.running, cancelledRef]);
+  }, [record.id, batchState.running, cancelledRef, loadDocs]);
 
   const cancelBatch = useCallback(() => {
     cancelledRef.value = true;
@@ -249,31 +320,45 @@ export function DocumenteTab({ record }: Props) {
         data={docs}
         keyExtractor={d => d.id}
         contentContainerStyle={{ paddingBottom: 12 }}
-        renderItem={({ item }) => (
-          <Pressable
-            style={[styles.row, { backgroundColor: palette.card, borderColor: palette.border }]}
-            onPress={() =>
-              router.push({
-                pathname: '/(tabs)/documente/[id]',
-                params: {
-                  id: item.id,
-                  from: 'medical',
-                  entityId: record.id,
-                },
-              })
-            }
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.docType, { color: palette.text }]} numberOfLines={1}>
-                {getDocIdentifier(item)}
-              </Text>
-              <Text style={[styles.docDate, { color: palette.textSecondary }]} numberOfLines={1}>
-                {`${DOCUMENT_TYPE_LABELS[item.type as DocumentType] ?? item.type} · ${item.issue_date ?? 'Fără dată'}`}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={palette.textSecondary} />
-          </Pressable>
-        )}
+        renderItem={({ item }) => {
+          const stats = obsCounts.get(item.id);
+          const badge = computeBadge(stats, palette);
+          return (
+            <Pressable
+              style={[styles.row, { backgroundColor: palette.card, borderColor: palette.border }]}
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/documente/[id]',
+                  params: {
+                    id: item.id,
+                    from: 'medical',
+                    entityId: record.id,
+                  },
+                })
+              }
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.docType, { color: palette.text }]} numberOfLines={1}>
+                  {getDocIdentifier(item)}
+                </Text>
+                <Text style={[styles.docDate, { color: palette.textSecondary }]} numberOfLines={1}>
+                  {`${DOCUMENT_TYPE_LABELS[item.type as DocumentType] ?? item.type} · ${item.issue_date ?? 'Fără dată'}`}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.extractBadge,
+                  { backgroundColor: badge.bg, borderColor: badge.border },
+                ]}
+                accessibilityLabel={badge.a11y}
+              >
+                <Ionicons name={badge.icon} size={12} color={badge.fg} />
+                <Text style={[styles.extractBadgeText, { color: badge.fg }]}>{badge.label}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={palette.textSecondary} />
+            </Pressable>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="document-outline" size={48} color={palette.textSecondary} />
@@ -307,15 +392,27 @@ export function DocumenteTab({ record }: Props) {
           <Pressable
             style={[
               styles.reExtractBtn,
-              { borderColor: palette.border, backgroundColor: palette.card },
+              { borderColor: primary, backgroundColor: `${primary}15` },
             ]}
-            onPress={onReExtract}
+            onPress={() => onReExtract(true)}
           >
-            <Ionicons name="refresh" size={18} color={palette.text} />
-            <Text style={[styles.reExtractText, { color: palette.text }]}>
-              Re-extrage observații din toate documentele
+            <Ionicons name="sparkles-outline" size={18} color={primary} />
+            <Text style={[styles.reExtractText, { color: primary, fontWeight: '600' }]}>
+              Extrage observații din documente noi
             </Text>
             <View style={styles.reExtractSpacer} />
+          </Pressable>
+          <Pressable
+            style={[
+              styles.reExtractSecondaryBtn,
+              { borderColor: palette.border, backgroundColor: palette.card },
+            ]}
+            onPress={() => onReExtract(false)}
+          >
+            <Ionicons name="refresh" size={14} color={palette.textSecondary} />
+            <Text style={[styles.reExtractSecondaryText, { color: palette.textSecondary }]}>
+              Re-extrage TOATE (inclusiv documente deja procesate)
+            </Text>
           </Pressable>
           {diagnosticReports.length > 0 && (
             <Pressable
@@ -446,6 +543,30 @@ const styles = StyleSheet.create({
   },
   reExtractText: { fontSize: 14, flex: 1, textAlign: 'center' },
   reExtractSpacer: { width: 18 },
+  reExtractSecondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  reExtractSecondaryText: { fontSize: 12, fontStyle: 'italic' },
+  extractBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  extractBadgeText: { fontSize: 11, fontWeight: '600' },
   diagBtn: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -8,6 +8,7 @@ import type { MedicalChatMessage } from '@/types';
 
 interface Props {
   msg: MedicalChatMessage;
+  recordId: string;
 }
 
 const RX_OBS = /\[OBS:([a-z0-9-]+)\]/gi;
@@ -42,7 +43,7 @@ function parseContent(text: string): Part[] {
   return parts;
 }
 
-export function MedicalChatBubble({ msg }: Props) {
+export function MedicalChatBubble({ msg, recordId }: Props) {
   const router = useRouter();
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
@@ -97,7 +98,7 @@ export function MedicalChatBubble({ msg }: Props) {
                   onPress={() =>
                     router.push({
                       pathname: '/(tabs)/documente/[id]',
-                      params: { id: p.id },
+                      params: { id: p.id, from: 'medical-chat', entityId: recordId },
                     })
                   }
                   suppressHighlighting={false}
@@ -128,7 +129,7 @@ export function MedicalChatBubble({ msg }: Props) {
                     onPress={() =>
                       router.push({
                         pathname: '/(tabs)/documente/[id]',
-                        params: { id: c.id },
+                        params: { id: c.id, from: 'medical-chat', entityId: recordId },
                       })
                     }
                     style={[styles.citationChip, { borderColor: palette.border }]}
