@@ -129,6 +129,14 @@ describe('db.ts schema characterization', () => {
     );
   });
 
+  it('has ai_summary, medical_reminders_prompted_at, pending_reminders_json columns', async () => {
+    const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(documents)');
+    const names = cols.map(c => c.name);
+    expect(names).toContain('ai_summary');
+    expect(names).toContain('medical_reminders_prompted_at');
+    expect(names).toContain('pending_reminders_json');
+  });
+
   it('pending_uploads has uploaded_at and file_size post-migration', async () => {
     const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(pending_uploads)');
     const names = cols.map(c => c.name);

@@ -309,6 +309,12 @@ export interface Document {
   private_notes?: string;
   /** ID-ul evenimentului din calendar (expirare sau bilet). Permite update silent / dedupe. */
   calendar_event_id?: string;
+  /** Rezumat AI generat la extracția medicală. Markdown ușor. NU intră în FTS / chat (spec 2026-05-24 §8). */
+  ai_summary?: string;
+  /** Timestamp ISO la prima decizie a userului pe modalul de calendar reminders. Blochează re-prompt (D10). */
+  medical_reminders_prompted_at?: string;
+  /** JSON `[{label, suggested_date_iso}]` persistat tranzitoriu între extracție și prima vizitare a doc/dosar (D13). */
+  pending_reminders_json?: string;
   created_at: string;
   // Multi-entity links (din document_entities junction table)
   entity_links?: DocumentEntityLink[];

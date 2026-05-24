@@ -790,6 +790,27 @@ try {
   // coloana există deja
 }
 
+// Migrare: ai_summary (rezumat AI per document medical — spec 2026-05-24)
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN ai_summary TEXT');
+} catch {
+  // coloana există deja
+}
+
+// Migrare: medical_reminders_prompted_at (timestamp prima decizie reminder — spec 2026-05-24, D10)
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN medical_reminders_prompted_at TEXT');
+} catch {
+  // coloana există deja
+}
+
+// Migrare: pending_reminders_json (JSON actionable_items între extracție și prima vizitare — D13)
+try {
+  db.execSync('ALTER TABLE documents ADD COLUMN pending_reminders_json TEXT');
+} catch {
+  // coloana există deja
+}
+
 // Migrare: pending_uploads.uploaded_at + file_size — păstrăm rândurile după
 // upload reușit cu uploaded_at setat, ca reconcile-ul să NU re-uploadeze fișiere
 // deja sincronizate. file_size e cache-uit la primul stat, ca să putem afișa
