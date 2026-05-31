@@ -1,4 +1,5 @@
 import { db, generateId } from './db';
+import { deleteCalendarEvent } from './calendar';
 import type { Reminder, ReminderSourceType } from '@/types';
 
 interface ReminderRow {
@@ -91,4 +92,18 @@ export async function listActiveReminders(opts?: {
   const sql = `SELECT * FROM reminders WHERE ${wheres.join(' AND ')} ORDER BY reminder_date ASC`;
   const rows = await db.getAllAsync<ReminderRow>(sql, params);
   return rows.map(rowToReminder);
+}
+
+export async function dismissReminder(id: string): Promise<void> {
+  const row = await db.getFirstAsync<ReminderRow>(
+    'SELECT * FROM reminders WHERE id = ?', [id]
+  );
+  if (!row) return;
+  if (row.calendar_event_id) {
+    await deleteCalendarEvent(row.calendar_event_id);
+  }
+  await db.runAsync(
+    'UPDATE reminders SET dismissed_at = ? WHERE id = ?',
+    [new Date().toISOString(), id]
+  );
 }
