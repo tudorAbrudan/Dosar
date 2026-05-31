@@ -1,5 +1,5 @@
 import { db, generateId } from './db';
-import type { Reminder } from '@/types';
+import type { Reminder, ReminderSourceType } from '@/types';
 
 interface ReminderRow {
   id: string;
@@ -64,5 +64,31 @@ export async function getRemindersForDocument(documentId: string): Promise<Remin
     'SELECT * FROM reminders WHERE document_id = ? ORDER BY reminder_date ASC',
     [documentId]
   );
+  return rows.map(rowToReminder);
+}
+
+export async function listActiveReminders(opts?: {
+  fromDate?: string;
+  sourceType?: ReminderSourceType;
+}): Promise<Reminder[]> {
+  const wheres: string[] = ['dismissed_at IS NULL'];
+  const params: (string | number)[] = [];
+
+  wheres.push(`(
+    source_type != 'medical_ai'
+    OR EXISTS (SELECT 1 FROM medical_record LIMIT 1)
+  )`);
+
+  if (opts?.fromDate) {
+    wheres.push('reminder_date >= ?');
+    params.push(opts.fromDate);
+  }
+  if (opts?.sourceType) {
+    wheres.push('source_type = ?');
+    params.push(opts.sourceType);
+  }
+
+  const sql = `SELECT * FROM reminders WHERE ${wheres.join(' AND ')} ORDER BY reminder_date ASC`;
+  const rows = await db.getAllAsync<ReminderRow>(sql, params);
   return rows.map(rowToReminder);
 }
