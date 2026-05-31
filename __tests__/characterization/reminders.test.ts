@@ -141,6 +141,7 @@ describe('createMedicalReminder + getRemindersForDocument', () => {
     );
   });
 
+
   it('creates a medical_ai reminder and reads it back', async () => {
     const created = await remindersService.createMedicalReminder({
       documentId: 'doc-1',
@@ -158,5 +159,103 @@ describe('createMedicalReminder + getRemindersForDocument', () => {
     const list = await remindersService.getRemindersForDocument('doc-1');
     expect(list).toHaveLength(1);
     expect(list[0].id).toBe(created.id);
+  });
+});
+
+describe('syncDocumentExpiryReminder', () => {
+  beforeEach(async () => {
+    await db.runAsync('DELETE FROM reminders');
+    await db.runAsync('DELETE FROM medical_record');
+    await db.runAsync(`INSERT OR IGNORE INTO documents (id, type, created_at) VALUES ('doc-1', 'rca', '2026-01-01T00:00:00Z')`);
+    await db.runAsync(`INSERT OR IGNORE INTO persons (id, name, created_at) VALUES ('p-1', 'Tudor', '2026-01-01T00:00:00Z')`);
+    await db.runAsync(`INSERT OR IGNORE INTO vehicles (id, name, created_at) VALUES ('v-1', 'Mașina', '2026-01-01T00:00:00Z')`);
+  });
+
+  it('inserts a new derived reminder if none exists', async () => {
+    const doc = {
+      id: 'doc-1', type: 'rca', expiry_date: '2026-09-10',
+      vehicle_id: 'v-1', created_at: '2026-01-01T00:00:00Z',
+    } as any;
+    await remindersService.syncDocumentExpiryReminder(doc);
+
+    const all = await db.getAllAsync<any>(
+      'SELECT * FROM reminders WHERE document_id = ?', ['doc-1']
+    );
+    expect(all).toHaveLength(1);
+    expect(all[0].source_type).toBe('document_expiry');
+    expect(all[0].origin).toBe('derived');
+    expect(all[0].reminder_date).toBe('2026-09-10');
+    expect(all[0].vehicle_id).toBe('v-1');
+    expect(all[0].calendar_event_id).toBeNull();
+  });
+
+  it('updates existing derived reminder if date changes', async () => {
+    const doc = {
+      id: 'doc-1', type: 'rca', expiry_date: '2026-09-10',
+      vehicle_id: 'v-1', created_at: '2026-01-01T00:00:00Z',
+    } as any;
+    await remindersService.syncDocumentExpiryReminder(doc);
+    doc.expiry_date = '2026-12-31';
+    await remindersService.syncDocumentExpiryReminder(doc);
+
+    const all = await db.getAllAsync<any>(
+      'SELECT * FROM reminders WHERE document_id = ?', ['doc-1']
+    );
+    expect(all).toHaveLength(1);
+    expect(all[0].reminder_date).toBe('2026-12-31');
+  });
+
+  it('does NOT touch medical_ai reminders on the same document', async () => {
+    // need medical_record for createMedicalReminder visibility, but here we test direct DB query
+    await db.runAsync(
+      `INSERT INTO medical_record (id, person_id, name, encryption_key_ref, created_at, updated_at)
+       VALUES ('mr-1', 'p-1', 'Tudor', 'key', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`
+    );
+    await remindersService.createMedicalReminder({
+      documentId: 'doc-1', personId: 'p-1', label: 'Control', reminderDate: '2026-07-01',
+    });
+    const doc = {
+      id: 'doc-1', type: 'analize', expiry_date: '2026-09-10',
+      person_id: 'p-1', created_at: '2026-01-01T00:00:00Z',
+    } as any;
+    await remindersService.syncDocumentExpiryReminder(doc);
+
+    const all = await db.getAllAsync<any>(
+      'SELECT * FROM reminders WHERE document_id = ? ORDER BY source_type', ['doc-1']
+    );
+    expect(all).toHaveLength(2);
+    expect(all.map((r: any) => r.source_type).sort()).toEqual(['document_expiry', 'medical_ai']);
+  });
+});
+
+describe('removeDocumentExpiryReminder', () => {
+  beforeEach(async () => {
+    await db.runAsync('DELETE FROM reminders');
+    await db.runAsync('DELETE FROM medical_record');
+    await db.runAsync(`INSERT OR IGNORE INTO documents (id, type, created_at) VALUES ('doc-1', 'analize', '2026-01-01T00:00:00Z')`);
+    await db.runAsync(`INSERT OR IGNORE INTO persons (id, name, created_at) VALUES ('p-1', 'Tudor', '2026-01-01T00:00:00Z')`);
+  });
+
+  it('deletes only the derived row, not medical_ai', async () => {
+    await db.runAsync(
+      `INSERT INTO medical_record (id, person_id, name, encryption_key_ref, created_at, updated_at)
+       VALUES ('mr-1', 'p-1', 'Tudor', 'key', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`
+    );
+    await remindersService.createMedicalReminder({
+      documentId: 'doc-1', personId: 'p-1', label: 'Control', reminderDate: '2026-07-01',
+    });
+    const doc = {
+      id: 'doc-1', type: 'analize', expiry_date: '2026-09-10',
+      person_id: 'p-1', created_at: '2026-01-01T00:00:00Z',
+    } as any;
+    await remindersService.syncDocumentExpiryReminder(doc);
+
+    await remindersService.removeDocumentExpiryReminder('doc-1');
+
+    const all = await db.getAllAsync<any>(
+      'SELECT * FROM reminders WHERE document_id = ?', ['doc-1']
+    );
+    expect(all).toHaveLength(1);
+    expect(all[0].source_type).toBe('medical_ai');
   });
 });

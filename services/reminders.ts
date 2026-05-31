@@ -1,6 +1,6 @@
 import { db, generateId } from './db';
 import { deleteCalendarEvent } from './calendar';
-import type { Reminder, ReminderSourceType } from '@/types';
+import type { Document, Reminder, ReminderSourceType } from '@/types';
 
 interface ReminderRow {
   id: string;
@@ -105,5 +105,58 @@ export async function dismissReminder(id: string): Promise<void> {
   await db.runAsync(
     'UPDATE reminders SET dismissed_at = ? WHERE id = ?',
     [new Date().toISOString(), id]
+  );
+}
+
+function deriveLabelFromDocument(doc: Document): string {
+  const { DOCUMENT_TYPE_LABELS } = require('@/types');
+  return (DOCUMENT_TYPE_LABELS as Record<string, string>)[doc.type] ?? 'Document';
+}
+
+export async function syncDocumentExpiryReminder(doc: Document): Promise<void> {
+  if (!doc.expiry_date) return;
+
+  const existing = await db.getFirstAsync<ReminderRow>(
+    `SELECT id FROM reminders WHERE document_id = ? AND source_type = 'document_expiry'`,
+    [doc.id]
+  );
+
+  const label = deriveLabelFromDocument(doc);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    await db.runAsync(
+      `UPDATE reminders SET
+         reminder_date = ?, label = ?,
+         person_id = ?, vehicle_id = ?, property_id = ?, animal_id = ?, card_id = ?
+       WHERE id = ?`,
+      [
+        doc.expiry_date, label,
+        doc.person_id ?? null, doc.vehicle_id ?? null, doc.property_id ?? null,
+        doc.animal_id ?? null, doc.card_id ?? null,
+        existing.id,
+      ]
+    );
+  } else {
+    const id = generateId();
+    await db.runAsync(
+      `INSERT INTO reminders (
+         id, source_type, document_id, person_id, vehicle_id, property_id, animal_id, card_id,
+         label, reminder_date, origin, created_at
+       ) VALUES (?, 'document_expiry', ?, ?, ?, ?, ?, ?, ?, ?, 'derived', ?)`,
+      [
+        id, doc.id,
+        doc.person_id ?? null, doc.vehicle_id ?? null, doc.property_id ?? null,
+        doc.animal_id ?? null, doc.card_id ?? null,
+        label, doc.expiry_date, now,
+      ]
+    );
+  }
+}
+
+export async function removeDocumentExpiryReminder(documentId: string): Promise<void> {
+  await db.runAsync(
+    `DELETE FROM reminders WHERE document_id = ? AND source_type = 'document_expiry'`,
+    [documentId]
   );
 }
