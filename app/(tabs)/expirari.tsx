@@ -8,11 +8,13 @@ import {
   Text as RNText,
   Platform,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { statusColors } from '@/theme/colors';
+import { iconColors } from '@/theme/iconColors';
 import { useReminders } from '@/hooks/useReminders';
 import { ReminderCard } from '@/components/reminders/ReminderCard';
 import type { Reminder } from '@/types';
@@ -26,7 +28,7 @@ export default function ExpirariScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
 
-  const { reminders, loading, refresh } = useReminders();
+  const { reminders, loading, error, refresh } = useReminders();
   const [showStale, setShowStale] = useState(false);
 
   useFocusEffect(
@@ -79,6 +81,24 @@ export default function ExpirariScreen() {
           <RNText style={[styles.headerSub, { color: C.textSecondary }]}>{subtitleText}</RNText>
         </RNView>
       </RNView>
+
+      {/* ── Error banner ── */}
+      {error ? (
+        <RNView
+          style={[
+            styles.errorBanner,
+            {
+              backgroundColor:
+                scheme === 'dark' ? statusColors.criticalSurfaceDark : iconColors.danger.bg,
+              borderColor: statusColors.critical,
+              borderWidth: StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
+          <Ionicons name="alert-circle-outline" size={16} color={statusColors.critical} />
+          <RNText style={[styles.errorText, { color: statusColors.critical }]}>{error}</RNText>
+        </RNView>
+      ) : null}
 
       <ScrollView
         ref={scrollRef}
@@ -266,4 +286,16 @@ const styles = StyleSheet.create({
   staleTitle: { fontSize: 14, fontWeight: '600' },
   staleSub: { fontSize: 12 },
   staleList: { gap: 8, marginTop: 8 },
+
+  // Error banner
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 12,
+    marginTop: 4,
+    padding: 10,
+    borderRadius: 8,
+  },
+  errorText: { fontSize: 13, flex: 1 },
 });

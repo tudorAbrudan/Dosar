@@ -115,15 +115,15 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
 
       if (permissionDenied) {
         Alert.alert(
-          'Calendar indisponibil',
-          'Activează permisiunile pentru Calendar în Setări iOS ca să adăugăm reminders.',
+          'Remindere salvate',
+          'Reminderele au fost salvate în aplicație, dar nu am putut adăuga și în calendar. Le poți vedea în Expirări.\n\nPentru a le adăuga și în calendar, activează permisiunile în Setări iOS.',
           [
-            { text: 'Anulează', style: 'cancel', onPress: () => onClose('skipped') },
+            { text: 'OK', style: 'default', onPress: () => onClose('added') },
             {
               text: 'Deschide Setări',
               onPress: () => {
                 Linking.openSettings();
-                onClose('skipped');
+                onClose('added');
               },
             },
           ]

@@ -83,7 +83,8 @@
           "<rootDir>/__tests__/characterization/**/*.test.ts"
         ],
         "testPathIgnorePatterns": [
-          "/node_modules/"
+          "/node_modules/",
+          "/.worktrees/"
         ]
       }
     ]

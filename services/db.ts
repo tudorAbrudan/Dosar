@@ -835,7 +835,7 @@ try {
 
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
-// origin: 'manual' | 'document_expiry' | 'medical' — pentru filtrare și audit.
+// origin: 'ai' | 'derived' | 'manual' — pentru filtrare și audit.
 // dismissed_at: soft-delete (NULL = activ, TEXT = data dismiss).
 try {
   db.execSync(`
