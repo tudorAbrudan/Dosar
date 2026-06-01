@@ -1160,14 +1160,9 @@ export default function DocumentDetailScreen() {
               <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
             </Pressable>
           ) : (
-            <Pressable
-              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
-                Niciun rezumat. Apasă ✏️ sus pentru a adăuga.
-              </Text>
-            </Pressable>
+            <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
+              Niciun rezumat. Apasă ✏️ sus pentru a adăuga.
+            </Text>
           )}
         </DocumentDetailCard>
 
@@ -1291,14 +1286,9 @@ export default function DocumentDetailScreen() {
               </Text>
             </Pressable>
           ) : (
-            <Pressable
-              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
-                Adaugă date sensibile (CVV, PIN, parole). Apasă ✏️ sus pentru a edita.
-              </Text>
-            </Pressable>
+            <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
+              Adaugă date sensibile (CVV, PIN, parole). Apasă ✏️ sus pentru a edita.
+            </Text>
           )}
         </DocumentDetailCard>
 
