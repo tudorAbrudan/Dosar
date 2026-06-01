@@ -124,7 +124,14 @@ export function MessageBubble({
       ]);
     } else {
       Alert.alert('Mesaj AI', undefined, [
-        { text: 'Copiază tot', onPress: () => setShowSelectModal(true) },
+        {
+          text: 'Copiază tot',
+          // iOS: defer ca să lase Alert-ul să-și termine animația de dismiss
+          // înainte să prezentăm Modal-ul (altfel UIKit refuză present-on-presenting).
+          onPress: () => {
+            setTimeout(() => setShowSelectModal(true), 350);
+          },
+        },
         { text: 'Șterge mesaj', style: 'destructive', onPress: () => onDelete(message) },
         { text: 'Anulează', style: 'cancel' },
       ]);

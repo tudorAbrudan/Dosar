@@ -291,7 +291,13 @@ export function DocumenteTab({ record }: Props) {
                         { text: 'OK', style: 'cancel' as const },
                         {
                           text: 'Vezi detalii',
-                          onPress: () => setDiagnosticVisible(true),
+                          // iOS: UIAlertController încă se animă în dismiss când
+                          // onPress fire-uiește. Prezentarea unui <Modal> imediat
+                          // eșuează silent (UIKit refuză present-on-presenting).
+                          // Defer cu setTimeout ca să lăsăm alertul să dispară.
+                          onPress: () => {
+                            setTimeout(() => setDiagnosticVisible(true), 350);
+                          },
                         },
                       ]
                     : [{ text: 'OK', style: 'cancel' as const }];

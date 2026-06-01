@@ -4,6 +4,7 @@ Cronologic, descrescător. Front-matter pe fiecare fișier: `date`, `tags`, `tri
 
 | Data | Subiect | Tags |
 |---|---|---|
+| 2026-05-31 | [Cross-tab `router.push` → trimite `from` + `entityId`](2026-05-31-cross-tab-back-navigation.md) | react-native, expo-router, navigation, tabs, ux |
 | 2026-04-22 | [iOS linker / pcm errors](2026-04-22-ios-linker-pcm.md) | ios, build, pods, xcode, linker |
 | 2026-04-20 | [Checklist modificări fișiere mari](2026-04-20-checklist-fisiere-mari.md) | refactoring, large-files, ai-development |
 | 2026-04-20 | [Image rerender alb după navigare](2026-04-20-image-rerender.md) | react-native, ios, navigation, image |

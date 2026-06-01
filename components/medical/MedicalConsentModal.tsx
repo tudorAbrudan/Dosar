@@ -3,12 +3,6 @@ import { Modal, View, Text, Pressable, ScrollView, StyleSheet, Platform } from '
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, onPrimary } from '@/theme/colors';
 
-interface Props {
-  visible: boolean;
-  onAccept(): void;
-  onReject(): void;
-}
-
 const CONSENT_TEXT = `Pentru a folosi asistentul AI și extragerea automată a datelor din documente, trimitem aceste date la furnizorul AI configurat (Mistral, OpenAI sau cel ales de tine):
 
 • Textul OCR al documentelor medicale
@@ -26,74 +20,130 @@ Conform GDPR (Art. 9), datele medicale sunt o categorie specială. Activarea ace
 
 Poți retrage consimțământul oricând din Setări → Asistent AI → Date medicale. Dezactivarea închide chat-ul și oprește extracția automată, dar păstrează datele deja extrase (le poți șterge separat).`;
 
-export function MedicalConsentModal({ visible, onAccept, onReject }: Props) {
+interface BodyProps {
+  /** Callback când userul bifează/debifează — folosit de containerul exterior
+   *  să activeze/dezactiveze butonul „Activează". */
+  onCanAcceptChange?: (canAccept: boolean) => void;
+  /**
+   * Reset trigger — când valoarea se schimbă, checkboxurile se resetează. Pentru
+   * a forța re-citire conștientă la fiecare deschidere a containerului.
+   */
+  resetKey?: unknown;
+  /**
+   * Layout: în modalul standalone (ChatTab) textul e într-un ScrollView cu
+   * maxHeight 360. Inline în FormSheetModal (CreateMedicalRecordModal) NU vrem
+   * scroll intern — exteriorul scroll-uiește.
+   */
+  scrollable?: boolean;
+}
+
+/**
+ * Conținutul GDPR pentru consimțământ AI medical — fără wrapper Modal.
+ * Folosit fie standalone în `MedicalConsentModal` (ChatTab), fie inline într-un
+ * alt container (FormSheetModal în CreateMedicalRecordModal). Decuplarea
+ * Modal-ului previne stacking-ul a două `<Modal>` simultane pe iOS.
+ */
+export function MedicalConsentBody({
+  onCanAcceptChange,
+  resetKey,
+  scrollable = true,
+}: BodyProps) {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
   const [c1, setC1] = useState(false);
   const [c2, setC2] = useState(false);
 
-  // Resetăm la fiecare deschidere ca să forțăm citire conștientă.
   useEffect(() => {
-    if (visible) {
-      setC1(false);
-      setC2(false);
-    }
-  }, [visible]);
+    setC1(false);
+    setC2(false);
+  }, [resetKey]);
 
-  const canAccept = c1 && c2;
+  useEffect(() => {
+    onCanAcceptChange?.(c1 && c2);
+  }, [c1, c2, onCanAcceptChange]);
+
+  const BodyText = (
+    <Text style={[styles.body, { color: palette.text }]}>{CONSENT_TEXT}</Text>
+  );
+
+  return (
+    <View>
+      <Text style={[styles.title, { color: palette.text }]}>
+        Asistent AI pentru Dosarul medical
+      </Text>
+      {scrollable ? (
+        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+          {BodyText}
+        </ScrollView>
+      ) : (
+        BodyText
+      )}
+
+      <Pressable
+        style={styles.checkRow}
+        onPress={() => setC1(v => !v)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: c1 }}
+      >
+        <View
+          style={[
+            styles.check,
+            {
+              borderColor: c1 ? primary : palette.border,
+              backgroundColor: c1 ? primary : 'transparent',
+            },
+          ]}
+        >
+          {c1 ? <Text style={styles.checkMark}>✓</Text> : null}
+        </View>
+        <Text style={[styles.checkLabel, { color: palette.text }]}>Am citit și am înțeles</Text>
+      </Pressable>
+
+      <Pressable
+        style={styles.checkRow}
+        onPress={() => setC2(v => !v)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: c2 }}
+      >
+        <View
+          style={[
+            styles.check,
+            {
+              borderColor: c2 ? primary : palette.border,
+              backgroundColor: c2 ? primary : 'transparent',
+            },
+          ]}
+        >
+          {c2 ? <Text style={styles.checkMark}>✓</Text> : null}
+        </View>
+        <Text style={[styles.checkLabel, { color: palette.text }]}>
+          Sunt de acord cu prelucrarea datelor medicale prin asistentul AI
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+interface Props {
+  visible: boolean;
+  onAccept(): void;
+  onReject(): void;
+}
+
+export function MedicalConsentModal({ visible, onAccept, onReject }: Props) {
+  const scheme = useColorScheme();
+  const palette = scheme === 'dark' ? dark : light;
+  const [canAccept, setCanAccept] = useState(false);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onReject}>
       <View style={styles.overlay}>
         <View style={[styles.card, { backgroundColor: palette.card }]}>
-          <Text style={[styles.title, { color: palette.text }]}>
-            Asistent AI pentru Dosarul medical
-          </Text>
-          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-            <Text style={[styles.body, { color: palette.text }]}>{CONSENT_TEXT}</Text>
-          </ScrollView>
-
-          <Pressable
-            style={styles.checkRow}
-            onPress={() => setC1(v => !v)}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: c1 }}
-          >
-            <View
-              style={[
-                styles.check,
-                {
-                  borderColor: c1 ? primary : palette.border,
-                  backgroundColor: c1 ? primary : 'transparent',
-                },
-              ]}
-            >
-              {c1 ? <Text style={styles.checkMark}>✓</Text> : null}
-            </View>
-            <Text style={[styles.checkLabel, { color: palette.text }]}>Am citit și am înțeles</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.checkRow}
-            onPress={() => setC2(v => !v)}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: c2 }}
-          >
-            <View
-              style={[
-                styles.check,
-                {
-                  borderColor: c2 ? primary : palette.border,
-                  backgroundColor: c2 ? primary : 'transparent',
-                },
-              ]}
-            >
-              {c2 ? <Text style={styles.checkMark}>✓</Text> : null}
-            </View>
-            <Text style={[styles.checkLabel, { color: palette.text }]}>
-              Sunt de acord cu prelucrarea datelor medicale prin asistentul AI
-            </Text>
-          </Pressable>
+          <MedicalConsentBody
+            onCanAcceptChange={setCanAccept}
+            resetKey={visible}
+            scrollable
+          />
 
           <View style={styles.buttons}>
             <Pressable style={[styles.btn, { borderColor: palette.border }]} onPress={onReject}>

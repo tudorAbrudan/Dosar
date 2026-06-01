@@ -12,7 +12,7 @@ import {
 } from '@/services/medicalRecord';
 import { ensureMedicalMasterKey } from '@/services/medicalCrypto';
 import { useEntities } from '@/hooks/useEntities';
-import { MedicalConsentModal } from './MedicalConsentModal';
+import { MedicalConsentBody } from './MedicalConsentModal';
 import type { Person } from '@/types';
 
 interface Props {
@@ -33,6 +33,7 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
   const [saving, setSaving] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [consentCanAccept, setConsentCanAccept] = useState(false);
   const [showMedicalInfo, setShowMedicalInfo] = useState(false);
   const [bloodGroup, setBloodGroup] = useState('');
   const [allergies, setAllergies] = useState('');
@@ -49,6 +50,9 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
     setAllergies('');
     setEmergencyContactName('');
     setEmergencyContactPhone('');
+    setShowConsent(false);
+    setPendingId(null);
+    setConsentCanAccept(false);
   }, [visible]);
 
   const canSave = selectedPerson !== null && dosarName.trim().length > 0;
@@ -76,6 +80,9 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
         emergency_contact_phone: emergencyContactPhone.trim() || undefined,
       });
       if (aiToggle) {
+        // Swap conținutul FormSheetModal de la formular la consent body — NU
+        // deschidem al doilea <Modal> peste primul (iOS refuză două Modal-uri
+        // siblings prezentate simultan).
         setPendingId(rec.id);
         setShowConsent(true);
       } else {
@@ -97,11 +104,15 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
       onClose();
       return;
     }
+    setSaving(true);
     try {
       await setAiConsent(pendingId);
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva consimțământul.');
+      setSaving(false);
+      return;
     }
+    setSaving(false);
     setShowConsent(false);
     const id = pendingId;
     setPendingId(null);
@@ -117,168 +128,172 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
   }, [pendingId, onCreated, onClose]);
 
   return (
-    <>
-      <FormSheetModal
-        visible={visible}
-        title="Dosar medical nou"
-        onClose={onClose}
-        onSave={handleSave}
-        saving={saving}
-        saveDisabled={!canSave}
-      >
-        {/* Secțiunea persoană */}
-        <View>
-          <Text style={[styles.label, { color: palette.text }]}>Persoană</Text>
-          {persons.length === 0 ? (
-            <View style={[styles.emptyBox, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-              <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
-                Adaugă mai întâi o persoană în Entități → Persoane
+    <FormSheetModal
+      visible={visible}
+      title={showConsent ? 'Asistent AI pentru Dosarul medical' : 'Dosar medical nou'}
+      onClose={showConsent ? handleConsentReject : onClose}
+      onSave={showConsent ? handleConsentAccept : handleSave}
+      saving={saving}
+      saveDisabled={showConsent ? !consentCanAccept : !canSave}
+      saveLabel={showConsent ? 'Activează' : 'Salvează'}
+      cancelLabel={showConsent ? 'Refuz' : 'Anulează'}
+    >
+      {showConsent ? (
+        <MedicalConsentBody
+          onCanAcceptChange={setConsentCanAccept}
+          resetKey={pendingId}
+          scrollable={false}
+        />
+      ) : (
+        <>
+          {/* Secțiunea persoană */}
+          <View>
+            <Text style={[styles.label, { color: palette.text }]}>Persoană</Text>
+            {persons.length === 0 ? (
+              <View style={[styles.emptyBox, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+                <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
+                  Adaugă mai întâi o persoană în Entități → Persoane
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={[styles.personList, { borderColor: palette.border }]}
+                nestedScrollEnabled
+              >
+                {persons.map(p => {
+                  const selected = selectedPerson?.id === p.id;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => setSelectedPerson(p)}
+                      style={[
+                        styles.personRow,
+                        {
+                          backgroundColor: selected ? `${primary}22` : palette.surface,
+                          borderBottomColor: palette.border,
+                        },
+                      ]}
+                    >
+                      <View style={styles.personRowInner}>
+                        <Text style={[styles.personName, { color: palette.text }]}>{p.name}</Text>
+                        {selected && (
+                          <Text style={[styles.checkmark, { color: primary }]}>✓</Text>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Secțiunea nume dosar */}
+          <View style={{ marginTop: 12 }}>
+            <Text style={[styles.label, { color: palette.text }]}>Nume dosar</Text>
+            <TextInput
+              value={dosarName}
+              onChangeText={setDosarName}
+              placeholder="Ex: Dosar Maria, Analize 2024"
+              placeholderTextColor={palette.textSecondary}
+              style={[
+                styles.input,
+                {
+                  color: palette.text,
+                  borderColor: palette.border,
+                  backgroundColor: palette.surface,
+                },
+              ]}
+            />
+          </View>
+
+          {/* Toggle AI */}
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[styles.label, { color: palette.text, marginTop: 0 }]}>
+                Activează asistent AI
+              </Text>
+              <Text style={[styles.toggleHint, { color: palette.textSecondary }]}>
+                Extracție automată din documente + chat specializat. Necesită consimțământ GDPR.
               </Text>
             </View>
-          ) : (
-            <ScrollView
-              style={[styles.personList, { borderColor: palette.border }]}
-              nestedScrollEnabled
-            >
-              {persons.map(p => {
-                const selected = selectedPerson?.id === p.id;
-                return (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => setSelectedPerson(p)}
-                    style={[
-                      styles.personRow,
-                      {
-                        backgroundColor: selected ? `${primary}22` : palette.surface,
-                        borderBottomColor: palette.border,
-                      },
-                    ]}
-                  >
-                    <View style={styles.personRowInner}>
-                      <Text style={[styles.personName, { color: palette.text }]}>{p.name}</Text>
-                      {selected && (
-                        <Text style={[styles.checkmark, { color: primary }]}>✓</Text>
-                      )}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <Switch
+              value={aiToggle}
+              onValueChange={setAiToggle}
+              trackColor={{ true: primary, false: palette.border }}
+              thumbColor={onPrimary}
+            />
+          </View>
+
+          {/* Secțiune colapsibilă: informații medicale */}
+          <Pressable
+            onPress={() => setShowMedicalInfo(v => !v)}
+            style={[styles.collapsibleHeader, { borderTopColor: palette.border }]}
+          >
+            <Text style={[styles.collapsibleTitle, { color: palette.text }]}>
+              Informații medicale (opțional)
+            </Text>
+            <Ionicons
+              name={showMedicalInfo ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={palette.textSecondary}
+            />
+          </Pressable>
+          {showMedicalInfo && (
+            <View style={{ gap: 12, paddingBottom: 12 }}>
+              {/* Grupa sanguină */}
+              <View>
+                <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
+                  Grupa sanguină
+                </Text>
+                <TextInput
+                  value={bloodGroup}
+                  onChangeText={setBloodGroup}
+                  placeholder="ex. A pozitiv, 0 negativ"
+                  placeholderTextColor={palette.textSecondary}
+                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+                />
+              </View>
+              {/* Alergii */}
+              <View>
+                <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
+                  Alergii cunoscute
+                </Text>
+                <TextInput
+                  value={allergies}
+                  onChangeText={setAllergies}
+                  placeholder="ex. penicilină, fragi, polen"
+                  placeholderTextColor={palette.textSecondary}
+                  multiline
+                  numberOfLines={2}
+                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, minHeight: 60 }]}
+                />
+              </View>
+              {/* Contact urgență */}
+              <View>
+                <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
+                  Contact urgență (opțional)
+                </Text>
+                <TextInput
+                  value={emergencyContactName}
+                  onChangeText={setEmergencyContactName}
+                  placeholder="Nume"
+                  placeholderTextColor={palette.textSecondary}
+                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8 }]}
+                />
+                <TextInput
+                  value={emergencyContactPhone}
+                  onChangeText={setEmergencyContactPhone}
+                  placeholder="Telefon"
+                  placeholderTextColor={palette.textSecondary}
+                  keyboardType="phone-pad"
+                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+                />
+              </View>
+            </View>
           )}
-        </View>
-
-        {/* Secțiunea nume dosar */}
-        <View style={{ marginTop: 12 }}>
-          <Text style={[styles.label, { color: palette.text }]}>Nume dosar</Text>
-          <TextInput
-            value={dosarName}
-            onChangeText={setDosarName}
-            placeholder="Ex: Dosar Maria, Analize 2024"
-            placeholderTextColor={palette.textSecondary}
-            style={[
-              styles.input,
-              {
-                color: palette.text,
-                borderColor: palette.border,
-                backgroundColor: palette.surface,
-              },
-            ]}
-          />
-        </View>
-
-        {/* Toggle AI */}
-        <View style={styles.toggleRow}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={[styles.label, { color: palette.text, marginTop: 0 }]}>
-              Activează asistent AI
-            </Text>
-            <Text style={[styles.toggleHint, { color: palette.textSecondary }]}>
-              Extracție automată din documente + chat specializat. Necesită consimțământ GDPR.
-            </Text>
-          </View>
-          <Switch
-            value={aiToggle}
-            onValueChange={setAiToggle}
-            trackColor={{ true: primary, false: palette.border }}
-            thumbColor={onPrimary}
-          />
-        </View>
-
-        {/* Secțiune colapsibilă: informații medicale */}
-        <Pressable
-          onPress={() => setShowMedicalInfo(v => !v)}
-          style={[styles.collapsibleHeader, { borderTopColor: palette.border }]}
-        >
-          <Text style={[styles.collapsibleTitle, { color: palette.text }]}>
-            Informații medicale (opțional)
-          </Text>
-          <Ionicons
-            name={showMedicalInfo ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={palette.textSecondary}
-          />
-        </Pressable>
-        {showMedicalInfo && (
-          <View style={{ gap: 12, paddingBottom: 12 }}>
-            {/* Grupa sanguină */}
-            <View>
-              <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
-                Grupa sanguină
-              </Text>
-              <TextInput
-                value={bloodGroup}
-                onChangeText={setBloodGroup}
-                placeholder="ex. A pozitiv, 0 negativ"
-                placeholderTextColor={palette.textSecondary}
-                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
-              />
-            </View>
-            {/* Alergii */}
-            <View>
-              <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
-                Alergii cunoscute
-              </Text>
-              <TextInput
-                value={allergies}
-                onChangeText={setAllergies}
-                placeholder="ex. penicilină, fragi, polen"
-                placeholderTextColor={palette.textSecondary}
-                multiline
-                numberOfLines={2}
-                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, minHeight: 60 }]}
-              />
-            </View>
-            {/* Contact urgență */}
-            <View>
-              <Text style={[styles.label, { color: palette.textSecondary, marginTop: 0 }]}>
-                Contact urgență (opțional)
-              </Text>
-              <TextInput
-                value={emergencyContactName}
-                onChangeText={setEmergencyContactName}
-                placeholder="Nume"
-                placeholderTextColor={palette.textSecondary}
-                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8 }]}
-              />
-              <TextInput
-                value={emergencyContactPhone}
-                onChangeText={setEmergencyContactPhone}
-                placeholder="Telefon"
-                placeholderTextColor={palette.textSecondary}
-                keyboardType="phone-pad"
-                style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
-              />
-            </View>
-          </View>
-        )}
-      </FormSheetModal>
-
-      <MedicalConsentModal
-        visible={showConsent}
-        onAccept={handleConsentAccept}
-        onReject={handleConsentReject}
-      />
-    </>
+        </>
+      )}
+    </FormSheetModal>
   );
 }
 

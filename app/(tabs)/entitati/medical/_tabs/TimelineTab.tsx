@@ -144,7 +144,10 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
           const onTap = async () => {
             if (uniqueDocIds.length === 0) return;
             if (uniqueDocIds.length === 1) {
-              router.push(`/(tabs)/documente/${uniqueDocIds[0]}`);
+              router.push({
+                pathname: '/(tabs)/documente/[id]',
+                params: { id: uniqueDocIds[0], from: 'medical', entityId: recordId },
+              });
               return;
             }
             const topIds = uniqueDocIds.slice(0, 5);
@@ -160,7 +163,11 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
               [
                 ...topIds.map((id, idx) => ({
                   text: labels[idx] ?? `Document ${idx + 1}`,
-                  onPress: () => router.push(`/(tabs)/documente/${id}`),
+                  onPress: () =>
+                    router.push({
+                      pathname: '/(tabs)/documente/[id]',
+                      params: { id, from: 'medical', entityId: recordId },
+                    }),
                 })),
                 { text: 'Anulează', style: 'cancel' as const },
               ]
