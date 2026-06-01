@@ -407,6 +407,60 @@ describe('backup applyManifest — medical AI fields round-trip', () => {
   });
 });
 
+describe('backup applyManifest — reminders round-trip', () => {
+  it('preserves reminders rows in export/import roundtrip', async () => {
+    await db.runAsync('DELETE FROM reminders');
+    await db.runAsync(
+      `INSERT OR IGNORE INTO documents (id, type, created_at) VALUES ('d-1', 'analize_medicale', '2026-01-01T00:00:00Z'), ('d-2', 'rca', '2026-01-01T00:00:00Z')`
+    );
+    await db.runAsync(
+      `INSERT OR IGNORE INTO persons (id, name, created_at) VALUES ('p-1', 'Tudor', '2026-01-01T00:00:00Z')`
+    );
+    await db.runAsync(
+      `INSERT INTO reminders (id, source_type, document_id, person_id, label, reminder_date, calendar_event_id, origin, created_at)
+       VALUES ('r-1', 'medical_ai', 'd-1', 'p-1', 'Control', '2026-07-01', 'cal-1', 'ai', '2026-01-01T00:00:00Z'),
+              ('r-2', 'document_expiry', 'd-2', NULL, 'RCA', '2026-09-10', NULL, 'derived', '2026-01-01T00:00:00Z')`
+    );
+
+    // Simulate what exportBackup would collect for reminders
+    const exportedReminders = await db.getAllAsync<any>('SELECT * FROM reminders ORDER BY id');
+    expect(exportedReminders).toHaveLength(2);
+
+    // Wipe reminders and reimport via applyManifest
+    await db.runAsync('DELETE FROM reminders');
+    await applyManifest({ reminders: exportedReminders });
+
+    const restored = await db.getAllAsync<any>('SELECT * FROM reminders ORDER BY id');
+    expect(restored).toHaveLength(2);
+    expect(restored[0].source_type).toBe('medical_ai');
+    expect(restored[0].label).toBe('Control');
+    expect(restored[0].calendar_event_id).toBe('cal-1');
+    expect(restored[1].source_type).toBe('document_expiry');
+    expect(restored[1].label).toBe('RCA');
+    expect(restored[1].calendar_event_id).toBeNull();
+  });
+
+  it('wipeFirst also clears reminders', async () => {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO documents (id, type, created_at) VALUES ('d-w', 'rca', '2026-01-01T00:00:00Z')`
+    );
+    await db.runAsync(
+      `INSERT OR REPLACE INTO reminders (id, source_type, document_id, person_id, label, reminder_date, origin, created_at)
+       VALUES ('r-w', 'document_expiry', 'd-w', NULL, 'RCA wipe', '2026-09-10', 'derived', '2026-01-01T00:00:00Z')`
+    );
+    expect((await db.getAllAsync('SELECT id FROM reminders')).length).toBeGreaterThan(0);
+
+    await applyManifest({}, { wipeFirst: true });
+
+    expect((await db.getAllAsync('SELECT id FROM reminders')).length).toBe(0);
+  });
+
+  it('skips reminders field when payload has no reminders (backward compat)', async () => {
+    // Should not throw when reminders is absent from payload
+    await expect(applyManifest({ persons: [] })).resolves.toBeDefined();
+  });
+});
+
 describe('backup isImportInProgress', () => {
   it('returns false outside of applyManifest call', () => {
     expect(isImportInProgress()).toBe(false);
