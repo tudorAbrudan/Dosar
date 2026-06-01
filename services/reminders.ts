@@ -160,3 +160,14 @@ export async function removeDocumentExpiryReminder(documentId: string): Promise<
     [documentId]
   );
 }
+
+export async function deleteRemindersByDocument(documentId: string): Promise<void> {
+  const withEvents = await db.getAllAsync<{ calendar_event_id: string }>(
+    'SELECT calendar_event_id FROM reminders WHERE document_id = ? AND calendar_event_id IS NOT NULL',
+    [documentId]
+  );
+  for (const r of withEvents) {
+    await deleteCalendarEvent(r.calendar_event_id);
+  }
+  await db.runAsync('DELETE FROM reminders WHERE document_id = ?', [documentId]);
+}
