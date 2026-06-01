@@ -171,3 +171,37 @@ export async function deleteRemindersByDocument(documentId: string): Promise<voi
   }
   await db.runAsync('DELETE FROM reminders WHERE document_id = ?', [documentId]);
 }
+
+export async function backfillDocumentExpiryReminders(): Promise<number> {
+  const docsWithExpiry = await db.getAllAsync<{
+    id: string; type: string; expiry_date: string;
+    person_id: string | null; vehicle_id: string | null;
+    property_id: string | null; animal_id: string | null; card_id: string | null;
+  }>(
+    `SELECT id, type, expiry_date, person_id, vehicle_id, property_id, animal_id, card_id
+     FROM documents
+     WHERE expiry_date IS NOT NULL
+       AND id NOT IN (SELECT document_id FROM reminders WHERE source_type = 'document_expiry' AND document_id IS NOT NULL)`
+  );
+
+  const { DOCUMENT_TYPE_LABELS } = require('@/types');
+  const now = new Date().toISOString();
+  let inserted = 0;
+
+  for (const doc of docsWithExpiry) {
+    const id = generateId();
+    const label = (DOCUMENT_TYPE_LABELS as Record<string, string>)[doc.type] ?? 'Document';
+    await db.runAsync(
+      `INSERT INTO reminders (
+         id, source_type, document_id, person_id, vehicle_id, property_id, animal_id, card_id,
+         label, reminder_date, origin, created_at
+       ) VALUES (?, 'document_expiry', ?, ?, ?, ?, ?, ?, ?, ?, 'derived', ?)`,
+      [
+        id, doc.id, doc.person_id, doc.vehicle_id, doc.property_id, doc.animal_id, doc.card_id,
+        label, doc.expiry_date, now,
+      ]
+    );
+    inserted++;
+  }
+  return inserted;
+}

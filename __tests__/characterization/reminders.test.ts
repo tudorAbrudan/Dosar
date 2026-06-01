@@ -298,3 +298,44 @@ describe('deleteRemindersByDocument', () => {
     expect(after).toHaveLength(0);
   });
 });
+
+describe('backfillDocumentExpiryReminders', () => {
+  beforeEach(async () => {
+    await db.runAsync('DELETE FROM reminders');
+    await db.runAsync('DELETE FROM documents');
+  });
+
+  it('creates derived reminders for documents with expiry_date', async () => {
+    await db.runAsync(`INSERT OR IGNORE INTO vehicles (id, name, created_at) VALUES ('v1', 'Mașina', '2026-01-01T00:00:00Z')`);
+    await db.runAsync(
+      `INSERT INTO documents (id, type, expiry_date, vehicle_id, created_at)
+       VALUES ('d1', 'rca', '2026-09-10', 'v1', '2026-01-01T00:00:00Z'),
+              ('d2', 'itp', '2026-11-15', 'v1', '2026-01-01T00:00:00Z'),
+              ('d3', 'note', NULL, NULL, '2026-01-01T00:00:00Z')`
+    );
+
+    const count = await remindersService.backfillDocumentExpiryReminders();
+    expect(count).toBe(2);
+
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE source_type = 'document_expiry' ORDER BY document_id`
+    );
+    expect(all).toHaveLength(2);
+    expect(all.map((r: any) => r.document_id).sort()).toEqual(['d1', 'd2']);
+  });
+
+  it('is idempotent (second run inserts 0 rows)', async () => {
+    await db.runAsync(
+      `INSERT INTO documents (id, type, expiry_date, created_at)
+       VALUES ('d1', 'rca', '2026-09-10', '2026-01-01T00:00:00Z')`
+    );
+    await remindersService.backfillDocumentExpiryReminders();
+    const count = await remindersService.backfillDocumentExpiryReminders();
+    expect(count).toBe(0);
+
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE document_id = 'd1'`
+    );
+    expect(all).toHaveLength(1);
+  });
+});

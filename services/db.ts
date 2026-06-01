@@ -862,3 +862,14 @@ try {
 } catch {
   // tabela/indexurile există deja
 }
+
+// Backfill remindere derivate din documente existente (idempotent)
+// Lazy require pentru a evita import circular (reminders.ts importă din db.ts)
+(async () => {
+  try {
+    const { backfillDocumentExpiryReminders } = require('./reminders');
+    await backfillDocumentExpiryReminders();
+  } catch (e) {
+    console.warn('[initDb] backfillDocumentExpiryReminders failed:', e instanceof Error ? e.message : e);
+  }
+})();
