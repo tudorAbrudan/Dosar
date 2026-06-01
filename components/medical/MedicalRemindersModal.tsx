@@ -9,6 +9,7 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { light, dark, primary } from '@/theme/colors';
 import { addMedicalRecommendationCalendarEvent } from '@/services/calendar';
 import { getDocumentById } from '@/services/documents';
+import { createMedicalReminder } from '@/services/reminders';
 import { getMedicalRecord } from '@/services/medicalRecord';
 import { getDocumentLabel } from '@/types';
 import type { ActionableItem } from '@/services/documents';
@@ -83,18 +84,32 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
       }
 
       let permissionDenied = false;
+      const personId = doc.person_id ?? null;
       for (const item of toAdd) {
-        const eventId = await addMedicalRecommendationCalendarEvent({
-          label: item.label,
-          scheduledDate: item.date,
-          sourceDocumentType: getDocumentLabel(doc, customTypes),
-          sourceDocumentDate: doc.issue_date ?? null,
-          recordName: record.name,
-          documentId,
-        });
-        if (!eventId) {
-          permissionDenied = true;
-          break;
+        let calendarEventId: string | undefined;
+        if (!permissionDenied) {
+          const eventId = await addMedicalRecommendationCalendarEvent({
+            label: item.label,
+            scheduledDate: item.date,
+            sourceDocumentType: getDocumentLabel(doc, customTypes),
+            sourceDocumentDate: doc.issue_date ?? null,
+            recordName: record.name,
+            documentId,
+          });
+          if (!eventId) {
+            permissionDenied = true;
+          } else {
+            calendarEventId = eventId;
+          }
+        }
+        if (personId) {
+          await createMedicalReminder({
+            documentId,
+            personId,
+            label: item.label,
+            reminderDate: item.date,
+            calendarEventId,
+          });
         }
       }
 
