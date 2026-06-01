@@ -346,12 +346,15 @@ export async function canDoVision(): Promise<boolean> {
 
 // ─── Helper fetch cu timeout ──────────────────────────────────────────────────
 
-const REQUEST_TIMEOUT_MS = 30_000;
+// Text: 30s (răspunsuri scurte, modele rapide)
+// Vision: 90s (documente medicale lungi cu OCR + extracție pot dura semnificativ mai mult)
+const TEXT_REQUEST_TIMEOUT_MS = 30_000;
+const VISION_REQUEST_TIMEOUT_MS = 90_000;
 
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
-  timeoutMs = REQUEST_TIMEOUT_MS
+  timeoutMs = TEXT_REQUEST_TIMEOUT_MS
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -359,8 +362,13 @@ async function fetchWithTimeout(
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
+      const secs = Math.round(timeoutMs / 1000);
       throw new Error(
-        `Cererea AI a expirat (>${Math.round(timeoutMs / 1000)}s). Verifică conexiunea și încearcă din nou.`
+        `Cererea AI a expirat (>${secs}s). Cauze posibile:\n` +
+          `• Document prea mare sau cu multe pagini\n` +
+          `• Limită zilnică atinsă la provider (verifică în Setări → Asistent AI)\n` +
+          `• Conexiune lentă sau pierdută\n` +
+          `Reîncearcă cu un document mai mic sau completează manual câmpurile.`
       );
     }
     throw e;
@@ -502,25 +510,29 @@ export async function sendAiRequestWithImage(
     image_url: { url: `data:${imageMimeType};base64,${b64}` },
   }));
 
-  const response = await fetchWithTimeout(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [...imageBlocks, { type: 'text', text: userText }],
+          },
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.2,
+      }),
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [...imageBlocks, { type: 'text', text: userText }],
-        },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.2,
-    }),
-  });
+    VISION_REQUEST_TIMEOUT_MS
+  );
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
