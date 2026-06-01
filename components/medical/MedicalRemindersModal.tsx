@@ -9,6 +9,7 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { light, dark, primary } from '@/theme/colors';
 import { addMedicalRecommendationCalendarEvent } from '@/services/calendar';
 import { getDocumentById } from '@/services/documents';
+import { createMedicalReminder } from '@/services/reminders';
 import { getMedicalRecord } from '@/services/medicalRecord';
 import { getDocumentLabel } from '@/types';
 import type { ActionableItem } from '@/services/documents';
@@ -83,32 +84,48 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
       }
 
       let permissionDenied = false;
+      // medical_record.person_id e sursa canonică pentru reminderele medicale.
+      // doc.person_id (coloană legacy) poate fi null când documentul e legat prin entity_links.
+      const personId = doc.person_id ?? record.person_id ?? null;
       for (const item of toAdd) {
-        const eventId = await addMedicalRecommendationCalendarEvent({
-          label: item.label,
-          scheduledDate: item.date,
-          sourceDocumentType: getDocumentLabel(doc, customTypes),
-          sourceDocumentDate: doc.issue_date ?? null,
-          recordName: record.name,
-          documentId,
-        });
-        if (!eventId) {
-          permissionDenied = true;
-          break;
+        let calendarEventId: string | undefined;
+        if (!permissionDenied) {
+          const eventId = await addMedicalRecommendationCalendarEvent({
+            label: item.label,
+            scheduledDate: item.date,
+            sourceDocumentType: getDocumentLabel(doc, customTypes),
+            sourceDocumentDate: doc.issue_date ?? null,
+            recordName: record.name,
+            documentId,
+          });
+          if (!eventId) {
+            permissionDenied = true;
+          } else {
+            calendarEventId = eventId;
+          }
+        }
+        if (personId) {
+          await createMedicalReminder({
+            documentId,
+            personId,
+            label: item.label,
+            reminderDate: item.date,
+            calendarEventId,
+          });
         }
       }
 
       if (permissionDenied) {
         Alert.alert(
-          'Calendar indisponibil',
-          'Activează permisiunile pentru Calendar în Setări iOS ca să adăugăm reminders.',
+          'Remindere salvate',
+          'Reminderele au fost salvate în aplicație, dar nu am putut adăuga și în calendar. Le poți vedea în Expirări.\n\nPentru a le adăuga și în calendar, activează permisiunile în Setări iOS.',
           [
-            { text: 'Anulează', style: 'cancel', onPress: () => onClose('skipped') },
+            { text: 'OK', style: 'default', onPress: () => onClose('added') },
             {
               text: 'Deschide Setări',
               onPress: () => {
                 Linking.openSettings();
-                onClose('skipped');
+                onClose('added');
               },
             },
           ]

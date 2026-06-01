@@ -80,6 +80,9 @@ node scripts/classifier-divergence-audit.js --strict
 echo "▸ Calendar event consistency audit (timeZone + url + site link)..."
 node scripts/calendar-event-consistency-audit.js --strict
 
+echo "▸ Reminder consistency audit (expiry_date + sync calls)..."
+node scripts/reminder-consistency-audit.js || true  # warning-only
+
 echo "▸ ast-grep scan (lint:ast)..."
 npm run -s lint:ast
 

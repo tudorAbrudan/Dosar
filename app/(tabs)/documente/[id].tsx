@@ -18,7 +18,7 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import { DocumentDetailCard } from '@/components/DocumentDetailCard';
 import { DocumentDetailRow } from '@/components/DocumentDetailRow';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg } from '@/theme/colors';
+import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg, statusColors } from '@/theme/colors';
 import {
   getDocumentById,
   deleteDocument,
@@ -37,6 +37,8 @@ import {
   getPendingReminders,
 } from '@/services/documents';
 import type { DocumentDuplicates, ActionableItem } from '@/services/documents';
+import { getRemindersForDocument, dismissReminder } from '@/services/reminders';
+import type { Reminder } from '@/types';
 import { MedicalRemindersModal } from '@/components/medical/MedicalRemindersModal';
 import type { DocumentEntityLink, EntityType } from '@/types';
 import { scheduleExpirationReminders } from '@/services/notifications';
@@ -152,9 +154,25 @@ export default function DocumentDetailScreen() {
     recordId: string;
   } | null>(null);
   const [reExtracting, setReExtracting] = useState(false);
+  const [docReminders, setDocReminders] = useState<Reminder[]>([]);
+
+  const refreshReminders = useCallback(async () => {
+    if (!id || typeof id !== 'string') return;
+    const list = await getRemindersForDocument(id);
+    setDocReminders(list.filter(r => r.source_type === 'medical_ai' && !r.dismissed_at));
+  }, [id]);
+
+  useEffect(() => {
+    refreshReminders();
+  }, [refreshReminders]);
 
   const runReExtractAndReport = useCallback(
     async (docId: string) => {
+      // User-initiated re-extract: resetează flag-ul de prompt ca extractor-ul
+      // să poată repopula pending_reminders_json (guard din medicalExtractor.ts
+      // §540 împiedică suprascrierea dacă utilizatorul a fost deja promptat).
+      // Asta permite modal-ul să reapară cu noile recomandări.
+      await setMedicalRemindersPromptedAt(docId, null);
       const { extractFromDocument } = await import('@/services/medicalExtractor');
       const result = await extractFromDocument(docId);
       const updated = await getDocumentById(docId);
@@ -1142,14 +1160,9 @@ export default function DocumentDetailScreen() {
               <Text style={[styles.noteText, { color: palette.text }]}>{doc.note}</Text>
             </Pressable>
           ) : (
-            <Pressable
-              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
-                Niciun rezumat. Apasă ✏️ sus pentru a adăuga.
-              </Text>
-            </Pressable>
+            <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
+              Niciun rezumat. Apasă ✏️ sus pentru a adăuga.
+            </Text>
           )}
         </DocumentDetailCard>
 
@@ -1194,6 +1207,50 @@ export default function DocumentDetailScreen() {
           </Pressable>
         ) : null}
 
+        {docReminders.length > 0 && (
+          <View style={localStyles.remindersSection}>
+            <Text style={[localStyles.remindersSectionTitle, { color: palette.text }]}>
+              Remindere active
+            </Text>
+            {docReminders.map(r => (
+              <View key={r.id} style={[localStyles.reminderRow, { backgroundColor: palette.card }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: palette.text, fontWeight: '600' }}>{r.label}</Text>
+                  <Text style={{ color: palette.textSecondary, fontSize: 13, marginTop: 2 }}>
+                    {new Date(r.reminder_date).toLocaleDateString('ro-RO', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    Alert.alert(
+                      'Șterge reminder',
+                      'Sigur ștergi reminderul? Se va anula și evenimentul din calendar.',
+                      [
+                        { text: 'Anulează', style: 'cancel' },
+                        {
+                          text: 'Șterge',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await dismissReminder(r.id);
+                            await refreshReminders();
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  hitSlop={10}
+                >
+                  <Ionicons name="trash-outline" size={22} color={statusColors.critical} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
         <DocumentDetailCard
           tone="sensitive"
           header={
@@ -1229,14 +1286,9 @@ export default function DocumentDetailScreen() {
               </Text>
             </Pressable>
           ) : (
-            <Pressable
-              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
-                Adaugă date sensibile (CVV, PIN, parole). Apasă ✏️ sus pentru a edita.
-              </Text>
-            </Pressable>
+            <Text style={[styles.emptyHint, { color: palette.textSecondary }]}>
+              Adaugă date sensibile (CVV, PIN, parole). Apasă ✏️ sus pentru a edita.
+            </Text>
           )}
         </DocumentDetailCard>
 
@@ -1369,4 +1421,21 @@ const styles = StyleSheet.create({
   aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   aiSectionTitle: { fontSize: 14, fontWeight: '700' },
   aiSummaryDisclaimer: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
+});
+
+const localStyles = StyleSheet.create({
+  remindersSection: { marginTop: 16, marginHorizontal: 0 },
+  remindersSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 6,
+  },
 });

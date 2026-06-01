@@ -7,6 +7,11 @@ import { getCloudBackupEnabled } from './settings';
 import { isImportInProgress } from './backup';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
+import {
+  syncDocumentExpiryReminder,
+  removeDocumentExpiryReminder,
+  deleteRemindersByDocument,
+} from './reminders';
 import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
 import { ALL_ENTITY_TYPES, MEDICAL_DOC_TYPES, NO_EXPIRY_DOC_TYPES } from '@/types';
 
@@ -463,7 +468,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
   emit('documents:changed');
   emit('links:changed');
 
-  return {
+  const doc: Document = {
     id,
     main_orientation_locked: false,
     type: input.type,
@@ -486,6 +491,12 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     entity_links: entityLinks,
     created_at,
   };
+
+  if (doc.expiry_date) {
+    await syncDocumentExpiryReminder(doc);
+  }
+
+  return doc;
 }
 
 export async function setDocumentOcrText(id: string, ocrText: string): Promise<void> {
@@ -526,6 +537,10 @@ export async function deleteDocument(id: string): Promise<void> {
   if (mainRow?.calendar_event_id) {
     await deleteCalendarEvent(mainRow.calendar_event_id);
   }
+
+  // Cascade-delete reminders (inclusiv calendar events din reminders) înainte de
+  // ștergerea documentului, ca FK-ul să nu fie violat și să nu rămână orphans.
+  await deleteRemindersByDocument(id);
 
   await db.runAsync('DELETE FROM documents WHERE id = ?', [id]);
 
@@ -640,6 +655,18 @@ export async function updateDocument(id: string, input: UpdateDocumentInput): Pr
       [personId, vehicleId, propertyId, cardId, animalId, companyId, id]
     );
     emit('links:changed');
+  }
+
+  // Sincronizare reminders expiry — doar dacă expiry_date a fost atinsă explicit
+  if ('expiry_date' in input) {
+    const updated = await getDocumentById(id);
+    if (updated) {
+      if (updated.expiry_date) {
+        await syncDocumentExpiryReminder(updated);
+      } else {
+        await removeDocumentExpiryReminder(id);
+      }
+    }
   }
 
   emit('documents:changed');
@@ -1008,7 +1035,7 @@ export async function setDocumentAiSummary(
  */
 export async function setMedicalRemindersPromptedAt(
   documentId: string,
-  iso: string
+  iso: string | null
 ): Promise<void> {
   await db.runAsync(
     'UPDATE documents SET medical_reminders_prompted_at = ? WHERE id = ?',

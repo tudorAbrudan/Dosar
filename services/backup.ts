@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import JSZip from 'jszip';
-import type { DocumentType, EntityType, MedicalRecord, MedicalChatThread, MedicalDocumentSummary, MedicalShare } from '@/types';
+import type { DocumentType, EntityType, MedicalRecord, MedicalChatThread, MedicalDocumentSummary, MedicalShare, Reminder } from '@/types';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -108,7 +108,8 @@ function buildFileMap(
  *  - backup.json  (manifest cu entități + documente + fileMap)
  *  - files/<NumeEntitate>/<TipDocument>/<fisier>  (pozele și PDF-urile organizate pe entități)
  *
- * Format version: 8
+ * Format version: 14
+ * v14: added reminders table (medical_ai + document_expiry derived)
  */
 export async function exportBackup(): Promise<void> {
   const [
@@ -148,6 +149,7 @@ export async function exportBackup(): Promise<void> {
     medicalChatMessages,
     medicalDocumentSummaries,
     medicalShares,
+    reminders,
   ] = await Promise.all([
     db.getAllAsync<MedicalRecord>('SELECT * FROM medical_record'),
     db.getAllAsync<any>('SELECT * FROM medical_observations'),
@@ -155,6 +157,7 @@ export async function exportBackup(): Promise<void> {
     db.getAllAsync<any>('SELECT * FROM medical_chat_messages'),
     db.getAllAsync<MedicalDocumentSummary>('SELECT * FROM medical_document_summaries'),
     db.getAllAsync<MedicalShare>('SELECT * FROM medical_shares'),
+    db.getAllAsync<Reminder>('SELECT * FROM reminders'),
   ]);
 
   // Encode BLOB columns as base64 strings (JSON cannot serialize Uint8Array / Buffer)
@@ -212,7 +215,7 @@ export async function exportBackup(): Promise<void> {
   }
 
   const manifest = {
-    version: 13,
+    version: 14, // v14: added reminders table (medical_ai + document_expiry derived)
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -233,6 +236,7 @@ export async function exportBackup(): Promise<void> {
     medicalChatMessages: msgsForExport,
     medicalDocumentSummaries,
     medicalShares,
+    reminders,
   };
 
   const zip = new JSZip();
@@ -950,6 +954,39 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     }
   }
 
+  // ── Restaurare remindere ────────────────────────────────────────────────────
+  // optional pentru backward compat cu backup-uri mai vechi (fără câmpul reminders)
+  if (Array.isArray(payload.reminders)) {
+    for (const r of (payload.reminders as AnyRecord[])) {
+      try {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO reminders (
+             id, source_type, document_id, person_id, vehicle_id, property_id, animal_id, card_id,
+             label, reminder_date, calendar_event_id, origin, created_at, dismissed_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            r.id as string,
+            r.source_type as string,
+            (r.document_id as string | null) ?? null,
+            (r.person_id as string | null) ?? null,
+            (r.vehicle_id as string | null) ?? null,
+            (r.property_id as string | null) ?? null,
+            (r.animal_id as string | null) ?? null,
+            (r.card_id as string | null) ?? null,
+            r.label as string,
+            r.reminder_date as string,
+            (r.calendar_event_id as string | null) ?? null,
+            r.origin as string,
+            r.created_at as string,
+            (r.dismissed_at as string | null) ?? null,
+          ]
+        );
+      } catch (e) {
+        console.warn('[applyManifest] reminder skip:', r.id, e);
+      }
+    }
+  }
+
   // Rebuild medical_fts from documents.ocr_text + medical_document_summaries
   try {
     const { rebuildFtsFromExistingData } = await import('./medicalFts');
@@ -981,6 +1018,7 @@ async function wipeUserData(): Promise<void> {
     DELETE FROM medical_observations;
     DELETE FROM medical_document_summaries;
     DELETE FROM medical_record;
+    DELETE FROM reminders;
     DELETE FROM document_pages;
     DELETE FROM document_entities;
     DELETE FROM documents;

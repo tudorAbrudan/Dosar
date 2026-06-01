@@ -832,3 +832,44 @@ try {
 } catch {
   // indexul există deja
 }
+
+// Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
+// document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
+// origin: 'ai' | 'derived' | 'manual' — pentru filtrare și audit.
+// dismissed_at: soft-delete (NULL = activ, TEXT = data dismiss).
+try {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL,
+      document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+      person_id TEXT,
+      vehicle_id TEXT,
+      property_id TEXT,
+      animal_id TEXT,
+      card_id TEXT,
+      label TEXT NOT NULL,
+      reminder_date TEXT NOT NULL,
+      calendar_event_id TEXT,
+      origin TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      dismissed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_reminders_date ON reminders(reminder_date);
+    CREATE INDEX IF NOT EXISTS idx_reminders_source ON reminders(source_type);
+    CREATE INDEX IF NOT EXISTS idx_reminders_document ON reminders(document_id);
+  `);
+} catch {
+  // tabela/indexurile există deja
+}
+
+// Backfill remindere derivate din documente existente (idempotent)
+// Lazy require pentru a evita import circular (reminders.ts importă din db.ts)
+(async () => {
+  try {
+    const { backfillDocumentExpiryReminders } = require('./reminders');
+    await backfillDocumentExpiryReminders();
+  } catch (e) {
+    console.warn('[initDb] backfillDocumentExpiryReminders failed:', e instanceof Error ? e.message : e);
+  }
+})();

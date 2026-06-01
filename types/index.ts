@@ -843,3 +843,25 @@ export interface PendingUpload {
 }
 
 export type CloudStatus = 'idle' | 'uploading' | 'restoring' | 'error' | 'paused' | 'unavailable';
+
+// ============ REMINDERS ============
+
+export type ReminderSourceType = 'document_expiry' | 'medical_ai';
+export type ReminderOrigin = 'ai' | 'derived' | 'manual';
+
+export interface Reminder {
+  id: string;
+  source_type: ReminderSourceType;
+  document_id: string | null;
+  person_id: string | null;
+  vehicle_id: string | null;
+  property_id: string | null;
+  animal_id: string | null;
+  card_id: string | null;
+  label: string;
+  reminder_date: string;          // YYYY-MM-DD
+  calendar_event_id: string | null;
+  origin: ReminderOrigin;
+  created_at: string;
+  dismissed_at: string | null;
+}

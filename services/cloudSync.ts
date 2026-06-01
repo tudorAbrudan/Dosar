@@ -35,6 +35,7 @@ import type {
   MedicalShare,
   Person,
   Property,
+  Reminder,
   SnapshotFrequency,
   Vehicle,
   VehicleMaintenanceTask,
@@ -75,10 +76,11 @@ interface ManifestPayload {
   medicalChatMessages: any[]; // content_enc base64-encoded
   medicalDocumentSummaries: MedicalDocumentSummary[];
   medicalShares: MedicalShare[];
+  reminders: Reminder[];
   _security?: { medical_key?: string };
 }
 
-async function buildManifestPayload(): Promise<ManifestPayload> {
+export async function buildManifestPayload(): Promise<ManifestPayload> {
   const [
     persons,
     properties,
@@ -98,6 +100,7 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     medicalChatMessages,
     medicalDocumentSummaries,
     medicalShares,
+    reminders,
   ] = await Promise.all([
     entities.getPersons(),
     entities.getProperties(),
@@ -119,6 +122,7 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     db.getAllAsync<any>('SELECT * FROM medical_chat_messages'),
     db.getAllAsync<MedicalDocumentSummary>('SELECT * FROM medical_document_summaries'),
     db.getAllAsync<MedicalShare>('SELECT * FROM medical_shares'),
+    db.getAllAsync<Reminder>('SELECT * FROM reminders'),
   ]);
 
   // Encode BLOB columns as base64 strings for JSON serialization
@@ -165,6 +169,7 @@ async function buildManifestPayload(): Promise<ManifestPayload> {
     medicalChatMessages: msgsForPayload,
     medicalDocumentSummaries,
     medicalShares,
+    reminders,
   };
 
   // 28c — optionally include encrypted medical master key
