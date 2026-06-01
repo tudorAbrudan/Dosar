@@ -91,6 +91,7 @@ const ENTRIES = {
     ocrExtractors: { required: false },
     ocrLayout: { required: false },
     pdfExtractor: { required: false },
+    reminders: { required: false },
     reviewPrompt: { required: false },
   },
   screens: {

@@ -24,6 +24,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let enqueueFileUpload: typeof import('@/services/cloudSync').enqueueFileUpload;
 let dequeueFileDelete: typeof import('@/services/cloudSync').dequeueFileDelete;
+let buildManifestPayload: typeof import('@/services/cloudSync').buildManifestPayload;
 beforeAll(() => {
   jest.resetModules();
   jest.isolateModules(() => {
@@ -32,6 +33,7 @@ beforeAll(() => {
     const cs = require('@/services/cloudSync');
     enqueueFileUpload = cs.enqueueFileUpload;
     dequeueFileDelete = cs.dequeueFileDelete;
+    buildManifestPayload = cs.buildManifestPayload;
   });
 });
 
@@ -149,5 +151,28 @@ describe('cloudSync pending_uploads created_at tracking', () => {
     expect(row).not.toBeNull();
     expect(row!.created_at).toBeGreaterThanOrEqual(before);
     expect(row!.created_at).toBeLessThanOrEqual(after);
+  });
+});
+
+describe('cloudSync buildManifestPayload — reminders', () => {
+  it('includes reminders in manifest payload', async () => {
+    await db.runAsync('DELETE FROM reminders');
+    await db.runAsync(
+      `INSERT OR IGNORE INTO documents (id, type, created_at) VALUES ('d-1', 'analize', '2026-01-01T00:00:00Z')`
+    );
+    await db.runAsync(
+      `INSERT INTO reminders (id, source_type, document_id, label, reminder_date, origin, created_at)
+       VALUES ('r-1', 'medical_ai', 'd-1', 'Control', '2026-07-01', 'ai', '2026-01-01T00:00:00Z')`
+    );
+    const payload = await buildManifestPayload();
+    expect(payload.reminders).toHaveLength(1);
+    expect(payload.reminders[0].id).toBe('r-1');
+  });
+
+  it('returns empty reminders array when table is empty', async () => {
+    await db.runAsync('DELETE FROM reminders');
+    const payload = await buildManifestPayload();
+    expect(Array.isArray(payload.reminders)).toBe(true);
+    expect(payload.reminders).toHaveLength(0);
   });
 });
