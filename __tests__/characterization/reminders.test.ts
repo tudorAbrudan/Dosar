@@ -7,12 +7,14 @@ jest.mock('expo-sqlite', () => ({
 
 let db: typeof import('@/services/db').db;
 let remindersService: typeof import('@/services/reminders');
+let documentsService: typeof import('@/services/documents');
 
 beforeAll(() => {
   jest.resetModules();
   jest.isolateModules(() => {
     db = require('@/services/db').db;
     remindersService = require('@/services/reminders');
+    documentsService = require('@/services/documents');
   });
 });
 
@@ -296,6 +298,82 @@ describe('deleteRemindersByDocument', () => {
       'SELECT * FROM reminders WHERE document_id = ?', ['doc-1']
     );
     expect(after).toHaveLength(0);
+  });
+});
+
+describe('documents.ts ↔ reminders sync', () => {
+  beforeEach(async () => {
+    await db.runAsync('DELETE FROM reminders');
+    await db.runAsync('DELETE FROM documents');
+    await db.runAsync('DELETE FROM medical_record');
+    await db.runAsync(`INSERT OR IGNORE INTO persons (id, name, created_at) VALUES ('p-1', 'Tudor', '2026-01-01T00:00:00Z')`);
+    await db.runAsync(`INSERT OR IGNORE INTO vehicles (id, name, created_at) VALUES ('v-1', 'Mașina', '2026-01-01T00:00:00Z')`);
+  });
+
+  it('creates a derived reminder when a document with expiry_date is created', async () => {
+    const doc = await documentsService.createDocument({
+      type: 'rca' as any,
+      expiry_date: '2026-09-10',
+      vehicle_id: 'v-1',
+    });
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE document_id = ? AND source_type = 'document_expiry'`,
+      [doc.id]
+    );
+    expect(all).toHaveLength(1);
+    expect(all[0].reminder_date).toBe('2026-09-10');
+  });
+
+  it('does NOT create a derived reminder for a document without expiry_date', async () => {
+    const doc = await documentsService.createDocument({
+      type: 'altul' as any,
+      note: 'Nimic',
+    });
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE document_id = ?`, [doc.id]
+    );
+    expect(all).toHaveLength(0);
+  });
+
+  it('updates derived reminder when expiry_date changes', async () => {
+    const doc = await documentsService.createDocument({
+      type: 'rca' as any, expiry_date: '2026-09-10', vehicle_id: 'v-1',
+    });
+    await documentsService.updateDocument(doc.id, { type: 'rca' as any, expiry_date: '2026-12-31' });
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE document_id = ?`, [doc.id]
+    );
+    expect(all).toHaveLength(1);
+    expect(all[0].reminder_date).toBe('2026-12-31');
+  });
+
+  it('removes derived reminder when expiry_date is cleared', async () => {
+    const doc = await documentsService.createDocument({
+      type: 'rca' as any, expiry_date: '2026-09-10', vehicle_id: 'v-1',
+    });
+    await documentsService.updateDocument(doc.id, { type: 'rca' as any, expiry_date: undefined });
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE document_id = ?`, [doc.id]
+    );
+    expect(all).toHaveLength(0);
+  });
+
+  it('cascades delete to all reminders when document is deleted', async () => {
+    await db.runAsync(
+      `INSERT INTO medical_record (id, person_id, name, encryption_key_ref, created_at, updated_at)
+       VALUES ('mr-1', 'p-1', 'Tudor', 'key', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`
+    );
+    const doc = await documentsService.createDocument({
+      type: 'analize' as any, expiry_date: '2026-09-10', person_id: 'p-1',
+    });
+    await remindersService.createMedicalReminder({
+      documentId: doc.id, personId: 'p-1', label: 'Control', reminderDate: '2026-07-01',
+    });
+    await documentsService.deleteDocument(doc.id);
+    const all = await db.getAllAsync<any>(
+      `SELECT * FROM reminders WHERE document_id = ?`, [doc.id]
+    );
+    expect(all).toHaveLength(0);
   });
 });
 
