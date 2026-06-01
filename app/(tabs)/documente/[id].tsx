@@ -168,6 +168,11 @@ export default function DocumentDetailScreen() {
 
   const runReExtractAndReport = useCallback(
     async (docId: string) => {
+      // User-initiated re-extract: resetează flag-ul de prompt ca extractor-ul
+      // să poată repopula pending_reminders_json (guard din medicalExtractor.ts
+      // §540 împiedică suprascrierea dacă utilizatorul a fost deja promptat).
+      // Asta permite modal-ul să reapară cu noile recomandări.
+      await setMedicalRemindersPromptedAt(docId, null);
       const { extractFromDocument } = await import('@/services/medicalExtractor');
       const result = await extractFromDocument(docId);
       const updated = await getDocumentById(docId);

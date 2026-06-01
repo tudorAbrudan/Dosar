@@ -1035,7 +1035,7 @@ export async function setDocumentAiSummary(
  */
 export async function setMedicalRemindersPromptedAt(
   documentId: string,
-  iso: string
+  iso: string | null
 ): Promise<void> {
   await db.runAsync(
     'UPDATE documents SET medical_reminders_prompted_at = ? WHERE id = ?',
