@@ -52,6 +52,7 @@ const ENTRIES = {
     ocrLlmExtractor: { required: true, keywords: ['OCR', 'AI'] },
     orphans: { required: true, keywords: ['sugestii', 'completare'] },
     pdfOcr: { required: true, keywords: ['PDF', 'OCR'] },
+    reminders: { required: true, keywords: ['remindere', 'expirări', 'reminder', 'expirari'] },
     settings: { required: true, keywords: ['setări'] },
     taskRequirements: { required: true, keywords: ['DATE NECESARE', 'task'] },
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
@@ -91,7 +92,6 @@ const ENTRIES = {
     ocrExtractors: { required: false },
     ocrLayout: { required: false },
     pdfExtractor: { required: false },
-    reminders: { required: false },
     reviewPrompt: { required: false },
   },
   screens: {

@@ -205,6 +205,14 @@ Aplicația verifică automat la pornire dacă există o versiune mai nouă pe Ap
 - Dacă există mai multe documente de același tip pentru aceeași entitate, cel mai recent (emis/expiră mai târziu) conține datele actuale.
 - NU ai acces la conținutul „Notă privată" al niciunui document — acel câmp nu-ți este transmis intenționat, indiferent de întrebare.
 
+## Remindere
+
+Tabul Expirări afișează cronologic tot ce urmează: documente care expiră (RCA, ITP, vignete etc.) și remindere medicale aprobate.
+
+Reminderele medicale apar doar dacă ai cel puțin un dosar medical activ. La fiecare document medical analizat de AI, sunt sugerate posibile remindere (ex: control cardiolog peste 6 luni); le aprobi din modalul de confirmare, iar apoi le vezi atât în Expirări cât și în calendarul iPhone-ului.
+
+Tap pe orice reminder din Expirări te duce la documentul sursă. Pentru a anula un reminder medical, deschide documentul respectiv și folosește butonul „Șterge reminder" — se va șterge automat și din calendar.
+
 ## Dosar medical
 
 - Entitate "Dosar medical" 1:1 cu o persoană. Stochează observații extrase din analize, vaccinuri, rețete, scrisori medicale, imagistică.
