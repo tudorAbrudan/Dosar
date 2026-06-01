@@ -84,7 +84,9 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
       }
 
       let permissionDenied = false;
-      const personId = doc.person_id ?? null;
+      // medical_record.person_id e sursa canonică pentru reminderele medicale.
+      // doc.person_id (coloană legacy) poate fi null când documentul e legat prin entity_links.
+      const personId = doc.person_id ?? record.person_id ?? null;
       for (const item of toAdd) {
         let calendarEventId: string | undefined;
         if (!permissionDenied) {
