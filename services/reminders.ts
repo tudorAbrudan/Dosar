@@ -1,5 +1,6 @@
 import { db, generateId } from './db';
 import { deleteCalendarEvent } from './calendar';
+import { emit } from './events';
 import type { Document, Reminder, ReminderSourceType } from '@/types';
 
 interface ReminderRow {
@@ -57,6 +58,7 @@ export async function createMedicalReminder(input: {
     [id]
   );
   if (!row) throw new Error('Reminder creat dar nu poate fi citit');
+  emit('reminders:changed');
   return rowToReminder(row);
 }
 
@@ -106,6 +108,7 @@ export async function dismissReminder(id: string): Promise<void> {
     'UPDATE reminders SET dismissed_at = ? WHERE id = ?',
     [new Date().toISOString(), id]
   );
+  emit('reminders:changed');
 }
 
 function deriveLabelFromDocument(doc: Document): string {
@@ -152,6 +155,7 @@ export async function syncDocumentExpiryReminder(doc: Document): Promise<void> {
       ]
     );
   }
+  emit('reminders:changed');
 }
 
 export async function removeDocumentExpiryReminder(documentId: string): Promise<void> {
@@ -159,6 +163,7 @@ export async function removeDocumentExpiryReminder(documentId: string): Promise<
     `DELETE FROM reminders WHERE document_id = ? AND source_type = 'document_expiry'`,
     [documentId]
   );
+  emit('reminders:changed');
 }
 
 export async function deleteRemindersByDocument(documentId: string): Promise<void> {
@@ -170,6 +175,7 @@ export async function deleteRemindersByDocument(documentId: string): Promise<voi
     await deleteCalendarEvent(r.calendar_event_id);
   }
   await db.runAsync('DELETE FROM reminders WHERE document_id = ?', [documentId]);
+  emit('reminders:changed');
 }
 
 export async function backfillDocumentExpiryReminders(): Promise<number> {
@@ -202,6 +208,9 @@ export async function backfillDocumentExpiryReminders(): Promise<number> {
       ]
     );
     inserted++;
+  }
+  if (inserted > 0) {
+    emit('reminders:changed');
   }
   return inserted;
 }
