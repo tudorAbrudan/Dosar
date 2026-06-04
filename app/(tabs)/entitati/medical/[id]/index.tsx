@@ -119,9 +119,12 @@ export default function MedicalRecordDetail() {
       ['medical_record', record.id]
     );
     const linkedSet = new Set(linkedRows.map(r => r.document_id));
-    const candidates = all
-      .filter(d => (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(d.type) && !linkedSet.has(d.id))
-      .sort((a, b) => (b.issue_date ?? '').localeCompare(a.issue_date ?? ''));
+    // getDocuments() întoarce deja documentele ordonate după issue_date desc
+    // (vezi DOCUMENTS_ORDER_BY din services/documents.ts), iar filter() păstrează
+    // ordinea — deci nu mai e nevoie de un .sort() client-side redundant.
+    const candidates = all.filter(
+      d => (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(d.type) && !linkedSet.has(d.id)
+    );
     setUnlinkedMedDocs(candidates);
   }, [record]);
 
