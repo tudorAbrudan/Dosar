@@ -227,13 +227,19 @@ export function sanitizeDocumentForAI(doc: Document): Document {
 }
 
 /**
- * Variantă de `getDocuments()` garantată fără date private.
- * Folosește-o în locul `getDocuments()` pentru orice pipeline care trimite
- * date la un model extern.
+ * Variantă de `getDocuments()` sigură pentru AI-ul GENERAL (chatbot-ul aplicației):
+ * - scoate `private_notes` (vezi sanitizeDocumentForAI);
+ * - EXCLUDE complet documentele medicale (MEDICAL_DOC_TYPES) — din motive de
+ *   confidențialitate/GDPR, datele clinice nu pleacă la modelul general. Doar
+ *   chat-ul medical (medicalChat.ts, scoped + medical lock) are acces la ele.
+ * Folosește-o în locul `getDocuments()` pentru orice pipeline care trimite date
+ * la modelul AI general.
  */
 export async function getDocumentsForAI(): Promise<Document[]> {
   const all = await getDocuments();
-  return all.map(sanitizeDocumentForAI);
+  return all
+    .filter(d => !MEDICAL_DOC_TYPES.has(d.type))
+    .map(sanitizeDocumentForAI);
 }
 
 async function loadPages(documentId: string): Promise<DocumentPage[]> {
