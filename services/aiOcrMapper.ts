@@ -279,6 +279,36 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
 
 // ─── Mapper principal ─────────────────────────────────────────────────────────
 
+/**
+ * Plafon output pentru mapper — aplicat pe AMBELE căi (vision și text-only)
+ * ca un buletin de analize cu 40–50 analiți să nu trunchieze structuredNote
+ * indiferent de cale. 1800 (vs. 1400/1200 anterior). Nu mai mare: plafonul
+ * lovește fiecare auto-trigger, orice tip de document.
+ */
+export const MAPPER_MAX_TOKENS = 1800;
+
+/**
+ * Descrierea câmpului `structuredNote` din promptul mapper-ului. Extrasă ca
+ * să fie testabilă. Conține clauze per-tip; pentru tipurile medicale cere
+ * detaliul clinic complet (oglindește SYSTEM_BY_TYPE din medicalExtractor.ts),
+ * fără limita de 20 de rânduri aplicată restului.
+ */
+export const STRUCTURED_NOTE_SPEC =
+  `rezumat structurat al TUTUROR fișierelor din textul OCR (separate prin '---'):\n` +
+  `- Dacă există mai multe fișiere diferite: secțiune separată pentru FIECARE cu header clar (ex: 'RCA:', 'Factură:')\n` +
+  `- factura: Furnizor, Nr. factură, Sumă totală, Scadență, Perioadă facturare, Adresă livrare/consum, Nr. client/contract, detalii consum (kWh, m³, Gcal etc. dacă apar). Include toate valorile și identificatorii găsiți.\n` +
+  `- rca/casco: Nr. poliță, Asigurator, Vehicul, Perioadă valabilitate, Primă\n` +
+  `- contract: Tip, Valoare, Toate părțile (nume, CNP/CUI), Durată, Obiect\n` +
+  `- garantie: Produs, Serie, Perioadă garanție, Vânzător, Data cumpărare\n` +
+  `- analize_medicale: o linie per analiză, format „Nume: Valoare Unitate (ref: Min–Max)”. Include TOATE analizele găsite, grupate pe secțiuni dacă apar (hematologie, biochimie, lipide, tiroidiene, hepatice, renale, urinare). Nu omite niciun rând.\n` +
+  `- reteta_medicala: o linie per medicament, format „Denumire concentrație — doză, frecvență, durată”.\n` +
+  `- scrisoare_medicala, bilet_externare, fisa_consultatie: fiecare diagnostic și recomandare pe rândul lui, cu etichetă („Diagnostic: ...”, „Recomandare: ...”). Include perioada de internare dacă apare.\n` +
+  `- imagistica: concluziile examinării (RMN/CT/Ecografie), fiecare concluzie pe rândul ei.\n` +
+  `- bilet_trimitere: Diagnostic, Cod ICD-10, Specialitate trimis, Investigație.\n` +
+  `- vaccin_persoana: Vaccin, Lot, Data administrării.\n` +
+  `- alte tipuri: câmpurile cheie — identificatori, date, sume, părți implicate — format 'Câmp: Valoare'. Omite texte administrative și informații redundante.\n` +
+  `LUNGIME: pentru tipurile medicale (analize_medicale, reteta_medicala, scrisoare_medicala, bilet_externare, imagistica, fisa_consultatie, bilet_trimitere, vaccin_persoana) include TOT conținutul clinic, FĂRĂ limită de rânduri. Pentru restul tipurilor: max 20 rânduri. null dacă OCR-ul nu conține nimic util.`;
+
 export async function mapOcrWithAi(
   ocrText: string,
   entities: AvailableEntities,
@@ -489,7 +519,7 @@ Returnează EXCLUSIV JSON valid:
   "entitySuggestions": [
     { "entityType": "person|vehicle|property|card|animal|company", "entityId": "<id exact>", "entityName": "<nume>", "confidence": "high|medium|low" }
   ],
-  "structuredNote": "<rezumat structurat al TUTUROR fișierelor din textul OCR (separate prin '---'):\n- Dacă există mai multe fișiere diferite: secțiune separată pentru FIECARE cu header clar (ex: 'RCA:', 'Factură:')\n- factura: Furnizor, Nr. factură, Sumă totală, Scadență, Perioadă facturare, Adresă livrare/consum, Nr. client/contract, detalii consum (kWh, m³, Gcal etc. dacă apar). Include toate valorile și identificatorii găsiți.\n- rca/casco: Nr. poliță, Asigurator, Vehicul, Perioadă valabilitate, Primă\n- contract: Tip, Valoare, Toate părțile (nume, CNP/CUI), Durată, Obiect\n- garantie: Produs, Serie, Perioadă garanție, Vânzător, Data cumpărare\n- alte tipuri: câmpurile cheie — identificatori, date, sume, părți implicate — format 'Câmp: Valoare'. Omite texte administrative și informații redundante.\nMax 20 rânduri. null dacă OCR-ul nu conține nimic util.>"
+  "structuredNote": "<${STRUCTURED_NOTE_SPEC}>"
 }
 
 Răspunde DOAR cu JSON, fără text suplimentar.`;
@@ -501,7 +531,7 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
       prompt,
       imageBase64,
       'image/jpeg',
-      1400
+      MAPPER_MAX_TOKENS
     );
   } else {
     rawResponse = await sendAiRequest(
@@ -509,7 +539,7 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
         { role: 'system' as const, content: systemMessage },
         { role: 'user' as const, content: prompt },
       ],
-      1200,
+      MAPPER_MAX_TOKENS,
       'extraction'
     );
   }
@@ -640,7 +670,7 @@ interface RawAiJson {
   structuredNote?: string;
 }
 
-const AI_NOTES_MAX_LENGTH = 3000;
+export const AI_NOTES_MAX_LENGTH = 6000;
 
 function parseAiResponse(
   raw: string,
