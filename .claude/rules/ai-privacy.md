@@ -31,6 +31,17 @@ export async function getDocumentsForAI(): Promise<Document[]>
 - UI (detaliu document, edit) — afișat doar pe device, cu toggle „Arată/Ascunde".
 - Share text / print PDF — verifică manual că template-ul referă doar `doc.note`, nu `doc.private_notes`.
 
+### Documente medicale — excluse din AI-ul general
+
+`getDocumentsForAI()` exclude complet documentele cu tip în `MEDICAL_DOC_TYPES`
+(analize, rețete, diagnostice, scrisori, bilete, imagistică, vaccinuri). Chatbot-ul
+general (singurul consumator) nu le vede — nici conținut, nici existență. Doar
+chat-ul medical (`medicalChat.ts`, scoped pe dosar + medical lock) are acces, prin
+ruta lui proprie (`getDocumentById` + `medical_fts`/`medical_observations`), care
+NU trece prin `getDocumentsForAI`.
+
+Garanție verificată de `__tests__/characterization/getDocumentsForAI.test.ts`.
+
 ## Checklist la orice feature nou AI
 
 Înainte de merge pe un feature care adaugă un apel AI (nou chatbot, OCR LLM, clasificare, sumarizare, agent, etc.):

@@ -21,6 +21,21 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * Regulă statică injectată în system prompt-ul chatbot-ului GENERAL. Datele
+ * medicale sunt deja excluse din context (getDocumentsForAI). Aici instruim
+ * modelul să redirecționeze întrebările medicale către chat-ul medical, fără
+ * să inventeze și fără să nege existența documentelor. Text FIX — zero date
+ * per-document, deci nicio scurgere.
+ */
+export const MEDICAL_REDIRECT_RULE = `## Documente medicale — fără acces
+
+Nu ai acces la documentele medicale ale utilizatorului (analize, rețete, diagnostice, scrisori medicale, bilete de externare/trimitere, imagistică, vaccinuri) — din motive de confidențialitate/GDPR, ele NU apar în „Datele utilizatorului" de mai sus.
+
+Dacă utilizatorul întreabă despre analize, rezultate, medicamente, diagnostice sau orice subiect medical: NU inventa date și NU spune că documentele nu există. Răspunde îndrumându-l: „Pentru analizele și documentele tale medicale, deschide Dosarul medical — chat-ul de acolo are acces la ele."
+
+Poți confirma că funcționalitatea „Dosar medical" există în aplicație, dar datele medicale propriu-zise sunt accesibile EXCLUSIV din chat-ul Dosarului medical, nu de aici.`;
+
 // ─── Filtrare context ─────────────────────────────────────────────────────────
 
 /**
@@ -673,6 +688,8 @@ Userul a cerut datele pentru: ${tasks.map(t => t.label).join(', ')}.
 ## Datele utilizatorului
 
 ${contextText}
+
+${MEDICAL_REDIRECT_RULE}
 
 Când menționezi un document specific, folosește ÎNTOTDEAUNA tag-ul [DOC:...|...] din context.
 Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.${taskRule}`;
