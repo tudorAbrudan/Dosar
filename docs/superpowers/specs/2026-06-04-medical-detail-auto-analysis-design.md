@@ -56,9 +56,11 @@ Pentru `analize_medicale`: include **toate** analizele, grupate pe secțiuni dac
 clinic), pentru restul rămâne max 20. Exprimat în limbajul promptului, nu în logică TS.
 
 ### 3. `max_tokens` pentru calea vision
-Un panel cu 40–50 analiți poate depăși actualul `1400`. Se ridică la ~`2200` pe apelul
-`sendAiRequestWithImage` din `mapOcrWithAi`, ca nota să nu se trunchieze.
-Trade-off acceptat: ușor mai mult cost pe apel, doar când output-ul chiar e lung.
+Un panel cu 40–50 analiți poate depăși actualul `1400`. Se ridică **moderat** la `1800` pe
+apelul `sendAiRequestWithImage` din `mapOcrWithAi`, ca nota să nu se trunchieze pe panel-urile
+mari. NU se ridică agresiv (ex. 2200): plafonul lovește fiecare auto-trigger, pentru orice tip
+de document (tipul nu e cunoscut înainte de apel), deci `1800` acoperă cazul medical lung fără
+să scumpească inutil fiecare upload non-medical.
 
 ## Ce NU se schimbă
 
@@ -69,12 +71,35 @@ Trade-off acceptat: ușor mai mult cost pe apel, doar când output-ul chiar e lu
 - „Trimite la AI" (`ocrLlmExtractor.ts`) — neatins.
 - Schema SQLite — neatinsă (nicio migrare, fără impact backup/cloudSync).
 
+## Roluri câmpuri (clarificare — de ce `note` e destinația corectă)
+
+Investigarea a confirmat cine alimentează ce. `note` NU e un câmp mort — e indexat în RAG-ul
+medical:
+
+| Funcție | Câmpul care o alimentează |
+|---|---|
+| Chat medical (răspunsuri) | `medical_observations` + index FTS `medical_fts`, care indexează **`note`** (chunk „Rezumat document: …", `medicalFts.ts:94`) **+ `ocr_text`** |
+| Timeline analize | `medical_observations` (valori structurate criptate) — NU `note`, NU `ai_summary` |
+| Recomandări „mai ai de făcut analize" | `pending_reminders_json` → `MedicalRemindersModal` — NU `ai_summary` |
+| „Rezumat AI" (card pe detaliu) | `ai_summary` (`generateAiSummary`) — **display-only**, izolat explicit de chat/FTS |
+
+Consecințe pentru acest feature:
+- **Îmbogățirea lui `note` îmbunătățește direct chat-ul medical** (FTS îl indexează), nu e doar
+  cosmetic. Asta validează `note` ca destinație.
+- **Timeline-ul și recomandările NU sunt atinse** de această schimbare — vin din
+  `medical_observations` / `pending_reminders_json`, populate de pipeline-ul medical (flux
+  „Dosar medical"), nu de „Analizez cu AI". `ai_summary` rămâne neschimbat și izolat.
+
 ## Punct de atenție (acceptat)
 
-Detaliul medical ajunge în câmpul `note` în clar (necriptat, în afara medical lock-ului).
-Aceasta este **deja** situația azi: auto-analiza scrie deja pacient + clinică în `note`, iar
-„Trimite la AI" scrie deja detaliile acolo. Schimbarea aliniază cele două butoane, nu
-introduce o clasă nouă de expunere.
+Detaliul medical ajunge în câmpul `note` în clar (necriptat, în afara medical lock-ului) și
+`note` e trimis și la chatbot-ul **general** third-party (`chatbot.ts:557`), pe lângă cel
+medical scoped. Aceasta este însă **deja** situația azi: (a) auto-analiza scrie deja pacient +
+clinică în `note`; (b) `ocr_text` al documentelor medicale (care conține deja valorile brute
+ML Kit) e deja trimis la chatbot-ul general (`chatbot.ts:574`). Schimbarea îmbogățește un câmp
+care curge deja pe aceleași rute — nu introduce o clasă nouă de expunere. Închiderea breșei
+chatbot-general pentru documente medicale e un fix de privacy separat, în afara scopului acestui
+feature.
 
 ## Verificare (Definition of Done)
 
