@@ -24,6 +24,15 @@ const OCR_DUP_MIN_NORM_LEN = 50;
 const OCR_DUP_PREFIX_LEN = 500;
 
 /**
+ * Ordinea canonică a documentelor: cele cu dată de emitere primele (cea mai
+ * recentă întâi), cele fără issue_date la coadă, created_at DESC ca tiebreaker.
+ * Folosită de getDocuments() și getDocumentsByEntity() — păstrează-le în sincron.
+ */
+const DOCUMENTS_ORDER_BY = `ORDER BY CASE WHEN issue_date IS NULL OR issue_date = '' THEN 1 ELSE 0 END,
+           issue_date DESC,
+           created_at DESC`;
+
+/**
  * Normalizează un text OCR pentru comparația de duplicat: lowercase, fără
  * diacritice, doar caractere alfanumerice și spațiu, whitespace colapsat,
  * trunchiat la primii {@link OCR_DUP_PREFIX_LEN} caractere. Folosit DOAR
@@ -251,7 +260,7 @@ async function loadPages(documentId: string): Promise<DocumentPage[]> {
 }
 
 export async function getDocuments(): Promise<Document[]> {
-  const rows = await db.getAllAsync<Row>('SELECT * FROM documents ORDER BY created_at DESC');
+  const rows = await db.getAllAsync<Row>(`SELECT * FROM documents ${DOCUMENTS_ORDER_BY}`);
   return rows.map(r => mapRow(r));
 }
 
@@ -314,7 +323,7 @@ export async function getDocumentsByEntity(
   id: string
 ): Promise<Document[]> {
   const rows = await db.getAllAsync<Row>(
-    `SELECT * FROM documents WHERE ${kind} = ? ORDER BY created_at DESC`,
+    `SELECT * FROM documents WHERE ${kind} = ? ${DOCUMENTS_ORDER_BY}`,
     [id]
   );
   return rows.map(r => mapRow(r));
