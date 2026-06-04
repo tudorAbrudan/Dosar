@@ -115,7 +115,7 @@ export default function AddDocumentScreen() {
     entityType?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards, animals, companies, resolveEntityName } =
+  const { persons, properties, vehicles, cards, animals, companies, medicalRecords, resolveEntityName } =
     useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
@@ -1126,18 +1126,23 @@ export default function AddDocumentScreen() {
 
   // ── Derived state ─────────────────────────────────────────────────────────
 
-  const pickerEntities: { id: string; label: string }[] =
-    pickerCategory === 'person'
-      ? persons.map(p => ({ id: p.id, label: p.name }))
-      : pickerCategory === 'property'
-        ? properties.map(p => ({ id: p.id, label: p.name }))
-        : pickerCategory === 'vehicle'
-          ? vehicles.map(v => ({ id: v.id, label: v.name }))
-          : pickerCategory === 'animal'
-            ? animals.map(a => ({ id: a.id, label: a.name }))
-            : pickerCategory === 'company'
-              ? companies.map(c => ({ id: c.id, label: c.name }))
-              : cards.map(c => ({ id: c.id, label: c.nickname }));
+  // check-hardcoded-entities-disable-next-cluster
+  // Mapping caller-specific: card cu nickname, dosar medical cu nume + persoană titulară.
+  // Record<EntityType> e exhaustiv → TS forțează acoperirea oricărui tip de entitate
+  // (a prins omisiunea „medical_record", care lăsa tab-ul „Dosar medical" gol în picker).
+  const pickerGroups: Record<EntityType, { id: string; label: string }[]> = {
+    person: persons.map(p => ({ id: p.id, label: p.name })),
+    property: properties.map(p => ({ id: p.id, label: p.name })),
+    vehicle: vehicles.map(v => ({ id: v.id, label: v.name })),
+    animal: animals.map(a => ({ id: a.id, label: a.name })),
+    company: companies.map(c => ({ id: c.id, label: c.name })),
+    card: cards.map(c => ({ id: c.id, label: c.nickname })),
+    medical_record: medicalRecords.map(r => {
+      const owner = persons.find(p => p.id === r.person_id);
+      return { id: r.id, label: owner ? `${r.name} (${owner.name})` : r.name };
+    }),
+  };
+  const pickerEntities: { id: string; label: string }[] = pickerGroups[pickerCategory] ?? [];
 
   function toggleEntityLink(id: string) {
     setEntityLinks(prev => {
