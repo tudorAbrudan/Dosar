@@ -55,12 +55,19 @@ Pentru `analize_medicale`: include **toate** analizele, grupate pe secțiuni dac
 „Max 20 rânduri" devine: pentru tipuri medicale **fără limită** (include tot conținutul
 clinic), pentru restul rămâne max 20. Exprimat în limbajul promptului, nu în logică TS.
 
-### 3. `max_tokens` pentru calea vision
-Un panel cu 40–50 analiți poate depăși actualul `1400`. Se ridică **moderat** la `1800` pe
-apelul `sendAiRequestWithImage` din `mapOcrWithAi`, ca nota să nu se trunchieze pe panel-urile
-mari. NU se ridică agresiv (ex. 2200): plafonul lovește fiecare auto-trigger, pentru orice tip
-de document (tipul nu e cunoscut înainte de apel), deci `1800` acoperă cazul medical lung fără
-să scumpească inutil fiecare upload non-medical.
+### 3. Două plafoane de lungime (ambele tăiau silențios nota medicală lungă)
+
+**a. `max_tokens` pentru calea vision.** Un panel cu 40–50 analiți poate depăși actualul `1400`.
+Se ridică **moderat** la `1800` pe apelul `sendAiRequestWithImage` din `mapOcrWithAi`, ca nota să
+nu se trunchieze pe panel-urile mari. NU se ridică agresiv (ex. 2200): plafonul lovește fiecare
+auto-trigger, pentru orice tip de document (tipul nu e cunoscut înainte de apel), deci `1800`
+acoperă cazul medical lung fără să scumpească inutil fiecare upload non-medical.
+
+**b. `AI_NOTES_MAX_LENGTH` (descoperit la planificare).** `parseAiResponse` taie `structuredNote`
+la `AI_NOTES_MAX_LENGTH = 3000` caractere (`aiOcrMapper.ts:643,689`). Un panel mare (50+ analiți,
+nume lungi în română + headere de secțiune) poate depăși 3000 → notă tăiată la mijloc, chiar dacă
+AI-ul a returnat-o întreagă. Se ridică la `6000`, aliniat cu `max_tokens=1800` (~7k caractere
+output total posibil). Fără asta, feature-ul eșuează silențios pe exact cazul-țintă (panel mare).
 
 ## Ce NU se schimbă
 
