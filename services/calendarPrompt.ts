@@ -37,11 +37,32 @@ interface EventPromptOptions {
 }
 
 /**
+ * `true` dacă data ISO (`YYYY-MM-DD`) e strict înainte de ziua curentă (locală).
+ * Azi sau viitor → `false`. String gol / ne-parsabil → `false` (nu suprimă promptul).
+ *
+ * Folosit ca să NU oferim reminder de calendar pentru date deja trecute — un
+ * reminder pentru o dată din trecut e inutil, indiferent de tipul documentului
+ * (medical, auto, normal etc.).
+ */
+export function isPastDate(iso: string): boolean {
+  const m = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return false;
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date.getTime() < today.getTime();
+}
+
+/**
  * Întreabă userul dacă vrea reminder pentru data de expirare. La Da → adaugă
  * event în calendar + setează `documents.calendar_event_id`. La Nu → rulează
- * `onDone` direct.
+ * `onDone` direct. Dacă data a trecut deja, NU oferă reminder (rulează `onDone`).
  */
 export function promptAddExpiryReminder(opts: ExpiryPromptOptions): void {
+  if (isPastDate(opts.expiryDate)) {
+    opts.onDone();
+    return;
+  }
   Alert.alert(
     'Adaugă în calendar?',
     `Vrei să adaugi un reminder în calendar pentru expirarea pe ${opts.expiryDate}?`,
@@ -79,6 +100,10 @@ export function promptAddExpiryReminder(opts: ExpiryPromptOptions): void {
  * rulează `onDone` direct.
  */
 export function promptAddEventReminder(opts: EventPromptOptions): void {
+  if (isPastDate(opts.eventDate)) {
+    opts.onDone();
+    return;
+  }
   Alert.alert(
     'Adaugă în calendar?',
     `Vrei reminder pentru evenimentul din ${opts.eventDate}?`,
