@@ -57,11 +57,13 @@ clinic), pentru restul rămâne max 20. Exprimat în limbajul promptului, nu în
 
 ### 3. Două plafoane de lungime (ambele tăiau silențios nota medicală lungă)
 
-**a. `max_tokens` pentru calea vision.** Un panel cu 40–50 analiți poate depăși actualul `1400`.
-Se ridică **moderat** la `1800` pe apelul `sendAiRequestWithImage` din `mapOcrWithAi`, ca nota să
-nu se trunchieze pe panel-urile mari. NU se ridică agresiv (ex. 2200): plafonul lovește fiecare
-auto-trigger, pentru orice tip de document (tipul nu e cunoscut înainte de apel), deci `1800`
-acoperă cazul medical lung fără să scumpească inutil fiecare upload non-medical.
+**a. `max_tokens` output (`MAPPER_MAX_TOKENS = 1800`).** Un panel cu 40–50 analiți poate depăși
+actualul `1400`. Se ridică **moderat** la `1800` printr-o constantă unică aplicată **pe ambele
+căi** ale `mapOcrWithAi` — vision (`sendAiRequestWithImage`, era 1400) și text-only
+(`sendAiRequest`, era 1200) — ca nota să nu fie tăiată de model înainte de plafonul app-side,
+indiferent de cale. NU se ridică agresiv (ex. 2200): plafonul lovește fiecare auto-trigger,
+pentru orice tip de document (tipul nu e cunoscut înainte de apel), deci `1800` acoperă cazul
+medical lung fără să scumpească inutil fiecare upload non-medical.
 
 **b. `AI_NOTES_MAX_LENGTH` (descoperit la planificare).** `parseAiResponse` taie `structuredNote`
 la `AI_NOTES_MAX_LENGTH = 3000` caractere (`aiOcrMapper.ts:643,689`). Un panel mare (50+ analiți,
