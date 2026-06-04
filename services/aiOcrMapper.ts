@@ -473,6 +473,7 @@ asigurare_profesionala: policy_number="RCP/2024/001234", insurer="Allianz" (asig
   Format final expiryDate: YYYY-MM-DD. Pune și în fields.itp_expiry_date (ZZ.LL.AAAA) DOAR dacă expiryDate nu e null.
 - Pentru "factura": expiryDate = data scadenței/limita de plată (YYYY-MM-DD). Pune și în fields.due_date (ZZ.LL.AAAA). NU pune data emiterii facturii în expiryDate.
 - Pentru "rca" și "casco": expiryDate = data expirării poliței (YYYY-MM-DD). issueDate = data emiterii poliței. Pune data intrării în vigoare în fields.valid_from (ZZ.LL.AAAA) — poate fi diferită de issueDate.
+- Pentru "analize_medicale" (buletin de analize de laborator, ex. Synevo, Regina Maria, Synlab, Bioclinica): issueDate = data documentului, în ordinea de prioritate „Data rezultatului" > „Data recoltării" > „Data înregistrării". NU folosi NICIODATĂ „Data nașterii" pacientului (eveniment biologic, deseori și derivabilă din CNP — label „Data nașterii") ca issueDate. Document FĂRĂ expirare → expiryDate: null.
 - Nr. înmatriculare românesc: format "B 123 ABC" sau "CJ 01 XYZ" etc.
 - VIN: 17 caractere alfanumerice (niciodată litere I, O, Q).
 - Pentru vehicule: dacă entitatea are numărul de înmatriculare între paranteze (ex. "Dacia Logan (B 123 ABC)") și acel număr apare în textul OCR, sugereaz-o cu confidence "high".

@@ -549,8 +549,12 @@ export function extractDocumentInfo(text: string): DocumentInfo {
     }
   }
 
-  // Data emitere: "Eliberat la", "Data emiterii", "Date of issue"
-  const issueKeywords = /eliberat\s+la|data\s+emiterii?|date\s+of\s+issue/i;
+  // Data emitere: "Eliberat la", "Data emiterii", "Date of issue".
+  // Documente medicale (buletine analize, scrisori): data documentului este
+  // „Data recoltării" / „Data rezultatului" / „Data înregistrării" — NU data
+  // nașterii (care, pe analize, apare explicit și e și derivată din CNP).
+  const issueKeywords =
+    /eliberat\s+la|data\s+emiterii?|date\s+of\s+issue|data\s+recolt[ăa]rii|data\s+rezultat|data\s+[îi]nregistr[ăa]rii/i;
   for (let i = 0; i < lines.length; i++) {
     if (issueKeywords.test(lines[i])) {
       const dateOnSame = parseDate(lines[i]);
@@ -573,14 +577,21 @@ export function extractDocumentInfo(text: string): DocumentInfo {
     const allDates = [...text.matchAll(/(\d{2})[.\/\-](\d{2})[.\/\-](\d{4})/g)];
     const parsedDates = allDates.map(m => `${m[3]}-${m[2]}-${m[1]}`);
     const uniqueDates = [...new Set(parsedDates)].sort();
-    // Exclude expiry și DOB din MRZ
-    const candidates = uniqueDates.filter(d => d !== result.expiry_date && d !== mrz.dob);
+    // Exclude expiry, DOB din MRZ și data nașterii derivată din CNP.
+    // Data nașterii NU poate fi niciodată data emiterii — fără excluderea ei,
+    // un buletin de analize (fără MRZ, cu o singură altă dată consumată ca
+    // expiry) cădea pe data nașterii ca issue_date.
+    const candidates = uniqueDates.filter(
+      d => d !== result.expiry_date && d !== mrz.dob && d !== result.birth_date
+    );
     if (candidates.length > 0) {
       // Ia cea mai recentă dată dintre candidați (probabil data emiterii)
       result.issue_date = candidates[candidates.length - 1];
     } else if (uniqueDates.length >= 2) {
-      // Fallback final: penultima dată (diferită de expiry)
-      const nonExpiry = uniqueDates.filter(d => d !== result.expiry_date);
+      // Fallback final: penultima dată (diferită de expiry și de data nașterii)
+      const nonExpiry = uniqueDates.filter(
+        d => d !== result.expiry_date && d !== result.birth_date
+      );
       if (nonExpiry.length > 0) result.issue_date = nonExpiry[nonExpiry.length - 1];
     }
   }
