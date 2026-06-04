@@ -11,7 +11,8 @@
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
 import { extractPlateNumber } from './ocr';
 import type { DocumentType, EntityType } from '@/types';
-import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES, ALL_ENTITY_TYPES } from '@/types';
+import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES, ALL_ENTITY_TYPES, STANDARD_DOC_TYPES } from '@/types';
+import { buildClassifierCatalog } from './aiTypeRegistry';
 
 // ─── Tipuri rezultat ──────────────────────────────────────────────────────────
 
@@ -288,6 +289,21 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
 export const MAPPER_MAX_TOKENS = 1800;
 
 /**
+ * Catalogul tipurilor de document — IDENTIC cu cel folosit de `classifyDocument`
+ * (`aiClassifier.ts`), din sursa unică `aiTypeRegistry`. Injectat în promptul
+ * mapper-ului ca `documentType` să acopere TOATE tipurile, inclusiv cele medicale.
+ *
+ * Fără el, `mapOcrWithAi` nu „cunoștea" tipurile medicale (reguli inline doar pentru
+ * vehicule/identitate/facturi/firme) → buletinele de analize cădeau pe „altul", deși
+ * „Trimite la AI" (care folosește classifyDocument) le clasa corect. Acum ambele căi
+ * partajează același catalog → adăugarea unui tip în registry acoperă automat și
+ * mapper-ul, fără divergență.
+ */
+export const MAPPER_TYPE_CATALOG = buildClassifierCatalog(
+  STANDARD_DOC_TYPES.filter(t => t !== 'altul' && t !== 'custom')
+);
+
+/**
  * Descrierea câmpului `structuredNote` din promptul mapper-ului. Extrasă ca
  * să fie testabilă. Conține clauze per-tip; pentru tipurile medicale cere
  * detaliul clinic complet (oglindește SYSTEM_BY_TYPE din medicalExtractor.ts),
@@ -341,6 +357,11 @@ Pentru a lega documentul de o entitate existentă, compară cu DATELE entități
 - Vehicule: caută în textul OCR orice placă ("B 123 ABC") sau VIN (17 caractere, fără I/O/Q) care apare în lista de mai sus la un vehicul. Dacă placa sau VIN-ul se potrivește → confidence="high" (chiar dacă numele vehiculului nu apare în text). CIV conține de obicei doar VIN; talonul conține placa și VIN; facturi service/amenzi conțin placa.
 - Persoane, Proprietăți, Animale, Firme: matching după nume (exact sau parțial semnificativ).
 - Nu inventa legături — dacă niciun identificator nu corespunde, nu returna entitySuggestions pentru acel tip.
+
+━━━ TIPURI DE DOCUMENT POSIBILE (documentType = EXACT un id din lista de mai jos, sau null) ━━━
+
+Alege documentType pe baza titlului central și a conținutului. Include și tipurile medicale (analize, rețete, scrisori, bilete, imagistică, vaccinuri):
+${MAPPER_TYPE_CATALOG}
 
 ━━━ REGULI IDENTIFICARE TIP DOCUMENT ━━━
 
