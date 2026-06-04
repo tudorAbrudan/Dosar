@@ -1,12 +1,13 @@
 import {
   STRUCTURED_NOTE_SPEC,
-  MAPPER_VISION_MAX_TOKENS,
+  MAPPER_MAX_TOKENS,
   AI_NOTES_MAX_LENGTH,
 } from '@/services/aiOcrMapper';
 import { MEDICAL_DOC_TYPES } from '@/types';
 
 describe('STRUCTURED_NOTE_SPEC — clauze medicale', () => {
   it('menționează fiecare tip medical din MEDICAL_DOC_TYPES (guard la tipuri noi)', () => {
+    // Dacă pică: ai adăugat un tip medical nou — adaugă-l și în clauzele + lista LUNGIME din STRUCTURED_NOTE_SPEC.
     for (const t of MEDICAL_DOC_TYPES) {
       expect(STRUCTURED_NOTE_SPEC).toContain(t);
     }
@@ -38,7 +39,7 @@ describe('STRUCTURED_NOTE_SPEC — clauze medicale', () => {
 
 describe('Plafoane de lungime — nu trunchiază nota medicală lungă', () => {
   it('max_tokens vision e suficient pentru un panel mare', () => {
-    expect(MAPPER_VISION_MAX_TOKENS).toBe(1800);
+    expect(MAPPER_MAX_TOKENS).toBeGreaterThanOrEqual(1800);
   });
 
   it('AI_NOTES_MAX_LENGTH încape un panel de ~50 analiți', () => {

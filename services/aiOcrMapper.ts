@@ -280,11 +280,12 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
 // ─── Mapper principal ─────────────────────────────────────────────────────────
 
 /**
- * Plafon output pentru calea vision a mapper-ului. 1800 (vs. 1400 anterior)
- * ca un buletin de analize cu 40–50 analiți să nu trunchieze structuredNote.
- * Nu mai mare: plafonul lovește fiecare auto-trigger, orice tip de document.
+ * Plafon output pentru mapper — aplicat pe AMBELE căi (vision și text-only)
+ * ca un buletin de analize cu 40–50 analiți să nu trunchieze structuredNote
+ * indiferent de cale. 1800 (vs. 1400/1200 anterior). Nu mai mare: plafonul
+ * lovește fiecare auto-trigger, orice tip de document.
  */
-export const MAPPER_VISION_MAX_TOKENS = 1800;
+export const MAPPER_MAX_TOKENS = 1800;
 
 /**
  * Descrierea câmpului `structuredNote` din promptul mapper-ului. Extrasă ca
@@ -299,9 +300,9 @@ export const STRUCTURED_NOTE_SPEC =
   `- rca/casco: Nr. poliță, Asigurator, Vehicul, Perioadă valabilitate, Primă\n` +
   `- contract: Tip, Valoare, Toate părțile (nume, CNP/CUI), Durată, Obiect\n` +
   `- garantie: Produs, Serie, Perioadă garanție, Vânzător, Data cumpărare\n` +
-  `- analize_medicale: o linie per analiză, format „Nume: Valoare Unitate (ref: Min–Max)". Include TOATE analizele găsite, grupate pe secțiuni dacă apar (hematologie, biochimie, lipide, tiroidiene, hepatice, renale, urinare). Nu omite niciun rând.\n` +
-  `- reteta_medicala: o linie per medicament, format „Denumire concentrație — doză, frecvență, durată".\n` +
-  `- scrisoare_medicala, bilet_externare, fisa_consultatie: fiecare diagnostic și recomandare pe rândul lui, cu etichetă („Diagnostic: ...", „Recomandare: ..."). Include perioada de internare dacă apare.\n` +
+  `- analize_medicale: o linie per analiză, format „Nume: Valoare Unitate (ref: Min–Max)”. Include TOATE analizele găsite, grupate pe secțiuni dacă apar (hematologie, biochimie, lipide, tiroidiene, hepatice, renale, urinare). Nu omite niciun rând.\n` +
+  `- reteta_medicala: o linie per medicament, format „Denumire concentrație — doză, frecvență, durată”.\n` +
+  `- scrisoare_medicala, bilet_externare, fisa_consultatie: fiecare diagnostic și recomandare pe rândul lui, cu etichetă („Diagnostic: ...”, „Recomandare: ...”). Include perioada de internare dacă apare.\n` +
   `- imagistica: concluziile examinării (RMN/CT/Ecografie), fiecare concluzie pe rândul ei.\n` +
   `- bilet_trimitere: Diagnostic, Cod ICD-10, Specialitate trimis, Investigație.\n` +
   `- vaccin_persoana: Vaccin, Lot, Data administrării.\n` +
@@ -530,7 +531,7 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
       prompt,
       imageBase64,
       'image/jpeg',
-      MAPPER_VISION_MAX_TOKENS
+      MAPPER_MAX_TOKENS
     );
   } else {
     rawResponse = await sendAiRequest(
@@ -538,7 +539,7 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
         { role: 'system' as const, content: systemMessage },
         { role: 'user' as const, content: prompt },
       ],
-      1200,
+      MAPPER_MAX_TOKENS,
       'extraction'
     );
   }
