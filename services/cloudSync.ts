@@ -349,6 +349,16 @@ function remotePathForRel(remoteRel: string): string {
 }
 
 /**
+ * Rezolvă calea relativă remote a unui fișier din fileMap-ul manifestului.
+ * Pentru manifest v4, întoarce calea structurată (`<Entitate>/<TipDoc>/<filename>`).
+ * Pentru v3 (sau fișiere absente din fileMap), fallback la basename-ul flat.
+ * Funcție pură — testabilă fără I/O.
+ */
+export function resolveRemoteRel(fileMap: Record<string, string>, fileRel: string): string {
+  return fileMap[fileRel] ?? fileNameFromPath(fileRel);
+}
+
+/**
  * Adaugă un fișier în coada de upload. Idempotent — re-enqueue resetează
  * `attempt_count` și `last_error` (`ON CONFLICT` pe `file_path`).
  *
@@ -842,6 +852,7 @@ export async function estimateRestoreSize(): Promise<RestoreEstimate> {
     }
   }
   const payload = JSON.parse(manifestText) as Record<string, unknown>;
+  const manifestFileMap = (payload.fileMap as Record<string, string> | undefined) ?? {};
   const fileNames = collectFileNamesFromPayload(payload);
 
   // Paralelizăm stat-urile în chunk-uri ca să nu trimitem zeci de cereri concurent.
@@ -851,7 +862,7 @@ export async function estimateRestoreSize(): Promise<RestoreEstimate> {
     const sizes = await Promise.all(
       chunk.map(async f => {
         try {
-          const remote = `${FILES_PREFIX}${fileNameFromPath(f)}`;
+          const remote = remotePathForRel(resolveRemoteRel(manifestFileMap, f));
           if (!(await cloudStorage.exists(remote))) return 0;
           return await cloudStorage.fileSize(remote);
         } catch {
@@ -946,6 +957,7 @@ export async function restoreFromCloud(
     }
   }
   const payload = JSON.parse(manifestText) as Record<string, unknown>;
+  const manifestFileMap = (payload.fileMap as Record<string, string> | undefined) ?? {};
   const version = (payload.version as number) ?? 0;
   if (version > MANIFEST_VERSION) {
     throw new Error('Backup-ul a fost creat cu o versiune mai nouă a aplicației');
@@ -963,7 +975,7 @@ export async function restoreFromCloud(
     await Promise.all(
       chunk.map(async f => {
         try {
-          const remote = `${FILES_PREFIX}${fileNameFromPath(f)}`;
+          const remote = remotePathForRel(resolveRemoteRel(manifestFileMap, f));
           if (await cloudStorage.exists(remote)) {
             remoteExists.add(f);
             remoteSizes.set(f, await cloudStorage.fileSize(remote));
@@ -1002,7 +1014,7 @@ export async function restoreFromCloud(
         restoredFiles.push({ file_path: fileRel, size: localSize });
         return;
       }
-      const remote = `${FILES_PREFIX}${fileNameFromPath(fileRel)}`;
+      const remote = remotePathForRel(resolveRemoteRel(manifestFileMap, fileRel));
       if (!remoteExists.has(fileRel)) return;
       if (remoteSize > MAX_FILE_BYTES) {
         console.warn(
@@ -1065,9 +1077,9 @@ export async function restoreFromCloud(
   for (const f of restoredFiles) {
     try {
       await db.runAsync(
-        `INSERT OR IGNORE INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at, file_size)
-         VALUES (?, 0, ?, ?, ?)`,
-        [f.file_path, now, now, f.size || null]
+        `INSERT OR IGNORE INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at, file_size, uploaded_remote_path)
+         VALUES (?, 0, ?, ?, ?, ?)`,
+        [f.file_path, now, now, f.size || null, resolveRemoteRel(manifestFileMap, f.file_path)]
       );
     } catch {
       // best-effort — un rând lipsă duce doar la re-upload (nu la pierdere de date).
