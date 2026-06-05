@@ -1,14 +1,8 @@
 /**
- * Criptare AES-256-GCM per câmp pentru dosarul medical.
- *
- * - Cheie master 256-bit random, generată o dată per device, păstrată în
- *   `expo-secure-store` (Keychain hardware-backed pe iOS).
- * - AAD = `medical_record.id` — previne mutarea unui blob criptat între dosare.
- * - Format blob: `[IV:12B][CIPHERTEXT][TAG:16B]` ca Uint8Array (BLOB în SQLite).
- *
- * NU folosim PBKDF2 — cheia nu vine dintr-o parolă user, ci e random per device.
- * Backup-ul include opțional cheia (după prompt explicit) ca să poată fi
- * restaurată pe alt device.
+ * Decriptare AES-256-GCM per câmp pentru dosarul medical — păstrat DOAR pentru
+ * migrarea one-time (spec 2026-06-05) care convertește datele vechi `_enc` în
+ * plaintext. Codul nou NU mai criptează. După ce toate device-urile migrează,
+ * acest fișier devine eliminabil.
  */
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
@@ -189,27 +183,6 @@ function getKeyOrThrow(): Uint8Array {
 }
 
 /**
- * Criptează un string cu AAD = ID-ul dosarului medical.
- *
- * Format: `[IV:12][CIPHERTEXT+TAG]`.
- * AAD previne mutarea blob-urilor între dosare (decryptarea cu alt AAD eșuează).
- */
-export async function encryptField(
-  plaintext: string,
-  medicalRecordId: string
-): Promise<Uint8Array> {
-  await ensureMedicalMasterKey();
-  const key = getKeyOrThrow();
-  const iv = Crypto.getRandomBytes(IV_LEN);
-  const aad = utf8ToBytes(medicalRecordId);
-  const cipher = gcm(key, iv, aad).encrypt(utf8ToBytes(plaintext));
-  const out = new Uint8Array(iv.length + cipher.length);
-  out.set(iv, 0);
-  out.set(cipher, iv.length);
-  return out;
-}
-
-/**
  * Decriptează un blob produs de `encryptField`. Aruncă dacă AAD-ul diferă sau
  * dacă cheia nu mai e disponibilă (cheie pierdută → date nerecuperabile fără
  * backup).
@@ -245,18 +218,6 @@ export async function decryptFieldOrNull(
 }
 
 /**
- * Variantă pentru câmpuri opționale: dacă plaintext-ul e null/undefined,
- * întoarce null (fără criptare). Altfel cripteaza normal.
- */
-export async function encryptFieldOpt(
-  plaintext: string | null | undefined,
-  medicalRecordId: string
-): Promise<Uint8Array | null> {
-  if (plaintext == null || plaintext === '') return null;
-  return encryptField(plaintext, medicalRecordId);
-}
-
-/**
  * Variantă pentru câmpuri opționale la decriptare: dacă blob-ul e null,
  * întoarce null. Aruncă la AAD mismatch (folosit acolo unde semnalarea
  * coruptiei e dorită; pentru fallback silent foloseste `decryptFieldOrNull`).
@@ -267,29 +228,4 @@ export async function decryptFieldOpt(
 ): Promise<string | null> {
   if (!blob || blob.length === 0) return null;
   return decryptField(blob, medicalRecordId);
-}
-
-/**
- * Exportă cheia master ca base64 (pentru includere opt-in în backup cloud sau
- * afișare manuală user). Aruncă dacă nu există cheie.
- */
-export async function exportMasterKeyBase64(): Promise<string> {
-  await ensureMedicalMasterKey();
-  const key = getKeyOrThrow();
-  return bytesToBase64(key);
-}
-
-/**
- * Importă o cheie master existentă (din backup cloud sau introdusă manual).
- * Suprascrie cheia curentă în SecureStore. Folosit la restore cross-device.
- */
-export async function importMasterKeyBase64(b64: string): Promise<void> {
-  const key = base64ToBytes(b64);
-  if (key.length !== KEY_LEN) {
-    throw new Error(
-      `Cheia importată are dimensiune greșită: ${key.length} bytes (așteptat ${KEY_LEN}).`
-    );
-  }
-  _cachedKey = key;
-  await saveKeyToStore(key);
 }
