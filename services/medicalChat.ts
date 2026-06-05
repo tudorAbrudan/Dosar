@@ -2,7 +2,8 @@
  * Chat scoped pe un dosar medical, cu RAG hibrid (FTS5 + structured lookup)
  * și prompt strict anti-halucinație.
  *
- * Conținutul mesajelor e criptat AES-GCM cu AAD = medical_record.id.
+ * Conținutul mesajelor se stochează plaintext ca TEXT (spec 2026-06-05);
+ * protejat de App Lock + sandbox iOS.
  *
  * Reguli enforced de prompt:
  * - Nu interpretare clinică.
@@ -15,7 +16,6 @@
  * `sanitizeDocumentForAI(doc)`.
  */
 import { db, generateId } from './db';
-import { encryptField, decryptFieldOrNull } from './medicalCrypto';
 import { analyzeQuery, normalizeName, buildFtsMatchExpression } from './medicalQueryAnalysis';
 import { searchChunks, type FtsHit } from './medicalFts';
 import { listObservationsByRecord } from './medicalObservations';
@@ -109,15 +109,9 @@ interface MessageRow {
   id: string;
   thread_id: string;
   role: string;
-  content_enc: Uint8Array;
+  content: string;
   citations_json: string | null;
   created_at: string;
-}
-
-function toBytes(blob: Uint8Array | ArrayBuffer | null | undefined): Uint8Array | null {
-  if (!blob) return null;
-  if (blob instanceof Uint8Array) return blob;
-  return new Uint8Array(blob);
 }
 
 function parseCitations(json: string | null): MedicalChatCitation[] {
@@ -139,25 +133,17 @@ function parseCitations(json: string | null): MedicalChatCitation[] {
 }
 
 export async function listMessages(threadId: string): Promise<MedicalChatMessage[]> {
-  const t = await db.getFirstAsync<{ medical_record_id: string }>(
-    'SELECT medical_record_id FROM medical_chat_threads WHERE id = ?',
-    [threadId]
-  );
-  if (!t) return [];
   const rows = await db.getAllAsync<MessageRow>(
     'SELECT * FROM medical_chat_messages WHERE thread_id = ? ORDER BY created_at ASC',
     [threadId]
   );
   const out: MedicalChatMessage[] = [];
   for (const r of rows) {
-    const content =
-      (await decryptFieldOrNull(toBytes(r.content_enc), t.medical_record_id)) ??
-      '[mesaj indisponibil]';
     out.push({
       id: r.id,
       thread_id: r.thread_id,
       role: r.role as MedicalChatRole,
-      content,
+      content: r.content,
       citations: parseCitations(r.citations_json),
       created_at: r.created_at,
     });
@@ -176,11 +162,10 @@ interface InsertMessageArgs {
 async function insertMessage(args: InsertMessageArgs): Promise<MedicalChatMessage> {
   const id = generateId();
   const now = new Date().toISOString();
-  const enc = await encryptField(args.content, args.recordId);
   await db.runAsync(
-    `INSERT INTO medical_chat_messages(id, thread_id, role, content_enc, citations_json, created_at)
+    `INSERT INTO medical_chat_messages(id, thread_id, role, content, citations_json, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, args.thread_id, args.role, enc, JSON.stringify(args.citations), now]
+    [id, args.thread_id, args.role, args.content, JSON.stringify(args.citations), now]
   );
   await db.runAsync('UPDATE medical_chat_threads SET updated_at = ? WHERE id = ?', [
     now,
