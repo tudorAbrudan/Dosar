@@ -1,17 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  StyleSheet,
-  Platform,
-  ScrollView,
-  Switch,
-  View,
-  Text,
-  Alert,
-  Modal,
-} from 'react-native';
+import { StyleSheet, ScrollView, View, Text, Alert, Modal } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, onPrimary } from '@/theme/colors';
+import { light, dark } from '@/theme/colors';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
 import {
   estimateRestoreSize,
@@ -27,8 +18,6 @@ import {
   setCloudSnapshotRetention,
   getCloudEncryptionEnabled,
   setCloudEncryptionEnabled,
-  getCloudBackupIncludesMedicalKey,
-  setCloudBackupIncludesMedicalKey,
 } from '@/services/settings';
 import {
   PasswordRequiredError,
@@ -64,7 +53,6 @@ export default function CloudBackupScreen() {
   // sau restore) eșuează cu PasswordRequiredError, sau când userul activează
   // criptarea. O iterație ulterioară poate adăuga unlock-on-screen-mount.
   const [encryptionEnabled, setEncryptionEnabledState] = useState(false);
-  const [includeMedKey, setIncludeMedKey] = useState(false);
   const [pwModalMode, setPwModalMode] = useState<CloudPasswordModalMode | null>(null);
   // Acțiunea care a declanșat unlock-ul; rulată după onSubmit reușit.
   const [pendingAfterUnlock, setPendingAfterUnlock] = useState<null | 'backup' | 'restore'>(null);
@@ -90,17 +78,15 @@ export default function CloudBackupScreen() {
 
   useEffect(() => {
     void (async () => {
-      const [f, r, enc, medKey] = await Promise.all([
+      const [f, r, enc] = await Promise.all([
         getCloudSnapshotFrequency(),
         getCloudSnapshotRetention(),
         getCloudEncryptionEnabled(),
-        getCloudBackupIncludesMedicalKey(),
       ]);
       if (mountedRef.current) {
         setFreq(f);
         setRetention(r);
         setEncryptionEnabledState(enc);
-        setIncludeMedKey(medKey);
         setLoaded(true);
       }
     })();
@@ -374,49 +360,6 @@ export default function CloudBackupScreen() {
           onChangePassword={handleChangePassword}
         />
 
-        {/* ── Cheie medicală în backup ── */}
-        <View style={[styles.medKeyCard, { backgroundColor: palette.card }]}>
-          <View style={styles.medKeyRow}>
-            <View style={styles.medKeyTextWrap}>
-              <Text style={[styles.medKeyLabel, { color: palette.text }]}>
-                Include cheia medicală în backup cloud
-              </Text>
-              <Text style={[styles.medKeySub, { color: palette.textSecondary }]}>
-                Cheia AES pentru date medicale e criptată cu parola cloud și inclusă în backup. La
-                restore pe device nou, cheia se decriptează automat. Pierderea parolei = pierderea
-                accesului la date medicale.
-              </Text>
-            </View>
-            <Switch
-              value={includeMedKey}
-              disabled={!loaded}
-              trackColor={{ false: palette.border, true: primary }}
-              thumbColor={onPrimary}
-              onValueChange={async v => {
-                if (v) {
-                  Alert.alert(
-                    'Include cheia medicală?',
-                    'Cheia AES pentru observațiile medicale criptate va fi inclusă în backup-ul cloud, criptată cu parola cloud. Pierderea parolei = pierderea accesului la date medicale pe device nou.',
-                    [
-                      { text: 'Anulează', style: 'cancel' },
-                      {
-                        text: 'Activează',
-                        onPress: async () => {
-                          await setCloudBackupIncludesMedicalKey(true);
-                          setIncludeMedKey(true);
-                        },
-                      },
-                    ]
-                  );
-                } else {
-                  await setCloudBackupIncludesMedicalKey(false);
-                  setIncludeMedKey(false);
-                }
-              }}
-            />
-          </View>
-        </View>
-
         {/* ── Acțiuni ── */}
         <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>ACȚIUNI</Text>
         <CloudActionsCard
@@ -473,18 +416,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
-
-  medKeyCard: {
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
-      android: { elevation: 1 },
-    }),
-  },
-  medKeyRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  medKeyTextWrap: { flex: 1 },
-  medKeyLabel: { fontSize: 16, fontWeight: '600' },
-  medKeySub: { fontSize: 13, marginTop: 4, lineHeight: 18 },
 });
