@@ -13,7 +13,6 @@ import { toFileUri, toRelativePath } from './fileUtils';
 import { onRestoreSuccess } from './reviewPrompt';
 import { db, generateId } from './db';
 import { emit } from './events';
-import { bytesToBase64, base64ToBytes } from './cloudCrypto';
 
 /**
  * Citește un fișier ca base64. Returnează null dacă nu există sau nu poate fi citit.
@@ -108,8 +107,8 @@ function buildFileMap(
  *  - backup.json  (manifest cu entități + documente + fileMap)
  *  - files/<NumeEntitate>/<TipDocument>/<fisier>  (pozele și PDF-urile organizate pe entități)
  *
- * Format version: 14
- * v14: added reminders table (medical_ai + document_expiry derived)
+ * Format version: 15
+ * v15: medical observations/chat plaintext (spec 2026-06-05)
  */
 export async function exportBackup(): Promise<void> {
   const [
@@ -160,29 +159,6 @@ export async function exportBackup(): Promise<void> {
     db.getAllAsync<Reminder>('SELECT * FROM reminders'),
   ]);
 
-  // Encode BLOB columns as base64 strings (JSON cannot serialize Uint8Array / Buffer)
-  const toBytes = (v: Uint8Array | ArrayBuffer | null | undefined): Uint8Array | null => {
-    if (!v) return null;
-    if (v instanceof Uint8Array) return v;
-    return new Uint8Array(v as ArrayBuffer);
-  };
-  const blobToB64 = (v: any): string | null => {
-    const b = toBytes(v);
-    return b ? bytesToBase64(b) : null;
-  };
-
-  const obsForExport = medicalObservations.map((o: any) => ({
-    ...o,
-    name_enc: blobToB64(o.name_enc),
-    value_enc: blobToB64(o.value_enc),
-    ref_min_enc: blobToB64(o.ref_min_enc),
-    ref_max_enc: blobToB64(o.ref_max_enc),
-  }));
-  const msgsForExport = medicalChatMessages.map((m: any) => ({
-    ...m,
-    content_enc: blobToB64(m.content_enc),
-  }));
-
   const personNames = new Map(persons.map(p => [p.id, p.name]));
   const vehicleNames = new Map(vehicles.map(v => [v.id, v.name]));
   const propertyNames = new Map(properties.map(p => [p.id, p.name]));
@@ -215,7 +191,7 @@ export async function exportBackup(): Promise<void> {
   }
 
   const manifest = {
-    version: 14, // v14: added reminders table (medical_ai + document_expiry derived)
+    version: 15, // v15: medical observations/chat plaintext (spec 2026-06-05)
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -231,9 +207,9 @@ export async function exportBackup(): Promise<void> {
     entityOrder,
     fileMap,
     medicalRecords,
-    medicalObservations: obsForExport,
+    medicalObservations,
     medicalChatThreads,
-    medicalChatMessages: msgsForExport,
+    medicalChatMessages,
     medicalDocumentSummaries,
     medicalShares,
     reminders,
@@ -834,9 +810,6 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
   }
 
   // ── Restaurare tabele medicale ──────────────────────────────────────────────
-  const b64ToBlob = (s: string | null | undefined): Uint8Array | null =>
-    s ? base64ToBytes(s) : null;
-
   for (const r of (payload.medicalRecords as AnyRecord[]) ?? []) {
     try {
       await db.runAsync(
@@ -865,18 +838,18 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     try {
       await db.runAsync(
         `INSERT OR REPLACE INTO medical_observations
-          (id, medical_record_id, source_document_id, name_enc, value_enc, unit,
-           ref_min_enc, ref_max_enc, observed_at, category, confidence, needs_review,
+          (id, medical_record_id, source_document_id, name, value, unit,
+           ref_min, ref_max, observed_at, category, confidence, needs_review,
            user_corrected, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           o.id as string, o.medical_record_id as string,
           (o.source_document_id as string | null) ?? null,
-          b64ToBlob(o.name_enc as string | null),
-          b64ToBlob(o.value_enc as string | null),
+          (o.name as string | null) ?? '[indisponibil]',
+          (o.value as string | null) ?? null,
           (o.unit as string | null) ?? null,
-          b64ToBlob(o.ref_min_enc as string | null),
-          b64ToBlob(o.ref_max_enc as string | null),
+          (o.ref_min as string | null) ?? null,
+          (o.ref_max as string | null) ?? null,
           (o.observed_at as string | null) ?? null,
           o.category as string,
           o.confidence as number,
@@ -908,11 +881,11 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     try {
       await db.runAsync(
         `INSERT OR REPLACE INTO medical_chat_messages
-          (id, thread_id, role, content_enc, citations_json, created_at)
+          (id, thread_id, role, content, citations_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           m.id as string, m.thread_id as string, m.role as string,
-          b64ToBlob(m.content_enc as string | null),
+          (m.content as string | null) ?? '[mesaj indisponibil]',
           (m.citations_json as string | null) ?? null,
           m.created_at as string,
         ]
