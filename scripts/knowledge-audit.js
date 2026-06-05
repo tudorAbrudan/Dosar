@@ -95,6 +95,7 @@ const ENTRIES = {
     ocrLayout: { required: false },
     pdfExtractor: { required: false },
     reviewPrompt: { required: false },
+    vehicleDocChecks: { required: false },
   },
   screens: {
     index: { required: true, keywords: ['Acasă', 'Home'] },

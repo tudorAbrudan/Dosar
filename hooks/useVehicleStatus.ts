@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { getDocumentsByEntity } from '@/services/documents';
 import { computeFuelStats } from '@/services/fuel';
-import { buildVehicleStatusItems, type StatusItemRaw } from '@/services/vehicleStatus';
+import {
+  buildVehicleStatusItems,
+  buildVehicleLegalStatus,
+  type StatusItemRaw,
+  type LegalObligation,
+} from '@/services/vehicleStatus';
 import * as settings from '@/services/settings';
 import { on } from '@/services/events';
 import type { Vehicle } from '@/types';
@@ -13,6 +18,7 @@ export type VehicleStatusItem = StatusItemRaw & {
 
 export type UseVehicleStatusResult = {
   items: VehicleStatusItem[];
+  legal: LegalObligation[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -20,12 +26,14 @@ export type UseVehicleStatusResult = {
 
 export function useVehicleStatus(vehicle: Vehicle | undefined): UseVehicleStatusResult {
   const [items, setItems] = useState<VehicleStatusItem[]>([]);
+  const [legal, setLegal] = useState<LegalObligation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!vehicle) {
       setItems([]);
+      setLegal([]);
       setLoading(false);
       return;
     }
@@ -44,6 +52,7 @@ export function useVehicleStatus(vehicle: Vehicle | undefined): UseVehicleStatus
         today: new Date(),
         fuelType: vehicle.fuel_type,
       });
+      const legalObligations = buildVehicleLegalStatus(documents, new Date(), notifDays);
 
       const vehicleId = vehicle.id;
       const vehicleName = vehicle.name;
@@ -72,9 +81,11 @@ export function useVehicleStatus(vehicle: Vehicle | undefined): UseVehicleStatus
       });
 
       setItems(withPress);
+      setLegal(legalObligations);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Eroare necunoscută');
       setItems([]);
+      setLegal([]);
     } finally {
       setLoading(false);
     }
@@ -98,5 +109,5 @@ export function useVehicleStatus(vehicle: Vehicle | undefined): UseVehicleStatus
     };
   }, [load]);
 
-  return { items, loading, error, refresh: load };
+  return { items, legal, loading, error, refresh: load };
 }

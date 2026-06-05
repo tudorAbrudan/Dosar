@@ -135,7 +135,9 @@ export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
   // Dacă există în ambele, alegem expirarea cea mai târzie. Click pe brick → doc-sursă.
   const itpResolved = resolveItpExpiry(documents);
   if (itpResolved)
-    items.push(buildDocItem(itpResolved.doc, 'itp', 'ITP', notificationDays, today, itpResolved.iso));
+    items.push(
+      buildDocItem(itpResolved.doc, 'itp', 'ITP', notificationDays, today, itpResolved.iso)
+    );
 
   const vigneta = pickLatestDocWithExpiry(documents, 'vigneta');
   if (vigneta) items.push(buildDocItem(vigneta, 'vigneta', 'Rovinietă', notificationDays, today));

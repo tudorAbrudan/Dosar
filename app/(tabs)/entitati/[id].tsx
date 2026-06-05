@@ -28,6 +28,7 @@ import type { Document as DocType, DocumentType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
+import { VehicleLegalStatus } from '@/components/VehicleLegalStatus';
 import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
 import { PersonContactCard } from '@/components/entity/PersonContactCard';
 import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
@@ -456,6 +457,9 @@ export default function EntityDetailScreen() {
           })()}
 
         {isVehicle && <EntityStatusBar items={vehicleStatus.items} />}
+        {isVehicle && (
+          <VehicleLegalStatus vehicleId={id as string} obligations={vehicleStatus.legal} />
+        )}
 
         {isVehicle && (
           <VehicleMaintenanceSection

@@ -14,6 +14,8 @@ function iconForKey(key: VehicleStatusItem['key']): keyof typeof Ionicons.glyphM
       return 'shield-checkmark-outline';
     case 'itp':
       return 'clipboard-outline';
+    case 'vigneta':
+      return 'pricetag-outline';
     case 'fuel':
       return 'flame-outline';
   }
