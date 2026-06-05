@@ -511,6 +511,47 @@ async function reconcilePendingUploads(): Promise<void> {
   }
 }
 
+/**
+ * Migrare one-time (spec 2026-06-05): fișierele urcate înainte de structurare au
+ * `uploaded_remote_path` NULL și stau flat (`files/<uuid>.ext`). Le marcăm cu
+ * locația flat curentă + `uploaded_at = NULL` ca next `processQueue` să le re-urce
+ * la calea structurată și să grace-șteargă cea flat. Idempotentă: rulează doar
+ * pentru rânduri uploaded fără remote path cunoscut.
+ */
+async function rehomeFlatFilesIfNeeded(): Promise<void> {
+  const rows = await db.getAllAsync<{ id: number; file_path: string }>(
+    'SELECT id, file_path FROM pending_uploads WHERE uploaded_at IS NOT NULL AND uploaded_remote_path IS NULL'
+  );
+  for (const r of rows) {
+    await db.runAsync(
+      'UPDATE pending_uploads SET uploaded_remote_path = ?, uploaded_at = NULL WHERE id = ?',
+      [fileNameFromPath(r.file_path), r.id]
+    );
+  }
+}
+
+/**
+ * Detectează fișiere deja sincronizate a căror cale structurată curentă diferă de
+ * locația reală (entitate redenumită / tip schimbat) și le re-queue-iește pentru
+ * mutare. `uploaded_remote_path` rămâne locația veche → `processOne` o grace-șterge
+ * după re-upload la noua cale. Folosește `structuredMap` deja construit (ieftin).
+ */
+async function reconcileRenamedFiles(structuredMap: Record<string, string>): Promise<void> {
+  const rows = await db.getAllAsync<{
+    id: number;
+    file_path: string;
+    uploaded_remote_path: string;
+  }>(
+    'SELECT id, file_path, uploaded_remote_path FROM pending_uploads WHERE uploaded_at IS NOT NULL AND uploaded_remote_path IS NOT NULL'
+  );
+  for (const r of rows) {
+    const target = structuredMap[toRelativePath(r.file_path)];
+    if (target && target !== r.uploaded_remote_path) {
+      await db.runAsync('UPDATE pending_uploads SET uploaded_at = NULL WHERE id = ?', [r.id]);
+    }
+  }
+}
+
 export interface BackupProgress {
   phase: 'files' | 'manifest' | 'snapshot' | 'done';
   /** Câte fișiere au fost procesate (urcate sau sărite). */
@@ -548,8 +589,9 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
   if (!(await cloudStorage.isAvailable())) return;
 
   await reconcilePendingUploads();
-
+  await rehomeFlatFilesIfNeeded(); // flat legacy → marchează cu basename flat
   const structuredMap = await buildStructuredFileMap();
+  await reconcileRenamedFiles(structuredMap); // rename → reset uploaded_at pe mismatch
 
   const encryptionEnabled = await getCloudEncryptionEnabled();
   const pending = await db.getAllAsync<{
