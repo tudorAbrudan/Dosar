@@ -1069,25 +1069,31 @@ export default function AddDocumentScreen() {
 
     const vehId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
     if (vehId && (type === 'rca' || type === 'vigneta' || type === 'casco')) {
-      const vehDocs = await getDocumentsByEntity('vehicle_id', vehId);
-      const overlap = findOverlappingDoc(vehDocs, {
-        type,
-        issue_date: issueDateRef.current.trim() || undefined,
-        expiry_date: expiryDateRef.current.trim() || undefined,
-      });
-      if (overlap) {
-        const until = overlap.expiry_date ? overlap.expiry_date.split('-').reverse().join('.') : '';
-        const proceed = await new Promise<boolean>(resolve => {
-          Alert.alert(
-            'Acoperire suprapusă',
-            `Ai deja un document „${DOCUMENT_TYPE_LABELS[type]}" valid${until ? ` până la ${until}` : ''} pe această mașină. Adaugi oricum?`,
-            [
-              { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
-              { text: 'Adaugă oricum', onPress: () => resolve(true) },
-            ]
-          );
+      try {
+        const vehDocs = await getDocumentsByEntity('vehicle_id', vehId);
+        const overlap = findOverlappingDoc(vehDocs, {
+          type,
+          issue_date: issueDateRef.current.trim() || undefined,
+          expiry_date: expiryDateRef.current.trim() || undefined,
         });
-        if (!proceed) return;
+        if (overlap) {
+          const until = overlap.expiry_date
+            ? overlap.expiry_date.split('-').reverse().join('.')
+            : '';
+          const proceed = await new Promise<boolean>(resolve => {
+            Alert.alert(
+              'Acoperire suprapusă',
+              `Ai deja un document „${DOCUMENT_TYPE_LABELS[type]}" valid${until ? ` până la ${until}` : ''} pe această mașină. Adaugi oricum?`,
+              [
+                { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Adaugă oricum', onPress: () => resolve(true) },
+              ]
+            );
+          });
+          if (!proceed) return;
+        }
+      } catch {
+        // read failed → skip overlap check, continue to save
       }
     }
 
@@ -1124,37 +1130,41 @@ export default function AddDocumentScreen() {
       const finalExpiry = expiryDateRef.current.trim();
       const navigateBack = () => router.replace('/(tabs)/documente');
       const finishOrPromptCoverage = async () => {
-        const vId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
-        if (!vId || !(type === 'rca' || type === 'itp' || type === 'vigneta')) {
-          navigateBack();
-          return;
-        }
-        const vDocs = await getDocumentsByEntity('vehicle_id', vId);
-        const notifDays = await settings.getNotificationDays();
-        const missing = findMissingObligations(vDocs, type, new Date(), notifDays);
-        if (missing.length === 0) {
-          navigateBack();
-          return;
-        }
-        const first = missing[0];
-        Alert.alert(
-          `${DOCUMENT_TYPE_LABELS[type]} salvat`,
-          `⚠️ ${first.label} ${first.status === 'missing' ? 'lipsește' : 'e expirat'} pe această mașină. Adaugi acum?`,
-          [
-            { text: 'Mai târziu', style: 'cancel', onPress: navigateBack },
-            {
-              text: `Adaugă ${first.label}`,
-              onPress: () => {
-                InteractionManager.runAfterInteractions(() => {
-                  router.replace({
-                    pathname: '/(tabs)/documente/add',
-                    params: { vehicle_id: vId, type: first.key },
+        try {
+          const vId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
+          if (!vId || !(type === 'rca' || type === 'itp' || type === 'vigneta')) {
+            navigateBack();
+            return;
+          }
+          const vDocs = await getDocumentsByEntity('vehicle_id', vId);
+          const notifDays = await settings.getNotificationDays();
+          const missing = findMissingObligations(vDocs, type, new Date(), notifDays);
+          if (missing.length === 0) {
+            navigateBack();
+            return;
+          }
+          const first = missing[0];
+          Alert.alert(
+            `${DOCUMENT_TYPE_LABELS[type]} salvat`,
+            `⚠️ ${first.label} ${first.status === 'missing' ? 'lipsește' : 'e expirat'} pe această mașină. Adaugi acum?`,
+            [
+              { text: 'Mai târziu', style: 'cancel', onPress: navigateBack },
+              {
+                text: `Adaugă ${first.label}`,
+                onPress: () => {
+                  InteractionManager.runAfterInteractions(() => {
+                    router.replace({
+                      pathname: '/(tabs)/documente/add',
+                      params: { vehicle_id: vId, type: first.key },
+                    });
                   });
-                });
+                },
               },
-            },
-          ]
-        );
+            ]
+          );
+        } catch {
+          navigateBack();
+        }
       };
       if (finalExpiry && isCalendarAvailable()) {
         const linkedVehicleId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
@@ -1198,6 +1208,7 @@ export default function AddDocumentScreen() {
         return;
       }
 
+      setLoading(false);
       await finishOrPromptCoverage();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
