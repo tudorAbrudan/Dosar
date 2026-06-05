@@ -25,6 +25,8 @@ let testDb: TestDb;
 let enqueueFileUpload: typeof import('@/services/cloudSync').enqueueFileUpload;
 let dequeueFileDelete: typeof import('@/services/cloudSync').dequeueFileDelete;
 let buildManifestPayload: typeof import('@/services/cloudSync').buildManifestPayload;
+let resolveRemoteRel: typeof import('@/services/cloudSync').resolveRemoteRel;
+let reconcileRenamedFiles: typeof import('@/services/cloudSync').reconcileRenamedFiles;
 beforeAll(() => {
   jest.resetModules();
   jest.isolateModules(() => {
@@ -34,6 +36,8 @@ beforeAll(() => {
     enqueueFileUpload = cs.enqueueFileUpload;
     dequeueFileDelete = cs.dequeueFileDelete;
     buildManifestPayload = cs.buildManifestPayload;
+    resolveRemoteRel = cs.resolveRemoteRel;
+    reconcileRenamedFiles = cs.reconcileRenamedFiles;
   });
 });
 
@@ -174,5 +178,80 @@ describe('cloudSync buildManifestPayload — reminders', () => {
     const payload = await buildManifestPayload();
     expect(Array.isArray(payload.reminders)).toBe(true);
     expect(payload.reminders).toHaveLength(0);
+  });
+});
+
+describe('cloud structured files (v4)', () => {
+  it('buildManifestPayload includes a structured fileMap (version 4)', async () => {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO vehicles (id, name, created_at) VALUES ('v-1', 'Dacia', '2026-01-01T00:00:00Z')`
+    );
+    await db.runAsync(
+      `INSERT INTO documents (id, type, vehicle_id, file_path, created_at)
+       VALUES ('d-1', 'rca', 'v-1', 'documents/a.jpg', '2026-01-01T00:00:00Z')`
+    );
+
+    const payload = await buildManifestPayload();
+    expect(payload.version).toBe(4);
+    expect(payload.fileMap['documents/a.jpg']).toBe('Dacia/RCA/a.jpg');
+  });
+
+  it('resolveRemoteRel falls back to flat basename for v3 manifests (empty fileMap)', () => {
+    expect(resolveRemoteRel({}, 'documents/a.jpg')).toBe('a.jpg');
+  });
+
+  it('resolveRemoteRel returns the structured path for v4 manifests', () => {
+    expect(resolveRemoteRel({ 'documents/a.jpg': 'Dacia/RCA/a.jpg' }, 'documents/a.jpg')).toBe(
+      'Dacia/RCA/a.jpg'
+    );
+  });
+});
+
+describe('cloud rename-move reconcile', () => {
+  it('re-queues a synced row whose structured target changed (uploaded_at reset to NULL)', async () => {
+    // Synced file currently living at Dacia/RCA/a.jpg.
+    await db.runAsync(
+      `INSERT INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at, uploaded_remote_path)
+       VALUES (?, ?, ?, ?, ?)`,
+      'documents/a.jpg',
+      0,
+      Date.now(),
+      Date.now(),
+      'Dacia/RCA/a.jpg'
+    );
+
+    // Entity renamed Dacia → Logan: structured target differs from the real location.
+    await reconcileRenamedFiles({ 'documents/a.jpg': 'Logan/RCA/a.jpg' });
+
+    const row = await db.getFirstAsync<{
+      uploaded_at: number | null;
+      uploaded_remote_path: string | null;
+    }>(
+      'SELECT uploaded_at, uploaded_remote_path FROM pending_uploads WHERE file_path = ?',
+      ['documents/a.jpg']
+    );
+    // Re-queued for move; old location preserved so processOne grace-deletes it.
+    expect(row?.uploaded_at).toBeNull();
+    expect(row?.uploaded_remote_path).toBe('Dacia/RCA/a.jpg');
+  });
+
+  it('does NOT reset a row whose structured target equals its current location', async () => {
+    await db.runAsync(
+      `INSERT INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at, uploaded_remote_path)
+       VALUES (?, ?, ?, ?, ?)`,
+      'documents/b.jpg',
+      0,
+      Date.now(),
+      Date.now(),
+      'Dacia/RCA/b.jpg'
+    );
+
+    await reconcileRenamedFiles({ 'documents/b.jpg': 'Dacia/RCA/b.jpg' });
+
+    const row = await db.getFirstAsync<{ uploaded_at: number | null }>(
+      'SELECT uploaded_at FROM pending_uploads WHERE file_path = ?',
+      ['documents/b.jpg']
+    );
+    expect(row?.uploaded_at).not.toBeNull();
   });
 });

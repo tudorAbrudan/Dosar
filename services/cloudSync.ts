@@ -536,7 +536,7 @@ async function rehomeFlatFilesIfNeeded(): Promise<void> {
  * mutare. `uploaded_remote_path` rămâne locația veche → `processOne` o grace-șterge
  * după re-upload la noua cale. Folosește `structuredMap` deja construit (ieftin).
  */
-async function reconcileRenamedFiles(structuredMap: Record<string, string>): Promise<void> {
+export async function reconcileRenamedFiles(structuredMap: Record<string, string>): Promise<void> {
   const rows = await db.getAllAsync<{
     id: number;
     file_path: string;
