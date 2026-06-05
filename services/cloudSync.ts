@@ -8,7 +8,8 @@ import * as docs from './documents';
 import * as fuel from './fuel';
 import * as maintenance from './maintenance';
 import { getCustomTypes } from './customTypes';
-import { toFileUri } from './fileUtils';
+import { toFileUri, toRelativePath } from './fileUtils';
+import { buildEntityFileMap, sanitizeFolderName, type EntityNameMaps } from './fileOrganization';
 import { getCloudEncryptionEnabled } from './settings';
 import {
   PasswordRequiredError,
@@ -43,7 +44,7 @@ import type {
 const CLOUD_ROOT = 'Dosar';
 const MANIFEST_PATH = `${CLOUD_ROOT}/manifest.json`;
 const META_PATH = `${CLOUD_ROOT}/manifest.meta.json`;
-const MANIFEST_VERSION = 3; // v3: medical plaintext (spec 2026-06-05)
+const MANIFEST_VERSION = 4; // v4: structured file folders (fileMap)
 
 export { CloudQuotaError, detectQuotaError } from './cloud/errors';
 import { CloudQuotaError, detectQuotaError } from './cloud/errors';
@@ -73,6 +74,7 @@ interface ManifestPayload {
   medicalDocumentSummaries: MedicalDocumentSummary[];
   medicalShares: MedicalShare[];
   reminders: Reminder[];
+  fileMap: Record<string, string>;
 }
 
 export async function buildManifestPayload(): Promise<ManifestPayload> {
@@ -120,6 +122,41 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     db.getAllAsync<Reminder>('SELECT * FROM reminders'),
   ]);
 
+  // fileMap: disk relPath → remote relPath. Sursa primară = locația reală
+  // (uploaded_remote_path); fallback = calea structurată calculată (fișiere noi
+  // neuploadate încă). Astfel restore-ul găsește fiecare fișier unde chiar e,
+  // iar conversia flat→structurat se face progresiv (vezi migrarea re-home).
+  const nameMaps: EntityNameMaps = {
+    personNames: new Map(persons.map(p => [p.id, p.name])),
+    vehicleNames: new Map(vehicles.map(v => [v.id, v.name])),
+    propertyNames: new Map(properties.map(p => [p.id, p.name])),
+    cardNames: new Map(
+      cards.map(c => [c.id, c.nickname ? `${c.nickname} ····${c.last4}` : `Card ····${c.last4}`])
+    ),
+    animalNames: new Map(animals.map(a => [a.id, a.name])),
+    companyNames: new Map(companies.map(c => [c.id, c.name])),
+    customTypeNames: new Map(customTypes.map(ct => [ct.id, ct.name])),
+  };
+  const structuredMap = buildEntityFileMap(documents, allPages, nameMaps);
+  // vehicle photos (paritate cu ZIP)
+  for (const v of vehicles) {
+    if (!v.photo_uri) continue;
+    const rel = toRelativePath(v.photo_uri);
+    if (!rel || structuredMap[rel]) continue;
+    structuredMap[rel] = `Vehicule/${sanitizeFolderName(v.name)}/photo.jpg`;
+  }
+  // Suprascrie cu locația reală acolo unde diferă (fișier deja urcat la o cale).
+  const realLocations = await db.getAllAsync<{
+    file_path: string;
+    uploaded_remote_path: string | null;
+  }>(
+    'SELECT file_path, uploaded_remote_path FROM pending_uploads WHERE uploaded_remote_path IS NOT NULL'
+  );
+  const fileMap: Record<string, string> = { ...structuredMap };
+  for (const r of realLocations) {
+    fileMap[toRelativePath(r.file_path)] = r.uploaded_remote_path as string;
+  }
+
   const payload: ManifestPayload = {
     version: MANIFEST_VERSION,
     exportDate: new Date().toISOString(),
@@ -142,6 +179,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     medicalDocumentSummaries,
     medicalShares,
     reminders,
+    fileMap,
   };
 
   return payload;
