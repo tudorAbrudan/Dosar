@@ -833,6 +833,24 @@ try {
   // indexul există deja
 }
 
+// Migrare: pending_uploads.uploaded_remote_path — calea relativă remote (sub
+// files/) unde fișierul e stocat curent în iCloud. NULL = neuploadat încă.
+// Sursa de adevăr pentru move-on-rename + pentru fileMap-ul manifestului.
+try {
+  db.execSync('ALTER TABLE pending_uploads ADD COLUMN uploaded_remote_path TEXT');
+} catch {
+  // coloana există deja
+}
+
+// Migrare: cloud_pending_deletes.remote_rel — calea relativă remote exactă de
+// șters (sub files/). Permite ștergerea locației VECHI după un move, nu doar a
+// basename-ului din file_path.
+try {
+  db.execSync('ALTER TABLE cloud_pending_deletes ADD COLUMN remote_rel TEXT');
+} catch {
+  // coloana există deja
+}
+
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
 // origin: 'ai' | 'derived' | 'manual' — pentru filtrare și audit.
