@@ -80,9 +80,20 @@ export async function insertObservation(
         needs_review, user_corrected, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     [
-      id, input.medical_record_id, input.source_document_id, input.name, input.value,
-      input.unit, input.ref_min, input.ref_max, input.observed_at, input.category,
-      input.confidence, needsReview, now, now,
+      id,
+      input.medical_record_id,
+      input.source_document_id,
+      input.name,
+      input.value,
+      input.unit,
+      input.ref_min,
+      input.ref_max,
+      input.observed_at,
+      input.category,
+      input.confidence,
+      needsReview,
+      now,
+      now,
     ]
   );
   emit('entities:changed');
@@ -251,7 +262,7 @@ export async function groupByName(
   options?: { includeNarrative?: boolean }
 ): Promise<ObservationGroup[]> {
   const all = await listObservationsByRecord(recordId);
-  const filtered = options?.includeNarrative ? all : all.filter((o) => o.category !== 'altele');
+  const filtered = options?.includeNarrative ? all : all.filter(o => o.category !== 'altele');
   const map = new Map<string, ObservationGroup>();
   for (const o of filtered) {
     const key = o.name.trim().toLowerCase();
@@ -337,7 +348,13 @@ export async function getObservationCountsByDocument(
   return map;
 }
 
-export type ObservationStatus = 'normal' | 'high' | 'low' | 'criticalHigh' | 'criticalLow' | 'unknown';
+export type ObservationStatus =
+  | 'normal'
+  | 'high'
+  | 'low'
+  | 'criticalHigh'
+  | 'criticalLow'
+  | 'unknown';
 
 function parseNum(s: string | null | undefined): number | null {
   if (s === null || s === undefined) return null;

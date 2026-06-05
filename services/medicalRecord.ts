@@ -81,12 +81,16 @@ export async function createMedicalRecord(input: CreateMedicalRecordInput): Prom
         created_at, updated_at)
      VALUES (?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      id, input.person_id, input.name, MEDICAL_ENCRYPTION_REF,
+      id,
+      input.person_id,
+      input.name,
+      MEDICAL_ENCRYPTION_REF,
       input.blood_group ?? null,
       input.allergies ?? null,
       input.emergency_contact_name ?? null,
       input.emergency_contact_phone ?? null,
-      now, now,
+      now,
+      now,
     ]
   );
   await assignNextOrder('medical_record', id);

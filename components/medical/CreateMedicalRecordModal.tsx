@@ -94,7 +94,18 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
     } finally {
       setSaving(false);
     }
-  }, [saving, canSave, selectedPerson, dosarName, aiToggle, bloodGroup, allergies, emergencyContactName, emergencyContactPhone, onCreated]);
+  }, [
+    saving,
+    canSave,
+    selectedPerson,
+    dosarName,
+    aiToggle,
+    bloodGroup,
+    allergies,
+    emergencyContactName,
+    emergencyContactPhone,
+    onCreated,
+  ]);
 
   const handleConsentAccept = useCallback(async () => {
     if (!pendingId) {
@@ -121,7 +132,8 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
     setShowConsent(false);
     const id = pendingId;
     setPendingId(null);
-    if (id) onCreated(id); // dosar creat fără AI
+    if (id)
+      onCreated(id); // dosar creat fără AI
     else onClose();
   }, [pendingId, onCreated, onClose]);
 
@@ -148,7 +160,12 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
           <View>
             <Text style={[styles.label, { color: palette.text }]}>Persoană</Text>
             {persons.length === 0 ? (
-              <View style={[styles.emptyBox, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+              <View
+                style={[
+                  styles.emptyBox,
+                  { borderColor: palette.border, backgroundColor: palette.surface },
+                ]}
+              >
                 <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
                   Adaugă mai întâi o persoană în Entități → Persoane
                 </Text>
@@ -174,9 +191,7 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
                     >
                       <View style={styles.personRowInner}>
                         <Text style={[styles.personName, { color: palette.text }]}>{p.name}</Text>
-                        {selected && (
-                          <Text style={[styles.checkmark, { color: primary }]}>✓</Text>
-                        )}
+                        {selected && <Text style={[styles.checkmark, { color: primary }]}>✓</Text>}
                       </View>
                     </Pressable>
                   );
@@ -248,7 +263,14 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
                   onChangeText={setBloodGroup}
                   placeholder="ex. A pozitiv, 0 negativ"
                   placeholderTextColor={palette.textSecondary}
-                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+                  style={[
+                    styles.input,
+                    {
+                      color: palette.text,
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                    },
+                  ]}
                 />
               </View>
               {/* Alergii */}
@@ -263,7 +285,15 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
                   placeholderTextColor={palette.textSecondary}
                   multiline
                   numberOfLines={2}
-                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, minHeight: 60 }]}
+                  style={[
+                    styles.input,
+                    {
+                      color: palette.text,
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      minHeight: 60,
+                    },
+                  ]}
                 />
               </View>
               {/* Contact urgență */}
@@ -276,7 +306,15 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
                   onChangeText={setEmergencyContactName}
                   placeholder="Nume"
                   placeholderTextColor={palette.textSecondary}
-                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, marginBottom: 8 }]}
+                  style={[
+                    styles.input,
+                    {
+                      color: palette.text,
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                      marginBottom: 8,
+                    },
+                  ]}
                 />
                 <TextInput
                   value={emergencyContactPhone}
@@ -284,7 +322,14 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
                   placeholder="Telefon"
                   placeholderTextColor={palette.textSecondary}
                   keyboardType="phone-pad"
-                  style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+                  style={[
+                    styles.input,
+                    {
+                      color: palette.text,
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                    },
+                  ]}
                 />
               </View>
             </View>

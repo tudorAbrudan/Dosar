@@ -2,7 +2,15 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import JSZip from 'jszip';
-import type { DocumentType, EntityType, MedicalRecord, MedicalChatThread, MedicalDocumentSummary, MedicalShare, Reminder } from '@/types';
+import type {
+  DocumentType,
+  EntityType,
+  MedicalRecord,
+  MedicalChatThread,
+  MedicalDocumentSummary,
+  MedicalShare,
+  Reminder,
+} from '@/types';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -72,7 +80,11 @@ function buildFileMap(
     return DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type;
   }
 
-  function zipPath(entityName: string, doc: (typeof allDocuments)[number], diskRelPath: string): string {
+  function zipPath(
+    entityName: string,
+    doc: (typeof allDocuments)[number],
+    diskRelPath: string
+  ): string {
     const filename = diskRelPath.split('/').pop() ?? diskRelPath;
     const ef = sanitizeFolderName(entityName);
     const tf = sanitizeFolderName(docTypeFolder(doc));
@@ -819,15 +831,18 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
            created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          r.id as string, r.person_id as string, r.name as string,
+          r.id as string,
+          r.person_id as string,
+          r.name as string,
           (r.ai_consent_at as string | null) ?? null,
-          ((r.ai_consent_version as number | null) ?? 1),
+          (r.ai_consent_version as number | null) ?? 1,
           r.encryption_key_ref as string,
           (r.blood_group as string | null) ?? null,
           (r.allergies as string | null) ?? null,
           (r.emergency_contact_name as string | null) ?? null,
           (r.emergency_contact_phone as string | null) ?? null,
-          r.created_at as string, r.updated_at as string,
+          r.created_at as string,
+          r.updated_at as string,
         ]
       );
     } catch (e) {
@@ -843,7 +858,8 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
            user_corrected, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          o.id as string, o.medical_record_id as string,
+          o.id as string,
+          o.medical_record_id as string,
           (o.source_document_id as string | null) ?? null,
           (o.name as string | null) ?? '[indisponibil]',
           (o.value as string | null) ?? null,
@@ -855,7 +871,8 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
           o.confidence as number,
           o.needs_review ? 1 : 0,
           o.user_corrected ? 1 : 0,
-          o.created_at as string, o.updated_at as string,
+          o.created_at as string,
+          o.updated_at as string,
         ]
       );
     } catch (e) {
@@ -869,8 +886,11 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
           (id, medical_record_id, title, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
         [
-          t.id as string, t.medical_record_id as string, t.title as string,
-          t.created_at as string, t.updated_at as string,
+          t.id as string,
+          t.medical_record_id as string,
+          t.title as string,
+          t.created_at as string,
+          t.updated_at as string,
         ]
       );
     } catch (e) {
@@ -884,7 +904,9 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
           (id, thread_id, role, content, citations_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
-          m.id as string, m.thread_id as string, m.role as string,
+          m.id as string,
+          m.thread_id as string,
+          m.role as string,
           (m.content as string | null) ?? '[mesaj indisponibil]',
           (m.citations_json as string | null) ?? null,
           m.created_at as string,
@@ -901,7 +923,9 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
           (document_id, summary, generated_at, model_used)
          VALUES (?, ?, ?, ?)`,
         [
-          s.document_id as string, s.summary as string, s.generated_at as string,
+          s.document_id as string,
+          s.summary as string,
+          s.generated_at as string,
           (s.model_used as string | null) ?? null,
         ]
       );
@@ -916,9 +940,13 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
           (id, medical_record_id, created_at, expires_at, size_bytes, doc_count, obs_count, revoked_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          sh.id as string, sh.medical_record_id as string,
-          sh.created_at as string, sh.expires_at as string,
-          sh.size_bytes as number, sh.doc_count as number, sh.obs_count as number,
+          sh.id as string,
+          sh.medical_record_id as string,
+          sh.created_at as string,
+          sh.expires_at as string,
+          sh.size_bytes as number,
+          sh.doc_count as number,
+          sh.obs_count as number,
           (sh.revoked_at as string | null) ?? null,
         ]
       );
@@ -930,7 +958,7 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
   // ── Restaurare remindere ────────────────────────────────────────────────────
   // optional pentru backward compat cu backup-uri mai vechi (fără câmpul reminders)
   if (Array.isArray(payload.reminders)) {
-    for (const r of (payload.reminders as AnyRecord[])) {
+    for (const r of payload.reminders as AnyRecord[]) {
       try {
         await db.runAsync(
           `INSERT OR REPLACE INTO reminders (
