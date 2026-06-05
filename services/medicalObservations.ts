@@ -1,6 +1,7 @@
 /**
- * CRUD pentru `medical_observations` — câmpurile sensibile (name, value,
- * ref_min, ref_max) sunt criptate AES-GCM cu AAD = medical_record_id.
+ * CRUD pentru `medical_observations` — câmpurile (name, value, ref_min, ref_max)
+ * se stochează plaintext ca TEXT (spec 2026-06-05); protejate de App Lock +
+ * sandbox iOS.
  *
  * Threshold needs_review: `confidence < 0.7` → flag pentru review user.
  *
@@ -10,13 +11,6 @@
  * `deleteObservationsBySourceDocument(docId)` înainte.
  */
 import { db, generateId } from './db';
-import {
-  encryptField,
-  encryptFieldOpt,
-  decryptField,
-  decryptFieldOpt,
-  decryptFieldOrNull,
-} from './medicalCrypto';
 import { emit } from './events';
 import type { MedicalObservation, ObservationCategory } from '@/types';
 
@@ -39,11 +33,11 @@ interface ObservationRow {
   id: string;
   medical_record_id: string;
   source_document_id: string | null;
-  name_enc: Uint8Array;
-  value_enc: Uint8Array | null;
+  name: string;
+  value: string | null;
   unit: string | null;
-  ref_min_enc: Uint8Array | null;
-  ref_max_enc: Uint8Array | null;
+  ref_min: string | null;
+  ref_max: string | null;
   observed_at: string | null;
   category: string | null;
   confidence: number;
@@ -53,23 +47,16 @@ interface ObservationRow {
   updated_at: string;
 }
 
-function toBytes(blob: Uint8Array | ArrayBuffer | null | undefined): Uint8Array | null {
-  if (!blob) return null;
-  if (blob instanceof Uint8Array) return blob;
-  return new Uint8Array(blob);
-}
-
-async function rowToObs(r: ObservationRow): Promise<MedicalObservation> {
-  const recordId = r.medical_record_id;
+function rowToObs(r: ObservationRow): MedicalObservation {
   return {
     id: r.id,
-    medical_record_id: recordId,
+    medical_record_id: r.medical_record_id,
     source_document_id: r.source_document_id,
-    name: (await decryptFieldOrNull(toBytes(r.name_enc), recordId)) ?? '[indisponibil]',
-    value: await decryptFieldOpt(toBytes(r.value_enc), recordId),
+    name: r.name,
+    value: r.value,
     unit: r.unit,
-    ref_min: await decryptFieldOpt(toBytes(r.ref_min_enc), recordId),
-    ref_max: await decryptFieldOpt(toBytes(r.ref_max_enc), recordId),
+    ref_min: r.ref_min,
+    ref_max: r.ref_max,
     observed_at: r.observed_at,
     category: (r.category ?? 'altele') as ObservationCategory,
     confidence: r.confidence,
@@ -85,34 +72,17 @@ export async function insertObservation(
 ): Promise<MedicalObservation> {
   const id = generateId();
   const now = new Date().toISOString();
-  const aad = input.medical_record_id;
-  const nameEnc = await encryptField(input.name, aad);
-  const valueEnc = await encryptFieldOpt(input.value, aad);
-  const minEnc = await encryptFieldOpt(input.ref_min, aad);
-  const maxEnc = await encryptFieldOpt(input.ref_max, aad);
   const needsReview = input.confidence < REVIEW_THRESHOLD ? 1 : 0;
-
   await db.runAsync(
     `INSERT INTO medical_observations
-       (id, medical_record_id, source_document_id, name_enc, value_enc, unit,
-        ref_min_enc, ref_max_enc, observed_at, category, confidence,
+       (id, medical_record_id, source_document_id, name, value, unit,
+        ref_min, ref_max, observed_at, category, confidence,
         needs_review, user_corrected, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     [
-      id,
-      input.medical_record_id,
-      input.source_document_id,
-      nameEnc,
-      valueEnc,
-      input.unit,
-      minEnc,
-      maxEnc,
-      input.observed_at,
-      input.category,
-      input.confidence,
-      needsReview,
-      now,
-      now,
+      id, input.medical_record_id, input.source_document_id, input.name, input.value,
+      input.unit, input.ref_min, input.ref_max, input.observed_at, input.category,
+      input.confidence, needsReview, now, now,
     ]
   );
   emit('entities:changed');
@@ -153,7 +123,7 @@ export async function listObservationsByRecord(
   sql +=
     ' ORDER BY CASE WHEN observed_at IS NULL THEN 1 ELSE 0 END, observed_at DESC, created_at DESC';
   const rows = await db.getAllAsync<ObservationRow>(sql, params);
-  return Promise.all(rows.map(rowToObs));
+  return rows.map(rowToObs);
 }
 
 export async function listObservationsBySourceDocument(
@@ -163,7 +133,7 @@ export async function listObservationsBySourceDocument(
     'SELECT * FROM medical_observations WHERE source_document_id = ?',
     [documentId]
   );
-  return Promise.all(rows.map(rowToObs));
+  return rows.map(rowToObs);
 }
 
 export interface UpdateObservationPatch {
@@ -182,30 +152,29 @@ export interface UpdateObservationPatch {
 export async function updateObservation(id: string, patch: UpdateObservationPatch): Promise<void> {
   const existing = await getObservation(id);
   if (!existing) throw new Error('Observația medicală nu există.');
-  const aad = existing.medical_record_id;
   const now = new Date().toISOString();
   const sets: string[] = [];
-  const params: (string | number | Uint8Array | null)[] = [];
+  const params: (string | number | null)[] = [];
 
   if (patch.name !== undefined) {
-    sets.push('name_enc = ?');
-    params.push(await encryptField(patch.name, aad));
+    sets.push('name = ?');
+    params.push(patch.name);
   }
   if (patch.value !== undefined) {
-    sets.push('value_enc = ?');
-    params.push(await encryptFieldOpt(patch.value, aad));
+    sets.push('value = ?');
+    params.push(patch.value);
   }
   if (patch.unit !== undefined) {
     sets.push('unit = ?');
     params.push(patch.unit);
   }
   if (patch.ref_min !== undefined) {
-    sets.push('ref_min_enc = ?');
-    params.push(await encryptFieldOpt(patch.ref_min, aad));
+    sets.push('ref_min = ?');
+    params.push(patch.ref_min);
   }
   if (patch.ref_max !== undefined) {
-    sets.push('ref_max_enc = ?');
-    params.push(await encryptFieldOpt(patch.ref_max, aad));
+    sets.push('ref_max = ?');
+    params.push(patch.ref_max);
   }
   if (patch.observed_at !== undefined) {
     sets.push('observed_at = ?');
