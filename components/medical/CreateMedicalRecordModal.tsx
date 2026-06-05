@@ -10,7 +10,6 @@ import {
   getMedicalRecordByPersonId,
   setAiConsent,
 } from '@/services/medicalRecord';
-import { ensureMedicalMasterKey } from '@/services/medicalCrypto';
 import { useEntities } from '@/hooks/useEntities';
 import { MedicalConsentBody } from './MedicalConsentModal';
 import type { Person } from '@/types';
@@ -70,7 +69,6 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
         );
         return;
       }
-      await ensureMedicalMasterKey();
       const rec = await createMedicalRecord({
         person_id: selectedPerson.id,
         name: dosarName.trim(),

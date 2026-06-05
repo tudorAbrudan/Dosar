@@ -13,11 +13,13 @@
  * sensibile sunt în `medical_observations` și `medical_chat_messages`.
  */
 import { db, generateId } from './db';
-import { ensureMedicalMasterKey, MEDICAL_MASTER_KEY_REF } from './medicalCrypto';
 import { assignNextOrder, removeOrder } from './entityOrder';
 import { emit } from './events';
 import { getPendingReminders, type ActionableItem } from './documents';
 import type { MedicalRecord, Person } from '@/types';
+
+// Coloana `encryption_key_ref` rămâne în schemă (NOT NULL) dar nu mai referă o cheie reală.
+const MEDICAL_ENCRYPTION_REF = 'plaintext-v2';
 
 const MEDICAL_DOC_TYPES_SQL = `(
   'analize_medicale','reteta_medicala','scrisoare_medicala',
@@ -70,7 +72,6 @@ export interface CreateMedicalRecordInput {
 }
 
 export async function createMedicalRecord(input: CreateMedicalRecordInput): Promise<MedicalRecord> {
-  await ensureMedicalMasterKey();
   const id = generateId();
   const now = new Date().toISOString();
   await db.runAsync(
@@ -80,7 +81,7 @@ export async function createMedicalRecord(input: CreateMedicalRecordInput): Prom
         created_at, updated_at)
      VALUES (?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      id, input.person_id, input.name, MEDICAL_MASTER_KEY_REF,
+      id, input.person_id, input.name, MEDICAL_ENCRYPTION_REF,
       input.blood_group ?? null,
       input.allergies ?? null,
       input.emergency_contact_name ?? null,
