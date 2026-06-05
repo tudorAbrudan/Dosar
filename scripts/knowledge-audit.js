@@ -81,6 +81,7 @@ const ENTRIES = {
     manifestHash: { required: false },
     // Medical services — copiate în F2 din DosarMedical; appKnowledge actualizat la Task 29.
     medicalCrypto: { required: false },
+    medicalKeyMigration: { required: false },
     medicalRecord: { required: false },
     medicalObservations: { required: false },
     medicalFts: { required: false },
