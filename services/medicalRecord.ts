@@ -213,8 +213,7 @@ export async function revokeAiConsent(id: string): Promise<void> {
 
 /**
  * Șterge dosarul. Cascade pe medical_observations, medical_chat_threads și
- * medical_chat_messages prin FOREIGN KEY ON DELETE CASCADE. NU șterge cheia
- * master AES (alte dosare ar putea o folosi încă).
+ * medical_chat_messages prin FOREIGN KEY ON DELETE CASCADE.
  */
 export async function deleteMedicalRecord(id: string): Promise<void> {
   // Cascade pe junction: FK ON DELETE pe document_entities nu există în schema,

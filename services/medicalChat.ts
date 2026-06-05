@@ -153,7 +153,6 @@ export async function listMessages(threadId: string): Promise<MedicalChatMessage
 
 interface InsertMessageArgs {
   thread_id: string;
-  recordId: string;
   role: MedicalChatRole;
   content: string;
   citations: MedicalChatCitation[];
@@ -208,7 +207,7 @@ function docLabel(
 export async function retrieveContext(recordId: string, query: string): Promise<RetrievedContext> {
   const a = analyzeQuery(query);
 
-  // Set A: structured lookup pe observații decriptate
+  // Set A: structured lookup pe observații
   const [allObs, customTypes] = await Promise.all([
     listObservationsByRecord(recordId),
     getCustomTypes(),
@@ -369,7 +368,6 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
 
   const userMsg = await insertMessage({
     thread_id: args.threadId,
-    recordId: args.recordId,
     role: 'user',
     content: args.question.trim(),
     citations: [],
@@ -412,7 +410,6 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
 
   const assistantMsg = await insertMessage({
     thread_id: args.threadId,
-    recordId: args.recordId,
     role: 'assistant',
     content: answer,
     citations,

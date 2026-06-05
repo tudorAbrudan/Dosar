@@ -246,8 +246,8 @@ export interface ObservationGroup {
 }
 
 /**
- * Grupare observații după nume normalizat (lowercase + trim). Decriptează totul
- * în memorie. Folosit pentru Tab Timeline din ecranul detaliu dosar.
+ * Grupare observații după nume normalizat (lowercase + trim). Folosit pentru
+ * Tab Timeline din ecranul detaliu dosar.
  *
  * Ordine grupuri: după `last_observed_at` descrescător (cel mai recent primul).
  * Ordine valori în grup: după `observed_at` crescător (cronologic ascendent, ca
@@ -325,7 +325,7 @@ export interface DocumentObservationStats {
 /**
  * Returnează un Map document_id → {total, needsReview} pentru toate
  * observațiile dintr-un dosar. Folosit de UI ca indicator de status al
- * extracției per document. Câmpurile COUNT / needs_review nu sunt criptate.
+ * extracției per document.
  */
 export async function getObservationCountsByDocument(
   recordId: string

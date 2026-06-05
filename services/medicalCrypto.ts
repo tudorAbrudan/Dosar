@@ -8,10 +8,9 @@ import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { gcm } from '@noble/ciphers/aes.js';
 
-/** ID-ul cheii curente — stocat pe `medical_record.encryption_key_ref` ca să
- * putem rota cheia în viitor (v2 → migrare blob-uri vechi → schimb ref). */
-export const MEDICAL_MASTER_KEY_REF = 'medical_master_key_v1';
-const MASTER_KEY_REF = MEDICAL_MASTER_KEY_REF;
+/** Cheia SecureStore sub care e păstrată cheia master AES (folosită doar la
+ * decriptarea de migrare a datelor vechi `_enc`). */
+const MASTER_KEY_REF = 'medical_master_key_v1';
 const IV_LEN = 12;
 const KEY_LEN = 32;
 
@@ -169,12 +168,6 @@ export async function deleteMedicalMasterKey(): Promise<void> {
   await SecureStore.deleteItemAsync(MASTER_KEY_REF);
 }
 
-/** Doar pentru teste — resetează state-ul în memorie. */
-export async function resetMedicalMasterKeyForTests(): Promise<void> {
-  _cachedKey = null;
-  await SecureStore.deleteItemAsync(MASTER_KEY_REF);
-}
-
 function getKeyOrThrow(): Uint8Array {
   if (!_cachedKey) {
     throw new Error('Cheia medicală nu e încărcată. Apelează ensureMedicalMasterKey() întâi.');
@@ -183,11 +176,11 @@ function getKeyOrThrow(): Uint8Array {
 }
 
 /**
- * Decriptează un blob produs de `encryptField`. Aruncă dacă AAD-ul diferă sau
- * dacă cheia nu mai e disponibilă (cheie pierdută → date nerecuperabile fără
- * backup).
+ * Decriptează un blob AES-GCM `[IV:12][CIPHERTEXT+TAG]`. Aruncă dacă AAD-ul
+ * diferă sau dacă cheia nu mai e disponibilă (cheie pierdută → date
+ * nerecuperabile fără backup).
  */
-export async function decryptField(blob: Uint8Array, medicalRecordId: string): Promise<string> {
+async function decryptField(blob: Uint8Array, medicalRecordId: string): Promise<string> {
   await ensureMedicalMasterKey();
   const key = getKeyOrThrow();
   if (blob.length < IV_LEN + 16) {
@@ -215,17 +208,4 @@ export async function decryptFieldOrNull(
   } catch {
     return null;
   }
-}
-
-/**
- * Variantă pentru câmpuri opționale la decriptare: dacă blob-ul e null,
- * întoarce null. Aruncă la AAD mismatch (folosit acolo unde semnalarea
- * coruptiei e dorită; pentru fallback silent foloseste `decryptFieldOrNull`).
- */
-export async function decryptFieldOpt(
-  blob: Uint8Array | null | undefined,
-  medicalRecordId: string
-): Promise<string | null> {
-  if (!blob || blob.length === 0) return null;
-  return decryptField(blob, medicalRecordId);
 }
