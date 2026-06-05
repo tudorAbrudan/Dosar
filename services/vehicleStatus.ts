@@ -5,7 +5,7 @@ import type { StatusSeverity } from '@/theme/colors';
 const CRITICAL_DAYS = 7;
 
 export type StatusItemRaw = {
-  key: 'rca' | 'casco' | 'itp' | 'fuel';
+  key: 'rca' | 'casco' | 'itp' | 'vigneta' | 'fuel';
   label: string;
   value: string;
   unit?: string;
@@ -86,9 +86,22 @@ function pickLatestTalonItp(docs: Document[]): { doc: Document; iso: string } | 
   return best;
 }
 
+function resolveItpExpiry(documents: Document[]): { doc: Document; iso: string } | undefined {
+  const itp = pickLatestDocWithExpiry(documents, 'itp');
+  const talonPick = pickLatestTalonItp(documents);
+  if (itp && talonPick) {
+    return itp.expiry_date! >= talonPick.iso
+      ? { doc: itp, iso: itp.expiry_date! }
+      : { doc: talonPick.doc, iso: talonPick.iso };
+  }
+  if (itp) return { doc: itp, iso: itp.expiry_date! };
+  if (talonPick) return { doc: talonPick.doc, iso: talonPick.iso };
+  return undefined;
+}
+
 function buildDocItem(
   doc: Document,
-  key: 'rca' | 'casco' | 'itp',
+  key: 'rca' | 'casco' | 'itp' | 'vigneta',
   label: string,
   notificationDays: number,
   today: Date,
@@ -120,27 +133,12 @@ export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
   // Pentru talon acceptăm și `metadata.itp_expiry_date` ca fallback pentru cazurile
   // în care OCR-ul nu a populat `expiry_date` direct (intrare manuală, import).
   // Dacă există în ambele, alegem expirarea cea mai târzie. Click pe brick → doc-sursă.
-  const itp = pickLatestDocWithExpiry(documents, 'itp');
-  const talonPick = pickLatestTalonItp(documents);
-  let itpSource: Document | undefined;
-  let itpIso: string | undefined;
-  if (itp && talonPick) {
-    if (itp.expiry_date! >= talonPick.iso) {
-      itpSource = itp;
-      itpIso = itp.expiry_date;
-    } else {
-      itpSource = talonPick.doc;
-      itpIso = talonPick.iso;
-    }
-  } else if (itp) {
-    itpSource = itp;
-    itpIso = itp.expiry_date;
-  } else if (talonPick) {
-    itpSource = talonPick.doc;
-    itpIso = talonPick.iso;
-  }
-  if (itpSource && itpIso)
-    items.push(buildDocItem(itpSource, 'itp', 'ITP', notificationDays, today, itpIso));
+  const itpResolved = resolveItpExpiry(documents);
+  if (itpResolved)
+    items.push(buildDocItem(itpResolved.doc, 'itp', 'ITP', notificationDays, today, itpResolved.iso));
+
+  const vigneta = pickLatestDocWithExpiry(documents, 'vigneta');
+  if (vigneta) items.push(buildDocItem(vigneta, 'vigneta', 'Rovinietă', notificationDays, today));
 
   if (fuelStats.avgConsumptionL100 !== undefined) {
     items.push({
@@ -155,4 +153,56 @@ export function buildVehicleStatusItems(args: BuildArgs): StatusItemRaw[] {
   }
 
   return items;
+}
+
+export type LegalObligationKey = 'rca' | 'itp' | 'vigneta';
+export type LegalObligationStatus = 'ok' | 'expiring' | 'expired' | 'missing';
+export type LegalObligation = {
+  key: LegalObligationKey;
+  label: string;
+  status: LegalObligationStatus;
+  expiryIso?: string;
+  daysRemaining?: number;
+  docId?: string;
+};
+
+const LEGAL_LABELS: Record<LegalObligationKey, string> = {
+  rca: 'RCA',
+  itp: 'ITP',
+  vigneta: 'Rovinietă',
+};
+
+function resolveLegalExpiry(
+  documents: Document[],
+  key: LegalObligationKey
+): { iso: string; docId: string } | undefined {
+  if (key === 'itp') {
+    const r = resolveItpExpiry(documents);
+    return r ? { iso: r.iso, docId: r.doc.id } : undefined;
+  }
+  const doc = pickLatestDocWithExpiry(documents, key);
+  return doc ? { iso: doc.expiry_date!, docId: doc.id } : undefined;
+}
+
+export function buildVehicleLegalStatus(
+  documents: Document[],
+  today: Date,
+  notificationDays: number
+): LegalObligation[] {
+  const keys: LegalObligationKey[] = ['rca', 'itp', 'vigneta'];
+  return keys.map(key => {
+    const r = resolveLegalExpiry(documents, key);
+    if (!r) return { key, label: LEGAL_LABELS[key], status: 'missing' as const };
+    const days = daysBetween(r.iso, today);
+    const status: LegalObligationStatus =
+      days < 0 ? 'expired' : days <= notificationDays ? 'expiring' : 'ok';
+    return {
+      key,
+      label: LEGAL_LABELS[key],
+      status,
+      expiryIso: r.iso,
+      daysRemaining: days,
+      docId: r.docId,
+    };
+  });
 }
