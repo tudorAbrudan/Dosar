@@ -74,6 +74,7 @@ const ENTRIES = {
     entityOrder: { required: false },
     events: { required: false },
     fileHash: { required: false },
+    fileOrganization: { required: false },
     fileUtils: { required: false },
     homeAlerts: { required: false },
     imageProcessing: { required: false },

@@ -11,13 +11,13 @@ import type {
   MedicalShare,
   Reminder,
 } from '@/types';
-import { DOCUMENT_TYPE_LABELS } from '@/types';
 import * as entities from './entities';
 import * as docs from './documents';
 import * as fuel from './fuel';
 import * as maintenance from './maintenance';
 import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
+import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
 import { db, generateId } from './db';
 import { emit } from './events';
@@ -32,86 +32,6 @@ async function readFileBase64(storedPath: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * Sanitizează un string pentru utilizare ca nume de folder în arhivă.
- */
-function sanitizeFolderName(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'General';
-}
-
-/**
- * Construiește un map: diskRelativePath → zipRelativePath (în interiorul files/).
- * Organizează fișierele în foldere cu numele entităților și tipului de document.
- */
-function buildFileMap(
-  allDocuments: Awaited<ReturnType<typeof docs.getDocuments>>,
-  allPages: Awaited<ReturnType<typeof docs.getAllDocumentPages>>,
-  personNames: Map<string, string>,
-  vehicleNames: Map<string, string>,
-  propertyNames: Map<string, string>,
-  cardNames: Map<string, string>,
-  animalNames: Map<string, string>,
-  companyNames: Map<string, string>,
-  customTypeNames: Map<string, string>
-): Record<string, string> {
-  const fileMap: Record<string, string> = {};
-  const docById = new Map(allDocuments.map(d => [d.id, d]));
-
-  function entityFolder(doc: (typeof allDocuments)[number]): string {
-    if (doc.vehicle_id) return vehicleNames.get(doc.vehicle_id) ?? 'General';
-    if (doc.person_id) return personNames.get(doc.person_id) ?? 'General';
-    if (doc.property_id) return propertyNames.get(doc.property_id) ?? 'General';
-    if (doc.animal_id) return animalNames.get(doc.animal_id) ?? 'General';
-    if (doc.company_id) return companyNames.get(doc.company_id) ?? 'General';
-    if (doc.card_id) return cardNames.get(doc.card_id) ?? 'General';
-    return 'General';
-  }
-
-  function docTypeFolder(doc: (typeof allDocuments)[number]): string {
-    // Pentru tipurile custom folosim numele real (ex „BCAA Card") în loc de
-    // label-ul generic „Tip personalizat" — altfel toate documentele custom
-    // ajung în același folder.
-    if (doc.type === 'custom' && doc.custom_type_id) {
-      const customName = customTypeNames.get(doc.custom_type_id);
-      if (customName) return customName;
-    }
-    return DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type;
-  }
-
-  function zipPath(
-    entityName: string,
-    doc: (typeof allDocuments)[number],
-    diskRelPath: string
-  ): string {
-    const filename = diskRelPath.split('/').pop() ?? diskRelPath;
-    const ef = sanitizeFolderName(entityName);
-    const tf = sanitizeFolderName(docTypeFolder(doc));
-    return `${ef}/${tf}/${filename}`;
-  }
-
-  for (const doc of allDocuments) {
-    if (!doc.file_path) continue;
-    const rel = toRelativePath(doc.file_path);
-    if (!fileMap[rel]) {
-      fileMap[rel] = zipPath(entityFolder(doc), doc, rel);
-    }
-  }
-
-  for (const page of allPages) {
-    if (!page.file_path) continue;
-    const rel = toRelativePath(page.file_path);
-    if (fileMap[rel]) continue;
-    const parentDoc = docById.get(page.document_id);
-    if (parentDoc) {
-      fileMap[rel] = zipPath(entityFolder(parentDoc), parentDoc, rel);
-    } else {
-      fileMap[rel] = rel; // fallback: cale originală
-    }
-  }
-
-  return fileMap;
 }
 
 /**
@@ -181,17 +101,16 @@ export async function exportBackup(): Promise<void> {
   const companyNames = new Map(companies.map(c => [c.id, c.name]));
   const customTypeNames = new Map(customTypes.map(ct => [ct.id, ct.name]));
 
-  const fileMap = buildFileMap(
-    documents,
-    allPages,
+  const maps: EntityNameMaps = {
     personNames,
     vehicleNames,
     propertyNames,
     cardNames,
     animalNames,
     companyNames,
-    customTypeNames
-  );
+    customTypeNames,
+  };
+  const fileMap = buildEntityFileMap(documents, allPages, maps);
 
   // Task 17: include vehicle photos in ZIP
   for (const v of vehicles) {
