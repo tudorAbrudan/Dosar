@@ -67,6 +67,9 @@ interface OldMsgRow {
 async function migrateObservations(database: MinimalDb): Promise<void> {
   if (!(await hasColumn(database, 'medical_observations', 'name_enc'))) return;
 
+  // Re-entrant: dacă un run anterior a fost întrerupt după CREATE dar înainte de
+  // DROP+RENAME, tabelul `_plain` rămâne orfan. Îl ștergem ca să repornim curat.
+  await database.execAsync('DROP TABLE IF EXISTS medical_observations_plain');
   await database.execAsync(`
     CREATE TABLE medical_observations_plain (
       id TEXT PRIMARY KEY,
@@ -131,6 +134,8 @@ async function migrateObservations(database: MinimalDb): Promise<void> {
 async function migrateChatMessages(database: MinimalDb): Promise<void> {
   if (!(await hasColumn(database, 'medical_chat_messages', 'content_enc'))) return;
 
+  // Re-entrant: vezi nota din migrateObservations.
+  await database.execAsync('DROP TABLE IF EXISTS medical_chat_messages_plain');
   await database.execAsync(`
     CREATE TABLE medical_chat_messages_plain (
       id TEXT PRIMARY KEY,
