@@ -492,12 +492,16 @@ Pentru `estimateRestoreSize` (linia ~773) — funcție separată care nu are pay
 
 > Destinația pe disk rămâne `${FileSystem.documentDirectory}${fileRel}` — neschimbată (calea pe disk vine din `file_path`, nu din remote).
 
-- [ ] **Step 3: Type-check**
+- [ ] **Step 3: Setează `uploaded_remote_path` pe rândurile restaurate**
+
+Restore-ul populează `pending_uploads` cu `uploaded_at` setat (fișiere deja sincronizate), dar lasă `uploaded_remote_path` NULL — ceea ce ar lăsa fișierele „sincronizate, locație necunoscută" și ar rupe move-on-rename pe device-ul nou. Găsește locul de după download unde se inserează/actualizează `pending_uploads` cu `uploaded_at` (caută `INSERT ... pending_uploads` / `UPDATE pending_uploads SET uploaded_at` în `restoreFromCloud`, ~liniile 1037-1075) și include `uploaded_remote_path = remoteRelFor(file_path)` (locația reală din manifest) pentru fiecare fișier restaurat. Astfel sursa de adevăr a locației rămâne corectă post-restore.
+
+- [ ] **Step 4: Type-check**
 
 Run: `npm run type-check`
 Expected: green.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add services/cloudSync.ts
@@ -536,21 +540,51 @@ async function rehomeFlatFilesIfNeeded(): Promise<void> {
 }
 ```
 
-- [ ] **Step 2: Apeleaz-o la începutul `processQueue`**
+- [ ] **Step 2: Reconcile pe rename — re-queue fișierele structurate a căror entitate s-a redenumit**
 
-În `processQueue`, după `reconcilePendingUploads()` și înainte de `buildStructuredFileMap()`:
+Gap critic (găsit la review T4/T5): un rename simplu NU mută fișierele deja sincronizate, fiindcă `processQueue` procesează doar `uploaded_at IS NULL`, iar rename-ul nu resetează `uploaded_at`. Fără asta, promisiunea „rename → fișier mutat la următorul backup" NU e respectată.
+
+Adaugă o funcție care, dat fiind `structuredMap`-ul curent, resetează `uploaded_at = NULL` pentru rândurile a căror locație reală (`uploaded_remote_path`) diferă de ținta structurată curentă — păstrând `uploaded_remote_path` ca locație VECHE, ca `processOne` să o grace-șteargă după re-upload:
+
 ```ts
-  await rehomeFlatFilesIfNeeded();
+/**
+ * Detectează fișiere deja sincronizate a căror cale structurată curentă diferă de
+ * locația reală (entitate redenumită / tip schimbat) și le re-queue-iește pentru
+ * mutare. `uploaded_remote_path` rămâne locația veche → `processOne` o grace-șterge
+ * după re-upload la noua cale. Folosește `structuredMap` deja construit (ieftin).
+ */
+async function reconcileRenamedFiles(structuredMap: Record<string, string>): Promise<void> {
+  const rows = await db.getAllAsync<{ id: number; file_path: string; uploaded_remote_path: string }>(
+    'SELECT id, file_path, uploaded_remote_path FROM pending_uploads WHERE uploaded_at IS NOT NULL AND uploaded_remote_path IS NOT NULL'
+  );
+  for (const r of rows) {
+    const target = structuredMap[toRelativePath(r.file_path)];
+    if (target && target !== r.uploaded_remote_path) {
+      await db.runAsync('UPDATE pending_uploads SET uploaded_at = NULL WHERE id = ?', [r.id]);
+    }
+  }
+}
 ```
 
-> Efect: la primul backup după update, fișierele vechi se re-urcă o dată la căile structurate; cele flat intră în grace-delete. Cost de bandă acceptat (spec). Idempotent — după conversie, `uploaded_remote_path` nu mai e NULL.
+- [ ] **Step 3: Wire ambele în `processQueue`**
 
-- [ ] **Step 3: Type-check + commit**
+În `processQueue`, ordinea:
+```ts
+  await reconcilePendingUploads();
+  await rehomeFlatFilesIfNeeded();            // flat legacy → marchează cu basename flat
+  const structuredMap = await buildStructuredFileMap();
+  await reconcileRenamedFiles(structuredMap); // rename → reset uploaded_at pe mismatch
+```
+(Dacă `buildStructuredFileMap()` era deja apelat în Task 4 după `reconcilePendingUploads`, mută-l aici și inserează `reconcileRenamedFiles` imediat după el, înainte de SELECT-ul cozii. Astfel rândurile resetate de `reconcileRenamedFiles` intră în SELECT-ul `WHERE uploaded_at IS NULL` din aceeași rulare.)
+
+> Efect: rename de entitate → `reconcileRenamedFiles` resetează `uploaded_at` → `processOne` re-urcă la calea nouă + grace-șterge cea veche. Converge. Cost de bandă la rename acceptat (spec).
+
+- [ ] **Step 4: Type-check + commit**
 
 Run: `npm run type-check`
 ```bash
 git add services/cloudSync.ts
-git commit -m "feat(cloud): one-time re-home of existing flat files to structured paths"
+git commit -m "feat(cloud): re-home flat files + reconcile renamed entities to move files"
 ```
 
 ---
