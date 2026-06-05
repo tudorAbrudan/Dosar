@@ -388,28 +388,35 @@ const DELETE_GRACE_SNAPSHOTS = 2;
  *
  * @throws când scrierea în SQLite eșuează.
  */
+/** Programează ștergerea unei căi remote (sub files/) cu grace period. */
+async function enqueueRemoteGraceDelete(filePath: string, remoteRel: string): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO cloud_pending_deletes (file_path, queued_at, snapshots_remaining, remote_rel)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(file_path) DO UPDATE SET
+       queued_at = excluded.queued_at,
+       snapshots_remaining = excluded.snapshots_remaining,
+       remote_rel = excluded.remote_rel`,
+    [filePath, Date.now(), DELETE_GRACE_SNAPSHOTS, remoteRel]
+  );
+}
+
 export async function dequeueFileDelete(filePath: string): Promise<void> {
   if (!filePath) return;
+  const existing = await db.getFirstAsync<{ uploaded_remote_path: string | null }>(
+    'SELECT uploaded_remote_path FROM pending_uploads WHERE file_path = ?',
+    [filePath]
+  );
   await db.runAsync('DELETE FROM pending_uploads WHERE file_path = ?', [filePath]);
   if (!(await cloudStorage.isAvailable())) return;
-  const remote = `${FILES_PREFIX}${fileNameFromPath(filePath)}`;
+  const remoteRel = existing?.uploaded_remote_path ?? fileNameFromPath(filePath);
+  const remote = remotePathForRel(remoteRel);
   try {
     if (!(await cloudStorage.exists(remote))) return;
   } catch {
     return;
   }
-  // Marcăm pentru ștergere amânată. ON CONFLICT resetează contorul ca să oferim
-  // grace period proaspăt pentru fiecare ciclu nou de ștergere (rar — același
-  // file_path nu se șterge de mai multe ori în practică, fiindcă file_path-ul
-  // e per-document UUID).
-  await db.runAsync(
-    `INSERT INTO cloud_pending_deletes (file_path, queued_at, snapshots_remaining)
-     VALUES (?, ?, ?)
-     ON CONFLICT(file_path) DO UPDATE SET
-       queued_at = excluded.queued_at,
-       snapshots_remaining = excluded.snapshots_remaining`,
-    [filePath, Date.now(), DELETE_GRACE_SNAPSHOTS]
-  );
+  await enqueueRemoteGraceDelete(filePath, remoteRel);
 }
 
 /**
@@ -428,11 +435,12 @@ async function processPendingDeletes(): Promise<void> {
      SET snapshots_remaining = snapshots_remaining - 1
      WHERE snapshots_remaining > 0`
   );
-  const due = await db.getAllAsync<{ file_path: string }>(
-    'SELECT file_path FROM cloud_pending_deletes WHERE snapshots_remaining <= 0'
+  const due = await db.getAllAsync<{ file_path: string; remote_rel: string | null }>(
+    'SELECT file_path, remote_rel FROM cloud_pending_deletes WHERE snapshots_remaining <= 0'
   );
   for (const row of due) {
-    const remote = `${FILES_PREFIX}${fileNameFromPath(row.file_path)}`;
+    const remoteRel = row.remote_rel ?? fileNameFromPath(row.file_path);
+    const remote = remotePathForRel(remoteRel);
     try {
       await cloudStorage.deleteFile(remote);
       await db.runAsync('DELETE FROM cloud_pending_deletes WHERE file_path = ?', [row.file_path]);
