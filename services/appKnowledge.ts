@@ -216,7 +216,7 @@ Tap pe orice reminder din Expirări te duce la documentul sursă. Pentru a anula
 ## Dosar medical
 
 - Entitate "Dosar medical" 1:1 cu o persoană. Stochează observații extrase din analize, vaccinuri, rețete, scrisori medicale, imagistică.
-- Toate datele sensibile sunt criptate local (AES-256-GCM, cheia în Keychain). Datele nu pleacă la AI fără consimțământul utilizatorului (per dosar + global din Setări → Asistent AI).
+- Datele medicale sunt stocate local pe device, protejate de App Lock (PIN/biometric) și de criptarea sistemului iOS; backup-ul în cloud poate fi criptat opțional cu parolă. Datele nu pleacă la AI fără consimțământul utilizatorului (per dosar + global din Setări → Asistent AI).
 - Timeline: grupare după parametru (HDL, TSH etc.), evoluție în timp cu sparkline, drill-down la documentul sursă.
 - Chat AI scoped pe dosar: răspunde cu citații obligatorii ([OBS:id] sau [DOC:tip|id]), niciodată diagnostic clinic.
 - Adăugare document medical: Entități → Dosar medical → tap pe dosar → tab Documente → "+". Picker tipuri restrâns la analize/rețete/etc.`;
