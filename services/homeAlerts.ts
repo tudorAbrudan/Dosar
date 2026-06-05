@@ -49,6 +49,12 @@ const VEHICLE_CHECKS: AlertCheck[] = [
     icon: 'checkmark-circle-outline',
     palette: iconColors.deepPurple,
   },
+  {
+    docType: 'vigneta',
+    message: name => `${name} nu are rovinietă`,
+    icon: 'pricetag-outline',
+    palette: iconColors.amber,
+  },
 ];
 
 const PERSON_CHECKS: AlertCheck[] = [
