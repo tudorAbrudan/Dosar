@@ -77,6 +77,46 @@ interface ManifestPayload {
   fileMap: Record<string, string>;
 }
 
+/**
+ * Construiește map-ul disk relPath → cale remote structurată (`<Entitate>/<TipDoc>/<filename>`)
+ * pentru toate documentele, paginile și pozele de vehicul. NU aplică override-ul de
+ * locație reală (`uploaded_remote_path`) — întoarce ținta structurată curentă, folosită
+ * atât de `buildManifestPayload` (cu override real) cât și de `processQueue` (ca țintă de upload).
+ */
+async function buildStructuredFileMap(): Promise<Record<string, string>> {
+  const [persons, vehicles, properties, cards, animals, companies, customTypes, documents, allPages] =
+    await Promise.all([
+      entities.getPersons(),
+      entities.getVehicles(),
+      entities.getProperties(),
+      entities.getCards(),
+      entities.getAnimals(),
+      entities.getCompanies(),
+      getCustomTypes(),
+      docs.getDocuments(),
+      docs.getAllDocumentPages(),
+    ]);
+  const nameMaps: EntityNameMaps = {
+    personNames: new Map(persons.map(p => [p.id, p.name])),
+    vehicleNames: new Map(vehicles.map(v => [v.id, v.name])),
+    propertyNames: new Map(properties.map(p => [p.id, p.name])),
+    cardNames: new Map(
+      cards.map(c => [c.id, c.nickname ? `${c.nickname} ····${c.last4}` : `Card ····${c.last4}`])
+    ),
+    animalNames: new Map(animals.map(a => [a.id, a.name])),
+    companyNames: new Map(companies.map(c => [c.id, c.name])),
+    customTypeNames: new Map(customTypes.map(ct => [ct.id, ct.name])),
+  };
+  const map = buildEntityFileMap(documents, allPages, nameMaps);
+  for (const v of vehicles) {
+    if (!v.photo_uri) continue;
+    const rel = toRelativePath(v.photo_uri);
+    if (!rel || map[rel]) continue;
+    map[rel] = `Vehicule/${sanitizeFolderName(v.name)}/photo.jpg`;
+  }
+  return map;
+}
+
 export async function buildManifestPayload(): Promise<ManifestPayload> {
   const [
     persons,
@@ -126,25 +166,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
   // (uploaded_remote_path); fallback = calea structurată calculată (fișiere noi
   // neuploadate încă). Astfel restore-ul găsește fiecare fișier unde chiar e,
   // iar conversia flat→structurat se face progresiv (vezi migrarea re-home).
-  const nameMaps: EntityNameMaps = {
-    personNames: new Map(persons.map(p => [p.id, p.name])),
-    vehicleNames: new Map(vehicles.map(v => [v.id, v.name])),
-    propertyNames: new Map(properties.map(p => [p.id, p.name])),
-    cardNames: new Map(
-      cards.map(c => [c.id, c.nickname ? `${c.nickname} ····${c.last4}` : `Card ····${c.last4}`])
-    ),
-    animalNames: new Map(animals.map(a => [a.id, a.name])),
-    companyNames: new Map(companies.map(c => [c.id, c.name])),
-    customTypeNames: new Map(customTypes.map(ct => [ct.id, ct.name])),
-  };
-  const structuredMap = buildEntityFileMap(documents, allPages, nameMaps);
-  // vehicle photos (paritate cu ZIP)
-  for (const v of vehicles) {
-    if (!v.photo_uri) continue;
-    const rel = toRelativePath(v.photo_uri);
-    if (!rel || structuredMap[rel]) continue;
-    structuredMap[rel] = `Vehicule/${sanitizeFolderName(v.name)}/photo.jpg`;
-  }
+  const structuredMap = await buildStructuredFileMap();
   // Suprascrie cu locația reală acolo unde diferă (fișier deja urcat la o cale).
   const realLocations = await db.getAllAsync<{
     file_path: string;
@@ -319,6 +341,11 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function fileNameFromPath(relPath: string): string {
   return relPath.split('/').pop() ?? relPath;
+}
+
+/** Calea remote completă pentru o cale relativă structurată (sub files/). */
+function remotePathForRel(remoteRel: string): string {
+  return `${FILES_PREFIX}${remoteRel}`;
 }
 
 /**
@@ -504,14 +531,17 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
 
   await reconcilePendingUploads();
 
+  const structuredMap = await buildStructuredFileMap();
+
   const encryptionEnabled = await getCloudEncryptionEnabled();
   const pending = await db.getAllAsync<{
     id: number;
     file_path: string;
     attempt_count: number;
     file_size: number | null;
+    uploaded_remote_path: string | null;
   }>(
-    `SELECT id, file_path, attempt_count, file_size FROM pending_uploads
+    `SELECT id, file_path, attempt_count, file_size, uploaded_remote_path FROM pending_uploads
      WHERE uploaded_at IS NULL AND attempt_count < ?
      ORDER BY id ASC`,
     [MAX_ATTEMPTS]
@@ -600,11 +630,16 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
         }
         base64 = await encryptBase64(base64, key);
       }
-      const remote = `${FILES_PREFIX}${fileNameFromPath(row.file_path)}`;
+      const targetRel = structuredMap[toRelativePath(row.file_path)] ?? fileNameFromPath(row.file_path);
+      const remote = remotePathForRel(targetRel);
       await cloudStorage.writeFile(remote, base64, 'base64');
+      // Move-on-rename: dacă fișierul era la altă cale remote, programează ștergerea celei vechi.
+      if (row.uploaded_remote_path && row.uploaded_remote_path !== targetRel) {
+        await enqueueRemoteGraceDelete(row.file_path, row.uploaded_remote_path);
+      }
       await db.runAsync(
-        'UPDATE pending_uploads SET uploaded_at = ?, last_error = NULL, file_size = ? WHERE id = ?',
-        [Date.now(), fileSize || null, row.id]
+        'UPDATE pending_uploads SET uploaded_at = ?, uploaded_remote_path = ?, last_error = NULL, file_size = ? WHERE id = ?',
+        [Date.now(), targetRel, fileSize || null, row.id]
       );
     } catch (e) {
       const isQuota = detectQuotaError(e);
