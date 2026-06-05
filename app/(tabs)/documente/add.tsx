@@ -36,6 +36,8 @@ import {
   getVehicleIdentifiers,
   setDocumentCalendarEventId,
 } from '@/services/documents';
+import { findOverlappingDoc, findMissingObligations } from '@/services/vehicleDocChecks';
+import * as settings from '@/services/settings';
 import {
   DOCUMENT_TYPE_LABELS,
   ENTITY_DOCUMENT_TYPES,
@@ -115,8 +117,16 @@ export default function AddDocumentScreen() {
     entityType?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
-  const { persons, properties, vehicles, cards, animals, companies, medicalRecords, resolveEntityName } =
-    useEntities();
+  const {
+    persons,
+    properties,
+    vehicles,
+    cards,
+    animals,
+    companies,
+    medicalRecords,
+    resolveEntityName,
+  } = useEntities();
   const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes } = useVisibilitySettings();
@@ -127,7 +137,9 @@ export default function AddDocumentScreen() {
       (params.restrict_to === 'medical' ? 'analize_medicale' : 'altul')
   );
   // Marker: utilizatorul a fixat manual tipul (din params sau din picker).
-  const userManuallySetTypeRef = useRef<boolean>(Boolean(params.type) || params.restrict_to === 'medical');
+  const userManuallySetTypeRef = useRef<boolean>(
+    Boolean(params.type) || params.restrict_to === 'medical'
+  );
   const [classifySheetVisible, setClassifySheetVisible] = useState(false);
   const [classifySheetTop3, setClassifySheetTop3] = useState<ClassifyCandidate[]>([]);
   const classifyResolverRef = useRef<((type: DocumentType | null) => void) | null>(null);
@@ -235,7 +247,15 @@ export default function AddDocumentScreen() {
   const animalId = params.animal_id;
   const companyId = params.company_id;
   const medicalRecordId = params.medical_record_id;
-  const hasParamLink = !!(personId || propertyId || vehicleId || cardId || animalId || companyId || medicalRecordId);
+  const hasParamLink = !!(
+    personId ||
+    propertyId ||
+    vehicleId ||
+    cardId ||
+    animalId ||
+    companyId ||
+    medicalRecordId
+  );
 
   useEffect(() => {
     if (entityLinks.length === 0) {
@@ -1047,6 +1067,30 @@ export default function AddDocumentScreen() {
       if (action !== 'save') return;
     }
 
+    const vehId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
+    if (vehId && (type === 'rca' || type === 'vigneta' || type === 'casco')) {
+      const vehDocs = await getDocumentsByEntity('vehicle_id', vehId);
+      const overlap = findOverlappingDoc(vehDocs, {
+        type,
+        issue_date: issueDateRef.current.trim() || undefined,
+        expiry_date: expiryDateRef.current.trim() || undefined,
+      });
+      if (overlap) {
+        const until = overlap.expiry_date ? overlap.expiry_date.split('-').reverse().join('.') : '';
+        const proceed = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Acoperire suprapusă',
+            `Ai deja un document „${DOCUMENT_TYPE_LABELS[type]}" valid${until ? ` până la ${until}` : ''} pe această mașină. Adaugi oricum?`,
+            [
+              { text: 'Anulează', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Adaugă oricum', onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!proceed) return;
+      }
+    }
+
     setLoading(true);
     try {
       const newDoc = await createDocument({
@@ -1079,6 +1123,39 @@ export default function AddDocumentScreen() {
 
       const finalExpiry = expiryDateRef.current.trim();
       const navigateBack = () => router.replace('/(tabs)/documente');
+      const finishOrPromptCoverage = async () => {
+        const vId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
+        if (!vId || !(type === 'rca' || type === 'itp' || type === 'vigneta')) {
+          navigateBack();
+          return;
+        }
+        const vDocs = await getDocumentsByEntity('vehicle_id', vId);
+        const notifDays = await settings.getNotificationDays();
+        const missing = findMissingObligations(vDocs, type, new Date(), notifDays);
+        if (missing.length === 0) {
+          navigateBack();
+          return;
+        }
+        const first = missing[0];
+        Alert.alert(
+          `${DOCUMENT_TYPE_LABELS[type]} salvat`,
+          `⚠️ ${first.label} ${first.status === 'missing' ? 'lipsește' : 'e expirat'} pe această mașină. Adaugi acum?`,
+          [
+            { text: 'Mai târziu', style: 'cancel', onPress: navigateBack },
+            {
+              text: `Adaugă ${first.label}`,
+              onPress: () => {
+                InteractionManager.runAfterInteractions(() => {
+                  router.replace({
+                    pathname: '/(tabs)/documente/add',
+                    params: { vehicle_id: vId, type: first.key },
+                  });
+                });
+              },
+            },
+          ]
+        );
+      };
       if (finalExpiry && isCalendarAvailable()) {
         const linkedVehicleId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
         const linkedPersonId = entityLinks.find(l => l.entityType === 'person')?.entityId;
@@ -1095,8 +1172,13 @@ export default function AddDocumentScreen() {
           expiryDate: finalExpiry,
           entityName,
           note: note.trim() || undefined,
-          displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
-          onDone: navigateBack,
+          displayLabel: getDocumentLabel(
+            { type, custom_type_id: customTypeId ?? undefined },
+            customTypes
+          ),
+          onDone: () => {
+            void finishOrPromptCoverage();
+          },
         });
         return;
       }
@@ -1116,7 +1198,7 @@ export default function AddDocumentScreen() {
         return;
       }
 
-      navigateBack();
+      await finishOrPromptCoverage();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva');
     } finally {
@@ -1295,7 +1377,10 @@ export default function AddDocumentScreen() {
                 expiryDate,
                 entityName: undefined,
                 note: note.trim() || undefined,
-                displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
+                displayLabel: getDocumentLabel(
+                  { type, custom_type_id: customTypeId ?? undefined },
+                  customTypes
+                ),
               });
               if (!id)
                 Alert.alert(
