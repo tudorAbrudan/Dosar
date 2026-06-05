@@ -172,20 +172,22 @@ describe('db.ts schema characterization', () => {
     expect(filePath?.notnull).toBe(1);
   });
 
-  it('medical_observations stores name_enc and value_enc as BLOB', async () => {
+  it('medical_observations stores name and value as plaintext TEXT', async () => {
     const cols = await db.getAllAsync<{ name: string; type: string }>(
       'PRAGMA table_info(medical_observations)'
     );
-    const blobs = cols.filter(c => c.type.toUpperCase() === 'BLOB').map(c => c.name);
-    expect(blobs).toEqual(expect.arrayContaining(['name_enc', 'value_enc']));
+    const names = cols.map(c => c.name);
+    expect(names).toEqual(expect.arrayContaining(['name', 'value', 'ref_min', 'ref_max']));
+    expect(names).not.toContain('name_enc');
   });
 
-  it('medical_chat_messages stores content_enc as BLOB', async () => {
+  it('medical_chat_messages stores content as plaintext TEXT', async () => {
     const cols = await db.getAllAsync<{ name: string; type: string }>(
       'PRAGMA table_info(medical_chat_messages)'
     );
-    const blobs = cols.filter(c => c.type.toUpperCase() === 'BLOB').map(c => c.name);
-    expect(blobs).toContain('content_enc');
+    const names = cols.map(c => c.name);
+    expect(names).toContain('content');
+    expect(names).not.toContain('content_enc');
   });
 
   // Notă: testele de constraints verifică PREZENȚA constraint-ului în schemă
