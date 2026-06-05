@@ -178,8 +178,8 @@ db.execSync(`
 
 // Schema medical (reintegrare din DosarMedical, v3.5.x → v3.6+).
 // 6 tabele + 1 virtual FTS5 + 3 triggeri pentru sincronizarea summary → FTS.
-// Toate cu CREATE IF NOT EXISTS — idempotent. Câmpurile *_enc sunt BLOB criptat
-// AES-256-GCM (vezi medicalCrypto.ts când va fi copiat în F2).
+// Toate cu CREATE IF NOT EXISTS — idempotent.
+// Datele medicale se stochează plaintext (vezi spec 2026-06-05); protejate de App Lock + sandbox iOS.
 try {
   db.execSync(`
     CREATE TABLE IF NOT EXISTS medical_record (
@@ -204,11 +204,11 @@ try {
       id TEXT PRIMARY KEY,
       medical_record_id TEXT NOT NULL REFERENCES medical_record(id) ON DELETE CASCADE,
       source_document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
-      name_enc BLOB NOT NULL,
-      value_enc BLOB,
+      name TEXT NOT NULL,
+      value TEXT,
       unit TEXT,
-      ref_min_enc BLOB,
-      ref_max_enc BLOB,
+      ref_min TEXT,
+      ref_max TEXT,
       observed_at TEXT,
       category TEXT NOT NULL,
       confidence REAL NOT NULL,
@@ -233,7 +233,7 @@ try {
       id TEXT PRIMARY KEY,
       thread_id TEXT NOT NULL REFERENCES medical_chat_threads(id) ON DELETE CASCADE,
       role TEXT NOT NULL,
-      content_enc BLOB NOT NULL,
+      content TEXT NOT NULL,
       citations_json TEXT,
       created_at TEXT NOT NULL
     );
@@ -871,5 +871,20 @@ try {
     await backfillDocumentExpiryReminders();
   } catch (e) {
     console.warn('[initDb] backfillDocumentExpiryReminders failed:', e instanceof Error ? e.message : e);
+  }
+})();
+
+// Migrare one-time: decriptează datele medicale _enc → coloane TEXT plain și
+// șterge cheia master (spec 2026-06-05). Idempotent: skip dacă tabelele sunt deja
+// în schema nouă. Lazy require pentru a evita import circular.
+(async () => {
+  try {
+    const { migrateMedicalEncToPlaintext } = require('./medicalKeyMigration');
+    await migrateMedicalEncToPlaintext();
+  } catch (e) {
+    console.warn(
+      '[initDb] migrateMedicalEncToPlaintext failed:',
+      e instanceof Error ? e.message : e
+    );
   }
 })();
