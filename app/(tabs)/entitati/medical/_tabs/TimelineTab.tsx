@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { View, FlatList, Pressable, StyleSheet, RefreshControl, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import { ObservationSparkline } from '@/components/medical/ObservationSparkline'
 import { getObservationStatus, type ObservationStatus } from '@/services/medicalObservations';
 import { OBSERVATION_CATEGORIES, getDocumentLabel } from '@/types';
 import { getDocumentById } from '@/services/documents';
+import { db } from '@/services/db';
+import { on as subscribe } from '@/services/events';
 import type { MedicalRecordStats } from '@/services/medicalRecord';
 import type { ObservationCategory } from '@/types';
 
@@ -55,18 +57,70 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
   const { groups, needsReviewCount, loading, refresh } = useMedicalObservations(recordId);
   const { customTypes } = useCustomTypes();
   const [filterCategory, setFilterCategory] = useState<ObservationCategory | null>(null);
+  // null = încă nu am verificat existența documentelor sursă (nu filtrăm încă,
+  // ca să nu pâlpâie ecranul gol). Un Set = ID-urile documentelor care chiar
+  // există în baza de date.
+  const [existingDocIds, setExistingDocIds] = useState<Set<string> | null>(null);
+
+  // Verifică ce documente sursă mai există (unele pot fi șterse). Recalculăm
+  // când se schimbă observațiile sau când se modifică documentele (ștergere).
+  const refreshExistence = useCallback(async () => {
+    const ids = [
+      ...new Set(
+        groups.flatMap(g => g.values.map(v => v.source_document_id).filter(Boolean))
+      ),
+    ] as string[];
+    if (ids.length === 0) {
+      setExistingDocIds(new Set());
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM documents WHERE id IN (${placeholders})`,
+      ids
+    );
+    setExistingDocIds(new Set(rows.map(r => r.id)));
+  }, [groups]);
+
+  useEffect(() => {
+    refreshExistence();
+  }, [refreshExistence]);
+
+  useEffect(() => {
+    const off = subscribe('documents:changed', () => {
+      refreshExistence();
+    });
+    return () => off();
+  }, [refreshExistence]);
+
+  // Filtrăm la nivel de valoare: păstrăm doar măsurătorile cu sursă încă
+  // existentă. Astfel numărul afișat („N măsurători"), graficul, „Ultima" și
+  // comportamentul la tap sunt consistente — fără valori orfane (sursă ștearsă
+  // sau nelegată) care umflau numărul dar n-aveau document de deschis.
+  // Un grup rămas fără nicio valoare cu sursă existentă dispare complet.
+  const sourcedGroups = useMemo(() => {
+    if (!existingDocIds) return groups; // existența încă se încarcă → arată tot
+    return groups
+      .map(g => ({
+        ...g,
+        values: g.values.filter(
+          v => v.source_document_id != null && existingDocIds.has(v.source_document_id)
+        ),
+      }))
+      .filter(g => g.values.length > 0);
+  }, [groups, existingDocIds]);
 
   const filteredGroups = useMemo(() => {
-    if (!filterCategory) return groups;
-    return groups.filter(g => g.category === filterCategory);
-  }, [groups, filterCategory]);
+    if (!filterCategory) return sourcedGroups;
+    return sourcedGroups.filter(g => g.category === filterCategory);
+  }, [sourcedGroups, filterCategory]);
 
-  // Categorii prezente în datele actuale, ca să nu afișăm chip-uri goale.
+  // Categorii prezente în datele actuale (cu sursă existentă), fără chip-uri goale.
   const activeCategories = useMemo(() => {
     const set = new Set<ObservationCategory>();
-    for (const g of groups) set.add(g.category);
+    for (const g of sourcedGroups) set.add(g.category);
     return OBSERVATION_CATEGORIES.filter(c => set.has(c));
-  }, [groups]);
+  }, [sourcedGroups]);
 
   const reviewCount = stats?.observations_needs_review ?? needsReviewCount;
 
@@ -141,36 +195,50 @@ export function TimelineTab({ recordId, stats, onChange }: Props) {
             ...new Set(item.values.map(v => v.source_document_id).filter(Boolean)),
           ] as string[];
 
+          // Sursele distincte care încă există (grupul e deja filtrat să aibă ≥1).
+          const existingDocIdsForItem = uniqueDocIds.filter(
+            id => existingDocIds?.has(id) ?? true
+          );
+          // Numărul de măsurători efective (valori cu sursă existentă).
+          const measurementsCount = item.values.length;
+
           const onTap = async () => {
-            if (uniqueDocIds.length === 0) return;
-            if (uniqueDocIds.length === 1) {
+            if (existingDocIdsForItem.length === 0) return;
+            // O singură măsurătoare → deschide direct documentul ei.
+            if (measurementsCount <= 1) {
               router.push({
                 pathname: '/(tabs)/documente/[id]',
-                params: { id: uniqueDocIds[0], from: 'medical', entityId: recordId },
+                params: { id: existingDocIdsForItem[0], from: 'medical', entityId: recordId },
               });
               return;
             }
-            const topIds = uniqueDocIds.slice(0, 5);
+            // Mai multe măsurători → arată lista documentelor-sursă (chiar dacă e
+            // unul singur, cu numărul de valori), ca să nu pară că se pierd /
+            // se confundă datele. Frecvent: aceeași analiză în 2 unități, dintr-un
+            // singur document.
+            const topIds = existingDocIdsForItem.slice(0, 8);
             const docs = await Promise.all(topIds.map(id => getDocumentById(id)));
-            const labels = docs.map((d, idx) => {
-              if (!d) return `Document ${idx + 1}`;
-              const typeLabel = getDocumentLabel(d, customTypes);
-              return `${typeLabel} — ${formatDocDateRo(d.issue_date)}`;
+            const options = topIds.map((id, idx) => {
+              const doc = docs[idx];
+              const count = item.values.filter(v => v.source_document_id === id).length;
+              const base = doc
+                ? `${getDocumentLabel(doc, customTypes)} — ${formatDocDateRo(doc.issue_date)}`
+                : 'Document';
+              return {
+                text: count > 1 ? `${base} · ${count} valori` : base,
+                onPress: () =>
+                  router.push({
+                    pathname: '/(tabs)/documente/[id]' as const,
+                    params: { id, from: 'medical', entityId: recordId },
+                  }),
+              };
             });
             Alert.alert(
-              'Surse multiple',
-              'Această valoare apare în mai multe documente. Alege unul:',
-              [
-                ...topIds.map((id, idx) => ({
-                  text: labels[idx] ?? `Document ${idx + 1}`,
-                  onPress: () =>
-                    router.push({
-                      pathname: '/(tabs)/documente/[id]',
-                      params: { id, from: 'medical', entityId: recordId },
-                    }),
-                })),
-                { text: 'Anulează', style: 'cancel' as const },
-              ]
+              `${item.name} · ${measurementsCount} măsurători`,
+              existingDocIdsForItem.length === 1
+                ? 'Toate valorile provin dintr-un singur document:'
+                : 'Documentele din care provin aceste valori:',
+              [...options, { text: 'Închide', style: 'cancel' as const }]
             );
           };
 

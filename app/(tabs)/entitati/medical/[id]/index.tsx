@@ -60,6 +60,7 @@ export default function MedicalRecordDetail() {
   const { persons } = useEntities();
   const { customTypes } = useCustomTypes();
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'timeline');
+  const [patientExpanded, setPatientExpanded] = useState(false);
   const [linkDocVisible, setLinkDocVisible] = useState(false);
   const [unlinkedMedDocs, setUnlinkedMedDocs] = useState<Document[]>([]);
 
@@ -287,66 +288,94 @@ export default function MedicalRecordDetail() {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-          {/* ── Patient info header ── */}
+          {/* ── Patient info header (colapsabil) ── */}
           {(linkedPerson || record.blood_group || record.allergies || record.emergency_contact_name || record.emergency_contact_phone) ? (
             <View style={[styles.patientHeader, { backgroundColor: palette.surface, borderBottomColor: palette.border }]}>
-              {linkedPerson ? (
-                <Pressable
-                  style={styles.patientPersonRow}
-                  onPress={() => router.push(`/(tabs)/entitati/${linkedPerson.id}`)}
-                  accessibilityLabel={`Navighează la persoana ${linkedPerson.name}`}
-                >
-                  <Ionicons name="person-outline" size={15} color={palette.textSecondary} />
-                  <Text style={[styles.patientPersonName, { color: palette.text }]}>
-                    {linkedPerson.name}
-                    {(() => {
-                      if (!linkedPerson.date_of_birth) return null;
-                      try {
-                        const ageYears = Math.floor(
-                          (Date.now() - new Date(linkedPerson.date_of_birth).getTime()) /
-                          (365.25 * 24 * 3600 * 1000)
-                        );
-                        if (isNaN(ageYears) || ageYears < 0) return null;
-                        return ` · ${ageYears} ani`;
-                      } catch {
-                        return null;
-                      }
-                    })()}
+              {/* Rând compact, mereu vizibil: persoană + grupă + buton extindere */}
+              <View style={styles.patientCompactRow}>
+                {linkedPerson ? (
+                  <Pressable
+                    style={styles.patientPersonRow}
+                    onPress={() => router.push(`/(tabs)/entitati/${linkedPerson.id}`)}
+                    accessibilityLabel={`Navighează la persoana ${linkedPerson.name}`}
+                  >
+                    <Ionicons name="person-outline" size={15} color={palette.textSecondary} />
+                    <Text style={[styles.patientPersonName, { color: palette.text }]} numberOfLines={1}>
+                      {linkedPerson.name}
+                      {(() => {
+                        if (!linkedPerson.date_of_birth) return null;
+                        try {
+                          const ageYears = Math.floor(
+                            (Date.now() - new Date(linkedPerson.date_of_birth).getTime()) /
+                            (365.25 * 24 * 3600 * 1000)
+                          );
+                          if (isNaN(ageYears) || ageYears < 0) return null;
+                          return ` · ${ageYears} ani`;
+                        } catch {
+                          return null;
+                        }
+                      })()}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Text style={[styles.patientPersonName, { color: palette.text }]} numberOfLines={1}>
+                    Date pacient
                   </Text>
-                  <Ionicons name="chevron-forward" size={14} color={palette.textSecondary} />
-                </Pressable>
-              ) : null}
-              {record.blood_group ? (
-                <View style={styles.patientInfoRow}>
-                  <Text style={[styles.patientInfoLabel, { color: palette.textSecondary }]}>Grupa sanguină</Text>
+                )}
+                {record.blood_group ? (
                   <View style={[styles.bloodGroupBadge, { backgroundColor: `${primary}22`, borderColor: `${primary}66` }]}>
                     <Text style={[styles.bloodGroupText, { color: primary }]}>{record.blood_group}</Text>
                   </View>
-                </View>
-              ) : null}
-              {record.allergies ? (
-                <View style={[styles.allergiesCard, { backgroundColor: statusColors.warningSurface, borderLeftColor: statusColors.warning }]}>
-                  <Ionicons name="warning-outline" size={16} color={statusColors.warning} />
-                  <View style={{ flex: 1, marginLeft: 8 }}>
-                    <Text style={[styles.allergiesLabel, { color: statusColors.warning }]}>Alergii</Text>
-                    <Text style={[styles.allergiesText, { color: palette.text }]}>{record.allergies}</Text>
-                  </View>
-                </View>
-              ) : null}
-              {(record.emergency_contact_name || record.emergency_contact_phone) ? (
-                <View style={styles.patientInfoRow}>
-                  <Ionicons name="call-outline" size={15} color={palette.textSecondary} />
-                  <View style={{ marginLeft: 6, flex: 1 }}>
-                    <Text style={[styles.patientInfoLabel, { color: palette.textSecondary }]}>Contact urgență</Text>
-                    {record.emergency_contact_name ? (
-                      <Text style={[styles.emergencyName, { color: palette.text }]}>{record.emergency_contact_name}</Text>
-                    ) : null}
-                    {record.emergency_contact_phone ? (
-                      <Pressable onPress={() => Linking.openURL(`tel:${record.emergency_contact_phone}`)}>
-                        <Text style={[styles.emergencyPhone, { color: primary }]}>{record.emergency_contact_phone}</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
+                ) : null}
+                {/* Indicator de alergii vizibil și colapsat (siguranță) */}
+                {record.allergies && !patientExpanded ? (
+                  <Ionicons name="warning" size={16} color={statusColors.warning} />
+                ) : null}
+                {(record.allergies || record.emergency_contact_name || record.emergency_contact_phone) ? (
+                  <Pressable
+                    onPress={() => setPatientExpanded(v => !v)}
+                    hitSlop={10}
+                    style={styles.patientToggle}
+                    accessibilityRole="button"
+                    accessibilityLabel={patientExpanded ? 'Ascunde detaliile pacientului' : 'Arată detaliile pacientului'}
+                  >
+                    <Ionicons
+                      name={patientExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={palette.textSecondary}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {/* Detalii extinse: alergii + contact urgență */}
+              {patientExpanded ? (
+                <View style={styles.patientExpanded}>
+                  {record.allergies ? (
+                    <View style={[styles.allergiesCard, { backgroundColor: statusColors.warningSurface, borderLeftColor: statusColors.warning }]}>
+                      <Ionicons name="warning-outline" size={16} color={statusColors.warning} />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={[styles.allergiesLabel, { color: statusColors.warning }]}>Alergii</Text>
+                        <Text style={[styles.allergiesText, { color: palette.text }]}>{record.allergies}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {(record.emergency_contact_name || record.emergency_contact_phone) ? (
+                    <View style={styles.patientInfoRow}>
+                      <Ionicons name="call-outline" size={15} color={palette.textSecondary} />
+                      <View style={{ marginLeft: 6, flex: 1 }}>
+                        <Text style={[styles.patientInfoLabel, { color: palette.textSecondary }]}>Contact urgență</Text>
+                        {record.emergency_contact_name ? (
+                          <Text style={[styles.emergencyName, { color: palette.text }]}>{record.emergency_contact_name}</Text>
+                        ) : null}
+                        {record.emergency_contact_phone ? (
+                          <Pressable onPress={() => Linking.openURL(`tel:${record.emergency_contact_phone}`)}>
+                            <Text style={[styles.emergencyPhone, { color: primary }]}>{record.emergency_contact_phone}</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -651,10 +680,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 8,
   },
+  patientCompactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  patientToggle: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  patientExpanded: {
+    gap: 8,
+    marginTop: 8,
+  },
   patientPersonRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
   },
   patientPersonName: { fontSize: 15, fontWeight: '500', flex: 1 },
   patientInfoRow: {

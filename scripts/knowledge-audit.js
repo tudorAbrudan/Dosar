@@ -69,6 +69,7 @@ const ENTRIES = {
     documentPageStorage: { required: false },
     documentPdfExport: { required: false },
     documentEntityName: { required: false },
+    documentIdentifier: { required: false },
     documentRetention: { required: false },
     entityFuzzyMatch: { required: false },
     entityOrder: { required: false },

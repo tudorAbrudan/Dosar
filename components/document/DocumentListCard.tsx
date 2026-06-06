@@ -12,7 +12,8 @@ import { primary, primaryTint, statusColors } from '@/theme/colors';
 import { DOC_ICON_BG, DOC_ICON_COLOR } from '@/theme/docTypeColors';
 import { DOC_ICON } from '@/theme/docTypeIcons';
 import { iconColors } from '@/theme/iconColors';
-import type { Document } from '@/types';
+import { MEDICAL_DOC_TYPES, type Document } from '@/types';
+import { getDocumentIdentifier, formatDocDateRoShort } from '@/services/documentIdentifier';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -72,6 +73,15 @@ export function DocumentListCard({
     ? (ENTITY_ICON[entityKind] ?? 'ellipse-outline')
     : 'ellipse-outline';
 
+  // Subtitlu de diferențiere. Pentru documente medicale NU afișăm nota brută
+  // (OCR cu PII: CNP, nume) — folosim emitentul (laborator/clinică) sau data.
+  // Pentru restul păstrăm nota utilizatorului dacă există.
+  const identifier = getDocumentIdentifier(doc);
+  const isMedical = (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(doc.type);
+  const subtitle =
+    identifier ??
+    (isMedical ? formatDocDateRoShort(doc.issue_date) : (doc.note ?? formatDocDateRoShort(doc.issue_date)));
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -106,9 +116,9 @@ export function DocumentListCard({
           </View>
         )}
 
-        {doc.note ? (
+        {subtitle ? (
           <Text style={[styles.note, { color: C.textSecondary }]} numberOfLines={1}>
-            {doc.note}
+            {subtitle}
           </Text>
         ) : null}
       </View>

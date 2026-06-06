@@ -199,16 +199,26 @@ export default function DocumentDetailScreen() {
         );
         return;
       }
-      // Pentru ne-eșec arătăm sumar succint.
+      // Pentru ne-eșec arătăm sumar succint, explicând clar CE s-a întâmplat
+      // (utilizatorul confunda „re-extrage" cu „rezumă nota").
+      const statusLine =
+        result.status === 'ok'
+          ? `${result.inserted} ${result.inserted === 1 ? 'valoare numerică extrasă' : 'valori numerice extrase'} (analize)`
+          : result.status === 'no_data'
+            ? 'AI a citit documentul, dar nu a găsit valori numerice de extras'
+            : `Extragere observații: ${result.status}`;
       Alert.alert(
-        'Re-extragere terminată',
+        'Re-extragere AI terminată',
         [
-          `Status: ${result.status}`,
-          `Observații extrase: ${result.inserted}`,
-          updated?.ai_summary ? 'Rezumat AI generat ✓' : 'Rezumat AI: nu a fost generat',
+          'Textul documentului a fost trimis la AI pentru analiză.',
+          '',
+          `• ${statusLine}`,
+          updated?.ai_summary
+            ? '• Rezumat AI generat (vezi secțiunea „Rezumat AI")'
+            : '• Rezumat AI: nu a fost generat',
           itemsCount > 0
-            ? `${itemsCount} recomandări cu termen — deschide dosarul medical pentru calendar`
-            : 'Niciun reminder cu termen explicit',
+            ? `• ${itemsCount} recomandări cu termen — deschide dosarul medical pentru calendar`
+            : '• Niciun reminder cu termen explicit',
         ].join('\n')
       );
     },

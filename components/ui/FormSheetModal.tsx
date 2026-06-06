@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
   StyleSheet,
 } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -46,8 +45,13 @@ export function FormSheetModal({
       presentationStyle="pageSheet"
       onRequestClose={saving ? () => {} : onClose}
     >
+      {/* iOS: `padding` se măsoară greșit într-un modal `pageSheet` (sheet-ul
+          nu pornește din vârful ecranului), deci ultimul câmp rămânea sub
+          tastatură. Lăsăm ScrollView-ul să-și ajusteze singur inset-ul la
+          tastatură (`automaticallyAdjustKeyboardInsets`) și dezactivăm padding-ul
+          KAV pe iOS. Pe Android rămâne adjustResize (windowSoftInputMode). */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={undefined}
         style={[styles.flex, { backgroundColor: C.background }]}
       >
         <View style={[styles.header, { borderBottomColor: C.border }]}>
@@ -78,6 +82,7 @@ export function FormSheetModal({
           style={styles.flex}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           {children}

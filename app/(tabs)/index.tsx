@@ -27,7 +27,8 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useOrphans } from '@/hooks/useOrphans';
 import { getShowOrphansOnHome } from '@/services/settings';
 import { OrphansSection } from '@/components/OrphansSection';
-import { getDocumentLabel } from '@/types';
+import { getDocumentLabel, MEDICAL_DOC_TYPES } from '@/types';
+import { getDocumentIdentifier, formatDocDateRoShort } from '@/services/documentIdentifier';
 import type { Document } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
@@ -346,6 +347,13 @@ export default function HomeScreen() {
             {expiringSoon.map(doc => {
               const entityName = resolveEntityName(doc);
               const badge = expiryBadge(doc);
+              const identifier = getDocumentIdentifier(doc);
+              const isMedical = (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(doc.type);
+              const subtitle =
+                identifier ??
+                (isMedical
+                  ? formatDocDateRoShort(doc.issue_date)
+                  : (doc.note ?? formatDocDateRoShort(doc.issue_date)));
               return (
                 <Pressable
                   key={doc.id}
@@ -377,6 +385,11 @@ export default function HomeScreen() {
                         {entityName}
                       </RNText>
                     )}
+                    {subtitle && subtitle !== entityName && (
+                      <RNText style={[styles.docSub, { color: C.textSecondary }]} numberOfLines={1}>
+                        {subtitle}
+                      </RNText>
+                    )}
                   </RNView>
                   {badge && (
                     <RNView style={[styles.badge, { backgroundColor: badge.bg }]}>
@@ -404,6 +417,14 @@ export default function HomeScreen() {
             {recentDocs.map(doc => {
               const entityName = resolveEntityName(doc);
               const badge = expiryBadge(doc);
+              // Subtitlu de diferențiere (emitent/dată), fără PII pentru medicale.
+              const identifier = getDocumentIdentifier(doc);
+              const isMedical = (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(doc.type);
+              const subtitle =
+                identifier ??
+                (isMedical
+                  ? formatDocDateRoShort(doc.issue_date)
+                  : (doc.note ?? formatDocDateRoShort(doc.issue_date)));
               return (
                 <Pressable
                   key={doc.id}
@@ -433,6 +454,11 @@ export default function HomeScreen() {
                     {entityName && (
                       <RNText style={[styles.docSub, { color: C.textSecondary }]} numberOfLines={1}>
                         {entityName}
+                      </RNText>
+                    )}
+                    {subtitle && subtitle !== entityName && (
+                      <RNText style={[styles.docSub, { color: C.textSecondary }]} numberOfLines={1}>
+                        {subtitle}
                       </RNText>
                     )}
                   </RNView>

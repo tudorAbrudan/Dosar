@@ -20,6 +20,7 @@ import {
   getObservationCountsByDocument,
   type DocumentObservationStats,
 } from '@/services/medicalObservations';
+import { getDocumentIdentifier } from '@/services/documentIdentifier';
 import { on as subscribe } from '@/services/events';
 import {
   MEDICAL_DOC_TYPES,
@@ -38,65 +39,26 @@ interface DocRow {
   issue_date: string | null;
   note: string | null;
   metadata: string | null;
+  ai_summary: string | null;
 }
 
 /**
- * Identificator scurt pentru un document medical, în contextul listei dosarului
- * (entitatea = persoana → numele pacientului e redundant). Prioritate:
- *   1. metadata.lab / clinic / spital / cabinet / emitent — sursa documentului.
- *   2. Linie „Laborator/Clinică/Spital/Cabinet: <X>" din note → returnează X.
- *   3. Prima pereche „Câmp: Valoare" din note unde câmpul nu e personal —
- *      returnează doar valoarea. Liniile narrative fără `:` sunt sărite,
- *      evităm leak de PII când AI nu respectă formatul Câmp:Valoare.
- *   4. Eticheta tipului.
+ * Identificator scurt pentru un document medical, în contextul listei dosarului.
+ * Folosește helper-ul comun `getDocumentIdentifier` (sursă unică, fără PII), cu
+ * fallback pe eticheta tipului. `DocRow.metadata` e string JSON din SQLite →
+ * îl parsăm la obiect înainte.
  */
-const PERSONAL_FIELD_PATTERN =
-  /^(pacient|nume|prenume|cnp|adres[aă]|jude[tț]|cas|cod\s*pacient|sex(ul)?|v[aâ]rsta|telefon|email|data\s*na[sș]terii|n[aă]scut[aă]?|asigurat[aă]?|tip\s*document)\b/i;
-const ISSUER_LINE_PATTERN =
-  /^(laborator(?:ul)?|clinic[aă]|spital(?:ul)?|cabinet(?:ul)?\s*medical|cabinet|unitate\s*medical[aă]|emitent|furnizor|medic|doctor|policlinic[aă]|centru\s*medical)\s*[:\-]\s*(.+)/i;
-const FIELD_VALUE_PATTERN = /^([^:]+?)\s*:\s*(.+)$/;
-
-function stripLinePrefix(line: string): string {
-  return line.replace(/^[\s\-•*·▪►‐-―\d.()]+/, '').trim();
-}
-
 function getDocIdentifier(row: DocRow): string {
+  let metadata: Record<string, string> | null = null;
   if (row.metadata) {
     try {
-      const m = JSON.parse(row.metadata) as Record<string, unknown>;
-      for (const key of [
-        'lab',
-        'clinic',
-        'clinica',
-        'supplier',
-        'unitate_medicala',
-        'spital',
-        'cabinet',
-        'emitent',
-        'furnizor',
-      ]) {
-        const v = m[key];
-        if (typeof v === 'string' && v.trim()) return v.trim();
-      }
+      metadata = JSON.parse(row.metadata) as Record<string, string>;
     } catch {
       /* metadata corupt sau gol */
     }
   }
-  if (row.note?.trim()) {
-    const lines = row.note.split('\n').map(stripLinePrefix).filter(Boolean);
-    for (const line of lines) {
-      const m = line.match(ISSUER_LINE_PATTERN);
-      if (m && m[2]?.trim()) return m[2].trim();
-    }
-    for (const line of lines) {
-      const fv = line.match(FIELD_VALUE_PATTERN);
-      if (!fv) continue;
-      if (PERSONAL_FIELD_PATTERN.test(fv[1].trim())) continue;
-      const value = fv[2].trim();
-      if (value) return value;
-    }
-  }
-  return DOCUMENT_TYPE_LABELS[row.type as DocumentType] ?? row.type;
+  const id = getDocumentIdentifier({ note: row.note, metadata });
+  return id ?? DOCUMENT_TYPE_LABELS[row.type as DocumentType] ?? row.type;
 }
 
 interface BatchState {
@@ -121,16 +83,30 @@ interface ExtractBadge {
 
 function computeBadge(
   stats: DocumentObservationStats | undefined,
-  palette: typeof light
+  palette: typeof light,
+  processed: boolean
 ): ExtractBadge {
   if (!stats || stats.total === 0) {
+    // Diferențiem „procesat de AI, dar fără valori numerice" (ex. scrisoare
+    // medicală, bilet de trimitere) de „neprocesat încă". Altfel ambele arătau
+    // „—" și păreau o eroare.
+    if (processed) {
+      return {
+        label: 'fără valori',
+        bg: palette.surface,
+        fg: palette.textSecondary,
+        border: palette.border,
+        icon: 'checkmark-circle-outline',
+        a11y: 'Procesat de AI — fără valori numerice de extras',
+      };
+    }
     return {
-      label: '—',
+      label: 'neextras',
       bg: palette.surface,
       fg: palette.textSecondary,
       border: palette.border,
-      icon: 'remove-outline',
-      a11y: 'Niciun rezultat extras',
+      icon: 'ellipse-outline',
+      a11y: 'Neprocesat încă — apasă „Extrage observații"',
     };
   }
   if (stats.needsReview > 0) {
@@ -190,7 +166,7 @@ export function DocumenteTab({ record }: Props) {
     const placeholders = medicalDocTypesArr.map(() => '?').join(',');
     const [rows, counts] = await Promise.all([
       db.getAllAsync<DocRow>(
-        `SELECT DISTINCT d.id, d.type, d.issue_date, d.note, d.metadata
+        `SELECT DISTINCT d.id, d.type, d.issue_date, d.note, d.metadata, d.ai_summary
          FROM documents d
          JOIN document_entities de ON de.document_id = d.id
          WHERE d.type IN (${placeholders})
@@ -328,7 +304,14 @@ export function DocumenteTab({ record }: Props) {
         contentContainerStyle={{ paddingBottom: 12 }}
         renderItem={({ item }) => {
           const stats = obsCounts.get(item.id);
-          const badge = computeBadge(stats, palette);
+          const badge = computeBadge(stats, palette, item.ai_summary != null);
+          const identifier = getDocIdentifier(item);
+          const typeLabel = DOCUMENT_TYPE_LABELS[item.type as DocumentType] ?? item.type;
+          const dateLabel = item.issue_date ?? 'Fără dată';
+          // Când nu există un emitent distinct, identifier === eticheta tipului →
+          // afișăm doar data în subtitlu ca să nu repetăm tipul de două ori.
+          const subtitle =
+            identifier === typeLabel ? dateLabel : `${typeLabel} · ${dateLabel}`;
           return (
             <Pressable
               style={[styles.row, { backgroundColor: palette.card, borderColor: palette.border }]}
@@ -345,10 +328,10 @@ export function DocumenteTab({ record }: Props) {
             >
               <View style={{ flex: 1 }}>
                 <Text style={[styles.docType, { color: palette.text }]} numberOfLines={1}>
-                  {getDocIdentifier(item)}
+                  {identifier}
                 </Text>
                 <Text style={[styles.docDate, { color: palette.textSecondary }]} numberOfLines={1}>
-                  {`${DOCUMENT_TYPE_LABELS[item.type as DocumentType] ?? item.type} · ${item.issue_date ?? 'Fără dată'}`}
+                  {subtitle}
                 </Text>
               </View>
               <View
@@ -359,7 +342,12 @@ export function DocumenteTab({ record }: Props) {
                 accessibilityLabel={badge.a11y}
               >
                 <Ionicons name={badge.icon} size={12} color={badge.fg} />
-                <Text style={[styles.extractBadgeText, { color: badge.fg }]}>{badge.label}</Text>
+                <Text
+                  style={[styles.extractBadgeText, { color: badge.fg }]}
+                  numberOfLines={1}
+                >
+                  {badge.label}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={palette.textSecondary} />
             </Pressable>

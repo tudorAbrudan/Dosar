@@ -263,8 +263,22 @@ export async function groupByName(
 ): Promise<ObservationGroup[]> {
   const all = await listObservationsByRecord(recordId);
   const filtered = options?.includeNarrative ? all : all.filter(o => o.category !== 'altele');
+  // Colapsează variantele aceleiași analize raportate în mai multe unități în
+  // ACELAȘI document și la aceeași dată (ex. IGF-I: 147,90 ng/mL și 19,23 nmol/L
+  // din același buletin). Fără asta apăreau ca „2 măsurători", iar grupul lua
+  // valoarea unei unități cu referința alteia → un rezultat normal marcat critic.
+  // Cheia păstrează distincte măsurătorile reale: date diferite sau documente
+  // diferite rămân separate. Păstrăm prima apariție (auto-consistentă valoare↔
+  // unitate↔referință). Display-only — nu șterge date din DB.
+  const seenUnitVariant = new Set<string>();
+  const deduped = filtered.filter(o => {
+    const key = `${o.name.trim().toLowerCase()}|${o.observed_at ?? ''}|${o.source_document_id ?? ''}`;
+    if (seenUnitVariant.has(key)) return false;
+    seenUnitVariant.add(key);
+    return true;
+  });
   const map = new Map<string, ObservationGroup>();
-  for (const o of filtered) {
+  for (const o of deduped) {
     const key = o.name.trim().toLowerCase();
     let g = map.get(key);
     if (!g) {

@@ -47,10 +47,14 @@ export function useMedicalObservations(recordId: string | null): UseMedicalObser
   }, [refresh]);
 
   useEffect(() => {
-    const off = subscribe('entities:changed', () => {
-      refresh();
-    });
-    return () => off();
+    // `documents:changed` acoperă ștergerea unui document sursă → timeline-ul
+    // trebuie să elimine înregistrările rămase fără sursă existentă.
+    const offEntities = subscribe('entities:changed', () => refresh());
+    const offDocs = subscribe('documents:changed', () => refresh());
+    return () => {
+      offEntities();
+      offDocs();
+    };
   }, [refresh]);
 
   return { loading, error, groups, needsReviewCount, refresh };
