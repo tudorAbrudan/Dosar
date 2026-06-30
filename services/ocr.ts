@@ -105,6 +105,36 @@ export function extractStation(text: string): string | undefined {
 }
 
 /**
+ * Extrage informații dintr-o factură utilități (OCR text).
+ * Detectează codul loc de consum (POD/CLC), codul client și telefonul call-center.
+ */
+export function extractUtilityInvoiceInfo(text: string): {
+  customerCode?: string;
+  consumptionPointCode?: string;
+  supportPhone?: string;
+} {
+  const result: {
+    customerCode?: string;
+    consumptionPointCode?: string;
+    supportPhone?: string;
+  } = {};
+
+  // POD curent / CLC gaz: "RO" urmat de cifre/litere (min 8 caractere după RO).
+  const pod = text.match(/\bRO[0-9A-Z]{8,}\b/);
+  if (pod) result.consumptionPointCode = pod[0];
+
+  // Cod client / cod de încasare: după etichetă, secvență de 6-12 cifre.
+  const cc = text.match(/cod\s+(?:client|de\s+[îi]ncasare)\D{0,10}(\d{6,12})/i);
+  if (cc) result.customerCode = cc[1];
+
+  // Telefon call-center: 0800/0801/021/03xx/07xx, grupuri de cifre cu spații/puncte.
+  const phone = text.match(/\b0(?:800|801|21|3\d{2}|7\d{2})[\d.\s]{5,}\d\b/);
+  if (phone) result.supportPhone = phone[0].replace(/[.\s]/g, '');
+
+  return result;
+}
+
+/**
  * Extrage informații dintr-un bon de motorină (OCR text).
  * Detectează litri, km total (odometru), prețul total și data.
  */
