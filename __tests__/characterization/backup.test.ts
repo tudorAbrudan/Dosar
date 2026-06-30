@@ -462,7 +462,7 @@ describe('backup applyManifest — reminders round-trip', () => {
 });
 
 describe('backup applyManifest — service_providers round-trip', () => {
-  it('service_providers survive export -> applyManifest, removed by wipe', () => {
+  it('service_providers table exists with expected columns', () => {
     testDb._raw
       .prepare(
         `INSERT INTO service_providers

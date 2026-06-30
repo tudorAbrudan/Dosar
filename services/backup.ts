@@ -663,7 +663,6 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     try {
       const oldPropertyId = p.property_id as string | undefined;
       const newPropertyId = oldPropertyId ? (propertyMap.get(oldPropertyId) ?? oldPropertyId) : null;
-      const dedupeKey = `${newPropertyId ?? ''}|${p.type as string}|${(p.provider_name as string) ?? ''}|${(p.customer_code as string) ?? ''}`;
       // Skip dacă există deja un furnizor identic pe aceeași proprietate
       const existingRows = await db.getAllAsync<{ id: string }>(
         `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
