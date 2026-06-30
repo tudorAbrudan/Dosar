@@ -439,23 +439,24 @@ export default function FuelScreen() {
 
   return (
     <View style={styles.container}>
-      {stats && (
-        <FuelStatsBar
-          stats={stats}
-          scheme={scheme}
-          onOpenDetails={() =>
-            router.push(
-              `/(tabs)/entitati/fuel-stats?vehicleId=${vehicleId}&vehicleName=${encodeURIComponent(vehicleName ?? '')}`
-            )
-          }
-        />
-      )}
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Bara de statistici face scroll împreună cu lista (eliberează ecranul). */}
+        {stats && (
+          <FuelStatsBar
+            stats={stats}
+            scheme={scheme}
+            onOpenDetails={() =>
+              router.push(
+                `/(tabs)/entitati/fuel-stats?vehicleId=${vehicleId}&vehicleName=${encodeURIComponent(vehicleName ?? '')}`
+              )
+            }
+          />
+        )}
+
         {/* Lista înregistrări */}
         <Text style={styles.sectionTitle}>Istoric bonuri</Text>
 
@@ -530,7 +531,7 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 16, opacity: 0.7, textAlign: 'center' },
   scroll: { flex: 1 },
   scrollContent: { padding: 12, paddingBottom: 90 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 14 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 8, marginBottom: 14 },
   empty: { opacity: 0.6, fontSize: 14, marginBottom: 16, textAlign: 'center' },
   fab: {
     position: 'absolute',

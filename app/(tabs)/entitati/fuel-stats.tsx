@@ -3,10 +3,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-nati
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
+import { DatePickerField } from '@/components/DatePickerField';
 import { dark, light, primary } from '@/theme/colors';
 import { computeFuelIntervalStats, type FuelIntervalStats } from '@/services/fuel';
 
-type RangeKey = 'all' | '30d' | '90d' | '6m' | '12m' | 'ytd';
+type RangeKey = 'all' | '30d' | '90d' | '6m' | '12m' | 'ytd' | 'custom';
 
 interface RangeOption {
   key: RangeKey;
@@ -20,6 +21,7 @@ const RANGE_OPTIONS: RangeOption[] = [
   { key: '12m', label: '12 luni' },
   { key: 'ytd', label: 'Anul curent' },
   { key: 'all', label: 'Toate' },
+  { key: 'custom', label: 'Personalizat' },
 ];
 
 function todayIso(): string {
@@ -51,28 +53,34 @@ export default function FuelStatsScreen() {
   const palette = scheme === 'dark' ? dark : light;
 
   const [range, setRange] = useState<RangeKey>('30d');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [stats, setStats] = useState<FuelIntervalStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(
-    async (key: RangeKey) => {
-      if (!vehicleId) return;
-      setLoading(true);
-      try {
-        const fromIso = rangeFromKey(key);
-        const result = await computeFuelIntervalStats(vehicleId, fromIso);
-        setStats(result);
-      } finally {
-        setLoading(false);
+  const load = useCallback(async () => {
+    if (!vehicleId) return;
+    setLoading(true);
+    try {
+      let fromIso: string | undefined;
+      let toIso: string | undefined;
+      if (range === 'custom') {
+        fromIso = customFrom || undefined;
+        toIso = customTo || undefined;
+      } else {
+        fromIso = rangeFromKey(range);
       }
-    },
-    [vehicleId]
-  );
+      const result = await computeFuelIntervalStats(vehicleId, fromIso, toIso);
+      setStats(result);
+    } finally {
+      setLoading(false);
+    }
+  }, [vehicleId, range, customFrom, customTo]);
 
   useFocusEffect(
     useCallback(() => {
-      load(range);
-    }, [load, range])
+      load();
+    }, [load])
   );
 
   if (!vehicleId) {
@@ -84,8 +92,8 @@ export default function FuelStatsScreen() {
   }
 
   function selectRange(key: RangeKey) {
+    // Reîncărcarea e declanșată de useFocusEffect prin schimbarea lui `range`.
     setRange(key);
-    load(key);
   }
 
   const fromLabel = stats?.fromIso ? formatRO(stats.fromIso) : '—';
@@ -125,6 +133,27 @@ export default function FuelStatsScreen() {
             );
           })}
         </ScrollView>
+
+        {range === 'custom' && (
+          <View style={styles.customRow}>
+            <View style={styles.customField}>
+              <DatePickerField
+                label="De la"
+                value={customFrom}
+                onChange={setCustomFrom}
+                placeholder="Început"
+              />
+            </View>
+            <View style={styles.customField}>
+              <DatePickerField
+                label="Până la"
+                value={customTo}
+                onChange={setCustomTo}
+                placeholder="Azi"
+              />
+            </View>
+          </View>
+        )}
 
         {loading && <ActivityIndicator color={primary} style={{ marginVertical: 24 }} />}
 
@@ -253,6 +282,9 @@ const styles = StyleSheet.create({
   },
   chipPressed: { opacity: 0.75 },
   chipText: { fontSize: 13, fontWeight: '500' },
+
+  customRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  customField: { flex: 1 },
 
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14, fontStyle: 'italic' },
 
