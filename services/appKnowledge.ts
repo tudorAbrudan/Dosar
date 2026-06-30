@@ -164,6 +164,10 @@ Acțiuni pe task (tap pe card): „Marchează efectuat" (setează data curentă 
 
 Pentru task-urile cu prag pe luni, utilizatorul poate activa toggle-ul „Adaugă în calendar" — creează un eveniment în calendarul iOS cu alarme cu 7 zile înainte și în zi. Evenimentul include: vehicul, intervenție, prag km (dacă există), mesaj că poate fi efectuat mai devreme dacă atinge km, link App Store către Dosar. Când utilizatorul marchează efectuat, evenimentul din calendar se actualizează automat cu noua dată (calculată de la data efectuării).
 
+## Furnizori utilități
+
+Pe o proprietate (locație) poți înregistra furnizorii de utilități aferenți: curent electric, gaz, apă & canal, internet & TV, telefonie și salubritate. Fiecare furnizor se salvează cu: numele furnizorului, codul de client, codul locului de consum (POD) și telefonul de relații clienți (tap-to-call direct din aplicație). Datele pot fi completate automat prin scanarea unei facturi (OCR + AI extrage codul client și POD-ul). Navigare: Entități → deschide o proprietate → secțiunea „Furnizori utilități" → „Adaugă furnizor".
+
 ## Backup automat în iCloud
 
 Aplicația poate salva automat copii ale documentelor în iCloud Drive-ul personal al utilizatorului (folderul „Dosar" vizibil și în Files app). Datele sunt în iCloud-ul lui, nu trec printr-un server al nostru.

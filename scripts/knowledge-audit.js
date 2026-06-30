@@ -58,7 +58,7 @@ const ENTRIES = {
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
     vehicleStatus: { required: true, keywords: ['vehicul'] },
 
-    serviceProviders: { required: false },
+    serviceProviders: { required: true, keywords: ['furnizori', 'utilități', 'utilit'] },
     aiTypeRegistry: { required: false },
     chatThreads: { required: false },
     cropperBridge: { required: false },
