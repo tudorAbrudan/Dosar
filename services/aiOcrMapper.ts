@@ -578,13 +578,6 @@ function normalizePlate(plate: string): string {
   return plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-/**
- * Match determinist: dacă OCR-ul conține un număr de înmatriculare care
- * se potrivește exact cu `plate_number` al unei mașini salvate, injectează
- * acea sugestie cu confidence "high" pe prima poziție. Overrides orice
- * sugestie de vehicul venită de la AI (plate matching e mai sigur decât
- * potrivirea textuală pe marcă/model).
- */
 // ─── Utilități: AI mapper factură ────────────────────────────────────────────
 
 export interface UtilityInvoiceAiResult {
@@ -661,6 +654,13 @@ export async function mapUtilityInvoiceWithAi(
   };
 }
 
+/**
+ * Match determinist: dacă OCR-ul conține un număr de înmatriculare care
+ * se potrivește exact cu `plate_number` al unei mașini salvate, injectează
+ * acea sugestie cu confidence "high" pe prima poziție. Overrides orice
+ * sugestie de vehicul venită de la AI (plate matching e mai sigur decât
+ * potrivirea textuală pe marcă/model).
+ */
 function augmentWithPlateMatch(
   result: AiOcrResult,
   ocrText: string,
