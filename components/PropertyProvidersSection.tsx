@@ -14,7 +14,7 @@ import { useFocusEffect } from 'expo-router';
 import { FormSheetModal } from '@/components/ui/FormSheetModal';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary } from '@/theme/colors';
+import { primary, onPrimary, statusColors } from '@/theme/colors';
 import {
   getServiceProviders,
   addServiceProvider,
@@ -35,7 +35,7 @@ const DEFAULT_TYPE: UtilityType = 'curent';
 
 function emptyForm() {
   return {
-    type: DEFAULT_TYPE as UtilityType,
+    type: DEFAULT_TYPE,
     providerName: '',
     customerCode: '',
     podCode: '',
@@ -214,7 +214,7 @@ export function PropertyProvidersSection({ propertyId }: Props) {
       {loading && <ActivityIndicator color={primary} style={styles.loader} />}
 
       {!loading && error !== null && (
-        <Text style={[styles.errorText, { color: C.textSecondary }]}>{error}</Text>
+        <Text style={[styles.errorText, { color: statusColors.critical }]}>{error}</Text>
       )}
 
       {!loading && providers.length === 0 && error === null && (
@@ -305,13 +305,7 @@ export function PropertyProvidersSection({ propertyId }: Props) {
                   ]}
                   onPress={() => setType(t)}
                 >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
-                      { color: active ? '#fff' : C.text },
-                    ]}
-                  >
+                  <Text style={[styles.chipText, { color: active ? onPrimary : C.text }]}>
                     {UTILITY_TYPE_EMOJI[t]} {UTILITY_TYPE_LABELS[t]}
                   </Text>
                 </Pressable>
