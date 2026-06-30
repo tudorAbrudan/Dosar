@@ -9,8 +9,8 @@
  */
 
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
-import { extractPlateNumber } from './ocr';
-import type { DocumentType, EntityType } from '@/types';
+import { extractPlateNumber, extractUtilityInvoiceInfo } from './ocr';
+import type { DocumentType, EntityType, UtilityType } from '@/types';
 import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES, ALL_ENTITY_TYPES, STANDARD_DOC_TYPES } from '@/types';
 import { buildClassifierCatalog } from './aiTypeRegistry';
 
@@ -585,6 +585,82 @@ function normalizePlate(plate: string): string {
  * sugestie de vehicul venită de la AI (plate matching e mai sigur decât
  * potrivirea textuală pe marcă/model).
  */
+// ─── Utilități: AI mapper factură ────────────────────────────────────────────
+
+export interface UtilityInvoiceAiResult {
+  type?: UtilityType;
+  providerName?: string;
+  customerCode?: string;
+  consumptionPointCode?: string;
+  supportPhone?: string;
+}
+
+/**
+ * Extrage câmpuri structurate dintr-o factură de utilități (curent, gaz, apă, etc.)
+ * folosind AI, cu fallback regex pentru câmpurile lipsă.
+ *
+ * Structură identică cu `mapFuelReceiptWithAi`: sendAiRequest/sendAiRequestWithImage
+ * cu aceleași semnături poziționale, parsare prin extractFirstJsonObject.
+ */
+export async function mapUtilityInvoiceWithAi(
+  ocrText: string,
+  imageBase64?: string
+): Promise<UtilityInvoiceAiResult> {
+  const sanitizedOcr = sanitizeOcrText(ocrText);
+
+  const systemMessage =
+    'Ești expert în extragerea datelor din facturi de utilități românești ' +
+    '(curent, gaz, apă, internet, TV, telefonie, salubritate).';
+
+  const prompt =
+    `Extrage din factura de mai jos, ca JSON strict (fără text în jur), câmpurile:\n` +
+    `- "type": unul din curent|gaz|apa|internet_tv|telefonie|salubritate|altul\n` +
+    `- "providerName": numele furnizorului (ex: E.ON, Engie, PPC, Hidroelectrica, Digi, Orange, Vodafone, Apa Nova)\n` +
+    `- "customerCode": codul de client / cod de încasare\n` +
+    `- "consumptionPointCode": codul locului de consum (POD la curent „RO…", CLC la gaz)\n` +
+    `- "supportPhone": telefonul de relații cu clienții\n` +
+    `Dacă un câmp lipsește, omite-l. Răspunde DOAR cu JSON.\n\nTEXT FACTURĂ:\n${sanitizedOcr}`;
+
+  let ai: UtilityInvoiceAiResult = {};
+  try {
+    let rawResponse: string;
+    if (imageBase64) {
+      rawResponse = await sendAiRequestWithImage(
+        systemMessage,
+        prompt,
+        imageBase64,
+        'image/jpeg',
+        400
+      );
+    } else {
+      rawResponse = await sendAiRequest(
+        [
+          { role: 'system' as const, content: systemMessage },
+          { role: 'user' as const, content: prompt },
+        ],
+        400,
+        'extraction'
+      );
+    }
+    const parsed = extractFirstJsonObject(rawResponse);
+    if (parsed !== null && typeof parsed === 'object') {
+      ai = parsed as UtilityInvoiceAiResult;
+    }
+  } catch (e) {
+    console.warn('[utility-ai] failed:', e instanceof Error ? e.message : 'unknown');
+  }
+
+  // Merge cu regex: AI câștigă unde are valori; regex completează golurile.
+  const rx = extractUtilityInvoiceInfo(ocrText);
+  return {
+    type: ai.type,
+    providerName: ai.providerName,
+    customerCode: ai.customerCode ?? rx.customerCode,
+    consumptionPointCode: ai.consumptionPointCode ?? rx.consumptionPointCode,
+    supportPhone: ai.supportPhone ?? rx.supportPhone,
+  };
+}
+
 function augmentWithPlateMatch(
   result: AiOcrResult,
   ocrText: string,
