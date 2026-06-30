@@ -7,6 +7,7 @@ import { emit } from './events';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
 import { isImportInProgress } from './backup';
+import { deleteServiceProvidersForProperty } from './serviceProviders';
 
 // Fallback sort pentru entități care nu au rând în entity_order (edge case:
 // migrarea nu a rulat sau entitatea a fost creată în afara căii standard).
@@ -248,6 +249,7 @@ export async function deletePerson(id: string): Promise<void> {
 
 export async function deleteProperty(id: string): Promise<void> {
   await cleanupEntityLinks('property', id);
+  await deleteServiceProvidersForProperty(id);
   await db.runAsync('DELETE FROM properties WHERE id = ?', [id]);
   await removeOrder('property', id);
   emit('entities:changed');
