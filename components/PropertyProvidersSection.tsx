@@ -90,7 +90,7 @@ export function PropertyProvidersSection({ propertyId }: Props) {
     try {
       const ocr = await extractText(uri);
       const result = await mapUtilityInvoiceWithAi(ocr.text, base64);
-      if (result.type) setType(result.type);
+      if (result.type && ALL_UTILITY_TYPES.includes(result.type)) setType(result.type);
       if (result.providerName) setProviderName(result.providerName);
       if (result.customerCode) setCustomerCode(result.customerCode);
       if (result.consumptionPointCode) setPodCode(result.consumptionPointCode);
