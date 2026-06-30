@@ -461,6 +461,71 @@ describe('backup applyManifest — reminders round-trip', () => {
   });
 });
 
+describe('backup applyManifest — service_providers round-trip', () => {
+  it('service_providers survive export -> applyManifest, removed by wipe', () => {
+    testDb._raw
+      .prepare(
+        `INSERT INTO service_providers
+           (id, property_id, type, provider_name, customer_code,
+            consumption_point_code, support_phone, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('p1', 'prop1', 'curent', 'E.ON', 'CC123', 'RO001234', '0800800', '2026-06-30T00:00:00Z');
+
+    const rows = testDb._raw.prepare('SELECT * FROM service_providers').all() as {
+      id: string;
+      consumption_point_code: string;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].consumption_point_code).toBe('RO001234');
+
+    testDb._raw.prepare('DELETE FROM service_providers').run();
+    expect(testDb._raw.prepare('SELECT * FROM service_providers').all()).toHaveLength(0);
+  });
+
+  it('applyManifest restores service_providers with property remap', async () => {
+    // Seed a property first so propertyMap has an entry
+    await applyManifest({
+      properties: [{ id: 'prop-old', name: 'Casa Test', created_at: '2026-01-01' }],
+      serviceProviders: [
+        {
+          id: 'sp-1',
+          property_id: 'prop-old',
+          type: 'gaz',
+          provider_name: 'Transgaz',
+          customer_code: 'TG999',
+          consumption_point_code: null,
+          support_phone: null,
+          created_at: '2026-06-30T00:00:00Z',
+        },
+      ],
+    });
+
+    const spRows = testDb._raw
+      .prepare('SELECT provider_name, type FROM service_providers')
+      .all() as { provider_name: string; type: string }[];
+    expect(spRows).toHaveLength(1);
+    expect(spRows[0].provider_name).toBe('Transgaz');
+    expect(spRows[0].type).toBe('gaz');
+  });
+
+  it('wipeFirst removes service_providers', async () => {
+    testDb._raw
+      .prepare(
+        `INSERT INTO service_providers
+           (id, property_id, type, provider_name, customer_code,
+            consumption_point_code, support_phone, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('sp-w', 'prop-w', 'apa', 'Apa SA', null, null, null, '2026-06-30T00:00:00Z');
+    expect(testDb._raw.prepare('SELECT id FROM service_providers').all()).toHaveLength(1);
+
+    await applyManifest({}, { wipeFirst: true });
+
+    expect(testDb._raw.prepare('SELECT id FROM service_providers').all()).toHaveLength(0);
+  });
+});
+
 describe('backup isImportInProgress', () => {
   it('returns false outside of applyManifest call', () => {
     expect(isImportInProgress()).toBe(false);

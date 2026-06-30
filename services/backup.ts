@@ -15,6 +15,7 @@ import * as entities from './entities';
 import * as docs from './documents';
 import * as fuel from './fuel';
 import * as maintenance from './maintenance';
+import * as serviceProviders from './serviceProviders';
 import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
@@ -52,6 +53,7 @@ export async function exportBackup(): Promise<void> {
     companies,
     fuelRecordsList,
     maintenanceTasks,
+    serviceProvidersList,
     documents,
     allPages,
     customTypes,
@@ -65,6 +67,7 @@ export async function exportBackup(): Promise<void> {
     entities.getCompanies(),
     fuel.getAllFuelRecords(),
     maintenance.getAllMaintenanceTasks(),
+    serviceProviders.getAllServiceProviders(),
     docs.getDocuments(),
     docs.getAllDocumentPages(),
     getCustomTypes(),
@@ -132,6 +135,7 @@ export async function exportBackup(): Promise<void> {
     companies,
     fuelRecords: fuelRecordsList,
     maintenanceTasks,
+    serviceProviders: serviceProvidersList,
     customTypes,
     documents,
     documentPages: allPages,
@@ -654,6 +658,43 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     }
   }
 
+  // Furnizori utilități: remap property_id la noile id-uri; INSERT OR REPLACE pentru idempotență.
+  for (const p of (payload.serviceProviders as AnyRecord[]) ?? []) {
+    try {
+      const oldPropertyId = p.property_id as string | undefined;
+      const newPropertyId = oldPropertyId ? (propertyMap.get(oldPropertyId) ?? oldPropertyId) : null;
+      const dedupeKey = `${newPropertyId ?? ''}|${p.type as string}|${(p.provider_name as string) ?? ''}|${(p.customer_code as string) ?? ''}`;
+      // Skip dacă există deja un furnizor identic pe aceeași proprietate
+      const existingRows = await db.getAllAsync<{ id: string }>(
+        `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
+        [newPropertyId, p.type as string, (p.provider_name as string | null) ?? null, (p.customer_code as string | null) ?? null]
+      );
+      if (existingRows.length > 0) {
+        skipped++;
+        continue;
+      }
+      await db.runAsync(
+        `INSERT OR REPLACE INTO service_providers
+           (id, property_id, type, provider_name, customer_code,
+            consumption_point_code, support_phone, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          (p.id as string | undefined) || generateId(),
+          newPropertyId,
+          p.type as string,
+          (p.provider_name as string | null | undefined) ?? null,
+          (p.customer_code as string | null | undefined) ?? null,
+          (p.consumption_point_code as string | null | undefined) ?? null,
+          (p.support_phone as string | null | undefined) ?? null,
+          (p.created_at as string | undefined) || new Date().toISOString(),
+        ]
+      );
+      imported++;
+    } catch (e) {
+      errors.push(`Furnizor utilități: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
   for (const d of (payload.documents as AnyRecord[]) ?? []) {
     try {
       const docKey = `${d.type as string}|${(d.issue_date as string) ?? ''}|${(d.expiry_date as string) ?? ''}`;
@@ -943,6 +984,7 @@ async function wipeUserData(): Promise<void> {
     DELETE FROM document_entities;
     DELETE FROM documents;
     DELETE FROM fuel_records;
+    DELETE FROM service_providers;
     DELETE FROM vehicle_maintenance_tasks;
     DELETE FROM custom_document_types;
     DELETE FROM cards;

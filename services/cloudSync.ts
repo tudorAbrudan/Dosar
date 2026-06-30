@@ -7,6 +7,7 @@ import * as entities from './entities';
 import * as docs from './documents';
 import * as fuel from './fuel';
 import * as maintenance from './maintenance';
+import * as providers from './serviceProviders';
 import { getCustomTypes } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { buildEntityFileMap, sanitizeFolderName, type EntityNameMaps } from './fileOrganization';
@@ -30,6 +31,7 @@ import type {
   DocumentPage,
   EntityType,
   FuelRecord,
+  ServiceProvider,
   MedicalChatThread,
   MedicalDocumentSummary,
   MedicalRecord,
@@ -62,6 +64,7 @@ interface ManifestPayload {
   animals: Animal[];
   companies: Company[];
   fuelRecords: FuelRecord[];
+  serviceProviders: ServiceProvider[];
   maintenanceTasks: VehicleMaintenanceTask[];
   customTypes: CustomDocumentType[];
   documents: Document[];
@@ -126,6 +129,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     animals,
     companies,
     fuelRecords,
+    serviceProvidersList,
     maintenanceTasks,
     documents,
     allPages,
@@ -146,6 +150,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     entities.getAnimals(),
     entities.getCompanies(),
     fuel.getAllFuelRecords(),
+    providers.getAllServiceProviders(),
     maintenance.getAllMaintenanceTasks(),
     docs.getDocuments(),
     docs.getAllDocumentPages(),
@@ -189,6 +194,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     animals,
     companies,
     fuelRecords,
+    serviceProviders: serviceProvidersList,
     maintenanceTasks,
     customTypes,
     documents,

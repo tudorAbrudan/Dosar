@@ -55,6 +55,7 @@ const EXCLUDED_TABLES = new Set([
 const TABLE_TO_MANIFEST_FIELD = {
   custom_document_types: 'customTypes',
   fuel_records: 'fuelRecords',
+  service_providers: 'serviceProviders',
   vehicle_maintenance_tasks: 'maintenanceTasks',
   document_pages: 'documentPages',
   entity_order: 'entityOrder',
