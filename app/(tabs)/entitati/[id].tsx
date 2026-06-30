@@ -42,6 +42,7 @@ import {
   VehicleMaintenanceSection,
   type VehicleMaintenanceSectionHandle,
 } from '@/components/VehicleMaintenanceSection';
+import { PropertyProvidersSection } from '@/components/PropertyProvidersSection';
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 
 export default function EntityDetailScreen() {
@@ -468,6 +469,8 @@ export default function EntityDetailScreen() {
             vehicleName={vehicle?.name ?? entityName}
           />
         )}
+
+        {entityKind === 'property_id' && <PropertyProvidersSection propertyId={id as string} />}
 
         <RNText style={[styles.sectionTitle, { color: C.textSecondary }]}>DOCUMENTE LEGATE</RNText>
 
