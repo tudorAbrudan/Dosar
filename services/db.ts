@@ -32,6 +32,19 @@ db.execSync(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS service_providers (
+    id TEXT PRIMARY KEY,
+    property_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    provider_name TEXT,
+    customer_code TEXT,
+    consumption_point_code TEXT,
+    support_phone TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_providers_property ON service_providers(property_id);
+
   CREATE TABLE IF NOT EXISTS vehicles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

@@ -95,6 +95,24 @@ describe('db.ts schema characterization', () => {
         'medical_chat_messages',
         'medical_document_summaries',
         'medical_shares',
+        'service_providers',
+      ])
+    );
+  });
+
+  it('service_providers table has expected columns', async () => {
+    const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(service_providers)');
+    const names = cols.map(c => c.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'id',
+        'property_id',
+        'type',
+        'provider_name',
+        'customer_code',
+        'consumption_point_code',
+        'support_phone',
+        'created_at',
       ])
     );
   });

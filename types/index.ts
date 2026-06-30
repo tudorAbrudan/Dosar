@@ -363,6 +363,60 @@ export interface MaintenanceTaskStatus {
   dueMessage: string;
 }
 
+// ─── Furnizori utilități (child collection al proprietăților) ───────────────
+
+export type UtilityType =
+  | 'curent'
+  | 'gaz'
+  | 'apa'
+  | 'internet_tv'
+  | 'telefonie'
+  | 'salubritate'
+  | 'altul';
+
+export const ALL_UTILITY_TYPES: UtilityType[] = [
+  'curent',
+  'gaz',
+  'apa',
+  'internet_tv',
+  'telefonie',
+  'salubritate',
+  'altul',
+];
+
+export const UTILITY_TYPE_LABELS: Record<UtilityType, string> = {
+  curent: 'Curent',
+  gaz: 'Gaz',
+  apa: 'Apă & canal',
+  internet_tv: 'Internet & TV',
+  telefonie: 'Telefonie',
+  salubritate: 'Salubritate',
+  altul: 'Altul',
+};
+
+export const UTILITY_TYPE_EMOJI: Record<UtilityType, string> = {
+  curent: '⚡',
+  gaz: '🔥',
+  apa: '💧',
+  internet_tv: '🌐',
+  telefonie: '📞',
+  salubritate: '🗑️',
+  altul: '🔌',
+};
+
+export interface ServiceProvider {
+  id: string;
+  property_id: string;
+  type: UtilityType;
+  provider_name?: string;
+  customer_code?: string;
+  consumption_point_code?: string;
+  support_phone?: string;
+  created_at: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 export type EntityType =
   | 'person'
   | 'property'
