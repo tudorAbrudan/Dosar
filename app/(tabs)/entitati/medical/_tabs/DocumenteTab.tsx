@@ -194,10 +194,10 @@ export function DocumenteTab({ record }: Props) {
     };
   }, [loadDocs]);
 
-  const onReExtract = useCallback(async (skipAlreadyExtracted: boolean) => {
+  const onReExtract = useCallback(async () => {
     if (batchState.running) return;
     try {
-      const e = await estimateBatch(record.id, { skipAlreadyExtracted });
+      const e = await estimateBatch(record.id, { skipAlreadyExtracted: true });
       if (e.total_documents === 0) {
         Alert.alert('Niciun document', 'Nu ai documente medicale de procesat.');
         return;
@@ -205,18 +205,16 @@ export function DocumenteTab({ record }: Props) {
       if (e.to_process === 0) {
         Alert.alert(
           'Toate documentele au fost procesate',
-          `Cele ${e.already_extracted} documente au deja observații extrase. Folosește „Re-extrage TOATE" dacă vrei să rulezi din nou peste ele.`
+          `Cele ${e.already_extracted} documente au deja observații extrase.`
         );
         return;
       }
-      const title = skipAlreadyExtracted
-        ? 'Extrage observații'
-        : 'Re-extrage TOATE observațiile';
-      const skipNote = skipAlreadyExtracted && e.already_extracted > 0
-        ? `\n(${e.already_extracted} documente cu observații deja extrase vor fi sărite.)`
-        : '';
+      const skipNote =
+        e.already_extracted > 0
+          ? `\n(${e.already_extracted} documente cu observații deja extrase vor fi sărite.)`
+          : '';
       Alert.alert(
-        title,
+        'Extrage observații',
         `Vor fi procesate ${e.to_process} documente (~${e.estimated_calls} apeluri AI).${skipNote}\n\nContinui?`,
         [
           { text: 'Anulează', style: 'cancel' },
@@ -239,7 +237,7 @@ export function DocumenteTab({ record }: Props) {
                 record.id,
                 p => setBatchState({ ...p, running: true }),
                 () => cancelledRef.value,
-                { skipAlreadyExtracted }
+                { skipAlreadyExtracted: true }
               )
                 .then(final => {
                   setBatchState({ ...final, running: false });
@@ -364,6 +362,41 @@ export function DocumenteTab({ record }: Props) {
             </Text>
           </View>
         }
+        ListFooterComponent={
+          // Acțiunea de extragere face scroll împreună cu lista (nu mai e pinned).
+          // În timpul rulării footerul dispare; bara de progres rămâne fixă jos.
+          docs.length > 0 && !batchState.running ? (
+            <View>
+              <Pressable
+                style={[
+                  styles.reExtractBtn,
+                  { borderColor: primary, backgroundColor: `${primary}15` },
+                ]}
+                onPress={() => onReExtract()}
+              >
+                <Ionicons name="sparkles-outline" size={18} color={primary} />
+                <Text style={[styles.reExtractText, { color: primary, fontWeight: '600' }]}>
+                  Extrage observații din documente noi
+                </Text>
+                <View style={styles.reExtractSpacer} />
+              </Pressable>
+              {diagnosticReports.length > 0 && (
+                <Pressable
+                  style={[
+                    styles.diagBtn,
+                    { borderColor: palette.border, backgroundColor: palette.card },
+                  ]}
+                  onPress={() => setDiagnosticVisible(true)}
+                >
+                  <Ionicons name="information-circle-outline" size={16} color={primary} />
+                  <Text style={[styles.diagBtnText, { color: primary }]}>
+                    Vezi detalii ultima extracție
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ) : null
+        }
       />
 
       {batchState.running ? (
@@ -380,48 +413,6 @@ export function DocumenteTab({ record }: Props) {
           <Pressable onPress={cancelBatch}>
             <Text style={{ color: primary, fontWeight: '600' }}>Anulează</Text>
           </Pressable>
-        </View>
-      ) : docs.length > 0 ? (
-        <View>
-          <Pressable
-            style={[
-              styles.reExtractBtn,
-              { borderColor: primary, backgroundColor: `${primary}15` },
-            ]}
-            onPress={() => onReExtract(true)}
-          >
-            <Ionicons name="sparkles-outline" size={18} color={primary} />
-            <Text style={[styles.reExtractText, { color: primary, fontWeight: '600' }]}>
-              Extrage observații din documente noi
-            </Text>
-            <View style={styles.reExtractSpacer} />
-          </Pressable>
-          <Pressable
-            style={[
-              styles.reExtractSecondaryBtn,
-              { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
-            onPress={() => onReExtract(false)}
-          >
-            <Ionicons name="refresh" size={14} color={palette.textSecondary} />
-            <Text style={[styles.reExtractSecondaryText, { color: palette.textSecondary }]}>
-              Re-extrage TOATE (inclusiv documente deja procesate)
-            </Text>
-          </Pressable>
-          {diagnosticReports.length > 0 && (
-            <Pressable
-              style={[
-                styles.diagBtn,
-                { borderColor: palette.border, backgroundColor: palette.card },
-              ]}
-              onPress={() => setDiagnosticVisible(true)}
-            >
-              <Ionicons name="information-circle-outline" size={16} color={primary} />
-              <Text style={[styles.diagBtnText, { color: primary }]}>
-                Vezi detalii ultima extracție
-              </Text>
-            </Pressable>
-          )}
         </View>
       ) : null}
 
@@ -537,19 +528,6 @@ const styles = StyleSheet.create({
   },
   reExtractText: { fontSize: 14, flex: 1, textAlign: 'center' },
   reExtractSpacer: { width: 18 },
-  reExtractSecondaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginHorizontal: 12,
-    marginTop: 8,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  reExtractSecondaryText: { fontSize: 12, fontStyle: 'italic' },
   extractBadge: {
     flexDirection: 'row',
     alignItems: 'center',
