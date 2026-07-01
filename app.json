@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dosar",
     "slug": "dosar-documente",
-    "version": "3.8.4",
+    "version": "3.8.5",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "acte",
@@ -15,10 +15,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ax.documente",
-      "buildNumber": "63",
+      "buildNumber": "64",
       "deploymentTarget": "16.0",
       "usesIcloudStorage": true,
       "entitlements": {
+        "com.apple.developer.kernel.increased-memory-limit": true,
         "com.apple.developer.icloud-services": [
           "CloudDocuments"
         ],

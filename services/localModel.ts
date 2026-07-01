@@ -75,6 +75,57 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     downloadUrl:
       'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
   },
+  // ── Gemma 4, tiered pe capacitatea device-ului ──────────────────────────────
+  // head_dim 512 pe layerele globale → KV cache + compute buffers cresc rapid.
+  // Pe A15/6GB, Q4_K_M (3.1GB) trecea plafonul de memorie la inferență (OOM Metal
+  // apoi jetsam). Soluție: quant mai mic pe 6GB, quant/model mai mare pe 8GB.
+  // n_ctx=8192 + n_ubatch mic (vezi initLocalModel) țin vârful sub prag.
+  // Istoric complet: loguri OOM/jetsam 2026-06-30 → 2026-07-01.
+  {
+    id: 'gemma4-e2b-q3',
+    name: 'Gemma 4 E2B (6GB)',
+    description:
+      'Google Gemma 4 E2B, cuantizare Q3_K_S — optimizată pentru telefoane de 6GB (iPhone 13/14 Pro). Modernă și eficientă, doar text. ~2.3GB spațiu liber.',
+    sizeBytes: Math.round(2.28 * 1024 * 1024 * 1024),
+    sizeLabel: '~2.3GB',
+    minRamBytes: 5 * 1024 * 1024 * 1024,
+    minIphoneGen: 13,
+    qualityStars: 3,
+    // Q3_K_S (2.28GB) e cu ~830MB mai mic decât Q4 → marjă de memorie pentru un
+    // n_ctx mai mare. La 12288: working set GPU ~3.3GB (sub plafonul A15 ~4.3GB),
+    // proces ~3.9GB (sub jetsam). Lasă loc note/OCR 500 în prompt. 2026-07-01.
+    nCtx: 12288,
+    downloadUrl:
+      'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q3_K_S.gguf',
+  },
+  {
+    id: 'gemma4-e2b-q8',
+    name: 'Gemma 4 E2B (calitate maximă)',
+    description:
+      'Google Gemma 4 E2B, cuantizare Q8_0 — calitate aproape identică cu modelul plin. Necesită iPhone 15 Pro+ (8GB). ~4.7GB spațiu liber. Doar text.',
+    sizeBytes: Math.round(4.7 * 1024 * 1024 * 1024),
+    sizeLabel: '~4.7GB',
+    minRamBytes: 7 * 1024 * 1024 * 1024,
+    minIphoneGen: 15,
+    qualityStars: 4,
+    nCtx: 8192,
+    downloadUrl:
+      'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q8_0.gguf',
+  },
+  {
+    id: 'gemma4-e4b',
+    name: 'Gemma 4 E4B IT',
+    description:
+      'Google Gemma 4 E4B — model mai mare și mai capabil decât E2B, cuantizare Q4_K_M. Necesită iPhone 15 Pro+ (8GB). ~4.6GB spațiu liber. Doar text.',
+    sizeBytes: Math.round(4.64 * 1024 * 1024 * 1024),
+    sizeLabel: '~4.6GB',
+    minRamBytes: 7 * 1024 * 1024 * 1024,
+    minIphoneGen: 15,
+    qualityStars: 5,
+    nCtx: 8192,
+    downloadUrl:
+      'https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
+  },
 ];
 
 // ─── Compatibilitate ─────────────────────────────────────────────────────────
@@ -158,7 +209,11 @@ export async function isModelDownloaded(modelId: string): Promise<boolean> {
 }
 
 export async function getSelectedModelId(): Promise<string | null> {
-  return AsyncStorage.getItem(KEY_SELECTED);
+  const id = await AsyncStorage.getItem(KEY_SELECTED);
+  // Ignoră o selecție care nu mai există în catalog (ex. model scos/redenumit
+  // între versiuni). Altfel s-ar încerca încărcarea unui fișier orfan de pe disc.
+  if (id && !LOCAL_MODEL_CATALOG.some(m => m.id === id)) return null;
+  return id;
 }
 
 export async function setSelectedModelId(modelId: string): Promise<void> {
@@ -278,6 +333,23 @@ let _llamaContext: LlamaContext | null = null;
 let _loadedModelId: string | null = null;
 
 /**
+ * Numărul de inferențe în curs. Modelul nu se eliberează cât e > 0 — un
+ * `release()` în mijlocul unui `completion()` crapă nativ. Toate căile de
+ * inferență (chatbot, medicalChat, aiClassifier, ocrLlmExtractor) trec prin
+ * `runLocalInference`, deci un singur contor acoperă tot.
+ */
+let _inferenceInFlight = 0;
+
+/**
+ * Încărcarea unui model e în curs (`initLlama` rulează). În fereastra asta
+ * `_llamaContext` e încă null, deci `releaseModelForBackground` n-ar avea ce
+ * elibera — dar modelul de ~2-3GB tocmai se rezidențiază. Dacă app-ul trece în
+ * background aici, marcăm cererea și eliberăm imediat ce load-ul se termină.
+ */
+let _initInFlight = false;
+let _disposeRequestedDuringInit = false;
+
+/**
  * Inițializează contextul llama.rn pentru modelul dat.
  * Dacă modelul este deja încărcat, nu face nimic.
  * Dacă un alt model este încărcat, eliberează contextul anterior.
@@ -315,30 +387,49 @@ export async function initLocalModel(modelId: string): Promise<void> {
   // în loc să arunce „Context is full". Acceptabil pentru aplicație: la fiecare
   // mesaj reconstruim system prompt-ul integral, deci pierderea unui turn vechi
   // e nesemnificativă față de un crash dur.
+  _disposeRequestedDuringInit = false;
+  _initInFlight = true;
   try {
-    _llamaContext = await initLlama({
-      model: path,
-      use_mlock: true,
-      n_ctx: nCtx,
-      n_gpu_layers: 99,
-      ctx_shift: true,
-    });
-  } catch {
     try {
       _llamaContext = await initLlama({
         model: path,
-        use_mlock: true,
+        use_mlock: false,
+        n_ctx: nCtx,
+        n_gpu_layers: 99,
+        ctx_shift: true,
+        // Prefill-ul în bucăți mici reduce vârful de memorie al buffer-ului de
+        // compute → evită jetsam pe device-uri de 6GB (modelul de ~2-3GB e deja la
+        // limită). Compromis: prefill mai lent. Vezi crash jetsam 2026-06-30/07-01.
+        n_batch: 128,
+        n_ubatch: 128,
+      });
+    } catch {
+      // GPU (Metal) a eșuat → reîncearcă pe CPU (mai lent, dar fără OOM Metal).
+      _llamaContext = await initLlama({
+        model: path,
+        use_mlock: false,
         n_ctx: nCtx,
         n_gpu_layers: 0,
         ctx_shift: true,
+        n_batch: 128,
+        n_ubatch: 128,
       });
-    } catch (e) {
-      throw new Error(
-        'Nu s-a putut încărca modelul AI local. Posibile cauze: fișier corupt, memorie insuficientă sau format incompatibil.\n\nÎncearcă: Setări → Asistent AI → șterge și descarcă din nou modelul.'
-      );
     }
+    _loadedModelId = modelId;
+  } catch {
+    throw new Error(
+      'Nu s-a putut încărca modelul AI local. Posibile cauze: fișier corupt, memorie insuficientă sau format incompatibil.\n\nÎncearcă: Setări → Asistent AI → șterge și descarcă din nou modelul.'
+    );
+  } finally {
+    _initInFlight = false;
   }
-  _loadedModelId = modelId;
+
+  // App-ul a trecut în background în timpul încărcării → eliberează acum, altfel
+  // ~2-3GB rămân rezidenți cu procesul suspendat și iOS îl omoară (jetsam).
+  if (_disposeRequestedDuringInit) {
+    _disposeRequestedDuringInit = false;
+    await disposeLocalModel();
+  }
 }
 
 /**
@@ -365,6 +456,22 @@ export function normalizeMessagesForLocal(messages: AiMessage[]): AiMessage[] {
 }
 
 /**
+ * Curăță lanțul de raționament („thinking") scurs în text. Gemma 4 emite blocuri
+ * `<|channel>thought ... <channel|>{răspuns}`. Dacă parsarea nativă a reasoning-ului
+ * nu le prinde (tag-uri ne-standard), le eliminăm noi și păstrăm doar răspunsul.
+ */
+export function stripReasoning(text: string): string {
+  let t = text;
+  // Bloc complet thinking → răspuns: păstrează ce e după <channel|>
+  t = t.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
+  // Markeri reziduali de canal (deschideri fără pereche, format trunchiat)
+  t = t.replace(/<\/?\|?channel\|?>/g, '');
+  // Tag explicit de thinking dacă rămâne deschis fără închidere
+  t = t.replace(/<\|channel>thought[\s\S]*$/g, '');
+  return t.trim();
+}
+
+/**
  * Rulează inferența cu modelul local activ.
  * Dacă modelul nu e inițializat, îl inițializează automat.
  */
@@ -376,16 +483,41 @@ export async function runLocalInference(messages: AiMessage[], maxTokens = 500):
 
   await initLocalModel(selectedId);
 
+  // Contextul poate fi null dacă app-ul a intrat în background în timpul
+  // încărcării (dispose-when-ready din initLocalModel). Aruncăm o eroare
+  // retryabilă în loc să crăpăm pe `_llamaContext!.completion()`.
+  if (!_llamaContext) {
+    throw new Error('Modelul a fost eliberat (app în fundal). Deschide asistentul din nou.');
+  }
+
   const normalized = normalizeMessagesForLocal(messages);
 
-  const result = await _llamaContext!.completion({
-    messages: normalized,
-    n_predict: maxTokens,
-    temperature: 0.3,
-    stop: ['</s>', '<|end|>', '<|eot_id|>', '<end_of_turn>'],
-  });
+  _inferenceInFlight++;
+  try {
+    const result = await _llamaContext.completion({
+      messages: normalized,
+      n_predict: maxTokens,
+      temperature: 0.3,
+      stop: ['</s>', '<|end|>', '<|eot_id|>', '<end_of_turn>'],
+      // Modele cu „thinking" (ex. Gemma 4) emit un lanț de raționament în canale
+      // separate. Cerem llama.cpp să-l parseze și să nu-l genereze deloc.
+      enable_thinking: false,
+      reasoning_format: 'auto',
+    });
 
-  return result.text.trim();
+    // `content` = text filtrat (fără reasoning_content/tool_calls); `text` = brut.
+    // Preferăm content; cădem pe text dacă lipsește (modele fără reasoning).
+    const raw = result.content?.trim() ? result.content : result.text;
+    const cleaned = stripReasoning(raw);
+    // NU întoarce string gol: ar fi salvat ca mesaj assistant fără content și ar
+    // strica thread-ul (API-uri stricte precum Mistral resping mesaje goale cu 400).
+    if (!cleaned) {
+      throw new Error('Modelul local nu a generat un răspuns. Încearcă din nou sau reformulează.');
+    }
+    return cleaned;
+  } finally {
+    _inferenceInFlight--;
+  }
 }
 
 export async function disposeLocalModel(): Promise<void> {
@@ -394,4 +526,38 @@ export async function disposeLocalModel(): Promise<void> {
     _llamaContext = null;
     _loadedModelId = null;
   }
+}
+
+/**
+ * Eliberează modelul când app-ul intră în background.
+ *
+ * Motiv: contextul llama.rn ține câțiva GB de model GGUF rezidenți în RAM. iOS
+ * omoară agresiv (jetsam) procesele cu memorie mare aflate în background, ceea
+ * ce produce „app-ul se închide instant când îl readuc în prim-plan" (procesul
+ * e deja mort; abia a doua deschidere e un cold start curat). Descărcând modelul
+ * la trecerea în background scădem amprenta de memorie sub pragul de jetsam.
+ *
+ * Re-inițializarea e lazy: `runLocalInference` cheamă `initLocalModel` la
+ * următoarea folosire a AI-ului, deci singurul cost e o reîncărcare de câteva
+ * secunde data viitoare când deschizi asistentul.
+ *
+ * No-op (returnează `false`) dacă o inferență e în curs — `release()` în mijlocul
+ * unui `completion()` ar crăpa nativ.
+ *
+ * Dacă modelul se ÎNCARCĂ chiar acum (`initLlama` în curs, `_llamaContext` încă
+ * null), nu putem elibera un context inexistent — marcăm cererea, iar
+ * `initLocalModel` eliberează imediat ce load-ul se termină. Acoperă fereastra
+ * cu memorie maximă (load-ul unui GGUF de 2-3GB), cea mai expusă la jetsam.
+ *
+ * Returnează `true` doar dacă a eliberat efectiv contextul acum.
+ */
+export async function releaseModelForBackground(): Promise<boolean> {
+  if (_inferenceInFlight > 0) return false;
+  if (_initInFlight) {
+    _disposeRequestedDuringInit = true;
+    return false;
+  }
+  if (!_llamaContext) return false;
+  await disposeLocalModel();
+  return true;
 }

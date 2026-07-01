@@ -83,6 +83,9 @@ node scripts/calendar-event-consistency-audit.js --strict
 echo "▸ Reminder consistency audit (expiry_date + sync calls)..."
 node scripts/reminder-consistency-audit.js || true  # warning-only
 
+echo "▸ Model background-release audit (strict — LLM eliberat pe background)..."
+node scripts/model-background-release-audit.js --strict
+
 echo "▸ ast-grep scan (lint:ast)..."
 npm run -s lint:ast
 

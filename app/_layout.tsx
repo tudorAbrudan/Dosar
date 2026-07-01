@@ -5,7 +5,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useState, useEffect, useRef } from 'react';
-import { Linking, DeviceEventEmitter, useColorScheme as useColorSchemeNative } from 'react-native';
+import {
+  AppState,
+  Linking,
+  DeviceEventEmitter,
+  useColorScheme as useColorSchemeNative,
+} from 'react-native';
 import 'react-native-reanimated';
 
 import AppLockScreen from '@/components/AppLockScreen';
@@ -21,6 +26,7 @@ import type { ThemePreference } from '@/hooks/useThemeScheme';
 import { useAppLock } from '@/hooks/useAppLock';
 import { useReviewPrompt } from '@/hooks/useReviewPrompt';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
+import { releaseModelForBackground } from '@/services/localModel';
 import { db } from '@/services/db';
 import * as settings from '@/services/settings';
 
@@ -156,6 +162,20 @@ function RootLayoutNav() {
   // document (FullscreenPhotoModal / FullscreenPdfModal) deblochează rotirea.
   useEffect(() => {
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+  }, []);
+
+  // La trecerea în background, eliberează modelul AI local (câțiva GB rezidenți)
+  // ca să nu fie omorât de jetsam-ul iOS — cauza pentru „app-ul se închide
+  // instant când îl readuc din fundal". Re-init lazy la următoarea inferență.
+  // Doar pe 'background' (real leave), nu 'inactive' (tranzient: app switcher,
+  // notification center) — altfel s-ar reîncărca modelul inutil.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'background') {
+        void releaseModelForBackground();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   return (

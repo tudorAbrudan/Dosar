@@ -1,4 +1,11 @@
-import { getPersons, getProperties, getVehicles, getCards, getAnimals } from './entities';
+import {
+  getPersons,
+  getProperties,
+  getVehicles,
+  getCards,
+  getAnimals,
+  getCompanies,
+} from './entities';
 // `getDocumentsForAI` strips private_notes. NU folosi `getDocuments` aici —
 // vezi `.claude/rules/ai-privacy.md`.
 import { getDocumentsForAI } from './documents';
@@ -299,15 +306,19 @@ const REMOTE_LIMITS = {
   ocrLimitFull: 3000,
 } as const;
 
-// Limite pentru model local (Mistral 7B / Ministral 3B, context 16K).
-// System prompt + history + reply trebuie să încapă în 16K tokeni. Comprimăm
-// agresiv: ~10 docs × 300 chars OCR ≈ 3K chars ≈ 800 tokeni, plus appKnowledge
-// (~1.5K) + entități (~500) → buget ~3K tokeni pentru system prompt.
+// Limite pentru model local pe device (context util ~8K tokeni — n_ctx pe GPU
+// e plafonat de memoria Metal a A15, vezi localModel.ts). buildAppKnowledge()
+// e deja ~3K tokeni fix; peste el vine contextText (entități + max 6 documente).
+// `note` și `ocr_text` conțin de obicei informația esențială → 500 chars fiecare
+// ca AI-ul să aibă cu ce răspunde. Bugetul e ok pe Q3_K_S (2.28GB, model mic):
+// worst-case ~3K appKnowledge + 6 docs × ~300 tokeni + entități ≈ ~6K tokeni,
+// sub 8192. Pe Q4_K_M (3.1GB) ar fi risc de jetsam — de-aia quant mic pe 6GB.
+// Dacă apare jetsam pe device, scade întâi ocrLimit/noteLimit. Măsurat 2026-07-01.
 const LOCAL_LIMITS = {
-  maxDocsFull: 15,
-  maxDocsFiltered: 10,
-  noteLimit: 200,
-  ocrLimit: 300,
+  maxDocsFull: 6,
+  maxDocsFiltered: 6,
+  noteLimit: 500,
+  ocrLimit: 500,
   ocrLimitFull: 800,
 } as const;
 
@@ -422,15 +433,17 @@ async function buildContext(
   docMap: Map<string, string>;
   tasks: TaskRequirement[];
 }> {
-  const [persons, properties, vehicles, cards, animals, documents, customTypes] = await Promise.all([
-    getPersons(),
-    getProperties(),
-    getVehicles(),
-    getCards(),
-    getAnimals(),
-    getDocumentsForAI(),
-    getCustomTypes(),
-  ]);
+  const [persons, properties, vehicles, cards, animals, companies, documents, customTypes] =
+    await Promise.all([
+      getPersons(),
+      getProperties(),
+      getVehicles(),
+      getCards(),
+      getAnimals(),
+      getCompanies(),
+      getDocumentsForAI(),
+      getCustomTypes(),
+    ]);
 
   const noData =
     !persons.length &&
@@ -438,6 +451,7 @@ async function buildContext(
     !vehicles.length &&
     !cards.length &&
     !animals.length &&
+    !companies.length &&
     !documents.length;
 
   if (noData) {
@@ -518,6 +532,7 @@ async function buildContext(
   if (persons.length) {
     const personStrings = persons.map(p => {
       const extra: string[] = [];
+      if (p.date_of_birth) extra.push(`data nașterii: ${p.date_of_birth}`);
       if (p.phone) extra.push(`tel: ${p.phone}`);
       if (p.email) extra.push(`email: ${p.email}`);
       const details = extra.length ? ` (${extra.join(', ')})` : '';
@@ -530,14 +545,41 @@ async function buildContext(
       `Proprietăți: ${properties.map(p => `[ENT:${p.name}|property|${p.id}]`).join(', ')}`
     );
   if (vehicles.length)
-    lines.push(`Vehicule: ${vehicles.map(v => `[ENT:${v.name}|vehicle|${v.id}]`).join(', ')}`);
+    lines.push(
+      `Vehicule: ${vehicles
+        .map(v => {
+          const extra: string[] = [];
+          if (v.plate_number) extra.push(`nr: ${v.plate_number}`);
+          if (v.fuel_type) extra.push(`combustibil: ${v.fuel_type}`);
+          const details = extra.length ? ` (${extra.join(', ')})` : '';
+          return `[ENT:${v.name}|vehicle|${v.id}]${details}`;
+        })
+        .join(', ')}`
+    );
   if (cards.length)
     lines.push(
-      `Carduri: ${cards.map(c => `[ENT:${c.nickname}|card|${c.id}]` + ` (****${c.last4})`).join(', ')}`
+      `Carduri: ${cards
+        .map(c => {
+          const exp = c.expiry ? `, expiră ${c.expiry}` : '';
+          return `[ENT:${c.nickname}|card|${c.id}] (****${c.last4}${exp})`;
+        })
+        .join(', ')}`
     );
   if (animals.length)
     lines.push(
       `Animale: ${animals.map(a => `[ENT:${a.name}|animal|${a.id}]` + ` (${a.species})`).join(', ')}`
+    );
+  if (companies.length)
+    lines.push(
+      `Firme: ${companies
+        .map(c => {
+          const extra: string[] = [];
+          if (c.cui) extra.push(`CUI: ${c.cui}`);
+          if (c.reg_com) extra.push(`Reg. Com.: ${c.reg_com}`);
+          const details = extra.length ? ` (${extra.join(', ')})` : '';
+          return `[ENT:${c.name}|company|${c.id}]${details}`;
+        })
+        .join(', ')}`
     );
 
   // Notă de filtrare (ajută AI-ul să înțeleagă că nu vede tot)
@@ -564,6 +606,7 @@ async function buildContext(
       properties.find(p => p.id === doc.property_id)?.name ??
       cards.find(c => c.id === doc.card_id)?.nickname ??
       animals.find(a => a.id === doc.animal_id)?.name ??
+      companies.find(c => c.id === doc.company_id)?.name ??
       null;
     const label = getDocumentLabel(doc, customTypes);
     const expiry = doc.expiry_date ? ` | expiră: ${doc.expiry_date}` : '';
@@ -683,7 +726,15 @@ Userul a cerut datele pentru: ${tasks.map(t => t.label).join(', ')}.
 - La final, dacă există ≥1 câmp lipsă, sugerează: „Pentru completare, editează [DOC:...|...] din Acte și adaugă câmpurile lipsă."`
       : '';
 
+  const today = new Date().toLocaleDateString('ro-RO', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
   const systemPrompt = `${buildAppKnowledge()}
+
+Data curentă: ${today}. Folosește-o pentru a calcula vârste, expirări și „câte zile până la…". NU calcula o vârstă sau o durată dacă data de referință (ex. data nașterii) NU apare în datele de mai jos — în acest caz spune că informația lipsește, nu o inventa.
 
 ## Datele utilizatorului
 
@@ -691,12 +742,16 @@ ${contextText}
 
 ${MEDICAL_REDIRECT_RULE}
 
+Când dai o informație preluată dintr-un document, spune din ce document provine, folosind tag-ul [DOC:...|...] din context.
 Când menționezi un document specific, folosește ÎNTOTDEAUNA tag-ul [DOC:...|...] din context.
 Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.${taskRule}`;
 
   const messages: AiMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...history.map(m => ({ role: m.role, content: m.content })),
+    // Filtrează mesajele cu conținut gol. Un model local poate întoarce răspuns
+    // gol (ex. OOM/eroare) care ajunge salvat în thread; API-uri stricte (Mistral)
+    // resping un mesaj assistant fără content cu 400 „must have content or tool_calls".
+    ...history.filter(m => m.content.trim()).map(m => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
 

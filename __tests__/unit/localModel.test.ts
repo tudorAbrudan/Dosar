@@ -14,8 +14,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 describe('LOCAL_MODEL_CATALOG', () => {
-  it('conține exact 2 modele', () => {
-    expect(LOCAL_MODEL_CATALOG).toHaveLength(2);
+  it('conține exact 5 modele', () => {
+    expect(LOCAL_MODEL_CATALOG).toHaveLength(5);
   });
 
   it('fiecare model are id unic', () => {
@@ -160,15 +160,92 @@ describe('getSelectedModelId / setSelectedModelId', () => {
     expect(await getSelectedModelId()).toBeNull();
   });
 
-  it('returnează id-ul salvat', async () => {
-    AsyncStorageMock.getItem.mockResolvedValue('qwen25-3b');
+  it('returnează id-ul salvat dacă există în catalog', async () => {
+    AsyncStorageMock.getItem.mockResolvedValue('ministral-3b');
     const { getSelectedModelId } = require('@/services/localModel');
-    expect(await getSelectedModelId()).toBe('qwen25-3b');
+    expect(await getSelectedModelId()).toBe('ministral-3b');
+  });
+
+  it('returnează null dacă id-ul salvat nu mai există în catalog', async () => {
+    AsyncStorageMock.getItem.mockResolvedValue('gemma4-e2b'); // id vechi, scos din catalog
+    const { getSelectedModelId } = require('@/services/localModel');
+    expect(await getSelectedModelId()).toBeNull();
   });
 
   it('salvează id-ul în AsyncStorage', async () => {
     const { setSelectedModelId } = require('@/services/localModel');
     await setSelectedModelId('llama3-3b');
     expect(AsyncStorageMock.setItem).toHaveBeenCalledWith('local_model_selected', 'llama3-3b');
+  });
+});
+
+describe('releaseModelForBackground', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const llama = require('llama.rn') as { initLlama: jest.Mock };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    AsyncStorageMock.getItem.mockResolvedValue('ministral-3b');
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({
+      exists: true,
+      size: 2 * 1024 * 1024 * 1024, // 2GB, peste pragul de validare
+    });
+    const { disposeLocalModel } = require('@/services/localModel');
+    await disposeLocalModel(); // stare curată între teste
+  });
+
+  it('returnează false când niciun model nu e încărcat', async () => {
+    const { releaseModelForBackground } = require('@/services/localModel');
+    expect(await releaseModelForBackground()).toBe(false);
+  });
+
+  it('eliberează contextul după ce un model a fost încărcat (idempotent)', async () => {
+    const release = jest.fn().mockResolvedValue(undefined);
+    llama.initLlama.mockResolvedValueOnce({
+      completion: jest.fn().mockResolvedValue({ text: 'x' }),
+      release,
+    });
+    const { initLocalModel, releaseModelForBackground } = require('@/services/localModel');
+    await initLocalModel('ministral-3b');
+
+    expect(await releaseModelForBackground()).toBe(true);
+    expect(release).toHaveBeenCalledTimes(1);
+
+    // a doua oară: deja eliberat → no-op
+    expect(await releaseModelForBackground()).toBe(false);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('NU eliberează cât timp o inferență e în curs (ar crăpa nativ)', async () => {
+    let resolveCompletion: (v: { text: string }) => void = () => {};
+    const completion = jest.fn(
+      () =>
+        new Promise<{ text: string }>(res => {
+          resolveCompletion = res;
+        })
+    );
+    const release = jest.fn().mockResolvedValue(undefined);
+    llama.initLlama.mockResolvedValueOnce({ completion, release });
+
+    const mod = require('@/services/localModel');
+    await mod.initLocalModel('ministral-3b'); // preload cu contextul controlabil
+
+    const inference = mod.runLocalInference([{ role: 'user', content: 'salut' }]);
+    // flush microtasks până când completion e apelat (inferență „în curs")
+    for (let i = 0; i < 20 && completion.mock.calls.length === 0; i++) {
+      await Promise.resolve();
+    }
+    expect(completion).toHaveBeenCalled();
+
+    // cât rulează inferența, release e blocat
+    expect(await mod.releaseModelForBackground()).toBe(false);
+    expect(release).not.toHaveBeenCalled();
+
+    resolveCompletion({ text: 'gata' });
+    await inference;
+
+    // după ce inferența s-a terminat, eliberarea reușește
+    expect(await mod.releaseModelForBackground()).toBe(true);
+    expect(release).toHaveBeenCalledTimes(1);
   });
 });

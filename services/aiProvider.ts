@@ -574,9 +574,9 @@ export async function sendAiRequest(
   }
 
   // Eliberează contextul llama dacă mai e încărcat (no-op dacă nu) — schimbarea
-  // provider-ului din Setări nu mai impune restart de app. Fără asta, ~4GB RAM
-  // locked (use_mlock=true) rămân ocupați și pot bloca fetch-ul HTTPS la modele
-  // mari sub presiune de memorie.
+  // provider-ului din Setări nu mai impune restart de app. Fără asta, câțiva GB
+  // de RAM (modelul + KV cache) rămân ocupați și pot bloca fetch-ul HTTPS la
+  // modele mari sub presiune de memorie.
   const { disposeLocalModel } = await import('./localModel');
   await disposeLocalModel().catch(() => {});
 
