@@ -9,8 +9,34 @@ export function generateId(): string {
 
 export const db = SQLite.openDatabaseSync('documente.db');
 
+/**
+ * Rulează un `ALTER TABLE` de migrare idempotent. „duplicate column name"
+ * (coloana există deja după un upgrade anterior) e comportamentul normal și se
+ * ignoră tăcut; ORICE alt mesaj (disc plin, DB blocată, sintaxă) e logat cu
+ * `console.warn` în loc să fie înghițit tăcut ca înainte — altfel o eroare reală
+ * de migrare rămânea invizibilă. Centralizează clasificarea erorii într-un singur
+ * loc, în locul a ~40 de `catch {}` goale duplicate.
+ *
+ * Notă audit/teste: `scripts/alter-table-trycatch-audit.js` recunoaște apelurile
+ * `safeAlterTable('ALTER TABLE …')` ca ALTER-uri protejate (try/catch e în
+ * interiorul helper-ului), iar `__tests__/helpers/testDbSetup.ts` le extrage ca să
+ * aplice migrările pe DB-ul de test. Dacă redenumești helper-ul, actualizează
+ * ambele.
+ */
+function safeAlterTable(sql: string): void {
+  try {
+    db.execSync(sql);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/duplicate column name/i.test(msg)) {
+      console.warn('[db.migrate] migrare coloană eșuată:', msg, '—', sql);
+    }
+  }
+}
+
 db.execSync(`
   PRAGMA journal_mode = WAL;
+  PRAGMA foreign_keys = ON;
 
   CREATE TABLE IF NOT EXISTS document_pages (
     id TEXT PRIMARY KEY,
@@ -313,32 +339,16 @@ try {
 }
 
 // Migrare: adaugă custom_type_id dacă nu există
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN custom_type_id TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN custom_type_id TEXT');
 
 // Migrare: adaugă metadata dacă nu există
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN metadata TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN metadata TEXT');
 
 // Migrare: adaugă animal_id dacă nu există
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN animal_id TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN animal_id TEXT');
 
 // Migrare: adaugă auto_delete dacă nu există
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN auto_delete TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN auto_delete TEXT');
 
 // Index pe animal_id — creat după migrare pentru a garanta că există coloana
 try {
@@ -348,11 +358,7 @@ try {
 }
 
 // Migrare: adaugă company_id dacă nu există
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN company_id TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN company_id TEXT');
 
 // Index pe company_id
 try {
@@ -362,11 +368,7 @@ try {
 }
 
 // Migrare: adaugă ocr_text dacă nu există
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN ocr_text TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN ocr_text TEXT');
 
 // Migrare: deduplicare document_entities + UNIQUE index (previne duplicate la restart)
 try {
@@ -461,30 +463,14 @@ try {
 }
 
 // Migrare: adaugă phone, email la persons dacă nu există
-try {
-  db.execSync('ALTER TABLE persons ADD COLUMN phone TEXT');
-} catch {
-  // coloana există deja
-}
-try {
-  db.execSync('ALTER TABLE persons ADD COLUMN email TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE persons ADD COLUMN phone TEXT');
+safeAlterTable('ALTER TABLE persons ADD COLUMN email TEXT');
 // Migrare: adaugă date_of_birth la persons (folosit pentru calcul vârstă
 // în detaliul dosar medical + viitoare reminders specifice vârstei).
-try {
-  db.execSync('ALTER TABLE persons ADD COLUMN date_of_birth TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE persons ADD COLUMN date_of_birth TEXT');
 
 // Migrare: adaugă file_hash la documents pentru detecție duplicate
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN file_hash TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN file_hash TEXT');
 try {
   db.execSync('CREATE INDEX IF NOT EXISTS idx_docs_file_hash ON documents(file_hash)');
 } catch {
@@ -492,18 +478,10 @@ try {
 }
 
 // Notă privată — NU se trimite niciodată la AI. Vezi .claude/rules/ai-privacy.md
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN private_notes TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN private_notes TEXT');
 
 // Migrare: adaugă photo_uri la vehicles
-try {
-  db.execSync('ALTER TABLE vehicles ADD COLUMN photo_uri TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE vehicles ADD COLUMN photo_uri TEXT');
 
 // Migrare: path-urile vechi absolute (file:// sau /var/...) conțin UUID-ul containerului iOS,
 // care se invalidează la reinstalări native. Convertim la path relativ față de documentDirectory.
@@ -525,11 +503,7 @@ try {
 }
 
 // Migrare: adaugă plate_number la vehicles
-try {
-  db.execSync('ALTER TABLE vehicles ADD COLUMN plate_number TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE vehicles ADD COLUMN plate_number TEXT');
 
 // Backfill: pozele vehiculelor existente nu au fost niciodată enqueue-uite în
 // `pending_uploads` (bug istoric — enqueueFileUpload era apelat doar pentru
@@ -592,32 +566,16 @@ try {
 }
 
 // Migrare: adaugă fuel_type la vehicles
-try {
-  db.execSync("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT DEFAULT 'diesel'");
-} catch {
-  // coloana există deja
-}
+safeAlterTable("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT DEFAULT 'diesel'");
 
 // Migrare: adaugă calendar_event_id la vehicle_maintenance_tasks
-try {
-  db.execSync('ALTER TABLE vehicle_maintenance_tasks ADD COLUMN calendar_event_id TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE vehicle_maintenance_tasks ADD COLUMN calendar_event_id TEXT');
 
 // Migrare: adaugă is_full la fuel_records (default 1 = plin complet — datele existente rămân tratate ca pline)
-try {
-  db.execSync('ALTER TABLE fuel_records ADD COLUMN is_full INTEGER NOT NULL DEFAULT 1');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE fuel_records ADD COLUMN is_full INTEGER NOT NULL DEFAULT 1');
 
 // Migrare: adaugă station la fuel_records (text liber: brand + adresă, ex. "OMV Cluj-Napoca, Calea Turzii")
-try {
-  db.execSync('ALTER TABLE fuel_records ADD COLUMN station TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE fuel_records ADD COLUMN station TEXT');
 
 // Index pentru filtrări/agregări după benzinărie (LIKE / substring)
 try {
@@ -778,66 +736,34 @@ try {
 // Migrare: orientation_locked pe document_pages — devine 1 după ce userul rotește
 // manual o pagină; OCR-ul respectă apoi orientarea fixată și nu mai încearcă
 // auto-rotire (vezi ocrWithAutoRotate în ecranele documentelor).
-try {
-  db.execSync(
-    'ALTER TABLE document_pages ADD COLUMN orientation_locked INTEGER NOT NULL DEFAULT 0'
-  );
-} catch {
-  // coloana există deja
-}
+safeAlterTable(
+  'ALTER TABLE document_pages ADD COLUMN orientation_locked INTEGER NOT NULL DEFAULT 0'
+);
 
 // Migrare: main_orientation_locked pe documents — analog cu document_pages, dar
 // pentru pagina principală (doc.file_path), care nu are rând în document_pages.
-try {
-  db.execSync(
-    'ALTER TABLE documents ADD COLUMN main_orientation_locked INTEGER NOT NULL DEFAULT 0'
-  );
-} catch {
-  // coloana există deja
-}
+safeAlterTable(
+  'ALTER TABLE documents ADD COLUMN main_orientation_locked INTEGER NOT NULL DEFAULT 0'
+);
 
 // Migrare: adaugă calendar_event_id la documents pentru dedupe reminder calendar
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN calendar_event_id TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN calendar_event_id TEXT');
 
 // Migrare: ai_summary (rezumat AI per document medical — spec 2026-05-24)
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN ai_summary TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN ai_summary TEXT');
 
 // Migrare: medical_reminders_prompted_at (timestamp prima decizie reminder — spec 2026-05-24, D10)
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN medical_reminders_prompted_at TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN medical_reminders_prompted_at TEXT');
 
 // Migrare: pending_reminders_json (JSON actionable_items între extracție și prima vizitare — D13)
-try {
-  db.execSync('ALTER TABLE documents ADD COLUMN pending_reminders_json TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE documents ADD COLUMN pending_reminders_json TEXT');
 
 // Migrare: pending_uploads.uploaded_at + file_size — păstrăm rândurile după
 // upload reușit cu uploaded_at setat, ca reconcile-ul să NU re-uploadeze fișiere
 // deja sincronizate. file_size e cache-uit la primul stat, ca să putem afișa
 // progres în bytes fără să stat-uim fiecare fișier la fiecare refresh.
-try {
-  db.execSync('ALTER TABLE pending_uploads ADD COLUMN uploaded_at INTEGER');
-} catch {
-  // coloana există deja
-}
-try {
-  db.execSync('ALTER TABLE pending_uploads ADD COLUMN file_size INTEGER');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE pending_uploads ADD COLUMN uploaded_at INTEGER');
+safeAlterTable('ALTER TABLE pending_uploads ADD COLUMN file_size INTEGER');
 try {
   db.execSync(
     'CREATE INDEX IF NOT EXISTS idx_pending_uploads_uploaded ON pending_uploads(uploaded_at)'
@@ -849,20 +775,12 @@ try {
 // Migrare: pending_uploads.uploaded_remote_path — calea relativă remote (sub
 // files/) unde fișierul e stocat curent în iCloud. NULL = neuploadat încă.
 // Sursa de adevăr pentru move-on-rename + pentru fileMap-ul manifestului.
-try {
-  db.execSync('ALTER TABLE pending_uploads ADD COLUMN uploaded_remote_path TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE pending_uploads ADD COLUMN uploaded_remote_path TEXT');
 
 // Migrare: cloud_pending_deletes.remote_rel — calea relativă remote exactă de
 // șters (sub files/). Permite ștergerea locației VECHI după un move, nu doar a
 // basename-ului din file_path.
-try {
-  db.execSync('ALTER TABLE cloud_pending_deletes ADD COLUMN remote_rel TEXT');
-} catch {
-  // coloana există deja
-}
+safeAlterTable('ALTER TABLE cloud_pending_deletes ADD COLUMN remote_rel TEXT');
 
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
@@ -892,6 +810,54 @@ try {
   `);
 } catch {
   // tabela/indexurile există deja
+}
+
+// Migrare one-time (idempotentă, rulează la fiecare pornire): curăță orfanii din
+// tabelele legate prin FK rămași din era pre-`PRAGMA foreign_keys = ON`. Înainte
+// de activarea FK, ștergerea unei persoane/dosar/document nu declanșa CASCADE, deci
+// rămâneau rânduri orfan (dosar medical al unei persoane șterse, observații/
+// thread-uri/mesaje/share-uri fără dosar, sumar-uri/remindere fără document). Acele
+// orfane REINTRĂ în backup/iCloud prin `SELECT *` din exportBackup/buildManifestPayload
+// = retenție de date medicale după ștergere explicită.
+//
+// Plasată DUPĂ crearea tuturor tabelelor referite (medical_* + reminders + documents).
+// Ordinea DELETE-urilor e strict top-down (părinte → copil) ca fiecare pas să prindă
+// și orfanii produși de pasul anterior, INDEPENDENT de cascade — rămâne corectă chiar
+// dacă PRAGMA FK eșuează pe un device. Cu FK ON, primul DELETE cascadează deja copiii,
+// iar pașii următori devin no-op idempotenți.
+try {
+  // 1. Dosare medicale ale unei persoane inexistente.
+  db.execSync('DELETE FROM medical_record WHERE person_id NOT IN (SELECT id FROM persons)');
+  // 2. Thread-uri chat fără dosar (inclusiv cele rămase orfane de la pasul 1).
+  db.execSync(
+    'DELETE FROM medical_chat_threads WHERE medical_record_id NOT IN (SELECT id FROM medical_record)'
+  );
+  // 3. Mesaje chat fără thread (inclusiv cele rămase orfane de la pasul 2).
+  db.execSync(
+    'DELETE FROM medical_chat_messages WHERE thread_id NOT IN (SELECT id FROM medical_chat_threads)'
+  );
+  // 4. Observații fără dosar.
+  db.execSync(
+    'DELETE FROM medical_observations WHERE medical_record_id NOT IN (SELECT id FROM medical_record)'
+  );
+  // 5. Share-uri fără dosar.
+  db.execSync(
+    'DELETE FROM medical_shares WHERE medical_record_id NOT IN (SELECT id FROM medical_record)'
+  );
+  // 6. Sumar-uri AI ale unui document inexistent.
+  db.execSync(
+    'DELETE FROM medical_document_summaries WHERE document_id NOT IN (SELECT id FROM documents)'
+  );
+  // 7. Remindere atașate unui document șters (FK document_id ON DELETE CASCADE).
+  db.execSync(
+    'DELETE FROM reminders WHERE document_id IS NOT NULL AND document_id NOT IN (SELECT id FROM documents)'
+  );
+  // 8. Observații cu sursă document dispărută → NULL (semantica FK ON DELETE SET NULL).
+  db.execSync(
+    'UPDATE medical_observations SET source_document_id = NULL WHERE source_document_id IS NOT NULL AND source_document_id NOT IN (SELECT id FROM documents)'
+  );
+} catch (e) {
+  console.warn('[db.migrate] cleanup orfani medicali eșuat:', e instanceof Error ? e.message : e);
 }
 
 // Backfill remindere derivate din documente existente (idempotent)

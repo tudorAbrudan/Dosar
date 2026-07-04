@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { db, generateId } from './db';
+import { toFileUri } from './fileUtils';
 import { computeFileHash } from './fileHash';
 import { onDocumentCreated, onDocumentRenewed } from './reviewPrompt';
 import * as cloudSync from './cloudSync';
@@ -555,15 +556,37 @@ export async function deleteDocument(id: string): Promise<void> {
 
   // Cascade-delete reminders (inclusiv calendar events din reminders) înainte de
   // ștergerea documentului, ca FK-ul să nu fie violat și să nu rămână orphans.
+  // (Cu FK ON, DELETE FROM documents cascadează și el reminders + medical_document_summaries
+  // și setează NULL pe medical_observations.source_document_id; apelul explicit rămâne
+  // pentru că șterge și eventualele evenimente de calendar/notificări asociate.)
   await deleteRemindersByDocument(id);
+
+  // Șterge rândurile-copil FĂRĂ FK către documents (document_pages, document_entities
+  // au doar coloane TEXT, nu REFERENCES) — altfel rămân orfane, iar
+  // reconcilePendingUploads re-inserează file_path-urile paginilor în pending_uploads
+  // și RE-URCĂ fișierele în iCloud, anulând grace-delete-ul. Vezi deleteVehicle ca model.
+  await db.runAsync('DELETE FROM document_pages WHERE document_id = ?', [id]);
+  await db.runAsync('DELETE FROM document_entities WHERE document_id = ?', [id]);
 
   await db.runAsync('DELETE FROM documents WHERE id = ?', [id]);
 
   if (deletedFilePaths.length > 0) {
+    // Grace-delete în cloud (păstrează copia remote câteva snapshot-uri pentru
+    // recovery); gated pe cloud activ. dequeueFileDelete scoate și rândul din
+    // pending_uploads, deci reconcile-ul nu-l mai re-adaugă.
     const cloudEnabled = await getCloudBackupEnabled();
     if (cloudEnabled) {
       for (const path of deletedFilePaths) {
         await cloudSync.dequeueFileDelete(path);
+      }
+    }
+    // Ștergere efectivă de pe disc — idempotentă, per fișier, best-effort:
+    // o eroare la un fișier (deja șters, permisiune) NU blochează ștergerea din DB.
+    for (const path of deletedFilePaths) {
+      try {
+        await FileSystem.deleteAsync(toFileUri(path), { idempotent: true });
+      } catch {
+        // fișier deja absent sau inaccesibil — ștergerea din DB rămâne validă
       }
     }
   }
@@ -823,7 +846,27 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
 }
 
 export async function removeDocumentPage(pageId: string): Promise<void> {
+  // Colectează fișierul ÎNAINTE de a șterge rândul, ca să-l putem curăța de pe disc
+  // + din cloud. Fără asta fișierul rămânea pe disc, iar cloud-ul îl re-urca.
+  const row = await db.getFirstAsync<{ file_path: string | null }>(
+    'SELECT file_path FROM document_pages WHERE id = ?',
+    [pageId]
+  );
   await db.runAsync('DELETE FROM document_pages WHERE id = ?', [pageId]);
+
+  const filePath = row?.file_path ?? null;
+  if (filePath) {
+    const cloudEnabled = await getCloudBackupEnabled();
+    if (cloudEnabled) {
+      await cloudSync.dequeueFileDelete(filePath);
+    }
+    try {
+      await FileSystem.deleteAsync(toFileUri(filePath), { idempotent: true });
+    } catch {
+      // fișier deja absent sau inaccesibil — ștergerea din DB rămâne validă
+    }
+  }
+
   emit('documents:changed');
 }
 

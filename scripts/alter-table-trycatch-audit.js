@@ -94,13 +94,25 @@ function isInsideTry(source, pos) {
   return tryStack.length > 0;
 }
 
+/**
+ * Returnează true dacă `ALTER TABLE` de la `pos` e argumentul string al unui apel
+ * `safeAlterTable('ALTER TABLE …')`. Helper-ul din services/db.ts ambalează
+ * `db.execSync(sql)` într-un try/catch, deci ALTER-ul e protejat la fel ca un
+ * `try {}` literal. Verificăm că imediat înaintea string-ului (ghilimea de
+ * deschidere) apare `safeAlterTable(`.
+ */
+function isSafeAlterHelperCall(source, pos) {
+  const pre = source.slice(Math.max(0, pos - 40), pos);
+  return /safeAlterTable\(\s*['"`]$/.test(pre);
+}
+
 function auditSource(source) {
   const violations = [];
   const re = /ALTER\s+TABLE\s+([a-z_][a-z_0-9]*)[^`;]*/gi;
   let m;
   while ((m = re.exec(source)) !== null) {
     const stmt = m[0].slice(0, 80).replace(/\s+/g, ' ').trim();
-    if (!isInsideTry(source, m.index)) {
+    if (!isInsideTry(source, m.index) && !isSafeAlterHelperCall(source, m.index)) {
       const line = source.slice(0, m.index).split('\n').length;
       violations.push({ statement: stmt, line });
     }
@@ -119,7 +131,8 @@ function format(v) {
   for (const x of v) lines.push(`  services/db.ts:${x.line} — ${x.statement}`);
   lines.push('');
   lines.push(
-    'Fix: try { await db.execAsync(`ALTER TABLE ...`); } catch (e) { /* coloana există */ }'
+    'Fix: folosește helper-ul safeAlterTable(`ALTER TABLE ...`) sau ' +
+      'try { db.execSync(`ALTER TABLE ...`); } catch (e) { /* coloana există */ }'
   );
   return lines.join('\n');
 }

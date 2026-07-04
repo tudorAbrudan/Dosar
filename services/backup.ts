@@ -830,12 +830,32 @@ async function applyManifestBody(
     try {
       const oldPersonId = r.person_id as string;
       const newPersonId = personMap.get(oldPersonId) ?? oldPersonId;
+      // UPSERT (nu INSERT OR REPLACE): cu FK ON, REPLACE = DELETE + INSERT, iar
+      // DELETE-ul ar cascada pe medical_observations/threads/messages/shares. La
+      // import ADITIV peste un dosar existent (același id) asta ar șterge copiii
+      // deja în DB (ex. observații adăugate după backup). `ON CONFLICT(id) DO UPDATE`
+      // actualizează rândul in-place, fără DELETE → copiii NU se pierd. La restore
+      // (wipeFirst) DB e gol → niciun conflict → comportament identic cu INSERT.
+      // Un conflict pe UNIQUE(person_id) cu alt id aruncă → prinsă mai jos → dosarul
+      // din backup e sărit, cel existent rămâne intact (nu suprascriem date existente).
       await db.runAsync(
-        `INSERT OR REPLACE INTO medical_record
+        `INSERT INTO medical_record
           (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref,
            blood_group, allergies, emergency_contact_name, emergency_contact_phone,
            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           person_id = excluded.person_id,
+           name = excluded.name,
+           ai_consent_at = excluded.ai_consent_at,
+           ai_consent_version = excluded.ai_consent_version,
+           encryption_key_ref = excluded.encryption_key_ref,
+           blood_group = excluded.blood_group,
+           allergies = excluded.allergies,
+           emergency_contact_name = excluded.emergency_contact_name,
+           emergency_contact_phone = excluded.emergency_contact_phone,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [
           r.id as string,
           newPersonId,
@@ -893,10 +913,19 @@ async function applyManifestBody(
   }
   for (const t of (payload.medicalChatThreads as AnyRecord[]) ?? []) {
     try {
+      // UPSERT (nu INSERT OR REPLACE): thread-ul e părinte pentru medical_chat_messages
+      // (FK ON DELETE CASCADE). Cu FK ON, REPLACE ar șterge mesajele existente la
+      // import aditiv peste un thread cu același id. `ON CONFLICT(id) DO UPDATE`
+      // actualizează in-place → mesajele NU se pierd.
       await db.runAsync(
-        `INSERT OR REPLACE INTO medical_chat_threads
+        `INSERT INTO medical_chat_threads
           (id, medical_record_id, title, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           medical_record_id = excluded.medical_record_id,
+           title = excluded.title,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [
           t.id as string,
           t.medical_record_id as string,

@@ -2,9 +2,12 @@
  * Aplică schema reală din `services/db.ts` pe un DB de test.
  *
  * Strategia: extrage TOATE apelurile `db.execSync/runSync/execAsync/runAsync`
- * cu argument string literal (backtick / single / double quote) și execută
- * conținutul lor în ordinea sursă. Skip-uiește statements cu `?` placeholders
- * (necesită params runtime, nu schema-relevant).
+ * ȘI `safeAlterTable(...)` cu argument string literal (backtick / single / double
+ * quote) și execută conținutul lor în ordinea sursă. `safeAlterTable` e helper-ul
+ * de migrare din db.ts care ambalează `db.execSync('ALTER TABLE …')` într-un
+ * try/catch — trebuie extras aici ca migrările de coloane (custom_type_id, phone,
+ * private_notes etc.) să ajungă și pe DB-ul de test. Skip-uiește statements cu `?`
+ * placeholders (necesită params runtime, nu schema-relevant).
  *
  * Toate erorile sunt înghițite — schema reală e validată prin testele care
  * verifică explicit existența tabelelor și coloanelor. Asta evită fragilitatea
@@ -22,7 +25,7 @@ export function applySchemaToTestDb(db: TestDb): void {
   const source = readFileSync(dbTsPath, 'utf8');
 
   const re =
-    /db\.(?:execSync|execAsync|runSync|runAsync)\s*\(\s*(?:`([\s\S]*?)`|'([^']*)'|"([^"]*)")\s*[,)]/g;
+    /(?:db\.(?:execSync|execAsync|runSync|runAsync)|safeAlterTable)\s*\(\s*(?:`([\s\S]*?)`|'([^']*)'|"([^"]*)")\s*[,)]/g;
 
   let m;
   let executed = 0;
