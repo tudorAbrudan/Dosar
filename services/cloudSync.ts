@@ -69,6 +69,12 @@ interface ManifestPayload {
   customTypes: CustomDocumentType[];
   documents: Document[];
   documentPages: DocumentPage[];
+  documentEntities: {
+    id: string;
+    document_id: string;
+    entity_type: EntityType;
+    entity_id: string;
+  }[];
   entityOrder: { entity_type: EntityType; entity_id: string; sort_order: number }[];
   medicalRecords: MedicalRecord[];
   medicalObservations: any[]; // plaintext TEXT columns (spec 2026-06-05)
@@ -142,6 +148,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     medicalDocumentSummaries,
     medicalShares,
     reminders,
+    documentEntities,
   ] = await Promise.all([
     entities.getPersons(),
     entities.getProperties(),
@@ -165,6 +172,12 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     db.getAllAsync<MedicalDocumentSummary>('SELECT * FROM medical_document_summaries'),
     db.getAllAsync<MedicalShare>('SELECT * FROM medical_shares'),
     db.getAllAsync<Reminder>('SELECT * FROM reminders'),
+    db.getAllAsync<{
+      id: string;
+      document_id: string;
+      entity_type: EntityType;
+      entity_id: string;
+    }>('SELECT id, document_id, entity_type, entity_id FROM document_entities'),
   ]);
 
   // fileMap: disk relPath → remote relPath. Sursa primară = locația reală
@@ -199,6 +212,7 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
     customTypes,
     documents,
     documentPages: allPages,
+    documentEntities,
     entityOrder,
     medicalRecords,
     medicalObservations,
@@ -842,6 +856,49 @@ export async function listSnapshots(): Promise<string[]> {
     .reverse();
 }
 
+/** Directorul local pentru snapshot-uri de siguranță pre-restore (JSON, fără binare). */
+const PRE_RESTORE_DIR = `${FileSystem.documentDirectory}backups`;
+/** Câte snapshot-uri pre-restore păstrăm local. */
+const PRE_RESTORE_KEEP = 3;
+
+/**
+ * Serializează manifestul LOCAL curent (echivalentul buildManifestPayload, fără
+ * fișiere binare) într-un fișier `backups/pre-restore-<ISO>.json` ÎNAINTE de wipe.
+ * Oferă o cale de recuperare dacă restore-ul din cloud aduce date greșite/parțiale.
+ *
+ * Best-effort: orice eșec e logat și NU blochează restore-ul. Păstrăm ultimele
+ * {@link PRE_RESTORE_KEEP} snapshot-uri, ștergându-le pe cele mai vechi.
+ */
+async function writePreRestoreSnapshot(): Promise<void> {
+  try {
+    const localPayload = await buildManifestPayload();
+    await FileSystem.makeDirectoryAsync(PRE_RESTORE_DIR, { intermediates: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await FileSystem.writeAsStringAsync(
+      `${PRE_RESTORE_DIR}/pre-restore-${stamp}.json`,
+      JSON.stringify(localPayload),
+      { encoding: FileSystem.EncodingType.UTF8 }
+    );
+    const files = await FileSystem.readDirectoryAsync(PRE_RESTORE_DIR);
+    const snapshots = files
+      .filter(f => f.startsWith('pre-restore-') && f.endsWith('.json'))
+      .sort(); // ISO timestamp în nume → ordine cronologică
+    const toDelete = snapshots.slice(0, Math.max(0, snapshots.length - PRE_RESTORE_KEEP));
+    for (const name of toDelete) {
+      try {
+        await FileSystem.deleteAsync(`${PRE_RESTORE_DIR}/${name}`, { idempotent: true });
+      } catch {
+        // ștergerea unui snapshot vechi nu blochează nimic
+      }
+    }
+  } catch (e) {
+    console.warn(
+      '[cloudSync.restore] pre-restore snapshot failed:',
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
 export interface RestoreProgress {
   phase: 'manifest' | 'files' | 'apply' | 'done';
   current: number;
@@ -1104,6 +1161,10 @@ export async function restoreFromCloud(
   }
 
   onProgress?.({ phase: 'apply', current: 0, total: 1, bytesDone, bytesTotal });
+
+  // Snapshot de siguranță al stării LOCALE înainte de wipe — cale de recuperare
+  // dacă restore-ul aduce date greșite. Best-effort: nu blochează fluxul.
+  await writePreRestoreSnapshot();
 
   await applyManifest(payload, { wipeFirst: true });
   onProgress?.({ phase: 'apply', current: 1, total: 1, bytesDone, bytesTotal });

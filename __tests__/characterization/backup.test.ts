@@ -434,7 +434,10 @@ describe('backup applyManifest — reminders round-trip', () => {
     expect(restored).toHaveLength(2);
     expect(restored[0].source_type).toBe('medical_ai');
     expect(restored[0].label).toBe('Control');
-    expect(restored[0].calendar_event_id).toBe('cal-1');
+    // Schimbat deliberat 2026-07: calendar_event_id e specific device-ului sursă
+    // (evenimentul din Calendar.app nu există pe device-ul de restore) → se nullează
+    // la restaurare, ca reminderul să nu refere un event orfan. Vezi restore fidelity.
+    expect(restored[0].calendar_event_id).toBeNull();
     expect(restored[1].source_type).toBe('document_expiry');
     expect(restored[1].label).toBe('RCA');
     expect(restored[1].calendar_event_id).toBeNull();

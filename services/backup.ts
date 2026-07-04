@@ -2,14 +2,15 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import JSZip from 'jszip';
-import type {
-  DocumentType,
-  EntityType,
-  MedicalRecord,
-  MedicalChatThread,
-  MedicalDocumentSummary,
-  MedicalShare,
-  Reminder,
+import {
+  ALL_ENTITY_TYPES,
+  type DocumentType,
+  type EntityType,
+  type MedicalRecord,
+  type MedicalChatThread,
+  type MedicalDocumentSummary,
+  type MedicalShare,
+  type Reminder,
 } from '@/types';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -40,8 +41,10 @@ async function readFileBase64(storedPath: string): Promise<string | null> {
  *  - backup.json  (manifest cu entități + documente + fileMap)
  *  - files/<NumeEntitate>/<TipDocument>/<fisier>  (pozele și PDF-urile organizate pe entități)
  *
- * Format version: 15
+ * Format version: 16
  * v15: medical observations/chat plaintext (spec 2026-06-05)
+ * v16: document_entities (junction table) inclus în manifest — restore fidelity 2026-07.
+ *      Manifestele vechi (fără câmp) fac fallback la reconstrucția din coloanele legacy.
  */
 export async function exportBackup(): Promise<void> {
   const [
@@ -84,6 +87,7 @@ export async function exportBackup(): Promise<void> {
     medicalDocumentSummaries,
     medicalShares,
     reminders,
+    documentEntities,
   ] = await Promise.all([
     db.getAllAsync<MedicalRecord>('SELECT * FROM medical_record'),
     db.getAllAsync<any>('SELECT * FROM medical_observations'),
@@ -92,6 +96,12 @@ export async function exportBackup(): Promise<void> {
     db.getAllAsync<MedicalDocumentSummary>('SELECT * FROM medical_document_summaries'),
     db.getAllAsync<MedicalShare>('SELECT * FROM medical_shares'),
     db.getAllAsync<Reminder>('SELECT * FROM reminders'),
+    db.getAllAsync<{
+      id: string;
+      document_id: string;
+      entity_type: EntityType;
+      entity_id: string;
+    }>('SELECT id, document_id, entity_type, entity_id FROM document_entities'),
   ]);
 
   const personNames = new Map(persons.map(p => [p.id, p.name]));
@@ -125,7 +135,7 @@ export async function exportBackup(): Promise<void> {
   }
 
   const manifest = {
-    version: 15, // v15: medical observations/chat plaintext (spec 2026-06-05)
+    version: 16, // v16: document_entities inclus în manifest (restore fidelity 2026-07)
     exportDate: new Date().toISOString(),
     persons,
     properties,
@@ -139,6 +149,7 @@ export async function exportBackup(): Promise<void> {
     customTypes,
     documents,
     documentPages: allPages,
+    documentEntities,
     entityOrder,
     fileMap,
     medicalRecords,
@@ -243,16 +254,15 @@ export function isImportInProgress(): boolean {
  * Aplică un manifest (payload JSON deja parsat) peste DB-ul curent.
  * Folosit atât de importBackup (după parse ZIP/JSON) cât și de cloudSync.restore().
  *
- * Când `wipeFirst: true`, întreaga operație (wipe + import) rulează într-o
- * tranzacție SQLite atomică: dacă orice pas eșuează, DB-ul rămâne în starea
- * de dinaintea apelului (nu rămâne pe jumătate restaurat). Pentru
- * `wipeFirst: false` (calea ZIP din `importBackup`) execuția rămâne aditivă
- * fără tranzacție — un eșec parțial poate lăsa entități importate în DB.
+ * Ambele căi (wipeFirst și aditiv) rulează într-o tranzacție SQLite atomică:
+ * dacă orice pas eșuează, DB-ul rămâne în starea de dinaintea apelului (nu
+ * rămâne pe jumătate restaurat / importat). Pentru `wipeFirst: true` tranzacția
+ * acoperă wipe + import; pentru `wipeFirst: false` (calea ZIP din `importBackup`)
+ * acoperă importul aditiv.
  *
- * Atomicitate: tranzacția DB se aplică doar pentru `wipeFirst: true` și
- * acoperă DOAR scrierea în SQLite. Operațiunile pe disc (copy fișiere,
- * fișiere descărcate de `restoreFromCloud`) NU sunt rollback-uite — pot
- * rămâne orfani după un eșec, recuperate la următoarea încercare.
+ * Atomicitate: tranzacția DB acoperă DOAR scrierea în SQLite. Operațiunile pe
+ * disc (copy fișiere, fișiere descărcate de `restoreFromCloud`) NU sunt
+ * rollback-uite — pot rămâne orfani după un eșec, recuperate la următoarea încercare.
  */
 export async function applyManifest(
   payload: Record<string, unknown>,
@@ -260,15 +270,14 @@ export async function applyManifest(
 ): Promise<ImportResult> {
   _importInProgress = true;
   try {
-    if (options.wipeFirst) {
-      let result!: ImportResult;
-      await db.withTransactionAsync(async () => {
+    let result!: ImportResult;
+    await db.withTransactionAsync(async () => {
+      if (options.wipeFirst) {
         await wipeUserData();
-        result = await applyManifestBody(payload);
-      });
-      return result;
-    }
-    return await applyManifestBody(payload);
+      }
+      result = await applyManifestBody(payload, options.wipeFirst === true);
+    });
+    return result;
   } finally {
     _importInProgress = false;
     emit('documents:changed');
@@ -279,7 +288,10 @@ export async function applyManifest(
   }
 }
 
-async function applyManifestBody(payload: Record<string, unknown>): Promise<ImportResult> {
+async function applyManifestBody(
+  payload: Record<string, unknown>,
+  wipeFirst = false
+): Promise<ImportResult> {
   // --- Încarcă entitățile existente pentru deduplicare ---
   const [
     existingPersons,
@@ -347,14 +359,25 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
   let skipped = 0;
   const errors: string[] = [];
 
-  const personMap = new Map<string, string>();
-  const propertyMap = new Map<string, string>();
-  const vehicleMap = new Map<string, string>();
-  const cardMap = new Map<string, string>();
-  const animalMap = new Map<string, string>();
-  const companyMap = new Map<string, string>();
+  // Remap id-vechi → id-nou per tip de entitate, folosit la FK-uri și la
+  // restaurarea document_entities. Generat din ALL_ENTITY_TYPES: un EntityType
+  // nou primește automat hartă imediat ce bucla lui de restore o populează.
+  const entityIdMaps = new Map<EntityType, Map<string, string>>(
+    ALL_ENTITY_TYPES.map(t => [t, new Map<string, string>()])
+  );
+  const personMap = entityIdMaps.get('person')!;
+  const propertyMap = entityIdMaps.get('property')!;
+  const vehicleMap = entityIdMaps.get('vehicle')!;
+  const cardMap = entityIdMaps.get('card')!;
+  const animalMap = entityIdMaps.get('animal')!;
+  const companyMap = entityIdMaps.get('company')!;
   const customTypeMap = new Map<string, string>();
   const docIdMap = new Map<string, string>();
+  // Dosarele medicale își păstrează ID-ul la restore (INSERT OR REPLACE cu id-ul
+  // original), deci maparea e identitate — dar o construim explicit ca remap-ul
+  // pentru document_entities (entity_type='medical_record') să treacă prin aceeași
+  // logică ca restul entităților și să sară linkurile către dosare neimportate.
+  const recordIdMap = entityIdMaps.get('medical_record')!;
 
   type AnyRecord = Record<string, unknown>;
 
@@ -697,11 +720,19 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
   for (const d of (payload.documents as AnyRecord[]) ?? []) {
     try {
       const docKey = `${d.type as string}|${(d.issue_date as string) ?? ''}|${(d.expiry_date as string) ?? ''}`;
-      const existingDocId = existingDocByKey.get(docKey);
-      if (existingDocId) {
-        if (d.id) docIdMap.set(d.id as string, existingDocId);
-        skipped++;
-        continue;
+      // Dedupe DOAR pe calea aditivă (import ZIP peste date existente) și DOAR
+      // contra rândurilor preexistente în DB — NICIODATĂ contra documentelor
+      // tocmai inserate din ACELAȘI manifest (altfel două documente distincte cu
+      // aceeași cheie type|issue|expiry, ex. două `altul` fără date, s-ar colapsa
+      // iar paginile s-ar atașa greșit la supraviețuitor). La restore (wipeFirst)
+      // DB-ul e gol → orice skip = pierdere de date, deci dedupe complet dezactivat.
+      if (!wipeFirst) {
+        const existingDocId = existingDocByKey.get(docKey);
+        if (existingDocId) {
+          if (d.id) docIdMap.set(d.id as string, existingDocId);
+          skipped++;
+          continue;
+        }
       }
       const filePath = d.file_path ? toRelativePath(d.file_path as string) : undefined;
       const created = await docs.createDocument({
@@ -714,6 +745,8 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
         note: (d.note as string) || undefined,
         file_path: filePath || undefined,
         ocr_text: (d.ocr_text as string) || undefined,
+        auto_delete: (d.auto_delete as string) || undefined,
+        private_notes: (d.private_notes as string) || undefined,
         metadata: d.metadata
           ? typeof d.metadata === 'string'
             ? (JSON.parse(d.metadata) as Record<string, string>)
@@ -727,7 +760,9 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
         company_id: d.company_id ? companyMap.get(d.company_id as string) : undefined,
       });
       if (d.id) docIdMap.set(d.id as string, created.id);
-      existingDocByKey.set(docKey, created.id);
+      // NU adăugăm docKey în existingDocByKey: documentele din același manifest nu
+      // se dedupe între ele (vezi comentariul de mai sus). Harta rămâne snapshot-ul
+      // rândurilor preexistente în DB.
       // Propagăm flag-ul de orientare lock-uită pe pagina principală.
       if (d.main_orientation_locked === true || d.main_orientation_locked === 1) {
         await docs.lockMainOrientation(created.id);
@@ -736,24 +771,31 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
       if (d.calendar_event_id) {
         await docs.setDocumentCalendarEventId(created.id, d.calendar_event_id as string);
       }
-      // Propagăm coloanele AI medical (spec 2026-05-24): rezumat AI, timestamp prompt
-      // reminders, JSON tranzitoriu cu actionable items. Nu pleacă prin createDocument
-      // pentru că sunt populate doar de pipeline-ul medical, nu la creare manuală.
+      // Propagăm coloanele care NU trec prin createDocument:
+      //  - AI medical (spec 2026-05-24): rezumat AI, timestamp prompt reminders,
+      //    JSON tranzitoriu — populate doar de pipeline-ul medical.
+      //  - file_hash: createDocument îl RECALCULEAZĂ de pe disc; dacă fișierul
+      //    lipsește la restore (download eșuat / fișier absent la export) rezultă
+      //    null. Restaurăm valoarea din manifest ca detecția de duplicat să rămână
+      //    funcțională fără backfill.
       if (
         d.ai_summary != null ||
         d.medical_reminders_prompted_at != null ||
-        d.pending_reminders_json != null
+        d.pending_reminders_json != null ||
+        (d.file_hash != null && created.file_hash == null)
       ) {
         await db.runAsync(
           `UPDATE documents
              SET ai_summary = ?,
                  medical_reminders_prompted_at = ?,
-                 pending_reminders_json = ?
+                 pending_reminders_json = ?,
+                 file_hash = COALESCE(file_hash, ?)
            WHERE id = ?`,
           [
             (d.ai_summary as string | null | undefined) ?? null,
             (d.medical_reminders_prompted_at as string | null | undefined) ?? null,
             (d.pending_reminders_json as string | null | undefined) ?? null,
+            (d.file_hash as string | null | undefined) ?? null,
             created.id,
           ]
         );
@@ -781,8 +823,13 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
   }
 
   // ── Restaurare tabele medicale ──────────────────────────────────────────────
+  // Dosarele își păstrează id-ul (recordIdMap = identitate) dar person_id trebuie
+  // remapat: persoanele primesc id-uri NOI la restore, iar fără remap
+  // getMedicalRecordByPersonId(noulPersonId) întoarce null → dosarul devine invizibil.
   for (const r of (payload.medicalRecords as AnyRecord[]) ?? []) {
     try {
+      const oldPersonId = r.person_id as string;
+      const newPersonId = personMap.get(oldPersonId) ?? oldPersonId;
       await db.runAsync(
         `INSERT OR REPLACE INTO medical_record
           (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref,
@@ -791,7 +838,7 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           r.id as string,
-          r.person_id as string,
+          newPersonId,
           r.name as string,
           (r.ai_consent_at as string | null) ?? null,
           (r.ai_consent_version as number | null) ?? 1,
@@ -804,12 +851,18 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
           r.updated_at as string,
         ]
       );
+      recordIdMap.set(r.id as string, r.id as string);
     } catch (e) {
       errors.push(`Dosar medical: ${e instanceof Error ? e.message : 'eroare'}`);
     }
   }
   for (const o of (payload.medicalObservations as AnyRecord[]) ?? []) {
     try {
+      // source_document_id → remap prin docIdMap; dacă documentul sursă nu a fost
+      // importat (lipsă din manifest), coloana e FK ON DELETE SET NULL → o punem null
+      // ca să nu rămână legătura către un id inexistent.
+      const oldSrc = (o.source_document_id as string | null) ?? null;
+      const newSrc = oldSrc ? (docIdMap.get(oldSrc) ?? null) : null;
       await db.runAsync(
         `INSERT OR REPLACE INTO medical_observations
           (id, medical_record_id, source_document_id, name, value, unit,
@@ -819,7 +872,7 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
         [
           o.id as string,
           o.medical_record_id as string,
-          (o.source_document_id as string | null) ?? null,
+          newSrc,
           (o.name as string | null) ?? '[indisponibil]',
           (o.value as string | null) ?? null,
           (o.unit as string | null) ?? null,
@@ -877,12 +930,20 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
   }
   for (const s of (payload.medicalDocumentSummaries as AnyRecord[]) ?? []) {
     try {
+      // document_id e PK + FK către documents; remapăm prin docIdMap. Fără mapare
+      // (document neimportat) sumarul e orfan → îl sărim (altfel FK violation).
+      const oldDocId = s.document_id as string;
+      const newDocId = docIdMap.get(oldDocId);
+      if (!newDocId) {
+        skipped++;
+        continue;
+      }
       await db.runAsync(
         `INSERT OR REPLACE INTO medical_document_summaries
           (document_id, summary, generated_at, model_used)
          VALUES (?, ?, ?, ?)`,
         [
-          s.document_id as string,
+          newDocId,
           s.summary as string,
           s.generated_at as string,
           (s.model_used as string | null) ?? null,
@@ -914,33 +975,121 @@ async function applyManifestBody(payload: Record<string, unknown>): Promise<Impo
     }
   }
 
+  // ── Restaurare document_entities (junction table) ────────────────────────────
+  // Sursa completă a legăturilor document↔entitate: multi-link de același tip ȘI
+  // legături către dosare medicale (care NU au coloană legacy). createDocument a
+  // recreat deja legăturile din coloanele legacy single-value; aici completăm restul
+  // cu INSERT OR IGNORE (UNIQUE pe document_id+entity_type+entity_id sare duplicatele).
+  // Manifest vechi fără câmp → loop sărit → fallback la reconstrucția legacy.
+  const remapLinkEntityId = (entityType: string, oldId: string): string | undefined =>
+    entityIdMaps.get(entityType as EntityType)?.get(oldId);
+  if (Array.isArray(payload.documentEntities)) {
+    for (const link of payload.documentEntities as AnyRecord[]) {
+      try {
+        const oldDocId = link.document_id as string | undefined;
+        const entityType = link.entity_type as string | undefined;
+        const oldEntityId = link.entity_id as string | undefined;
+        if (!oldDocId || !entityType || !oldEntityId) continue;
+        const newDocId = docIdMap.get(oldDocId);
+        if (!newDocId) continue; // documentul nu a fost importat
+        const newEntityId = remapLinkEntityId(entityType, oldEntityId);
+        if (!newEntityId) continue; // entitatea nu a fost importată → link orfan sărit
+        await db.runAsync(
+          'INSERT OR IGNORE INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)',
+          [generateId(), newDocId, entityType, newEntityId]
+        );
+      } catch (e) {
+        errors.push(`Legătură document: ${e instanceof Error ? e.message : 'eroare'}`);
+      }
+    }
+  }
+
   // ── Restaurare remindere ────────────────────────────────────────────────────
-  // optional pentru backward compat cu backup-uri mai vechi (fără câmpul reminders)
+  // Opțional pentru backward compat cu backup-uri vechi (fără câmpul reminders).
+  // Remap FK-uri (document_id + entity_id-uri) la noile id-uri; calendar_event_id →
+  // null (eveniment specific device-ului vechi, nevalabil pe device-ul curent).
+  // Dedupe cu reminderul auto-creat de syncDocumentExpiryReminder în createDocument:
+  // pentru un `document_expiry` pe același document ACTUALIZĂM rândul auto-creat
+  // (păstrând dismissed_at din backup) în loc să inserăm un duplicat. Reminderele al
+  // căror document sursă nu mai există sunt sărite (altfel orfani nenavigabili).
   if (Array.isArray(payload.reminders)) {
     for (const r of payload.reminders as AnyRecord[]) {
       try {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO reminders (
-             id, source_type, document_id, person_id, vehicle_id, property_id, animal_id, card_id,
-             label, reminder_date, calendar_event_id, origin, created_at, dismissed_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            r.id as string,
-            r.source_type as string,
-            (r.document_id as string | null) ?? null,
-            (r.person_id as string | null) ?? null,
-            (r.vehicle_id as string | null) ?? null,
-            (r.property_id as string | null) ?? null,
-            (r.animal_id as string | null) ?? null,
-            (r.card_id as string | null) ?? null,
-            r.label as string,
-            r.reminder_date as string,
-            (r.calendar_event_id as string | null) ?? null,
-            r.origin as string,
-            r.created_at as string,
-            (r.dismissed_at as string | null) ?? null,
-          ]
-        );
+        const oldDocId = (r.document_id as string | null) ?? null;
+        let newDocId: string | null = null;
+        if (oldDocId) {
+          newDocId = docIdMap.get(oldDocId) ?? null;
+          if (!newDocId) {
+            // Import aditiv: documentul poate exista deja în DB fără să fi fost în
+            // payload.documents (deci absent din docIdMap). Îl acceptăm dacă rândul chiar există.
+            const existingDoc = await db.getFirstAsync<{ id: string }>(
+              'SELECT id FROM documents WHERE id = ? LIMIT 1',
+              [oldDocId]
+            );
+            newDocId = existingDoc?.id ?? null;
+          }
+          if (!newDocId) continue; // reminder orfan — documentul sursă lipsește
+        }
+        const sourceType = r.source_type as string;
+        const label = r.label as string;
+        const reminderDate = r.reminder_date as string;
+        const dismissedAt = (r.dismissed_at as string | null) ?? null;
+        const newPerson = r.person_id ? (personMap.get(r.person_id as string) ?? null) : null;
+        const newVehicle = r.vehicle_id ? (vehicleMap.get(r.vehicle_id as string) ?? null) : null;
+        const newProperty = r.property_id ? (propertyMap.get(r.property_id as string) ?? null) : null;
+        const newAnimal = r.animal_id ? (animalMap.get(r.animal_id as string) ?? null) : null;
+        const newCard = r.card_id ? (cardMap.get(r.card_id as string) ?? null) : null;
+
+        let existingReminderId: string | null = null;
+        if (newDocId && sourceType === 'document_expiry') {
+          const existing = await db.getFirstAsync<{ id: string }>(
+            `SELECT id FROM reminders WHERE document_id = ? AND source_type = 'document_expiry' LIMIT 1`,
+            [newDocId]
+          );
+          existingReminderId = existing?.id ?? null;
+        }
+
+        if (existingReminderId) {
+          await db.runAsync(
+            `UPDATE reminders SET
+               label = ?, reminder_date = ?, dismissed_at = ?, calendar_event_id = NULL,
+               person_id = ?, vehicle_id = ?, property_id = ?, animal_id = ?, card_id = ?
+             WHERE id = ?`,
+            [
+              label,
+              reminderDate,
+              dismissedAt,
+              newPerson,
+              newVehicle,
+              newProperty,
+              newAnimal,
+              newCard,
+              existingReminderId,
+            ]
+          );
+        } else {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO reminders (
+               id, source_type, document_id, person_id, vehicle_id, property_id, animal_id, card_id,
+               label, reminder_date, calendar_event_id, origin, created_at, dismissed_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+            [
+              r.id as string,
+              sourceType,
+              newDocId,
+              newPerson,
+              newVehicle,
+              newProperty,
+              newAnimal,
+              newCard,
+              label,
+              reminderDate,
+              r.origin as string,
+              r.created_at as string,
+              dismissedAt,
+            ]
+          );
+        }
       } catch (e) {
         console.warn('[applyManifest] reminder skip:', r.id, e);
       }

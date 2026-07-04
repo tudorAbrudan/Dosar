@@ -44,7 +44,6 @@ const EXCLUDED_TABLES = new Set([
   'cloud_pending_deletes', // coadă tranzitorie pentru ștergeri staggered cloud (file_path + counter)
   'chat_threads', // istoricul chatbot - ephemeral, NU se păstrează (privacy)
   'chat_messages', // idem
-  'document_entities', // junction table reconstruită automat din docs.createDocument
   'fuel_records_v2', // tabel temporar de migrare
   // Medical — FTS virtual reconstruită la restore din summaries + ocr_text:
   'medical_fts',
