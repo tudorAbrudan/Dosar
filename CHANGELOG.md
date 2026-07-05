@@ -14,6 +14,22 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.8.6] (2026-07-05) — build 65
+
+### Reparat — Fiabilitate backup & restore (review adversarial 2026-07-04)
+- **Restore complet fidel:** dosarul medical rămâne vizibil după restaurare (ID-urile persoanelor/documentelor sunt remapate corect în observații, sumaruri și dosare), legăturile document↔entitate (inclusiv multi-link și dosar medical) sunt incluse în backup și restaurate, notițele private și regula de auto-ștergere nu se mai pierd, documentele distincte cu același tip și aceleași date nu mai sunt colapsate la restore. Snapshot local de siguranță înainte de orice restore din iCloud.
+- **Ștergeri curate:** ștergerea unui document șterge acum și fișierele de pe disc + paginile + legăturile (nu mai reapar în iCloud); ștergerea dosarului medical curăță în cascadă observațiile, conversațiile și share-urile (foreign keys active + curățare automată a orfanilor istorici).
+- **Criptare iCloud retroactivă:** la activarea criptării, fișierele deja urcate se recriptează automat la următoarea sincronizare (pornește imediat); avertisment la export ZIP peste 300MB.
+
+### Reparat — AI & model local
+- Documentele medicale și cele sensibile (buletin, pașaport, card) nu mai pot fi trimise la un AI extern fără consimțământul dedicat; pe modelul local nimic nu părăsește telefonul. Text de consimțământ actualizat, onest despre cazul scanurilor ilizibile.
+- Anularea descărcării unui model local nu mai lasă asistentul blocat pe un model inexistent; descărcările întrerupte nu mai apar ca „descărcate"; comutarea providerului în timpul unei analize nu mai poate închide aplicația.
+- Asistentul anunță când vede doar o parte din documente („primele 6 din 30") și erorile tehnice apar acum ca mesaje clare în română.
+
+### Reparat — Interfață
+- Dismiss-ul unui reminder din Expirări se reflectă acum și pe Acasă și în notificări; statusul ITP de pe Acasă folosește aceeași logică ca ecranul vehiculului (inclusiv ștampila de pe talon).
+- „Notificări de expirare" (fost „Notificări push"), ecranul 404 în română, butoane „Anulează" uniforme, „Remindere" în loc de „Reminders", răspunsurile chatbotului sincronizate cu funcțiile reale ale aplicației.
+
 ## [3.8.0] (2026-05-24) — build 59
 
 ### Adăugat — Rezumat AI + Reminders în calendar pentru documente medicale
