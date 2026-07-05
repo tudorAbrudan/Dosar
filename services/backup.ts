@@ -21,8 +21,56 @@ import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
+import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
 import { emit } from './events';
+
+/**
+ * Prag (bytes) peste care exportul manual ZIP e riscant din punct de vedere al
+ * memoriei, iar UI-ul (Setări → Backup) avertizează înainte de a continua.
+ *
+ * Raționament: `zip.generateAsync({ type: 'base64' })` construiește TOT arhiva ca un
+ * singur string base64 în RAM. La vârf, memoria ≈ 2.5–3× dimensiunea fișierelor brute
+ * (JSZip ține conținutul fișierelor + stringul base64 final, ~1.33× peste zip). ~300MB
+ * de fișiere înseamnă un vârf de ~0.8–1GB — suficient pentru un jetsam pe device-uri cu
+ * puțină memorie, exact pe utilizatorii cu cele mai multe date. Sub prag, comportamentul
+ * de export rămâne neschimbat; peste prag recomandăm backup-ul în iCloud (streaming pe
+ * fișiere, fără arhivă in-memory).
+ */
+export const EXPORT_SIZE_WARN_BYTES = 300 * 1024 * 1024;
+
+/**
+ * Estimează dimensiunea totală (bytes) a datelor care vor intra în ZIP-ul de backup:
+ * suma mărimilor pe disc ale tuturor fișierelor (documente, pagini, poze vehicule) plus
+ * dimensiunea DB-ului SQLite local ca proxy pentru manifestul JSON (conservator, de
+ * același ordin de mărime, fără a reconstrui manifestul).
+ *
+ * Termenul dominant sunt fișierele binare; manifestul e neglijabil pe biblioteci mari.
+ * Fișierele lipsă / inaccesibile contribuie 0 (sunt oricum sărite la export). Folosit de
+ * UI ca să decidă dacă avertizează asupra riscului de memorie înainte de export.
+ */
+export async function estimateBackupSizeBytes(): Promise<number> {
+  const rows = await db.getAllAsync<{ file_path: string }>(
+    `SELECT file_path FROM documents WHERE file_path IS NOT NULL AND file_path != ''
+     UNION
+     SELECT file_path FROM document_pages WHERE file_path IS NOT NULL AND file_path != ''
+     UNION
+     SELECT photo_uri AS file_path FROM vehicles WHERE photo_uri IS NOT NULL AND photo_uri != ''`
+  );
+  let total = 0;
+  for (const r of rows) {
+    try {
+      const info = await FileSystem.getInfoAsync(toFileUri(r.file_path));
+      if (info.exists && 'size' in info && typeof info.size === 'number') {
+        total += info.size;
+      }
+    } catch {
+      // Fișier inaccesibil — contribuie 0, la fel ca la export.
+    }
+  }
+  total += await getLocalDbSizeBytes();
+  return total;
+}
 
 /**
  * Citește un fișier ca base64. Returnează null dacă nu există sau nu poate fi citit.
@@ -175,7 +223,11 @@ export async function exportBackup(): Promise<void> {
     }
   }
 
-  const zipBase64 = await zip.generateAsync({ type: 'base64' });
+  // `compression: 'STORE'` (fără DEFLATE): pozele JPG și PDF-urile sunt deja comprimate,
+  // deci DEFLATE nu reduce dimensiunea dar arde CPU și crește vârful de RAM. STORE e deja
+  // default-ul JSZip; îl setăm explicit ca intenția să fie clară și robustă la schimbări de
+  // default. Importul (`JSZip.loadAsync`) citește orice metodă, deci compatibilitatea nu e afectată.
+  const zipBase64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
 
   const date = new Date().toISOString().slice(0, 10);
   const filename = `acte_backup_${date}.zip`;

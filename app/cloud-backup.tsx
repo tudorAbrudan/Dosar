@@ -7,6 +7,7 @@ import { useCloudBackup } from '@/hooks/useCloudBackup';
 import {
   estimateRestoreSize,
   formatBytes,
+  markCloudBackupForReupload,
   restoreFromCloud,
   type RestoreEstimate,
   type RestoreProgress,
@@ -202,21 +203,43 @@ export default function CloudBackupScreen() {
   }, [runRestore]);
 
   // ── Encryption toggle ────────────────────────────────────────────────────
-  // TODO(future): re-enqueue all pending uploads when encryption state changes,
-  // so the queue and meta.encrypted always agree. Today the next manifest upload
-  // is the source of truth and most files re-upload anyway when content changes.
+  // La orice schimbare a stării de criptare (activare / dezactivare / schimbare
+  // parolă) re-marcăm fișierele deja urcate pentru re-upload și pornim
+  // sincronizarea, ca fișierele din iCloud și `meta.encrypted` să rămână coerente
+  // (altfel restore-ul citește greșit fișierele urcate cu starea veche).
   const handleEncryptionToggle = (value: boolean) => {
     if (value) {
-      // OFF → ON: cere parolă nouă.
-      setPendingAfterUnlock(null);
-      setPwModalMode('setup');
+      // OFF → ON: avertizează despre re-criptare, apoi cere parolă nouă.
+      Alert.alert(
+        'Activează criptarea',
+        'Criptarea se aplică imediat fișierelor noi. Fișierele deja urcate în iCloud sunt ' +
+          're-criptate la următoarea sincronizare, care pornește automat după ce setezi parola. ' +
+          'Poți folosi aplicația în acest timp. Continui?',
+        [
+          { text: 'Anulează', style: 'cancel' },
+          {
+            text: 'Activează',
+            onPress: () => {
+              setPendingAfterUnlock(null);
+              // setTimeout: pe iOS, UIAlertController e încă în animația de dismiss când
+              // onPress fire-uiește; prezentarea CloudPasswordModal (un <Modal>) în acel
+              // moment eșuează silent. 350ms lasă alertul să se închidă (audit alert-modal-race).
+              setTimeout(() => setPwModalMode('setup'), 350);
+            },
+          },
+        ]
+      );
       return;
     }
-    // ON → OFF: avertizează — backup-urile criptate rămân criptate în iCloud.
+    // ON → OFF: fișierele deja criptate din iCloud devin nedecriptabile după ce ștergem
+    // parola (salt + verify). `meta.encrypted` global nu suportă o stare mixtă, așa că
+    // pentru a păstra backup-ul restaurabil re-urcăm TOATE fișierele necriptat la
+    // următoarea sincronizare (pornește automat), convergând spre „tot plaintext".
     Alert.alert(
       'Dezactivează criptarea',
-      'Datele rămase în iCloud rămân criptate; le poți decripta doar cu parola actuală. ' +
-        'Backup-urile viitoare vor fi necriptate. Continui?',
+      'Backup-urile viitoare vor fi necriptate. Fișierele deja criptate din iCloud vor fi ' +
+        're-urcate necriptat la următoarea sincronizare (pornește automat), ca backup-ul să ' +
+        'rămână restaurabil. Parola de criptare va fi ștearsă. Continui?',
       [
         { text: 'Anulează', style: 'cancel' },
         {
@@ -227,7 +250,10 @@ export default function CloudBackupScreen() {
               await clearPassword();
               await setCloudEncryptionEnabled(false);
               setEncryptionEnabledState(false);
+              await markCloudBackupForReupload();
               await cloudRefresh();
+              // Pornim re-urcarea necriptată imediat, fără să așteptăm o modificare de date.
+              await cloud.backupNow();
             } catch (e) {
               Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
             }
@@ -249,7 +275,9 @@ export default function CloudBackupScreen() {
           style: 'destructive',
           onPress: () => {
             setPendingAfterUnlock(null);
-            setPwModalMode('setup');
+            // setTimeout: lasă Alert-ul iOS să se închidă complet înainte de a prezenta
+            // CloudPasswordModal (present-on-presenting eșuează silent — audit alert-modal-race).
+            setTimeout(() => setPwModalMode('setup'), 350);
           },
         },
       ]
@@ -258,12 +286,20 @@ export default function CloudBackupScreen() {
 
   const handlePasswordSubmit = async (password: string) => {
     if (pwModalMode === 'setup') {
+      // Atins din „Activează criptarea" (OFF → ON) ȘI din „Schimbă parola" (ON → ON).
+      // Ambele necesită re-criptarea fișierelor deja urcate cu NOUA cheie: la activare
+      // erau plaintext, la schimbare parolă erau criptate cu cheia veche (nedecriptabile
+      // cu cea nouă). Fără re-upload ar rămâne incompatibile cu `meta.encrypted` nou.
       const key = await setupPassword(password);
       setSessionKey(key);
       await setCloudEncryptionEnabled(true);
       setEncryptionEnabledState(true);
       setPwModalMode(null);
+      await markCloudBackupForReupload();
       await cloudRefresh();
+      // Pornim re-criptarea imediat, fără să așteptăm o modificare de date. backupNow nu
+      // aruncă (înghite erorile în state-ul hook-ului), deci nu re-deschide modalul cu eroare.
+      await cloud.backupNow();
       return;
     }
     // mode === 'unlock'

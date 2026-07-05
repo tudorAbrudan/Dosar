@@ -400,6 +400,39 @@ export async function enqueueFileUpload(filePath: string): Promise<void> {
 }
 
 /**
+ * Pregătește ÎNTREG backup-ul cloud pentru re-upload după o schimbare a stării de
+ * criptare (activare, schimbare parolă, dezactivare). Face DOUĂ lucruri:
+ *
+ * 1. **Invalidează hash-ul manifestului** (`last_manifest_hash = null`) ca următorul
+ *    `uploadManifestIfChanged` să re-urce manifestul + `meta.encrypted` chiar dacă
+ *    DATELE nu s-au schimbat. Hash-ul e calculat pe manifestul plain (independent de
+ *    criptare), deci fără invalidare dedup-ul ar sări upload-ul, iar `meta.encrypted`
+ *    ar rămâne stale față de fișierele re-urcate → restore inconsistent.
+ * 2. **Marchează pentru re-upload toate fișierele deja sincronizate** (`uploaded_at IS NOT NULL`):
+ *    resetează `uploaded_at`, `attempt_count`, `last_error` ca `processQueue` (care urcă
+ *    doar rândurile cu `uploaded_at IS NULL`) să le re-urce cu noua stare. Fără asta,
+ *    fișierele urcate înainte rămân cu criptarea veche (plaintext la activare / cheia veche
+ *    la schimbare parolă), incompatibile cu noul `meta.encrypted`.
+ *
+ * `uploaded_remote_path` NU e resetat intenționat: dacă entitatea nu a fost redenumită,
+ * calea remote structurată rămâne aceeași și re-upload-ul SUPRASCRIE fișierul vechi la
+ * aceeași cale (fără orfani). Dacă a fost redenumită, `processOne` grace-șterge calea veche
+ * (logica existentă move-on-rename).
+ *
+ * @returns numărul de fișiere marcate pentru re-upload (manifestul se re-urcă mereu).
+ * @throws când scrierea în SQLite eșuează.
+ */
+export async function markCloudBackupForReupload(): Promise<number> {
+  await setCloudState({ last_manifest_hash: null });
+  const result = await db.runAsync(
+    `UPDATE pending_uploads
+       SET uploaded_at = NULL, attempt_count = 0, last_error = NULL
+     WHERE uploaded_at IS NOT NULL`
+  );
+  return result.changes ?? 0;
+}
+
+/**
  * Numărul de snapshot-uri ulterioare pentru care păstrăm un fișier în iCloud
  * după ce a fost șters din aplicație. Permite recovery dintr-un snapshot mai vechi
  * (care încă referă fișierul). Ștergerea efectivă se face în `maybeSnapshot`.

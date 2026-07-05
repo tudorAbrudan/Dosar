@@ -23,7 +23,11 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let applyManifest: typeof import('@/services/backup').applyManifest;
 let isImportInProgress: typeof import('@/services/backup').isImportInProgress;
+let estimateBackupSizeBytes: typeof import('@/services/backup').estimateBackupSizeBytes;
 let getDocuments: typeof import('@/services/documents').getDocuments;
+// Captat în ACELAȘI isolateModules ca backup.ts, altfel e o instanță diferită a mock-ului
+// (isolateModules izolează registrul de module) și mockImplementation n-ar avea efect.
+let FS: typeof import('expo-file-system/legacy');
 beforeAll(() => {
   jest.resetModules();
   jest.isolateModules(() => {
@@ -32,8 +36,10 @@ beforeAll(() => {
     const backup = require('@/services/backup');
     applyManifest = backup.applyManifest;
     isImportInProgress = backup.isImportInProgress;
+    estimateBackupSizeBytes = backup.estimateBackupSizeBytes;
     const documents = require('@/services/documents');
     getDocuments = documents.getDocuments;
+    FS = require('expo-file-system/legacy');
   });
 });
 
@@ -550,5 +556,52 @@ describe('backup isImportInProgress', () => {
     expect(isImportInProgress()).toBe(true);
     await promise;
     expect(isImportInProgress()).toBe(false);
+  });
+});
+
+describe('backup estimateBackupSizeBytes', () => {
+  const getInfoMock = () => FS.getInfoAsync as unknown as jest.Mock;
+
+  afterEach(() => {
+    getInfoMock().mockReset();
+    getInfoMock().mockResolvedValue({ exists: false, isDirectory: false });
+  });
+
+  it('sums on-disk sizes of documents, pages, vehicle photos plus DB size', async () => {
+    await db.runAsync(
+      `INSERT INTO vehicles (id, name, photo_uri, created_at) VALUES ('v-1','Dacia','vehicles/v-1.jpg','2026-01-01')`
+    );
+    await db.runAsync(
+      `INSERT INTO documents (id, type, file_path, created_at) VALUES ('d-1','rca','documents/a.jpg','2026-01-01')`
+    );
+    await db.runAsync(
+      `INSERT INTO document_pages (id, document_id, page_order, file_path, created_at)
+       VALUES ('pg-1','d-1',1,'documents/a-p2.jpg','2026-01-01')`
+    );
+
+    const sizeByRel: Record<string, number> = {
+      'documents/a.jpg': 100,
+      'documents/a-p2.jpg': 200,
+      'vehicles/v-1.jpg': 50,
+      'SQLite/documente.db': 30, // proxy pentru manifest (getLocalDbSizeBytes)
+    };
+    getInfoMock().mockImplementation(async (uri: string) => {
+      for (const [rel, size] of Object.entries(sizeByRel)) {
+        if (uri.endsWith(rel)) return { exists: true, isDirectory: false, size, uri };
+      }
+      return { exists: false, isDirectory: false };
+    });
+
+    const total = await estimateBackupSizeBytes();
+    expect(total).toBe(100 + 200 + 50 + 30);
+  });
+
+  it('treats missing / inaccessible files as 0', async () => {
+    await db.runAsync(
+      `INSERT INTO documents (id, type, file_path, created_at) VALUES ('d-1','rca','documents/missing.jpg','2026-01-01')`
+    );
+    getInfoMock().mockResolvedValue({ exists: false, isDirectory: false });
+    const total = await estimateBackupSizeBytes();
+    expect(total).toBe(0);
   });
 });

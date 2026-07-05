@@ -56,7 +56,13 @@ import * as aiProvider from '@/services/aiProvider';
 import type { AiProviderType } from '@/services/aiProvider';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import { scheduleExpirationReminders } from '@/services/notifications';
-import { exportBackup, importBackup } from '@/services/backup';
+import {
+  exportBackup,
+  importBackup,
+  estimateBackupSizeBytes,
+  EXPORT_SIZE_WARN_BYTES,
+} from '@/services/backup';
+import { formatBytes } from '@/services/cloudSync';
 import { checkForUpdateForced, openAppStore } from '@/services/updateCheck';
 import {
   getLastCrash,
@@ -288,7 +294,7 @@ export default function SetariScreen() {
   };
 
   // ── Backup ───────────────────────────────────────────────────────────────────
-  const handleExportBackup = async () => {
+  const runExportBackup = async () => {
     setBackupExporting(true);
     try {
       await exportBackup();
@@ -297,6 +303,31 @@ export default function SetariScreen() {
     } finally {
       setBackupExporting(false);
     }
+  };
+
+  const handleExportBackup = async () => {
+    // Exportul manual construiește tot ZIP-ul în memorie (base64). Pe biblioteci mari
+    // vârful de RAM poate opri procesul; avertizăm și recomandăm backup-ul iCloud.
+    let estimated = 0;
+    try {
+      estimated = await estimateBackupSizeBytes();
+    } catch {
+      // Estimarea eșuată nu blochează exportul.
+    }
+    if (estimated > EXPORT_SIZE_WARN_BYTES) {
+      Alert.alert(
+        'Backup mare',
+        `Backup-ul are aproximativ ${formatBytes(estimated)}. Exportul manual încarcă toate ` +
+          'fișierele în memorie și pe biblioteci mari se poate opri neașteptat. Pentru biblioteci ' +
+          'mari îți recomandăm backup-ul în iCloud (Setări → Backup iCloud). Continui exportul manual?',
+        [
+          { text: 'Anulează', style: 'cancel' },
+          { text: 'Continuă oricum', onPress: () => void runExportBackup() },
+        ]
+      );
+      return;
+    }
+    await runExportBackup();
   };
 
   const handleImportBackup = async () => {

@@ -27,6 +27,8 @@ let dequeueFileDelete: typeof import('@/services/cloudSync').dequeueFileDelete;
 let buildManifestPayload: typeof import('@/services/cloudSync').buildManifestPayload;
 let resolveRemoteRel: typeof import('@/services/cloudSync').resolveRemoteRel;
 let reconcileRenamedFiles: typeof import('@/services/cloudSync').reconcileRenamedFiles;
+let markCloudBackupForReupload: typeof import('@/services/cloudSync').markCloudBackupForReupload;
+let getCloudState: typeof import('@/services/cloudSync').getCloudState;
 beforeAll(() => {
   jest.resetModules();
   jest.isolateModules(() => {
@@ -38,6 +40,8 @@ beforeAll(() => {
     buildManifestPayload = cs.buildManifestPayload;
     resolveRemoteRel = cs.resolveRemoteRel;
     reconcileRenamedFiles = cs.reconcileRenamedFiles;
+    markCloudBackupForReupload = cs.markCloudBackupForReupload;
+    getCloudState = cs.getCloudState;
   });
 });
 
@@ -204,6 +208,78 @@ describe('cloud structured files (v4)', () => {
     expect(resolveRemoteRel({ 'documents/a.jpg': 'Dacia/RCA/a.jpg' }, 'documents/a.jpg')).toBe(
       'Dacia/RCA/a.jpg'
     );
+  });
+});
+
+describe('cloudSync markCloudBackupForReupload (re-criptare la schimbarea criptării)', () => {
+  beforeEach(async () => {
+    // resetSchema golește cloud_state; re-seed rândul single-row (id=1) cu un hash vechi.
+    await db.runAsync(
+      `INSERT INTO cloud_state (id, last_manifest_hash, device_id) VALUES (1, 'oldhash', 'dev-1')`
+    );
+  });
+
+  it('invalidates the cached manifest hash so the manifest re-uploads', async () => {
+    await markCloudBackupForReupload();
+    const state = await getCloudState();
+    // null ≠ orice hash real → uploadManifestIfChanged nu mai sare upload-ul
+    // (manifest + meta.encrypted se re-urcă cu noua stare de criptare).
+    expect(state.last_manifest_hash).toBeNull();
+  });
+
+  it('resets uploaded_at/attempt_count/last_error for synced rows, preserving uploaded_remote_path', async () => {
+    // Fișier deja sincronizat (plaintext, urcat înainte de activarea criptării).
+    await db.runAsync(
+      `INSERT INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at, last_error, uploaded_remote_path)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      'documents/a.jpg',
+      2,
+      Date.now(),
+      Date.now(),
+      'ceva vechi',
+      'Dacia/RCA/a.jpg'
+    );
+
+    const changed = await markCloudBackupForReupload();
+    expect(changed).toBe(1);
+
+    const row = await db.getFirstAsync<{
+      uploaded_at: number | null;
+      attempt_count: number;
+      last_error: string | null;
+      uploaded_remote_path: string | null;
+    }>(
+      'SELECT uploaded_at, attempt_count, last_error, uploaded_remote_path FROM pending_uploads WHERE file_path = ?',
+      ['documents/a.jpg']
+    );
+    // Marcat pentru re-upload: processQueue îl va re-urca criptat la ACEEAȘI cale
+    // remote (suprascrie plaintext-ul), fiindcă uploaded_remote_path e păstrat.
+    expect(row?.uploaded_at).toBeNull();
+    expect(row?.attempt_count).toBe(0);
+    expect(row?.last_error).toBeNull();
+    expect(row?.uploaded_remote_path).toBe('Dacia/RCA/a.jpg');
+  });
+
+  it('leaves rows that are not yet uploaded untouched', async () => {
+    await db.runAsync(
+      `INSERT INTO pending_uploads (file_path, attempt_count, created_at, uploaded_at)
+       VALUES (?, ?, ?, ?)`,
+      'documents/pending.jpg',
+      1,
+      Date.now(),
+      null
+    );
+
+    const changed = await markCloudBackupForReupload();
+    expect(changed).toBe(0);
+
+    const row = await db.getFirstAsync<{ attempt_count: number; uploaded_at: number | null }>(
+      'SELECT attempt_count, uploaded_at FROM pending_uploads WHERE file_path = ?',
+      ['documents/pending.jpg']
+    );
+    // Nesincronizat → intact (processQueue oricum îl procesează normal).
+    expect(row?.attempt_count).toBe(1);
+    expect(row?.uploaded_at).toBeNull();
   });
 });
 
