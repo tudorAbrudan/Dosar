@@ -82,6 +82,35 @@ describe('getDocumentsForAI — excludere documente medicale', () => {
     expect(docs.map(d => d.id)).toContain('non-med');
   });
 
+  it('exclude documentele non-medicale ca tip dar legate de un dosar medical', async () => {
+    insertDoc('doc-altul-medical', 'altul', 'Radiografie veche, adusă de acasă');
+    insertDoc('doc-altul-liber', 'altul', 'Chitanță parcare');
+    testDb._raw
+      .prepare(
+        `INSERT INTO persons (id, name, created_at) VALUES ('pers-1', 'Ana', '2026-05-24T00:00:00Z')`
+      )
+      .run();
+    testDb._raw
+      .prepare(
+        `INSERT INTO medical_record (id, person_id, name, encryption_key_ref, created_at, updated_at)
+         VALUES ('mr-1', 'pers-1', 'Ana', 'key-ref-1', '2026-05-24T00:00:00Z', '2026-05-24T00:00:00Z')`
+      )
+      .run();
+    testDb._raw
+      .prepare(
+        `INSERT INTO document_entities (id, document_id, entity_type, entity_id)
+         VALUES ('link-1', 'doc-altul-medical', 'medical_record', 'mr-1')`
+      )
+      .run();
+
+    const docs = await getDocumentsForAI();
+    const ids = docs.map(d => d.id);
+
+    expect(ids).toContain('doc-altul-liber');
+    expect(ids).not.toContain('doc-altul-medical');
+    expect(JSON.stringify(docs)).not.toContain('Radiografie');
+  });
+
   it('scoate private_notes de pe documentele non-medicale rămase', async () => {
     testDb._raw
       .prepare(

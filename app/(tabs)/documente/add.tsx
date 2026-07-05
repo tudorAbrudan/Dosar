@@ -63,6 +63,7 @@ import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
 import { AI_CONSENT_KEY, canDoVision } from '@/services/aiProvider';
+import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
@@ -642,7 +643,15 @@ export default function AddDocumentScreen() {
         } catch {}
 
         const entityType = isValidEntityType(params.entityType) ? params.entityType : undefined;
-        const candidates = entityType ? ENTITY_DOCUMENT_TYPES[entityType] : undefined;
+        const baseCandidates = entityType ? ENTITY_DOCUMENT_TYPES[entityType] : undefined;
+        // Privacy: pe provider remote fără consimțământ medical, excludem
+        // tipurile medicale din candidați ca clasificatorul să nu escaladeze la
+        // fluxul medical. Vezi services/aiGuard.ts.
+        const candidates = await filterMedicalCandidatesForAi(
+          baseCandidates,
+          entityLinks,
+          params.medical_record_id ?? null
+        );
 
         let classifyResult;
         try {
@@ -673,6 +682,20 @@ export default function AddDocumentScreen() {
             setType(confirmed);
           }
         }
+      }
+
+      // Guard privacy: tipul final poate fi trimis la AI? (medical + consimțământ
+      // pe dosar / model local; tipuri sensibile → consimțământ per-tip). Vezi
+      // services/aiGuard.ts.
+      const guard = await ensureAiAnalysisAllowed({
+        docType: resolvedType,
+        entityLinks,
+        recordIdHint: params.medical_record_id ?? null,
+      });
+      if (!guard.allowed) {
+        if (guard.reason) Alert.alert('Analiză AI indisponibilă', guard.reason);
+        setLlmFieldLoading(false);
+        return;
       }
 
       const fileNotes: string[] = [];

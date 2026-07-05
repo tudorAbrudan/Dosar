@@ -31,6 +31,9 @@ const TABS_DIR = path.join(ROOT, 'app/(tabs)');
 const ENTRIES = {
   services: {
     aiClassifier: { required: true, keywords: ['clasificare', 'tip document'] },
+    // Gate intern de consimțământ pentru analiza AI (medical + tipuri sensibile);
+    // partea user-visible (consimțământul) e descrisă via ocrConsent/medical.
+    aiGuard: { required: false },
     aiOcrMapper: { required: true, keywords: ['OCR', 'AI'] },
     aiProvider: { required: true, keywords: ['Asistent AI', 'provider'] },
     appKnowledge: { required: false },

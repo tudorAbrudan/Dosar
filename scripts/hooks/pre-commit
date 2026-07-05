@@ -71,6 +71,9 @@ node scripts/pin-secure-store-audit.js --strict
 echo "▸ Medical AI summary isolation audit (strict)..."
 node scripts/medical-ai-summary-isolation-audit.js --strict
 
+echo "▸ Medical AI guard audit (strict — call-site AI fără ensureAiAnalysisAllowed)..."
+node scripts/medical-ai-guard-audit.js --strict
+
 echo "▸ Silent AI catch audit (no console.warn-only on AI errors)..."
 node scripts/silent-ai-catch-audit.js --strict
 

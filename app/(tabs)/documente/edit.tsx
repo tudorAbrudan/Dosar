@@ -57,6 +57,7 @@ import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, savePdfAsPage } from '@/services/documentPageStorage';
 import { AI_CONSENT_KEY, canDoVision } from '@/services/aiProvider';
+import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
 import {
   DOCUMENT_TYPE_LABELS,
   getDocumentLabel,
@@ -321,6 +322,16 @@ export default function EditDocumentScreen() {
     }
     setLlmFieldLoading(true);
     try {
+      // Guard privacy (înainte de orice apel AI, inclusiv classify): un document
+      // medical / atașat unui dosar medical nu pleacă la un provider remote fără
+      // consimțământ. Vezi services/aiGuard.ts.
+      const guard = await ensureAiAnalysisAllowed({ docType: type, entityLinks });
+      if (!guard.allowed) {
+        if (guard.reason) Alert.alert('Analiză AI indisponibilă', guard.reason);
+        setLlmFieldLoading(false);
+        return;
+      }
+
       const firstPage = allPages[0];
       const pageUri = rotatedUris[firstPage.file_path] ?? toFileUri(firstPage.file_path);
       let imageBase64: string | undefined;
@@ -339,8 +350,11 @@ export default function EditDocumentScreen() {
       // Pragul de auto-prompt 0.5 (sub el oricum nu confirmăm) — useful pentru
       // cazuri în care classifier-ul e neîncrezător dar oferă semnal direcțional.
       let resolvedType: DocumentType = type;
+      // Privacy: pe remote fără consimțământ medical, excludem tipurile medicale
+      // din candidați ca reclasificarea să nu escaladeze la fluxul medical.
+      const classifyCandidates = await filterMedicalCandidatesForAi(undefined, entityLinks);
       try {
-        const classify = await classifyDocument(doc?.ocr_text ?? '', imageBase64);
+        const classify = await classifyDocument(doc?.ocr_text ?? '', imageBase64, classifyCandidates);
         console.warn(
           `[runAiImageAnalysis] classify: type=${classify.type} conf=${classify.confidence.toFixed(2)} current=${type} top3=${classify.top3.map(t => `${t.type}:${t.confidence.toFixed(2)}`).join(',')}`
         );
@@ -373,7 +387,20 @@ export default function EditDocumentScreen() {
           }
         }
       } catch (e) {
+        // silent-ai-catch-ok: reclasificarea e best-effort — la eșec continuăm cu
+        // tipul curent, iar extracția de mai jos surfacează erorile AI reale.
         console.warn('[runAiImageAnalysis] classify failed:', e);
+      }
+
+      // Reclasificarea poate schimba tipul într-unul sensibil (ex. buletin) —
+      // re-verifică guard-ul pe tipul rezolvat înainte de extracție.
+      if (resolvedType !== type) {
+        const reguard = await ensureAiAnalysisAllowed({ docType: resolvedType, entityLinks });
+        if (!reguard.allowed) {
+          if (reguard.reason) Alert.alert('Analiză AI indisponibilă', reguard.reason);
+          setLlmFieldLoading(false);
+          return;
+        }
       }
 
       const ocrText = doc?.ocr_text ?? '';

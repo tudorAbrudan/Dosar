@@ -242,13 +242,20 @@ export function sanitizeDocumentForAI(doc: Document): Document {
  * - EXCLUDE complet documentele medicale (MEDICAL_DOC_TYPES) — din motive de
  *   confidențialitate/GDPR, datele clinice nu pleacă la modelul general. Doar
  *   chat-ul medical (medicalChat.ts, scoped + medical lock) are acces la ele.
+ * - EXCLUDE și documentele NON-medicale ca tip (`altul`/`custom`) dar atașate la
+ *   un dosar medical (entity_link cu entity_type='medical_record'). Userul le-a
+ *   marcat explicit ca relevante medical; chat-ul general nu le vede.
  * Folosește-o în locul `getDocuments()` pentru orice pipeline care trimite date
  * la modelul AI general.
  */
 export async function getDocumentsForAI(): Promise<Document[]> {
   const all = await getDocuments();
+  const medicalLinkedRows = await db.getAllAsync<{ document_id: string }>(
+    "SELECT DISTINCT document_id FROM document_entities WHERE entity_type = 'medical_record'"
+  );
+  const medicalLinkedIds = new Set(medicalLinkedRows.map(r => r.document_id));
   return all
-    .filter(d => !MEDICAL_DOC_TYPES.has(d.type))
+    .filter(d => !MEDICAL_DOC_TYPES.has(d.type) && !medicalLinkedIds.has(d.id))
     .map(sanitizeDocumentForAI);
 }
 

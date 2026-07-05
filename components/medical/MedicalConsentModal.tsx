@@ -3,18 +3,21 @@ import { Modal, View, Text, Pressable, ScrollView, StyleSheet, Platform } from '
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, onPrimary } from '@/theme/colors';
 
-const CONSENT_TEXT = `Pentru a folosi asistentul AI și extragerea automată a datelor din documente, trimitem aceste date la furnizorul AI configurat (Mistral, OpenAI sau cel ales de tine):
+const CONSENT_TEXT = `Pentru asistentul AI și extragerea automată a datelor din documentele medicale, unele date sunt trimise la furnizorul AI configurat (Mistral, OpenAI sau cel ales de tine).
 
-• Textul OCR al documentelor medicale
+Ce trimitem la un furnizor AI extern:
+• Textul extras din documentele medicale (OCR)
 • Întrebările tale și răspunsurile asistentului
-• Valori extrase (nume analiză, valori, date) pentru îmbunătățirea contextului
+• Valori extrase (nume analiză, valori, date) pentru context
+• Imaginea sau PDF-ul documentului DOAR când nu poate fi citit local (scanare fără text detectabil, scris de mână) — ca AI-ul să transcrie conținutul
 
-NU trimitem:
-• Imaginile sau PDF-urile originale
-• Notițele tale private (private_notes)
-• Date personale ale altor membri ai dosarelor medicale
+Ce NU trimitem niciodată:
+• Notițele tale private (câmpul „Notă privată")
+• Date ale altor persoane sau dosare medicale, în afara celui analizat
 
-Datele rămân criptate pe device. Trimiterea la AI se face HTTPS direct de pe device la furnizorul ales — fără server intermediar.
+Pe un model local (rulat pe device) NIMIC nu părăsește dispozitivul — nici text, nici imagini.
+
+Datele rămân stocate pe device. Trimiterea la un furnizor extern se face prin HTTPS direct de pe device — fără server intermediar.
 
 Conform GDPR (Art. 9), datele medicale sunt o categorie specială. Activarea acestui asistent constituie consimțământ explicit.
 
