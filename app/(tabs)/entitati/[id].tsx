@@ -206,7 +206,7 @@ export default function EntityDetailScreen() {
 
   const handleDelete = () => {
     Alert.alert('Ștergere', `Ștergi „${entityName}"? Documentele legate nu vor fi șterse.`, [
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
       {
         text: 'Șterge',
         style: 'destructive',

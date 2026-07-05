@@ -33,6 +33,7 @@ import type { Document } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
 import { buildHomeAlerts } from '@/services/homeAlerts';
+import { getDismissedExpiryDocumentIds } from '@/services/reminders';
 import { resolveDocumentEntityName } from '@/services/documentEntityName';
 import { isStaleExpired } from '@/services/expiry';
 import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
@@ -93,6 +94,9 @@ export default function HomeScreen() {
   const cloud = useCloudRestoreDetector();
   const [orphanMedicalCount, setOrphanMedicalCount] = useState(0);
   const [showMigrateWizard, setShowMigrateWizard] = useState(false);
+  // Documente cu reminderul de expirare dismissed în tabul Expirări — excluse
+  // din contoare și din „Expiră curând", ca dismiss-ul să aibă efect și pe Home.
+  const [dismissedExpiryIds, setDismissedExpiryIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (backfillDoneRef.current) return;
@@ -118,6 +122,9 @@ export default function HomeScreen() {
       findFileDuplicates()
         .then(setDuplicateGroups)
         .catch(() => {});
+      getDismissedExpiryDocumentIds()
+        .then(setDismissedExpiryIds)
+        .catch(() => {});
     }, [refreshOrphans])
   );
 
@@ -132,12 +139,13 @@ export default function HomeScreen() {
     for (const d of documents) {
       if (!d.expiry_date) continue;
       if (isStaleExpired(d.expiry_date)) continue;
+      if (dismissedExpiryIds.has(d.id)) continue;
       const t = new Date(d.expiry_date).getTime();
       if (t < now) expired++;
       else if (t <= limit30) expiringSoon++;
     }
     return { total: documents.length, expired, expiringSoon };
-  }, [documents]);
+  }, [documents, dismissedExpiryIds]);
 
   // ── Expiring soon (30 days) ───────────────────────────────────────────────────
   const expiringSoon = useMemo(() => {
@@ -147,12 +155,13 @@ export default function HomeScreen() {
       .filter(d => {
         if (!d.expiry_date) return false;
         if (isStaleExpired(d.expiry_date)) return false;
+        if (dismissedExpiryIds.has(d.id)) return false;
         const t = new Date(d.expiry_date).getTime();
         return t <= limit;
       })
       .sort((a, b) => new Date(a.expiry_date!).getTime() - new Date(b.expiry_date!).getTime())
       .slice(0, 5);
-  }, [documents]);
+  }, [documents, dismissedExpiryIds]);
 
   // ── Recent documents ─────────────────────────────────────────────────────────
   const recentDocs = useMemo(

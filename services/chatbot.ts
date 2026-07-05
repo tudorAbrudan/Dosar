@@ -582,10 +582,15 @@ async function buildContext(
         .join(', ')}`
     );
 
-  // Notă de filtrare (ajută AI-ul să înțeleagă că nu vede tot)
-  if (isFiltered && filteredDocs.length < documents.length) {
+  // Notă de filtrare/trunchere (ajută AI-ul să înțeleagă că nu vede tot).
+  // Emisă ori de câte ori lista e incompletă — inclusiv fără filtru, când
+  // maxDocs a tăiat-o (altfel, pe model local cu maxDocsFull=6, AI-ul răspunde
+  // cu convingere că userul are doar 6 documente).
+  if (filteredDocs.length < documents.length) {
     lines.push(
-      `\nDocumente (${filteredDocs.length} din ${documents.length} total, filtrate după context):`
+      isFiltered
+        ? `\nDocumente (${filteredDocs.length} din ${documents.length} total, filtrate după context):`
+        : `\nDocumente (primele ${filteredDocs.length} din ${documents.length} total — cere un tip de document sau o @mențiune pentru restul):`
     );
   } else {
     lines.push('\nDocumente:');

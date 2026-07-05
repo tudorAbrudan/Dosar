@@ -9,6 +9,7 @@ import type { ComponentProps } from 'react';
 import type { Ionicons } from '@expo/vector-icons';
 
 import { iconColors } from '@/theme/iconColors';
+import { resolveItpExpiry } from './vehicleStatus';
 import type { Document, DocumentType } from '@/types';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -68,6 +69,15 @@ const PERSON_CHECKS: AlertCheck[] = [
 
 const MAX_ALERTS = 3;
 
+/** Documentele unui vehicul: coloana legacy SAU legătura din junction table. */
+function vehicleDocs(documents: Document[], vehicleId: string): Document[] {
+  return documents.filter(
+    d =>
+      d.vehicle_id === vehicleId ||
+      d.entity_links?.some(l => l.entityType === 'vehicle' && l.entityId === vehicleId)
+  );
+}
+
 export function buildHomeAlerts(
   documents: Document[],
   vehicles: { id: string; name: string }[],
@@ -79,7 +89,13 @@ export function buildHomeAlerts(
   for (const check of VEHICLE_CHECKS) {
     if (!visibleDocTypes.includes(check.docType)) continue;
     for (const v of vehicles) {
-      const has = documents.some(d => d.vehicle_id === v.id && d.type === check.docType);
+      const docsOfVehicle = vehicleDocs(documents, v.id);
+      // ITP: aceeași rezolvare ca ecranul vehiculului (document ITP SAU ștampila
+      // de pe talon) — altfel Home contrazice bara de status a vehiculului.
+      const has =
+        check.docType === 'itp'
+          ? resolveItpExpiry(docsOfVehicle) !== undefined
+          : docsOfVehicle.some(d => d.type === check.docType);
       if (has) continue;
       alerts.push({
         id: `no-${check.docType}-${v.id}`,
@@ -96,7 +112,12 @@ export function buildHomeAlerts(
   for (const check of PERSON_CHECKS) {
     if (!visibleDocTypes.includes(check.docType)) continue;
     for (const p of persons) {
-      const has = documents.some(d => d.person_id === p.id && d.type === check.docType);
+      const has = documents.some(
+        d =>
+          d.type === check.docType &&
+          (d.person_id === p.id ||
+            d.entity_links?.some(l => l.entityType === 'person' && l.entityId === p.id))
+      );
       if (has) continue;
       alerts.push({
         id: `no-${check.docType}-${p.id}`,

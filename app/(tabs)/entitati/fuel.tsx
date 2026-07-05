@@ -421,7 +421,7 @@ export default function FuelScreen() {
 
   function handleDeleteRecord(record: FuelRecord) {
     Alert.alert('Șterge înregistrare', `Ștergi bonul din ${record.date}?`, [
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
       {
         text: 'Șterge',
         style: 'destructive',

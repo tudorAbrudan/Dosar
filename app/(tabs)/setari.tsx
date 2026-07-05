@@ -93,7 +93,6 @@ const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
 
 // ─── Constante contact ────────────────────────────────────────────────────────
-// TODO: înlocuiește cu datele reale înainte de publish
 const CONTACT_EMAIL = 'apps.tudor@gmail.com';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -335,7 +334,7 @@ export default function SetariScreen() {
       'Import backup',
       'Vor fi importate înregistrările noi. Entitățile și documentele deja existente vor fi ignorate automat.',
       [
-        { text: 'Anulare', style: 'cancel' },
+        { text: 'Anulează', style: 'cancel' },
         {
           text: 'Importă',
           onPress: async () => {
@@ -383,7 +382,7 @@ export default function SetariScreen() {
       'Șterge tip',
       `Ștergi tipul „${name}"? Documentele existente vor apărea ca „Tip personalizat".`,
       [
-        { text: 'Anulare', style: 'cancel' },
+        { text: 'Anulează', style: 'cancel' },
         {
           text: 'Șterge',
           style: 'destructive',
@@ -871,7 +870,7 @@ export default function SetariScreen() {
       'Reluare onboarding',
       'Ești sigur? Setările de vizibilitate vor fi resetate la valorile implicite. Documentele și entitățile tale rămân nemodificate.',
       [
-        { text: 'Anulare', style: 'cancel' },
+        { text: 'Anulează', style: 'cancel' },
         {
           text: 'Resetează și reia',
           onPress: async () => {
@@ -896,7 +895,7 @@ export default function SetariScreen() {
       'Atenție',
       'Vrei să ștergi TOATE datele locale? Aceasta este ireversibilă.\n\nBackup-ul din cloud rămâne intact — îl poți folosi pentru restore.',
       [
-        { text: 'Anulare', style: 'cancel' },
+        { text: 'Anulează', style: 'cancel' },
         {
           text: 'Șterge',
           style: 'destructive',

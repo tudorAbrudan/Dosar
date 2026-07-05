@@ -125,9 +125,8 @@ ${buildDocTypesList()}
 
 ## Adăugare document
 
-La adăugarea unui document (Acte → buton „+" → ecranul Adaugă document), pentru atașarea fișierelor sunt 4 opțiuni:
+La adăugarea unui document (Acte → buton „+" → ecranul Adaugă document), pentru atașarea fișierelor sunt 3 opțiuni:
 - **„Scanează document"** (recomandat) — scanner nativ cu detecție automată a marginilor, corecție de perspectivă, suport multi-pagină. Pe iOS folosește VisionKit (același scanner ca în Apple Notes); pe Android folosește ML Kit. Toate paginile scanate într-o sesiune se atașează automat documentului curent, fiecare ca pagină separată; OCR rulează pe fiecare.
-- **„Cameră (poză brută)"** — o singură poză din camera telefonului, fără crop sau corecție automată. Util pentru documente cu detalii fine, pagini cu fotografii sau holograme.
 - **„Galerie"** — importă o imagine existentă din galeria telefonului.
 - **„Adaugă PDF"** — atașează un PDF din file picker.
 
@@ -146,7 +145,7 @@ Vezi secțiunea „Vehicule" și „Mentenanță vehicule" mai jos. Pe scurt: do
 La deschiderea unui vehicul, utilizatorul vede:
 - Poza vehiculului (dacă e setată) ca imagine hero parallax sus
 - Numărul de înmatriculare sub nume, în header
-- O bară orizontală de status rapid cu: RCA, CASCO, ITP (doar dacă e activat în Setări), Revizie, Consum mediu (L/100km cu sparkline)
+- O bară orizontală de status rapid cu: RCA, CASCO, ITP, Vignetă, Consum mediu (L/100km cu sparkline). Data ITP e preluată din documentul ITP sau direct din ștampila de pe talon (metadata.itp_expiry_date) — cea mai târzie dintre ele.
 - Slot-urile se ascund automat când nu există date
 - Cardurile roșii (critical) = expiră în ≤7 zile; galbene (warning) = în ≤N zile (N configurabil în Setări)
 
@@ -172,11 +171,11 @@ Pe o proprietate (locație) poți înregistra furnizorii de utilități aferenț
 
 Aplicația poate salva automat copii ale documentelor în iCloud Drive-ul personal al utilizatorului (folderul „Dosar" vizibil și în Files app). Datele sunt în iCloud-ul lui, nu trec printr-un server al nostru.
 
-- **Activare:** Setări → Cloud Backup → comutator „Activează backup în iCloud", sau direct în Onboarding (pasul „Backup automat").
+- **Activare:** Setări → „iCloud Backup" → comutator „Backup automat iCloud", sau direct în Onboarding (pasul „Backup automat").
 - **Cum funcționează:** la salvarea unui document nou, fișierul e urcat imediat printr-o coadă cu retry. La trecerea aplicației în background, dacă au existat modificări, manifestul (DB) e urcat. Periodic (săptămânal default; configurabil zilnic / la 3 zile / săptămânal / lunar / off), se face un snapshot stamped și se aplică retenție (default 4 snapshots păstrate).
 - **Restore pe device nou:** instalează Dosar pe noul iPhone cu același Apple ID. La onboarding, app-ul detectează backup-ul existent și propune restaurarea. Toate documentele și fișierele revin în câteva minute.
-- **Detectare cross-device:** la deschiderea aplicației, dacă pe iCloud există un manifest mai nou decât cel local (modificat pe alt device), apare un banner pe Home: „Backup mai nou disponibil. Restaurezi?". Banner-ul poate fi închis (ignorat).
-- **Criptare opțională cu parolă:** din Setări → Cloud Backup → „Criptare cu parolă". AES-256-GCM cu cheie derivată din parolă (PBKDF2). Atenție: dacă parola se uită, backup-ul devine inutilizabil; nu există recuperare.
+- **Detectare cross-device:** la deschiderea aplicației, dacă pe iCloud există un manifest mai nou decât cel local (modificat pe alt device), apare un banner pe Home: „Backup mai nou pe iCloud". Banner-ul poate fi închis (ignorat).
+- **Criptare opțională cu parolă:** din Setări → „iCloud Backup" → secțiunea „Criptare backup". AES-256-GCM cu cheie derivată din parolă (PBKDF2). La activare, fișierele deja urcate se recriptează la următoarea sincronizare (pornește automat). Atenție: dacă parola se uită, backup-ul devine inutilizabil; nu există recuperare.
 - **Coexistă cu backup manual ZIP:** opțiunea de export ZIP din Setări (pentru Drive / oriunde) rămâne disponibilă în paralel cu backup-ul automat.
 - **Disponibilitate:** doar pe iOS cu iCloud Drive activ în Setări iOS și logat la Apple ID. Pe Android funcționează doar export ZIP manual.
 
@@ -197,7 +196,7 @@ Din Setări → Asistent AI, utilizatorul alege provider-ul: Dosar AI (cloud bui
 
 ## Actualizări aplicație
 
-Aplicația verifică automat la pornire dacă există o versiune mai nouă pe App Store. Dacă da, apare un banner („Actualizare disponibilă") cu link direct la App Store; utilizatorul poate apăsa pentru update sau închide banner-ul. Pentru actualizările critice (security/bug fixes majore), banner-ul devine blocant și forțează update-ul înainte de utilizare.
+Aplicația verifică automat la pornire dacă există o versiune mai nouă pe App Store. Dacă da, apare un banner („Actualizare disponibilă") cu link direct la App Store; utilizatorul poate apăsa pentru update sau închide banner-ul. Dacă versiunea nouă e disponibilă de peste 30 de zile și utilizatorul încă nu a actualizat, aplicația afișează un ecran blocant „Actualizare necesară" până la instalarea update-ului (regula ține de vechimea versiunii, nu de conținutul ei).
 
 ## Reguli
 

@@ -51,7 +51,7 @@ export function NotificariSection({
           <View style={[styles.rowIcon, { backgroundColor: iconColors.primary.bg }]}>
             <Ionicons name="notifications-outline" size={18} color={primary} />
           </View>
-          <Text style={[styles.rowLabel, { color: C.text }]}>Notificări push</Text>
+          <Text style={[styles.rowLabel, { color: C.text }]}>Notificări de expirare</Text>
         </View>
         <Switch
           value={pushEnabled}

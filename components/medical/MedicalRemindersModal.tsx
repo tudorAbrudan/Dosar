@@ -135,7 +135,7 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
 
       onClose('added');
     } catch (e) {
-      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-au putut adăuga reminders.');
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-au putut adăuga reminderele.');
       onClose('skipped');
     } finally {
       setSaving(false);
@@ -145,7 +145,7 @@ export function MedicalRemindersModal({ visible, items, documentId, recordId, on
   return (
     <FormSheetModal
       visible={visible}
-      title="Reminders din document medical"
+      title="Remindere din document medical"
       onClose={() => onClose('skipped')}
       onSave={handleSave}
       saving={saving}

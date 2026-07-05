@@ -174,7 +174,7 @@ export default function DocumenteListScreen() {
 
   const handleDelete = (doc: Document) => {
     Alert.alert('Ștergere', `Ștergi documentul „${getDocumentLabel(doc, customTypes)}"?`, [
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
       {
         text: 'Șterge',
         style: 'destructive',

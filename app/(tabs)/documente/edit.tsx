@@ -56,7 +56,7 @@ import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { saveImageAsPage, savePdfAsPage } from '@/services/documentPageStorage';
-import { AI_CONSENT_KEY, canDoVision } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, canDoVision, humanizeAiError } from '@/services/aiProvider';
 import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -258,7 +258,7 @@ export default function EditDocumentScreen() {
   async function handleDeletePage(pageId: string) {
     if (!doc) return;
     Alert.alert('Șterge pagina', 'Ești sigur că vrei să ștergi această pagină?', [
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
       {
         text: 'Șterge',
         style: 'destructive',
@@ -439,13 +439,13 @@ export default function EditDocumentScreen() {
         Alert.alert('Data ITP necesită completare manuală', warning);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+      const msg = humanizeAiError(e);
       if (msg.includes('limita')) {
         Alert.alert('Limită AI atinsă', msg);
       } else {
         Alert.alert(
           'AI nu a putut analiza documentul',
-          `${msg}\n\nVerifică conexiunea la internet și reîncearcă. Dacă persistă, completează manual câmpurile.`
+          `${msg}\n\nDacă persistă, completează manual câmpurile.`
         );
       }
     } finally {
@@ -547,7 +547,7 @@ export default function EditDocumentScreen() {
           }
         },
       },
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
     ]);
   }
 

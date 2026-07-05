@@ -377,6 +377,45 @@ async function fetchWithTimeout(
   }
 }
 
+/**
+ * Transformă orice eroare dintr-un apel AI într-un mesaj în română, potrivit
+ * pentru UI/istoric chat. Fără body-uri HTTP brute (JSON englez de la provider)
+ * și fără „Network request failed" — acestea derutează și rămân persistate în
+ * conversație. Mesajele deja umane (timeout-ul de mai sus, „Răspuns gol...",
+ * erorile aiGuard/localModel în română) trec neatinse.
+ */
+export function humanizeAiError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : '';
+  if (!raw) return 'A apărut o eroare. Verifică conexiunea la internet și încearcă din nou.';
+
+  // Erori de rețea RN (TypeError: Network request failed) — engleză, tehnice.
+  if (/network request failed|failed to fetch/i.test(raw)) {
+    return 'Fără conexiune la internet. Verifică rețeaua și încearcă din nou.';
+  }
+
+  // Erorile noastre `Eroare AI (<status>): <body brut>` — mapăm status-ul,
+  // aruncăm body-ul (poate conține JSON englez de la provider).
+  const statusMatch = raw.match(/^Eroare AI \((\d{3})\)/);
+  if (statusMatch) {
+    const status = Number(statusMatch[1]);
+    if (status === 401 || status === 403) {
+      return 'Cheie API invalidă sau expirată. Verifică în Setări → Asistent AI.';
+    }
+    if (status === 429) {
+      return 'Limită de utilizare atinsă la providerul AI. Încearcă mai târziu.';
+    }
+    if (status >= 500) {
+      return 'Serviciul AI e temporar indisponibil. Încearcă din nou în câteva minute.';
+    }
+    return `Providerul AI a refuzat cererea (cod ${status}). Verifică configurarea din Setări → Asistent AI.`;
+  }
+
+  // Mesaj deja în română (ale noastre) sau necunoscut dar scurt → îl păstrăm;
+  // ce e lung/tehnic se trunchiază ca să nu umple conversația.
+  if (raw.length <= 200) return raw;
+  return `${raw.slice(0, 160)}…`;
+}
+
 // ─── Tipuri mesaje OpenAI-compatible ─────────────────────────────────────────
 
 export interface AiMessage {

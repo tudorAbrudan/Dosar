@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as settings from './settings';
 import { getDocumentsExpiringIn } from './documents';
 import { getCustomTypes } from './customTypes';
+import { getDismissedExpiryDocumentIds } from './reminders';
 import { getDocumentLabel } from '@/types';
 
 const NOTIF_CHANNEL_ID = 'expirari';
@@ -53,10 +54,14 @@ export async function scheduleExpirationReminders(): Promise<void> {
   await ensureChannel();
 
   const days = await settings.getNotificationDays();
-  const [docs, customTypes] = await Promise.all([
+  const [allDocs, customTypes, dismissedIds] = await Promise.all([
     getDocumentsExpiringIn(days),
     getCustomTypes(),
+    getDismissedExpiryDocumentIds(),
   ]);
+  // Reminder dismissed în tabul Expirări = userul a rezolvat/ignorat expirarea;
+  // nu mai programăm nici notificarea locală pentru acel document.
+  const docs = allDocs.filter(d => !dismissedIds.has(d.id));
 
   await Notifications.cancelAllScheduledNotificationsAsync();
 

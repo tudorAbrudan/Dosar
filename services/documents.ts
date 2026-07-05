@@ -877,20 +877,6 @@ export async function removeDocumentPage(pageId: string): Promise<void> {
   emit('documents:changed');
 }
 
-export async function reorderDocumentPages(
-  documentId: string,
-  orderedPageIds: string[]
-): Promise<void> {
-  for (let i = 0; i < orderedPageIds.length; i++) {
-    await db.runAsync('UPDATE document_pages SET page_order = ? WHERE id = ? AND document_id = ?', [
-      i,
-      orderedPageIds[i],
-      documentId,
-    ]);
-  }
-  emit('documents:changed');
-}
-
 // Reordonează TOATE fișierele unui document (inclusiv pagina principală din file_path).
 // orderedFilePaths = toate căile în noua ordine; primul devine noul file_path principal.
 export async function reorderAllDocumentFiles(

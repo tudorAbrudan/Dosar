@@ -96,6 +96,20 @@ export async function listActiveReminders(opts?: {
   return rows.map(rowToReminder);
 }
 
+/**
+ * ID-urile documentelor al căror reminder de expirare a fost dismissed de user.
+ * Home (contoare + „Expiră curând") și notificările programate le exclud, ca
+ * dismiss-ul din tabul Expirări să aibă efect peste tot, nu doar în listă.
+ */
+export async function getDismissedExpiryDocumentIds(): Promise<Set<string>> {
+  const rows = await db.getAllAsync<{ document_id: string }>(
+    `SELECT document_id FROM reminders
+      WHERE source_type = 'document_expiry' AND dismissed_at IS NOT NULL
+        AND document_id IS NOT NULL`
+  );
+  return new Set(rows.map(r => r.document_id));
+}
+
 export async function dismissReminder(id: string): Promise<void> {
   const row = await db.getFirstAsync<ReminderRow>(
     'SELECT * FROM reminders WHERE id = ?', [id]

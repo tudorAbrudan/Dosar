@@ -187,7 +187,6 @@ function RootLayoutNav() {
             name="cloud-backup"
             options={{ headerShown: true, headerBackTitle: 'Înapoi' }}
           />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           <Stack.Screen
             name="cropper"
             options={{ presentation: 'fullScreenModal', headerShown: false }}

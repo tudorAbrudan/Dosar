@@ -62,7 +62,7 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
-import { AI_CONSENT_KEY, canDoVision } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, canDoVision, humanizeAiError } from '@/services/aiProvider';
 import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
@@ -657,7 +657,7 @@ export default function AddDocumentScreen() {
         try {
           classifyResult = await classifyDocument(firstOcrText, firstImageBase64, candidates);
         } catch (e) {
-          const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+          const msg = humanizeAiError(e);
           Alert.alert(
             'Detectare tip indisponibilă',
             `${msg}\n\nContinuă cu tipul curent: ${DOCUMENT_TYPE_LABELS[type] ?? type}.`
@@ -752,13 +752,13 @@ export default function AddDocumentScreen() {
       const combined = fileNotes.join('\n___________\n');
       if (combined) setNote(combined);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+      const msg = humanizeAiError(e);
       if (msg.includes('limita')) {
         Alert.alert('Limită AI atinsă', msg);
       } else {
         Alert.alert(
           'AI nu a putut analiza documentul',
-          `${msg}\n\nVerifică conexiunea la internet și reîncearcă. Dacă persistă, completează manual câmpurile.`
+          `${msg}\n\nDacă persistă, completează manual câmpurile.`
         );
       }
     } finally {
@@ -947,7 +947,7 @@ export default function AddDocumentScreen() {
       { text: 'Scanează document', onPress: scanDocumentHandler },
       { text: 'Galerie', onPress: pickImage },
       { text: 'Adaugă PDF', onPress: pickPdf },
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
     ]);
   }
 
@@ -1028,7 +1028,7 @@ export default function AddDocumentScreen() {
           'Document similar există',
           `Există deja un document de tip „${typeName}" pentru această entitate. Ce vrei să faci?`,
           [
-            { text: 'Anulare', style: 'cancel', onPress: () => resolve(null) },
+            { text: 'Anulează', style: 'cancel', onPress: () => resolve(null) },
             {
               text: 'Deschide existentul',
               onPress: () => {

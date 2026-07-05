@@ -454,7 +454,7 @@ export default function DocumentDetailScreen() {
     const page = allPages.find(p => p.id === pageId);
     if (!page) return;
     Alert.alert('Șterge pagina', 'Ești sigur că vrei să ștergi această pagină?', [
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
       {
         text: 'Șterge',
         style: 'destructive',
@@ -673,7 +673,7 @@ export default function DocumentDetailScreen() {
           }
         },
       },
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
     ]);
   }
 
@@ -869,7 +869,7 @@ export default function DocumentDetailScreen() {
   const handleDelete = () => {
     if (!doc) return;
     Alert.alert('Ștergere', `Ștergi documentul „${getDocumentLabel(doc, customTypes)}"?`, [
-      { text: 'Anulare', style: 'cancel' },
+      { text: 'Anulează', style: 'cancel' },
       {
         text: 'Șterge',
         style: 'destructive',
@@ -922,7 +922,7 @@ export default function DocumentDetailScreen() {
         text: `Pagina ${idx + 1}`,
         onPress: () => shareImageAtIndex(idx),
       })),
-      { text: 'Anulare', style: 'cancel' as const },
+      { text: 'Anulează', style: 'cancel' as const },
     ]);
   };
 

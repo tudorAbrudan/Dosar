@@ -27,7 +27,7 @@ import {
   type ChatThread,
   type StoredMessage,
 } from '@/services/chatThreads';
-import { AI_CONSENT_KEY, isAiAvailable } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, isAiAvailable, humanizeAiError } from '@/services/aiProvider';
 import { ConsentModal } from '@/components/chat/ConsentModal';
 import { RenameModal } from '@/components/chat/RenameModal';
 import { ThreadList } from '@/components/chat/ThreadList';
@@ -264,10 +264,9 @@ export default function ChatScreen() {
         )
       );
     } catch (e) {
-      const errContent =
-        e instanceof Error && e.message
-          ? e.message
-          : 'A apărut o eroare. Verifică conexiunea la internet și încearcă din nou.';
+      // Varianta umanizată (română, fără body HTTP brut) — asta se persistă în
+      // istoricul conversației, nu textul tehnic al excepției.
+      const errContent = humanizeAiError(e);
       // Persistăm și eroarea ca mesaj assistant în DB pentru a păstra alternarea
       // user/assistant. Altfel, la următoarea trimitere, history-ul reîncărcat are
       // două mesaje user consecutive → template-ele LLM stricte (ex. Mistral)

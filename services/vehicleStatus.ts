@@ -86,7 +86,15 @@ function pickLatestTalonItp(docs: Document[]): { doc: Document; iso: string } | 
   return best;
 }
 
-function resolveItpExpiry(documents: Document[]): { doc: Document; iso: string } | undefined {
+/**
+ * Data ITP efectivă a unui vehicul: din documentul ITP dedicat SAU din talonul
+ * cu `metadata.itp_expiry_date` (ștampila ITP de pe talon) — cea mai târzie.
+ * Exportată ca Home (homeAlerts) și ecranul vehiculului să folosească ACEEAȘI
+ * logică; înainte, Home spunea „nu are ITP" pentru un ITP valid preluat din talon.
+ */
+export function resolveItpExpiry(
+  documents: Document[]
+): { doc: Document; iso: string } | undefined {
   const itp = pickLatestDocWithExpiry(documents, 'itp');
   const talonPick = pickLatestTalonItp(documents);
   if (itp && talonPick) {
