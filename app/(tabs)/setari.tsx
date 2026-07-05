@@ -470,7 +470,15 @@ export default function SetariScreen() {
                 }
               );
               downloadResumableRef.current = resumable;
-              await resumable.downloadAsync();
+              const res = await resumable.downloadAsync();
+              // undefined = anulat via pauseAsync (handleCancelDownload a curățat
+              // deja fișierul); fără return aici, codul de mai jos ar marca un
+              // model INEXISTENT ca descărcat și ar comuta provider-ul pe el.
+              if (!res) return;
+              if (res.status !== 200) {
+                throw new Error(`Descărcarea a eșuat (HTTP ${res.status}). Încearcă din nou.`);
+              }
+              await localModel.finalizeModelDownload(modelId);
               setDownloadedModelIds(prev => [...prev, modelId]);
               await localModel.setSelectedModelId(modelId);
               setSelectedLocalModelId(modelId);

@@ -226,9 +226,18 @@ export async function clearSelectedModelId(): Promise<void> {
 
 // ─── Download ────────────────────────────────────────────────────────────────
 
+/** Calea temporară de download: fișierul final apare abia după finalize. */
+function getModelPartPath(modelId: string): string {
+  return getModelPath(modelId) + '.part';
+}
+
 /**
- * Creează un download resumable pentru modelul dat.
- * UI-ul apelează .downloadAsync() și poate apela .pauseAsync() pentru anulare.
+ * Creează un download resumable pentru modelul dat. Descarcă într-un fișier
+ * temporar `<id>.gguf.part` — un download întrerupt (app omorât, crash) nu lasă
+ * niciodată un GGUF parțial pe calea finală, deci `isModelDownloaded` nu poate
+ * raporta fals „descărcat".
+ * UI-ul apelează .downloadAsync() (undefined = anulat via .pauseAsync()),
+ * verifică status-ul HTTP, apoi cheamă finalizeModelDownload(modelId).
  * La anulare, UI-ul trebuie să apeleze deleteModel(modelId) pentru curățare.
  */
 export function createModelDownload(
@@ -240,7 +249,7 @@ export function createModelDownload(
 
   return FileSystem.createDownloadResumable(
     model.downloadUrl,
-    getModelPath(modelId),
+    getModelPartPath(modelId),
     {},
     ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
       const total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : model.sizeBytes;
@@ -252,11 +261,26 @@ export function createModelDownload(
   );
 }
 
+/**
+ * Promovează fișierul temporar `.part` pe calea finală, după un download
+ * complet (status HTTP verificat de caller). Abia de aici modelul devine
+ * vizibil pentru isModelDownloaded/initLocalModel.
+ */
+export async function finalizeModelDownload(modelId: string): Promise<void> {
+  const partPath = getModelPartPath(modelId);
+  const info = await FileSystem.getInfoAsync(partPath);
+  if (!info.exists) {
+    throw new Error('Fișierul descărcat lipsește. Reia descărcarea.');
+  }
+  await FileSystem.moveAsync({ from: partPath, to: getModelPath(modelId) });
+}
+
 export async function deleteModel(modelId: string): Promise<void> {
-  const path = getModelPath(modelId);
-  const info = await FileSystem.getInfoAsync(path);
-  if (info.exists) {
-    await FileSystem.deleteAsync(path, { idempotent: true });
+  for (const path of [getModelPath(modelId), getModelPartPath(modelId)]) {
+    const info = await FileSystem.getInfoAsync(path);
+    if (info.exists) {
+      await FileSystem.deleteAsync(path, { idempotent: true });
+    }
   }
   const selected = await getSelectedModelId();
   if (selected === modelId) {
@@ -357,11 +381,10 @@ let _disposeRequestedDuringInit = false;
 export async function initLocalModel(modelId: string): Promise<void> {
   if (_loadedModelId === modelId && _llamaContext !== null) return;
 
-  if (_llamaContext !== null) {
-    await _llamaContext.release();
-    _llamaContext = null;
-    _loadedModelId = null;
-  }
+  // Prin disposeLocalModel, nu release direct: dacă o inferență pe modelul vechi
+  // e încă în zbor, contextul e parcat și eliberat la finalul ei (release direct
+  // mid-completion crapă nativ).
+  await disposeLocalModel();
 
   const path = getModelPath(modelId);
   const info = await FileSystem.getInfoAsync(path);
@@ -517,10 +540,38 @@ export async function runLocalInference(messages: AiMessage[], maxTokens = 500):
     return cleaned;
   } finally {
     _inferenceInFlight--;
+    if (_inferenceInFlight === 0 && _pendingReleaseContexts.length > 0) {
+      const toRelease = _pendingReleaseContexts;
+      _pendingReleaseContexts = [];
+      // Fire-and-forget: caller-ul dispose-ului n-a așteptat oricum (a primit
+      // return imediat); eșecul release-ului e doar logat, nu propagat.
+      for (const ctx of toRelease) {
+        void ctx.release().catch(e =>
+          console.warn('[localModel] dispose amânat a eșuat:', e instanceof Error ? e.message : e)
+        );
+      }
+    }
   }
 }
 
+/**
+ * Contexte cu dispose cerut în timpul unei inferențe (ex. userul comută
+ * provider-ul pe remote în Setări în timp ce extracția medicală batch rulează
+ * pe modelul local). `release()` în mijlocul unui `completion()` crapă nativ —
+ * parcăm contextul aici (și `_llamaContext` devine null imediat, deci un
+ * init ulterior încarcă curat alt model) și eliberăm la finalul inferenței
+ * curente (finally din runLocalInference). Listă, nu un singur slot: acoperă
+ * și un switch de model urmat de încă un dispose înainte să se golească.
+ */
+let _pendingReleaseContexts: LlamaContext[] = [];
+
 export async function disposeLocalModel(): Promise<void> {
+  if (_llamaContext && _inferenceInFlight > 0) {
+    _pendingReleaseContexts.push(_llamaContext);
+    _llamaContext = null;
+    _loadedModelId = null;
+    return;
+  }
   if (_llamaContext) {
     await _llamaContext.release();
     _llamaContext = null;
