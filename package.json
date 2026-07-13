@@ -17,7 +17,7 @@
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,json}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json}\"",
-    "prebuild": "expo prebuild --clean",
+    "prebuild": "expo prebuild --clean && node scripts/patch-share-extension-swift.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:characterization": "jest __tests__/characterization/ --runInBand",
