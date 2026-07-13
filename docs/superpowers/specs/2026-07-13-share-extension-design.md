@@ -48,7 +48,8 @@ redirecționează instant în aplicație. În RN, fișierele apar prin
 |---|---|
 | `package.json` | + `expo-share-intent@^6` |
 | `app.json` | config plugin cu `iosActivationRules`: imagini max 10 + fișiere max 1 (PDF). iOS nu filtrează „doar PDF" cu reguli simple → validare MIME în aplicație |
-| `app/_layout.tsx` | wrap în `<ShareIntentProvider>`; `useEffect` nou lângă deep-link handler: share intent prezent **și** `!appLock.locked` **și** `onboardingDone` → `router.push('/(tabs)/documente/add')` |
+| `app/_layout.tsx` | wrap în `<ShareIntentProvider>` (doar atât) |
+| `app/+native-intent.ts` | **nou** — `redirectSystemPath` interceptează URL-ul extensiei (`dataUrl=<cheie>`) și returnează `/(tabs)/documente/add`; fără el, expo-router aterizează pe `+not-found`. Mecanismul canonic al pachetului pentru expo-router. App lock nu blochează navigarea: `AppLockScreen` e overlay peste tot, deci userul vede lock-ul, deblochează și găsește ecranul deja populat |
 | `services/shareIntentIngest.ts` | **nou, mic** — validare MIME (imagine/PDF), split imagini/PDF, mesaje de eroare RO. Separat de `add.tsx` (god file 1535 linii, nu-l creștem) |
 | `app/(tabs)/documente/add.tsx` | la focus, dacă există share intent neconsumat: ingest (vezi fluxul) + `resetShareIntent()` |
 | `app/cropper.tsx` | param opțional de progres („Pagina k din N") afișat în header |
@@ -63,10 +64,12 @@ backup-audit neafectat.
 1. User selectează 1-10 poze (sau 1 PDF) → Share → „Dosar".
 2. Extensia copiază fișierele în App Group → deschide `acte://…` (gestionat de
    pachet) → aplicația pornește / revine în foreground.
-3. `_layout.tsx`: efectul vede share intent + app deblocat → push pe
-   `/documente/add` (instanță nouă pe stack — un draft existent rămâne în
-   spate, nu se pierde).
-4. `add.tsx` la focus: preia fișierele din context, `resetShareIntent()`.
+3. `+native-intent.ts`: `redirectSystemPath` recunoaște URL-ul extensiei →
+   expo-router navighează la `/(tabs)/documente/add` (draftul existent rămâne
+   pe stack, nu se pierde). Dacă app lock e activ, `AppLockScreen` (overlay
+   global) acoperă ecranul până la deblocare.
+4. `add.tsx` la focus + share intent prezent: preia fișierele din
+   `useShareIntentContext()`, apoi `resetShareIntent()` imediat.
    - **Imagini:** secvențial, fiecare prin cropper (`awaitCropper` existent) →
      `processAndSaveImage` → `runOcrOnImage`.
    - **PDF:** calea existentă din `pickPdf` (copiere + extract text /
@@ -80,7 +83,7 @@ backup-audit neafectat.
 | Situație | Comportament |
 |---|---|
 | Cold start (app închisă) | pachetul acoperă cold + warm; efectul din `_layout.tsx` rulează când contextul se populează |
-| App lock activ | redirect-ul așteaptă unlock-ul; fișierele rămân în context |
+| App lock activ | navigarea are loc sub overlay-ul `AppLockScreen`; userul deblochează și găsește ecranul populat |
 | „Adaugă" deja deschis cu date nesalvate | `router.push` → instanță nouă pe stack; draftul vechi rămâne în spate |
 | Imagini + PDF în același share | toate devin pagini ale aceluiași document (imagini prin cropper, PDF prin calea lui; max 1 PDF prin activation rule) |
 | Fișier nesuportat (.docx etc.) | Alert RO „Dosar acceptă doar imagini și PDF-uri"; fișierele valide continuă |
