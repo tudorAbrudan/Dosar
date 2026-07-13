@@ -42,7 +42,11 @@ import { resolveCropper } from '@/services/cropperBridge';
 const AUTODETECT_MIN_CONFIDENCE = 0.5;
 
 export default function CropperScreen() {
-  const { uri, requestId } = useLocalSearchParams<{ uri: string; requestId: string }>();
+  const { uri, requestId, progress } = useLocalSearchParams<{
+    uri: string;
+    requestId: string;
+    progress?: string;
+  }>();
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
 
@@ -152,7 +156,9 @@ export default function CropperScreen() {
             Anulează
           </Text>
         </Pressable>
-        <Text style={[styles.title, { color: palette.text }]}>Decupează documentul</Text>
+        <Text style={[styles.title, { color: palette.text }]}>
+          {progress ? `Decupează pagina ${progress}` : 'Decupează documentul'}
+        </Text>
         <Pressable onPress={handleApply} hitSlop={12} disabled={busy || !ready}>
           <Text
             style={[
