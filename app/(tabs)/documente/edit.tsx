@@ -532,6 +532,22 @@ export default function EditDocumentScreen() {
         },
       },
       {
+        text: 'Din Fișiere',
+        onPress: async () => {
+          try {
+            const result = await DocumentPicker.getDocumentAsync({
+              type: 'image/*',
+              copyToCacheDirectory: true,
+            });
+            if (!result.canceled && result.assets[0]?.uri) {
+              await saveAndAddPage(result.assets[0].uri);
+            }
+          } catch (e) {
+            Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta imaginea');
+          }
+        },
+      },
+      {
         text: 'Adaugă PDF',
         onPress: async () => {
           try {
