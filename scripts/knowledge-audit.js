@@ -100,6 +100,7 @@ const ENTRIES = {
     ocrLayout: { required: false },
     pdfExtractor: { required: false },
     reviewPrompt: { required: false },
+    shareIntentIngest: { required: false },
     vehicleDocChecks: { required: false },
   },
   screens: {
