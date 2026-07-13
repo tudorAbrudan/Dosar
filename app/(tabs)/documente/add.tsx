@@ -973,6 +973,7 @@ export default function AddDocumentScreen() {
     Alert.alert('Adaugă atașament', '', [
       { text: 'Scanează document', onPress: scanDocumentHandler },
       { text: 'Galerie', onPress: pickImage },
+      { text: 'Din Fișiere', onPress: pickImageFromFiles },
       { text: 'Adaugă PDF', onPress: pickPdf },
       { text: 'Anulează', style: 'cancel' },
     ]);
@@ -1052,6 +1053,20 @@ export default function AddDocumentScreen() {
     }
   }
 
+  /** Trimite imaginea prin cropper (fullScreenModal) și salvează rezultatul
+   *  ca pagină. Folosit de ambele surse: Galerie și Fișiere. */
+  async function cropAndProcessImage(uri: string) {
+    const requestId = makeRequestId();
+    const cropPromise = awaitCropper(requestId);
+    router.push({ pathname: '/cropper', params: { uri, requestId } });
+    const croppedUri = await cropPromise;
+    if (!croppedUri) return;
+
+    // Imaginea cropped a fost generată de expo-perspective-crop → EXIF
+    // normalizat în output, nu mai trecem orientarea originală mai departe.
+    await processAndSaveImage(croppedUri);
+  }
+
   async function pickImage() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -1064,18 +1079,22 @@ export default function AddDocumentScreen() {
       exif: true,
     });
     if (result.canceled || !result.assets[0]) return;
+    await cropAndProcessImage(result.assets[0].uri);
+  }
 
-    const asset = result.assets[0];
-
-    const requestId = makeRequestId();
-    const cropPromise = awaitCropper(requestId);
-    router.push({ pathname: '/cropper', params: { uri: asset.uri, requestId } });
-    const croppedUri = await cropPromise;
-    if (!croppedUri) return;
-
-    // Imaginea cropped a fost generată de expo-perspective-crop → EXIF
-    // normalizat în output, nu mai trecem orientarea originală mai departe.
-    await processAndSaveImage(croppedUri);
+  async function pickImageFromFiles() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.uri) return;
+      await cropAndProcessImage(asset.uri);
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta imaginea');
+    }
   }
 
   // ── Validare ─────────────────────────────────────────────────────────────
