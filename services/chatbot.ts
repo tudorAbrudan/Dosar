@@ -749,7 +749,9 @@ ${MEDICAL_REDIRECT_RULE}
 
 Când dai o informație preluată dintr-un document, spune din ce document provine, folosind tag-ul [DOC:...|...] din context.
 Când menționezi un document specific, folosește ÎNTOTDEAUNA tag-ul [DOC:...|...] din context.
-Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.${taskRule}`;
+Când menționezi o entitate, folosește ÎNTOTDEAUNA tag-ul [ENT:...|...|...] din context.
+
+Răspunde DIRECT din „Datele utilizatorului" de mai sus — NU întreba userul dacă vrea să verifici ceva ce poți verifica chiar acum din context. INTERZIS: „vă rog să specificați dacă doriți să verificăm X" sau „ce document doriți să verificați" când informația cerută e deja vizibilă mai sus. Dacă informația cerută NU apare în context, spune explicit, într-o singură propoziție, că nu găsești acel document/dată — nu cere confirmare, nu propune pași suplimentari.${taskRule}`;
 
   const messages: AiMessage[] = [
     { role: 'system', content: systemPrompt },

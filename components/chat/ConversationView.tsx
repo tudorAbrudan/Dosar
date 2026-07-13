@@ -73,7 +73,6 @@ export function ConversationView({
   const [input, setInput] = useState('');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionAtIndex, setMentionAtIndex] = useState(0);
-  const [resolvedMentions, setResolvedMentions] = useState<Map<string, MentionItem>>(new Map());
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
 
@@ -104,16 +103,17 @@ export function ConversationView({
     const newInput = `${before}@${item.name} `;
     setInput(newInput);
     setMentionQuery(null);
-    setResolvedMentions(prev => new Map(prev).set(item.name, item));
   }
 
   function handleSend() {
     const displayText = input.trim();
     if (!displayText || loading) return;
 
-    const mentioned = Array.from(resolvedMentions.values()).filter(m =>
-      displayText.includes(`@${m.name}`)
-    );
+    // Detectăm mențiunile direct din text (nu doar din cele alese din dropdown):
+    // userul poate scrie „@Nume" manual, fără să apese sugestia — altfel mesajul
+    // pleacă la AI fără ID-ul entității și răspunsul nu poate folosi datele ei.
+    const lowerText = displayText.toLowerCase();
+    const mentioned = mentionItems.filter(m => lowerText.includes(`@${m.name.toLowerCase()}`));
     const aiText =
       mentioned.length > 0
         ? `[Context mențiuni: ${mentioned.map(m => `@${m.name} = ${m.typeLabel} (ID: ${m.id})`).join(', ')}]\n${displayText}`
@@ -121,7 +121,6 @@ export function ConversationView({
 
     setInput('');
     setMentionQuery(null);
-    setResolvedMentions(new Map());
     onSend(displayText, aiText);
   }
 

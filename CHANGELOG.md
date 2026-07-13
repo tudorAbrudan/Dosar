@@ -14,6 +14,21 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.9.0] (2026-07-13) — build 66
+
+### Adăugat — iOS Share Extension
+- **Distribuie din alte aplicații direct în Dosar**: din Photos, Safari, Files, WhatsApp etc. poți folosi „Distribuie" → „Dosar" și fișierul (imagine sau PDF) ajunge direct pe ecranul de adăugare document — imaginile trec prin cropper ca la scanare normală, PDF-urile se atașează direct.
+- Serviciu dedicat de ingest care validează și clasifică fișierele primite prin share intent înainte de a le trimite spre ecran; indicator de progres opțional în header-ul cropper-ului pentru distribuiri cu mai multe pagini/imagini.
+- Reparat: o cursă (race condition) în `expo-share-intent` care putea pierde imagini la distribuiri multiple simultane; scalare forțată la 1 în randarea de normalizare EXIF (afecta crop-ul cu perspectivă).
+
+### Adăugat — „Din Fișiere" ca sursă de imagine
+- Ecranele de adăugare, editare și detaliu document au acum opțiunea „Din Fișiere" pe lângă cameră/galerie, pentru a atașa o imagine direct din aplicația Files.
+- Aceeași sursă e disponibilă și la adăugarea unui bon de combustibil, cu normalizare JPEG pentru compatibilitate cu AI vision.
+
+### Reparat — Interfață
+- Selectorul de entități la adăugarea unui document nu mai blochează legarea la mai multe categorii deodată (ex. persoană + vehicul pe același document) — după prima entitate legată, celelalte categorii rămâneau inaccesibile.
+- Buton „Adaugă atașament" expus și pe ecranul de detaliu document.
+
 ## [3.8.6] (2026-07-05) — build 65
 
 ### Reparat — Fiabilitate backup & restore (review adversarial 2026-07-04)
