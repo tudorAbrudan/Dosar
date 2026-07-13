@@ -1063,6 +1063,7 @@ export default function DocumentDetailScreen() {
           ocrLoading={ocrLoading}
           ocrText={doc.ocr_text ?? undefined}
           isEditing={false}
+          canAddPage={true}
           refreshKey={focusNonce}
           onAddPage={handleAddPage}
           onRotate={handleRotate}

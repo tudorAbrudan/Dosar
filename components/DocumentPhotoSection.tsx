@@ -21,6 +21,10 @@ interface Props {
   ocrLoading: boolean;
   ocrText?: string;
   isEditing?: boolean;
+  /** Arată rândul „+ Adaugă fișier / OCR" independent de `isEditing`.
+   *  Implicit = isEditing (add/edit.tsx). [id].tsx e read-only pentru
+   *  paginile existente (isEditing=false) dar tot poate atașa una nouă. */
+  canAddPage?: boolean;
   refreshKey?: number;
   onAddPage: () => void;
   onRotate: (pageId: string, degrees: number) => void;
@@ -36,6 +40,7 @@ export function DocumentPhotoSection({
   ocrLoading,
   ocrText,
   isEditing = true,
+  canAddPage = isEditing,
   refreshKey,
   onAddPage,
   onRotate,
@@ -67,7 +72,7 @@ export function DocumentPhotoSection({
         />
       ))}
 
-      {isEditing && (
+      {canAddPage && (
         <View style={styles.actionsRow}>
           <Pressable style={styles.actionBtn} onPress={onAddPage}>
             <Text style={styles.actionBtnText}>
