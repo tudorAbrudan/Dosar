@@ -12,6 +12,7 @@ import {
   useColorScheme as useColorSchemeNative,
 } from 'react-native';
 import 'react-native-reanimated';
+import { ShareIntentProvider } from 'expo-share-intent';
 
 import AppLockScreen from '@/components/AppLockScreen';
 import OnboardingWizard from '@/components/OnboardingWizard';
@@ -59,7 +60,11 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <ShareIntentProvider>
+      <RootLayoutNav />
+    </ShareIntentProvider>
+  );
 }
 
 function parseDeepLink(url: string): string | null {
