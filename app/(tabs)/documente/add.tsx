@@ -1,6 +1,9 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { StyleSheet, Pressable, Alert, Platform, InteractionManager } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
+import { useShareIntentContext } from 'expo-share-intent';
+import type { ShareIntentFile } from 'expo-share-intent';
 import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -80,6 +83,7 @@ import {
   saveScannedPagesBatch,
   savePdfAsPage,
 } from '@/services/documentPageStorage';
+import { planShareIngest, describeIgnored, toFileUri } from '@/services/shareIntentIngest';
 
 function isValidEntityType(v: string | undefined): v is EntityType {
   return typeof v === 'string' && (ALL_ENTITY_TYPES as string[]).includes(v);
@@ -132,6 +136,20 @@ export default function AddDocumentScreen() {
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes } = useVisibilitySettings();
   const { autoActivatedType, setAutoActivatedType, activateIfNeeded } = useAutoActivateDocType();
+
+  const isFocused = useIsFocused();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+
+  // Consum share intent: doar instanța focusată preia fișierele; reset imediat
+  // ca altă instanță / un re-focus să nu re-ingereze (spec: edge cases).
+  useEffect(() => {
+    if (!isFocused || !hasShareIntent) return;
+    const files = shareIntent.files ?? [];
+    resetShareIntent();
+    if (files.length === 0) return;
+    void ingestSharedFiles(files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused, hasShareIntent]);
 
   const [type, setType] = useState<DocumentType>(
     (params.type as DocumentType) ||
@@ -849,17 +867,11 @@ export default function AddDocumentScreen() {
     }
   }
 
-  async function pickPdf() {
+  /** Procesează un PDF de la un URI local: salvare ca pagină + extract text
+   *  + detecție tip + câmpuri. Folosit de pickPdf (picker) și de share intent. */
+  async function ingestPdf(uri: string) {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (!asset?.uri) return;
-
-      const { localPath: dest } = await savePdfAsPage(asset.uri);
+      const { localPath: dest } = await savePdfAsPage(uri);
       setPages(prev => [...prev, { uri: dest, localPath: dest }]);
 
       // Extragere text din PDF
@@ -928,6 +940,21 @@ export default function AddDocumentScreen() {
         setOcrLoading(false);
       }
     } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut procesa PDF-ul');
+    }
+  }
+
+  async function pickPdf() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.uri) return;
+      await ingestPdf(asset.uri);
+    } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta PDF-ul');
     }
   }
@@ -977,6 +1004,51 @@ export default function AddDocumentScreen() {
         'Eroare',
         e instanceof Error ? e.message : 'Nu s-au putut salva paginile scanate'
       );
+    }
+  }
+
+  /** Delay între dismiss-ul unui fullScreenModal (cropper) și următorul push —
+   *  iOS refuză present-on-dismissing (lecția alert-modal-race, 2026-05-25). */
+  const CROPPER_SEQUENCE_DELAY_MS = 600;
+
+  async function ingestSharedFiles(files: ShareIntentFile[]) {
+    const plan = planShareIngest(files);
+
+    const ignoredMsg = describeIgnored(plan);
+    if (ignoredMsg) {
+      // Așteaptă OK + dismiss-ul alertei înainte de a prezenta cropper-ul
+      // (present-on-dismissing → modalul nu ar mai apărea).
+      await new Promise<void>(resolve =>
+        Alert.alert('Fișiere ignorate', ignoredMsg, [{ text: 'OK', onPress: () => resolve() }])
+      );
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+
+    // Cold start / push în curs: lasă tranziția de navigare să se termine.
+    await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
+
+    if (plan.pdf) {
+      await ingestPdf(toFileUri(plan.pdf.path));
+    }
+
+    const total = plan.images.length;
+    for (let i = 0; i < total; i++) {
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, CROPPER_SEQUENCE_DELAY_MS));
+      }
+      const requestId = makeRequestId();
+      const cropPromise = awaitCropper(requestId);
+      router.push({
+        pathname: '/cropper',
+        params: {
+          uri: toFileUri(plan.images[i].path),
+          requestId,
+          ...(total > 1 ? { progress: `${i + 1} din ${total}` } : {}),
+        },
+      });
+      const croppedUri = await cropPromise;
+      if (!croppedUri) continue; // anulat → pagina e sărită (spec: edge cases)
+      await processAndSaveImage(croppedUri);
     }
   }
 
