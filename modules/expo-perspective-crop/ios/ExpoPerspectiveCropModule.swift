@@ -144,7 +144,12 @@ private func normalizedCGImage(_ image: UIImage) -> CGImage? {
   if image.imageOrientation == .up, let cg = image.cgImage {
     return cg
   }
-  let renderer = UIGraphicsImageRenderer(size: image.size)
+  // Scale 1 obligatoriu: format-ul default folosește scala ecranului (2x/3x),
+  // ceea ce ar produce un CGImage mai mare decât dimensiunile pe care le vede
+  // JS-ul (RNImage.getSize) — colțurile ar ateriza pe o fracțiune din imagine.
+  let format = UIGraphicsImageRendererFormat()
+  format.scale = 1
+  let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
   let normalized = renderer.image { _ in image.draw(at: .zero) }
   return normalized.cgImage
 }

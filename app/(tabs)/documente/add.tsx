@@ -1001,7 +1001,7 @@ export default function AddDocumentScreen() {
     const croppedUri = await cropPromise;
     if (!croppedUri) return;
 
-    // Imaginea cropped a fost generată de expo-image-manipulator → EXIF
+    // Imaginea cropped a fost generată de expo-perspective-crop → EXIF
     // normalizat în output, nu mai trecem orientarea originală mai departe.
     await processAndSaveImage(croppedUri);
   }
