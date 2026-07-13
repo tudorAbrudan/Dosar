@@ -19,6 +19,7 @@ import {
   computeFuelStats,
 } from '@/services/fuel';
 import { extractText, extractFuelInfo } from '@/services/ocr';
+import { compressImageToBase64ForAi } from '@/services/imageProcessing';
 import { extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { mapFuelReceiptWithAi, mergeFuelResults, type FuelAiResult } from '@/services/aiOcrMapper';
@@ -319,10 +320,35 @@ export default function FuelScreen() {
     }
   }
 
+  async function handleScanFromFiles() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+      if (!asset?.uri) return;
+      // Fișierele din Files pot fi HEIC/PNG/WebP, iar mapFuelReceiptWithAi
+      // trimite base64 cu mime hardcodat 'image/jpeg' — normalizăm la JPEG
+      // înainte, altfel AI vision primește bytes care nu corespund mime-ului.
+      let jpegBase64: string | undefined;
+      try {
+        jpegBase64 = await compressImageToBase64ForAi(asset.uri);
+      } catch (err) {
+        console.warn('[fuel-files] JPEG normalize failed:', err);
+      }
+      await processReceiptUri(asset.uri, jpegBase64);
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta imaginea');
+    }
+  }
+
   function handleScanReceipt() {
     Alert.alert('Scanează bon', 'Alege sursa', [
       { text: 'Scaner', onPress: handleScanFromCamera },
       { text: 'Galerie', onPress: handleScanFromGallery },
+      { text: 'Din Fișiere', onPress: handleScanFromFiles },
       { text: 'PDF', onPress: handleScanFromPdf },
       { text: 'Anulează', style: 'cancel' },
     ]);
