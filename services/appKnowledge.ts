@@ -125,9 +125,10 @@ ${buildDocTypesList()}
 
 ## Adăugare document
 
-La adăugarea unui document (Acte → buton „+" → ecranul Adaugă document), pentru atașarea fișierelor sunt 4 opțiuni:
+La adăugarea unui document (Acte → buton „+" → ecranul Adaugă document), pentru atașarea fișierelor sunt 5 opțiuni:
 - **„Scanează document"** (recomandat) — scanner nativ cu detecție automată a marginilor, corecție de perspectivă, suport multi-pagină. Pe iOS folosește VisionKit (același scanner ca în Apple Notes); pe Android folosește ML Kit. Toate paginile scanate într-o sesiune se atașează automat documentului curent, fiecare ca pagină separată; OCR rulează pe fiecare.
 - **„Galerie"** — importă o imagine existentă din galeria telefonului.
+- **„Din Fișiere"** — importă o imagine din app-ul Fișiere (iCloud Drive, Descărcări, AirDrop) care nu e salvată în Poze. Disponibil și la scanarea bonurilor de combustibil.
 - **„Adaugă PDF"** — atașează un PDF din file picker.
 - **Share din altă aplicație** — în Photos, Files sau Safari selectezi o poză (sau mai multe) ori un PDF → Share → Dosar. Aplicația se deschide direct pe ecranul Adaugă document cu fișierele preîncărcate; mai multe poze devin pagini ale aceluiași document, fiecare trecând prin decupare.
 
