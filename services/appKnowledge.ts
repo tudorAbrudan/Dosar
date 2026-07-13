@@ -121,14 +121,15 @@ export function buildAppKnowledge(): string {
 **Tipuri de documente:**
 ${buildDocTypesList()}
 
-**Funcții:** scanner nativ multi-pagină + OCR on-device, notificări expirare, remindere în calendar iOS, backup automat în iCloud + export manual ZIP, blocare Face ID/PIN, detecție automată duplicate, câmp „Notă privată" per document pentru date sensibile (CVV/PIN/parole) care NU ajunge niciodată la AI, reminder mentenanță vehicule (km sau timp) cu sincronizare calendar, secțiune „De completat" pe Home cu sugestii pentru date incomplete.
+**Funcții:** scanner nativ multi-pagină + OCR on-device, notificări expirare, remindere în calendar iOS, backup automat în iCloud + export manual ZIP, blocare Face ID/PIN, detecție automată duplicate, câmp „Notă privată" per document pentru date sensibile (CVV/PIN/parole) care NU ajunge niciodată la AI, reminder mentenanță vehicule (km sau timp) cu sincronizare calendar, secțiune „De completat" pe Home cu sugestii pentru date incomplete, primire fișiere prin Share sheet iOS (din Photos/Files/Safari alegi Share → Dosar și poza sau PDF-ul ajunge direct în ecranul Adaugă document).
 
 ## Adăugare document
 
-La adăugarea unui document (Acte → buton „+" → ecranul Adaugă document), pentru atașarea fișierelor sunt 3 opțiuni:
+La adăugarea unui document (Acte → buton „+" → ecranul Adaugă document), pentru atașarea fișierelor sunt 4 opțiuni:
 - **„Scanează document"** (recomandat) — scanner nativ cu detecție automată a marginilor, corecție de perspectivă, suport multi-pagină. Pe iOS folosește VisionKit (același scanner ca în Apple Notes); pe Android folosește ML Kit. Toate paginile scanate într-o sesiune se atașează automat documentului curent, fiecare ca pagină separată; OCR rulează pe fiecare.
 - **„Galerie"** — importă o imagine existentă din galeria telefonului.
 - **„Adaugă PDF"** — atașează un PDF din file picker.
+- **Share din altă aplicație** — în Photos, Files sau Safari selectezi o poză (sau mai multe) ori un PDF → Share → Dosar. Aplicația se deschide direct pe ecranul Adaugă document cu fișierele preîncărcate; mai multe poze devin pagini ale aceluiași document, fiecare trecând prin decupare.
 
 După atașarea fișierului, OCR-ul rulează automat și AI-ul propune tipul documentului (clasificare automată) plus completează câmpurile detectate (date, numere, entități). Utilizatorul poate confirma sau modifica tipul propus înainte de salvare.
 

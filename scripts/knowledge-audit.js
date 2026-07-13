@@ -57,6 +57,7 @@ const ENTRIES = {
     pdfOcr: { required: true, keywords: ['PDF', 'OCR'] },
     reminders: { required: true, keywords: ['remindere', 'expirări', 'reminder', 'expirari'] },
     settings: { required: true, keywords: ['setări'] },
+    shareIntentIngest: { required: true, keywords: ['Share', 'altă aplicație'] },
     taskRequirements: { required: true, keywords: ['DATE NECESARE', 'task'] },
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
     vehicleStatus: { required: true, keywords: ['vehicul'] },
