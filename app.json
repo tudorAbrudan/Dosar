@@ -99,6 +99,15 @@
             "cxxVersion": "c++20"
           }
         }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsImageWithMaxCount": 10,
+            "NSExtensionActivationSupportsFileWithMaxCount": 1
+          }
+        }
       ]
     ],
     "experiments": {
