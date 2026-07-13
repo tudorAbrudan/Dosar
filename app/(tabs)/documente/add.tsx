@@ -248,17 +248,6 @@ export default function AddDocumentScreen() {
     [params.restrict_to, _baseVisibleDocTypes]
   );
 
-  // Auto-comută tab-ul picker-ului pe primul tip de entitate legat, dacă tab-ul
-  // curent e gol și există legături pe alt tip. Respectă alegerea manuală:
-  // dacă user-ul e deja pe un tab cu entități legate, nu schimbă nimic.
-  useEffect(() => {
-    if (entityLinks.length === 0) return;
-    const currentTabHasLinks = entityLinks.some(l => l.entityType === pickerCategory);
-    if (!currentTabHasLinks) {
-      setPickerCategory(entityLinks[0].entityType);
-    }
-  }, [entityLinks, pickerCategory]);
-
   const personId = params.person_id;
   const propertyId = params.property_id;
   const vehicleId = params.vehicle_id;
