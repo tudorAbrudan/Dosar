@@ -65,7 +65,7 @@ import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
-import { AI_CONSENT_KEY, canDoVision, humanizeAiError } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, canDoVision, getAiConfig, humanizeAiError } from '@/services/aiProvider';
 import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
@@ -498,6 +498,22 @@ export default function AddDocumentScreen() {
   async function runAiOcrMapper(combinedOcrText: string) {
     const consent = await AsyncStorage.getItem(AI_CONSENT_KEY);
     if (consent !== 'true') return;
+
+    // Model local fără provider de vision cloud separat: auto-maparea ar încărca
+    // silențios modelul GGUF (~2-3GB) în timpul OCR-ului — exact când memoria e deja
+    // sub presiune de la bitmap-urile full-res. Pe device-uri de 6GB → jetsam (app-ul
+    // „crapă" la OCR pe talon; vezi analiza 2026-07). Modelul e oricum text-only, deci
+    // nici n-ar vedea poza. Sărim auto-AI: detecția tipului rămâne pe euristica offline
+    // (detectDocumentType), iar legarea entităților pe tryLocalEntityMatch.
+    const cfg = await getAiConfig();
+    const hasCloudVision =
+      cfg.visionUrl.trim() !== '' &&
+      cfg.visionApiKey.trim() !== '' &&
+      cfg.visionModel.trim() !== '';
+    if (cfg.type === 'local' && !hasCloudVision) {
+      tryLocalEntityMatch(combinedOcrText);
+      return;
+    }
 
     setAiOcrLoading(true);
     try {

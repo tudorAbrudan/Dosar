@@ -1,0 +1,12 @@
+{
+  "name": "expo-cloudkit-share",
+  "version": "1.0.0",
+  "description": "CloudKit zone sharing (CKShare) between iCloud accounts — spike Faza 0 (iOS)",
+  "main": "src/index",
+  "types": "src/index",
+  "ios": {
+    "modules": [
+      "ExpoCloudKitShareModule"
+    ]
+  }
+}

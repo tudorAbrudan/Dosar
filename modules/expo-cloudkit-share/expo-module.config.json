@@ -1,0 +1,8 @@
+{
+  "platforms": ["ios"],
+  "ios": {
+    "modules": ["ExpoCloudKitShareModule"],
+    "appDelegateSubscribers": ["ExpoCloudKitShareAppDelegate"],
+    "podspecPath": "ExpoCloudKitShare.podspec"
+  }
+}

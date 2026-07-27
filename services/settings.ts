@@ -14,6 +14,7 @@ const KEY_CLOUD_IGNORED_UPLOADED_AT = 'cloud_ignored_uploaded_at';
 const KEY_CLOUD_SNAPSHOT_FREQUENCY = 'cloud_snapshot_frequency';
 const KEY_CLOUD_SNAPSHOT_RETENTION = 'cloud_snapshot_retention';
 const KEY_CLOUD_ENCRYPTION_ENABLED = 'cloud_encryption_enabled';
+const KEY_SHARING_BETA_ENABLED = 'sharing_beta_enabled';
 
 const VALID_FREQUENCIES: readonly SnapshotFrequency[] = [
   'off',
@@ -51,6 +52,16 @@ export async function getCloudBackupEnabled(): Promise<boolean> {
 
 export async function setCloudBackupEnabled(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEY_CLOUD_BACKUP_ENABLED, enabled ? 'true' : 'false');
+}
+
+/** Feature flag Beta: partajare entități între conturi (CloudKit). Off by default. */
+export async function getSharingBetaEnabled(): Promise<boolean> {
+  const v = await AsyncStorage.getItem(KEY_SHARING_BETA_ENABLED);
+  return v === 'true';
+}
+
+export async function setSharingBetaEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_SHARING_BETA_ENABLED, enabled ? 'true' : 'false');
 }
 
 export async function getCloudIgnoredUploadedAt(): Promise<number | null> {

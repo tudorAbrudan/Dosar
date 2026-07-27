@@ -710,7 +710,11 @@ export function detectDocumentType(text: string): DocumentType | null {
   if (/inspec[tț]ie tehnic[aă]|inspec[tț]ie periodic[aă]|\bitp\b/.test(t)) return 'itp';
   if (/vignet[aă]|rovinieta/.test(t)) return 'vigneta';
   if (/carte de identitate a vehiculului|\bciv\b/.test(t)) return 'carte_auto';
-  if (/\btalon\b|certificat de [îi]nmatriculare/.test(t)) return 'talon';
+  // Talonul real scrie „CERTIFICATUL DE ÎNMATRICULARE" (cu articol) — `certificatul
+  // de` NU se potrivea pe `certificat de` lipit. Acceptăm și forma articulată, plus
+  // varianta cu diacritice pierdute la OCR (î→i). Fără vision (model local), asta e
+  // singura cale prin care talonul se detectează offline.
+  if (/\btalon\b|certificat(?:ul)? de [îi]nmatriculare/.test(t)) return 'talon';
 
   // ── Persoană (acte identitate) ────────────────────────────────────────────
   if (/carte de identitate|buletin de identitate|c\.i\.|identity card/.test(t)) return 'buletin';

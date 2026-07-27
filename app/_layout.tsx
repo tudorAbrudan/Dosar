@@ -193,6 +193,10 @@ function RootLayoutNav() {
             options={{ headerShown: true, headerBackTitle: 'Înapoi' }}
           />
           <Stack.Screen
+            name="partajare"
+            options={{ headerShown: true, headerBackTitle: 'Înapoi' }}
+          />
+          <Stack.Screen
             name="cropper"
             options={{ presentation: 'fullScreenModal', headerShown: false }}
           />

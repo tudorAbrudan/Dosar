@@ -42,6 +42,8 @@ const EXCLUDED_TABLES = new Set([
   'cloud_state', // device-specific state (device_id, hash-uri locale)
   'pending_uploads', // coadă tranzitorie; restore-ul o golește
   'cloud_pending_deletes', // coadă tranzitorie pentru ștergeri staggered cloud (file_path + counter)
+  'shared_entities', // CloudKit sharing: registru local device-specific (zone/role/share_url)
+  'cloud_records', // CloudKit sharing: mapare rând↔CKRecord, sync-state device-specific
   'chat_threads', // istoricul chatbot - ephemeral, NU se păstrează (privacy)
   'chat_messages', // idem
   'fuel_records_v2', // tabel temporar de migrare

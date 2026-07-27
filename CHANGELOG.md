@@ -14,6 +14,18 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.10.1] (2026-07-27) — build 69
+
+### Reparat — Partajare entități (recepția la destinatar)
+- **Entitatea partajată apare acum și la destinatar.** Până acum, cine primea o partajare accepta invitația, dar entitatea nu se afișa: partea de recepție nu era conectată. Acum, la deschiderea ecranului Partajare, zonele acceptate sunt descoperite și sincronizate automat, iar entitatea + documentele ei apar în aplicație. Când proprietarul revocă accesul, partajarea primită se curăță local (ce s-a văzut deja rămâne).
+- Link de invitație public read-only (`.readOnly`): un link trimis pe WhatsApp/Messages dă acces la citire, nu doar invitațiile punctuale pe Apple ID.
+- Robustețe: revocarea tolerează zonele deja șterse pe server (nu mai rămâi blocat pe „Revocă"); starea locală se salvează doar după ce partajarea reușește (fără intrări orfane); mesaje de eroare CloudKit traduse în română.
+
+## [3.10.0] (2026-07-23) — build 67
+
+### Adăugat — Partajare entități între conturi (Beta)
+- **Partajează o entitate cu familia prin iCloud** (Setări → Partajare): entitatea aleasă (persoană, vehicul, proprietate, animal, firmă) + documentele ei se sincronizează live între conturi iCloud, cu revocare oricând. Documentele medicale, notele private și cardurile rămân strict pe dispozitivul tău. Funcție în Beta — sincronizarea live între conturi se validează la testarea pe două dispozitive.
+
 ## [3.9.0] (2026-07-13) — build 66
 
 ### Adăugat — iOS Share Extension

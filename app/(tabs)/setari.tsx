@@ -40,6 +40,7 @@ import { NotificariSection } from '@/components/settings/NotificariSection';
 import { VizibilitateEntitatiSection } from '@/components/settings/VizibilitateEntitatiSection';
 import { VizibilitateDocTypesSection } from '@/components/settings/VizibilitateDocTypesSection';
 import { BackupSection } from '@/components/settings/BackupSection';
+import { SharingBetaSection } from '@/components/settings/SharingBetaSection';
 import { LocalModelWarningBanner } from '@/components/settings/LocalModelWarningBanner';
 import { LocalModelCatalog } from '@/components/settings/LocalModelCatalog';
 import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
@@ -1058,6 +1059,8 @@ export default function SetariScreen() {
           onExport={handleExportBackup}
           onImport={handleImportBackup}
         />
+
+        <SharingBetaSection scheme={scheme} onOpenSharing={() => router.push('/partajare')} />
 
         <AsistentAiSection
           aiProviderType={aiProviderType}

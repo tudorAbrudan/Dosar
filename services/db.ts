@@ -203,6 +203,35 @@ db.execSync(`
     snapshots_remaining INTEGER NOT NULL
   );
 
+  -- Partajare entități între conturi (CloudKit). Ambele tabele sunt LOCAL-ONLY
+  -- (stare de sync device-specific) → excluse din backup (scripts/backup-audit.js
+  -- EXCLUDED_TABLES). Vezi docs/superpowers/specs/2026-07-22-cloudkit-entity-sharing.md.
+  --
+  -- Registru al entităților partajate (owner) sau primite (participant).
+  CREATE TABLE IF NOT EXISTS shared_entities (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    zone_name TEXT NOT NULL,
+    role TEXT NOT NULL,            -- 'owner' | 'participant'
+    share_url TEXT,
+    owner_name TEXT,              -- CloudKit owner name (zone participant)
+    created_at TEXT NOT NULL,
+    revoked_at TEXT
+  );
+
+  -- Mapare rând local ↔ CKRecord (bookkeeping sync + LWW pe change_tag).
+  CREATE TABLE IF NOT EXISTS cloud_records (
+    id TEXT PRIMARY KEY,
+    zone_name TEXT NOT NULL,
+    record_name TEXT NOT NULL,   -- CKRecord.recordID.recordName (de regulă = local_id)
+    record_type TEXT NOT NULL,   -- numele tabelului sau 'document'
+    local_table TEXT NOT NULL,
+    local_id TEXT NOT NULL,
+    change_tag TEXT,             -- recordChangeTag pentru last-write-wins
+    synced_at TEXT
+  );
+
   CREATE INDEX IF NOT EXISTS idx_docs_expiry ON documents(expiry_date);
   CREATE INDEX IF NOT EXISTS idx_docs_person ON documents(person_id);
   CREATE INDEX IF NOT EXISTS idx_docs_vehicle ON documents(vehicle_id);
@@ -213,6 +242,10 @@ db.execSync(`
   CREATE INDEX IF NOT EXISTS idx_chat_threads_updated ON chat_threads(updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_maintenance_vehicle ON vehicle_maintenance_tasks(vehicle_id);
   CREATE INDEX IF NOT EXISTS idx_pending_uploads_attempts ON pending_uploads(attempt_count);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_shared_entities_zone ON shared_entities(zone_name);
+  CREATE INDEX IF NOT EXISTS idx_shared_entities_entity ON shared_entities(entity_type, entity_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_records_uniq ON cloud_records(zone_name, record_name);
+  CREATE INDEX IF NOT EXISTS idx_cloud_records_local ON cloud_records(local_table, local_id);
 `);
 
 // Schema medical (reintegrare din DosarMedical, v3.5.x → v3.6+).
