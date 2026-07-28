@@ -495,10 +495,39 @@ export function stripReasoning(text: string): string {
 }
 
 /**
- * Rulează inferența cu modelul local activ.
- * Dacă modelul nu e inițializat, îl inițializează automat.
+ * Coadă de serializare pentru inferență. `llama.cpp`/`llama.rn` NU suportă
+ * două `completion()` concurente pe același context — corup starea internă a
+ * sampler-ului (heap corruption nativ, SIGABRT în `initSampling()`).
+ *
+ * De ce se poate ajunge la două apeluri concurente în JS deși fiecare callsite
+ * face `await sendAiRequest(...)`: unele fluxuri pornesc o a doua inferență
+ * fire-and-forget (ex. `medicalChat.autoRenameAfterFirstExchange`, apelat fără
+ * `await` după ce `sendMessage` s-a rezolvat deja). UI-ul consideră trimiterea
+ * „terminată" și userul poate trimite imediat un mesaj nou → al doilea
+ * `runLocalInference` pornește cât primul (title-gen) e încă activ pe același
+ * `_llamaContext`. Cu provider remote (HTTP) e inofensiv; cu contextul nativ
+ * local, crapă. Coada de mai jos forțează execuție strict secvențială,
+ * indiferent de câte apeluri concurente pornesc din JS.
+ * Crash confirmat din .ips device: 2026-07-26.
  */
-export async function runLocalInference(messages: AiMessage[], maxTokens = 500): Promise<string> {
+let _inferenceQueue: Promise<void> = Promise.resolve();
+
+export function runLocalInference(messages: AiMessage[], maxTokens = 500): Promise<string> {
+  const task = _inferenceQueue.then(() => runLocalInferenceExclusive(messages, maxTokens));
+  // Coada continuă indiferent de rezultatul acestui task — un eșec nu trebuie
+  // să blocheze inferențele următoare. `.then` cu ambele ramuri în loc de
+  // `.catch` ca să nu producă un unhandled rejection separat pe ramura de eroare.
+  _inferenceQueue = task.then(
+    () => undefined,
+    () => undefined
+  );
+  return task;
+}
+
+async function runLocalInferenceExclusive(
+  messages: AiMessage[],
+  maxTokens: number
+): Promise<string> {
   const selectedId = await getSelectedModelId();
   if (!selectedId) {
     throw new Error('Niciun model local selectat. Alege un model din Setări → Asistent AI.');

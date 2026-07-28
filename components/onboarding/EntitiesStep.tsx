@@ -22,7 +22,7 @@ import {
 const ENTITY_DESCRIPTIONS: Record<EntityType, string> = {
   person: 'Buletin, pașaport, permis',
   vehicle: 'Talon, RCA, ITP, CASCO, vignetă',
-  property: 'Acte proprietate, facturi, PAD',
+  property: 'Acte proprietate, facturi, PAD, furnizori utilități',
   card: 'Carduri bancare, abonamente',
   animal: 'Vaccinuri, deparazitare, vizite vet',
   company: 'Certificat înregistrare, acte constitutive, TVA',

@@ -13,6 +13,16 @@ import { iconColors } from '@/theme/iconColors';
 import { radius, spacing } from '@/theme/layout';
 import { AI_INFO_URL } from '@/constants/AppLinks';
 import type { AiProviderType } from '@/services/aiProvider';
+import { LOCAL_MODEL_CATALOG } from '@/services/localModel';
+
+// Range afișat derivat din catalog (nu hardcodat) — rămâne corect când se
+// adaugă/schimbă modele în LOCAL_MODEL_CATALOG (ex: tiering Gemma 4).
+const localModelSizeRange = (() => {
+  const bySize = [...LOCAL_MODEL_CATALOG].sort((a, b) => a.sizeBytes - b.sizeBytes);
+  const min = bySize[0].sizeLabel.replace('~', '');
+  const max = bySize[bySize.length - 1].sizeLabel.replace('~', '');
+  return `~${min}–${max}`;
+})();
 
 interface AiStepProps {
   scheme: 'light' | 'dark';
@@ -42,7 +52,7 @@ const PROVIDER_OPTIONS: { type: AiProviderType; title: string; desc: string }[] 
   {
     type: 'local',
     title: 'Model local',
-    desc: 'Pe device · Privat · Nelimitat · Offline · Download 800MB–4GB din Setări',
+    desc: `Pe device · Privat · Nelimitat · Offline · Download ${localModelSizeRange} din Setări`,
   },
   {
     type: 'none',
