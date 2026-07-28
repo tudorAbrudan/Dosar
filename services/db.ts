@@ -232,6 +232,22 @@ db.execSync(`
     synced_at TEXT
   );
 
+  -- Coadă de push CloudKit (offline-resilient, model pending_uploads). Un rând
+  -- per (zonă, record) de urcat/șters; procesat la sync + după mutație când online.
+  -- LOCAL-ONLY (exclus din backup). op: 'upsert' | 'delete'. scope: 'private' (owner)
+  -- | 'shared' (participant).
+  CREATE TABLE IF NOT EXISTS pending_share_pushes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    zone_name TEXT NOT NULL,
+    record_name TEXT NOT NULL,
+    op TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    owner_name TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_docs_expiry ON documents(expiry_date);
   CREATE INDEX IF NOT EXISTS idx_docs_person ON documents(person_id);
   CREATE INDEX IF NOT EXISTS idx_docs_vehicle ON documents(vehicle_id);
@@ -246,6 +262,7 @@ db.execSync(`
   CREATE INDEX IF NOT EXISTS idx_shared_entities_entity ON shared_entities(entity_type, entity_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_records_uniq ON cloud_records(zone_name, record_name);
   CREATE INDEX IF NOT EXISTS idx_cloud_records_local ON cloud_records(local_table, local_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_share_pushes_uniq ON pending_share_pushes(zone_name, record_name);
 `);
 
 // Schema medical (reintegrare din DosarMedical, v3.5.x → v3.6+).
@@ -814,6 +831,22 @@ safeAlterTable('ALTER TABLE pending_uploads ADD COLUMN uploaded_remote_path TEXT
 // șters (sub files/). Permite ștergerea locației VECHI după un move, nu doar a
 // basename-ului din file_path.
 safeAlterTable('ALTER TABLE cloud_pending_deletes ADD COLUMN remote_rel TEXT');
+
+// Migrare: sharing bidirecțional (spec 2026-07-27). shared_entities.change_token =
+// CKServerChangeToken serializat (base64) per zonă, pentru fetch incremental.
+// shared_entities.permission = 'read' | 'readwrite' (default 'read' — share-urile
+// existente rămân read-only, comportament neschimbat).
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN change_token TEXT');
+safeAlterTable("ALTER TABLE shared_entities ADD COLUMN permission TEXT NOT NULL DEFAULT 'read'");
+
+// Migrare: sharing bidirecțional Increment 2 (motor live). Diagnostics per zonă
+// (SharingBetaSection/partajare.tsx) + hash pentru CKAsset skip-la-neschimbat +
+// tipul rândului dintr-un push în așteptare (ca flushSharePushes să re-derive
+// payload-ul la flush time fără o cloud_records preexistentă).
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN last_synced_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN last_sync_error TEXT');
+safeAlterTable('ALTER TABLE cloud_records ADD COLUMN file_hash TEXT');
+safeAlterTable("ALTER TABLE pending_share_pushes ADD COLUMN kind TEXT NOT NULL DEFAULT 'document'");
 
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).

@@ -2,6 +2,7 @@ import { ALL_ENTITY_TYPES, MEDICAL_DOC_TYPES } from '@/types';
 import type { Document, EntityType } from '@/types';
 import { db, generateId } from './db';
 import { getDocumentsByEntity } from './documents';
+import { emit } from './events';
 
 /**
  * Layer de partajare entități între conturi (CloudKit) — logica pură + granița
@@ -61,6 +62,45 @@ const ENTITY_DOC_KIND: Record<
   animal: 'animal_id',
   company: 'company_id',
 };
+
+/**
+ * WHITELIST per tip de entitate — singurele coloane care ajung într-un share.
+ * Fără ea, `getShareBundle` ar trimite orb TOATE coloanele string ale rândului
+ * (o coloană sensibilă viitoare ar scurge implicit). `photo_uri` pe vehicul NU
+ * e aici — e o cale de fișier locală, nu are sens cross-device (fișierul nu e
+ * urcat ca CKAsset pentru entități, doar pentru documente).
+ * check-hardcoded-entities-disable-next-cluster
+ */
+export const ENTITY_SYNC_FIELDS: Record<ShareableEntityType, readonly string[]> = {
+  person: ['name', 'phone', 'email', 'date_of_birth'],
+  property: ['name'],
+  vehicle: ['name', 'plate_number', 'fuel_type'],
+  animal: ['name', 'species'],
+  company: ['name', 'cui', 'reg_com'],
+};
+
+/**
+ * Rând SQLite brut → câmpuri de share, filtrate prin whitelist. Pur, testabil
+ * fără DB. String-urile nevide se păstrează ca atare; number/boolean devin
+ * `String(v)` (SQLite affinity le convertește corect la apply) — altfel o
+ * coloană INTEGER/REAL pleacă tăcut nicăieri (`typeof v === 'string'` ar cădea).
+ */
+export function rowToShareFields(
+  row: Record<string, unknown>,
+  allowedCols: readonly string[]
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const col of allowedCols) {
+    const v = row[col];
+    if (v == null) continue;
+    if (typeof v === 'string') {
+      if (v.length > 0) out[col] = v;
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      out[col] = String(v);
+    }
+  }
+  return out;
+}
 
 /**
  * WHITELIST — singurele câmpuri de document care ajung în share. Orice câmp
@@ -163,10 +203,11 @@ export async function getShareBundle(
   const entityRow = rows[0];
   if (!entityRow) throw new Error('Entitatea nu există');
 
-  const entityFields: Record<string, string> = {};
-  for (const [k, v] of Object.entries(entityRow)) {
-    if (typeof v === 'string' && v.length > 0) entityFields[k] = v;
-  }
+  const entityFields = rowToShareFields(entityRow, [
+    'id',
+    'created_at',
+    ...ENTITY_SYNC_FIELDS[shareable],
+  ]);
 
   const docs = await getDocumentsByEntity(kind, entityId);
   const documents: ShareableDocumentRecord[] = [];
@@ -189,6 +230,26 @@ export async function getShareBundle(
   return bundle;
 }
 
+/**
+ * Câmpurile whitelisted ale UNEI entități, fără fetch-ul complet de bundle
+ * (documente + pagini). Folosit de push-ul granular (o editare de entitate),
+ * unde nu avem nevoie de lista de documente. `null` dacă entitatea nu (mai)
+ * există sau tipul nu e shareable.
+ */
+export async function getEntityShareFields(
+  entityType: EntityType,
+  entityId: string
+): Promise<Record<string, string> | null> {
+  if (!isShareableEntityType(entityType)) return null;
+  const shareable = entityType as ShareableEntityType;
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM ${ENTITY_TABLE[shareable]} WHERE id = ?`,
+    [entityId]
+  );
+  if (!row) return null;
+  return rowToShareFields(row, ['id', 'created_at', ...ENTITY_SYNC_FIELDS[shareable]]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Store local pentru starea de sharing (tabele LOCAL-ONLY `shared_entities` +
 // `cloud_records`, excluse din backup). Consumat de layer-ul nativ CloudKit.
@@ -196,16 +257,23 @@ export async function getShareBundle(
 
 export type ShareRole = 'owner' | 'participant';
 
+/** 'read' = participantul doar citește. 'readwrite' = poate edita (push-back). */
+export type SharePermission = 'read' | 'readwrite';
+
 export interface SharedEntity {
   id: string;
   entity_type: EntityType;
   entity_id: string;
   zone_name: string;
   role: ShareRole;
+  permission: SharePermission;
   share_url?: string;
   owner_name?: string;
   created_at: string;
   revoked_at?: string;
+  /** Diagnostics — ultimul pull reușit / ultima eroare de sync (SharingBetaSection/partajare.tsx). */
+  last_synced_at?: string;
+  last_sync_error?: string;
 }
 
 export interface CloudRecordRef {
@@ -217,6 +285,7 @@ export interface CloudRecordRef {
   local_id: string;
   change_tag?: string;
   synced_at?: string;
+  file_hash?: string;
 }
 
 interface SharedEntityRow {
@@ -225,10 +294,14 @@ interface SharedEntityRow {
   entity_id: string;
   zone_name: string;
   role: string;
+  permission: string | null;
   share_url: string | null;
   owner_name: string | null;
   created_at: string;
   revoked_at: string | null;
+  change_token: string | null;
+  last_synced_at: string | null;
+  last_sync_error: string | null;
 }
 
 interface CloudRecordRow {
@@ -240,6 +313,7 @@ interface CloudRecordRow {
   local_id: string;
   change_tag: string | null;
   synced_at: string | null;
+  file_hash: string | null;
 }
 
 function mapSharedEntity(r: SharedEntityRow): SharedEntity {
@@ -249,10 +323,13 @@ function mapSharedEntity(r: SharedEntityRow): SharedEntity {
     entity_id: r.entity_id,
     zone_name: r.zone_name,
     role: r.role as ShareRole,
+    permission: (r.permission as SharePermission) ?? 'read',
     share_url: r.share_url ?? undefined,
     owner_name: r.owner_name ?? undefined,
     created_at: r.created_at,
     revoked_at: r.revoked_at ?? undefined,
+    last_synced_at: r.last_synced_at ?? undefined,
+    last_sync_error: r.last_sync_error ?? undefined,
   };
 }
 
@@ -266,6 +343,7 @@ function mapCloudRecord(r: CloudRecordRow): CloudRecordRef {
     local_id: r.local_id,
     change_tag: r.change_tag ?? undefined,
     synced_at: r.synced_at ?? undefined,
+    file_hash: r.file_hash ?? undefined,
   };
 }
 
@@ -299,36 +377,59 @@ export async function recordShare(params: {
   entityId: string;
   zoneName: string;
   role: ShareRole;
+  permission?: SharePermission;
   shareUrl?: string;
   ownerName?: string;
 }): Promise<SharedEntity> {
   const id = generateId();
   const createdAt = new Date().toISOString();
+  // Upsert pe zone_name: la re-înregistrare (ex. reconcile participant) NU
+  // clobber-ăm `change_token` / `id` / `created_at` existente — doar câmpurile
+  // descriptive. `INSERT OR REPLACE` ar șterge rândul și ar reseta token-ul de sync.
   await db.runAsync(
-    `INSERT OR REPLACE INTO shared_entities
-       (id, entity_type, entity_id, zone_name, role, share_url, owner_name, created_at, revoked_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    `INSERT INTO shared_entities
+       (id, entity_type, entity_id, zone_name, role, permission, share_url, owner_name, created_at, revoked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ON CONFLICT(zone_name) DO UPDATE SET
+       entity_type = excluded.entity_type,
+       entity_id = excluded.entity_id,
+       role = excluded.role,
+       permission = excluded.permission,
+       share_url = excluded.share_url,
+       owner_name = excluded.owner_name,
+       revoked_at = NULL`,
     [
       id,
       params.entityType,
       params.entityId,
       params.zoneName,
       params.role,
+      params.permission ?? 'read',
       params.shareUrl ?? null,
       params.ownerName ?? null,
       createdAt,
     ]
   );
-  return {
+  const row = await db.getFirstAsync<SharedEntityRow>(
+    `SELECT * FROM shared_entities WHERE zone_name = ?`,
+    [params.zoneName]
+  );
+  emit('sharing:changed');
+  return row ? mapSharedEntity(row) : mapSharedEntity({
     id,
     entity_type: params.entityType,
     entity_id: params.entityId,
     zone_name: params.zoneName,
     role: params.role,
-    share_url: params.shareUrl,
-    owner_name: params.ownerName,
+    permission: params.permission ?? 'read',
+    share_url: params.shareUrl ?? null,
+    owner_name: params.ownerName ?? null,
     created_at: createdAt,
-  };
+    revoked_at: null,
+    change_token: null,
+    last_synced_at: null,
+    last_sync_error: null,
+  });
 }
 
 export async function getSharedEntities(includeRevoked = false): Promise<SharedEntity[]> {
@@ -352,11 +453,27 @@ export async function getShareForEntity(
   return row ? mapSharedEntity(row) : null;
 }
 
+/**
+ * True dacă entitatea e read-only pentru userul curent — sunt participant pe
+ * ea și share-ul NU e readwrite. Owner sau entitate nepartajată → false
+ * (control total local). Folosit de UI (`hooks/useShareReadOnly.ts`) pentru
+ * gating edit/delete.
+ */
+export async function isEntityReadOnlyForMe(
+  entityType: EntityType,
+  entityId: string
+): Promise<boolean> {
+  const share = await getShareForEntity(entityType, entityId);
+  if (!share) return false;
+  return share.role === 'participant' && share.permission !== 'readwrite';
+}
+
 export async function revokeShare(zoneName: string): Promise<void> {
   await db.runAsync(`UPDATE shared_entities SET revoked_at = ? WHERE zone_name = ?`, [
     new Date().toISOString(),
     zoneName,
   ]);
+  emit('sharing:changed');
 }
 
 export async function upsertCloudRecord(params: {
@@ -425,4 +542,232 @@ export async function getCloudRecordForLocal(
     [localTable, localId]
   );
   return row ? mapCloudRecord(row) : null;
+}
+
+/**
+ * Plural al `getCloudRecordForLocal` — un document poate fi pushuit în MAI
+ * MULTE zone (legat de mai multe entități partajate). Folosit de
+ * `pushLocalChange` ca fallback de rezolvare a zonelor pentru un delete, când
+ * `document_entities` (sursa normală, via `getZonesForDocument`) a fost deja
+ * curățată.
+ */
+export async function getCloudRecordsForLocal(
+  localTable: string,
+  localId: string
+): Promise<CloudRecordRef[]> {
+  const rows = await db.getAllAsync<CloudRecordRow>(
+    `SELECT * FROM cloud_records WHERE local_table = ? AND local_id = ?`,
+    [localTable, localId]
+  );
+  return rows.map(mapCloudRecord);
+}
+
+/** Curăță bookkeeping-ul după o ștergere reușită pe server (owner sau apply pull). */
+export async function deleteCloudRecord(zoneName: string, recordName: string): Promise<void> {
+  await db.runAsync(`DELETE FROM cloud_records WHERE zone_name = ? AND record_name = ?`, [
+    zoneName,
+    recordName,
+  ]);
+}
+
+/** CKAsset hash-skip (decizia 5): fișierul principal se re-urcă doar dacă hash-ul s-a schimbat. */
+export async function setCloudRecordFileHash(
+  zoneName: string,
+  recordName: string,
+  hash: string | null
+): Promise<void> {
+  await db.runAsync(`UPDATE cloud_records SET file_hash = ? WHERE zone_name = ? AND record_name = ?`, [
+    hash,
+    zoneName,
+    recordName,
+  ]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sync-state per zonă: CKServerChangeToken (fetch incremental) + permisiune.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Salvează token-ul de schimbări (base64) după un pull incremental. */
+export async function setZoneChangeToken(zoneName: string, token: string | null): Promise<void> {
+  await db.runAsync(`UPDATE shared_entities SET change_token = ? WHERE zone_name = ?`, [
+    token,
+    zoneName,
+  ]);
+}
+
+/** Token-ul de la ultimul pull, sau null (prima sincronizare = full fetch). */
+export async function getZoneChangeToken(zoneName: string): Promise<string | null> {
+  const row = await db.getFirstAsync<{ change_token: string | null }>(
+    `SELECT change_token FROM shared_entities WHERE zone_name = ?`,
+    [zoneName]
+  );
+  return row?.change_token ?? null;
+}
+
+/**
+ * Diagnostics per zonă (SharingBetaSection/partajare.tsx). Succes → resetează
+ * `last_sync_error`; eșec → păstrează `last_synced_at` anterior (ultimul pull
+ * REUȘIT), doar înregistrează eroarea curentă.
+ */
+export async function markZoneSyncSuccess(zoneName: string): Promise<void> {
+  await db.runAsync(
+    `UPDATE shared_entities SET last_synced_at = ?, last_sync_error = NULL WHERE zone_name = ?`,
+    [new Date().toISOString(), zoneName]
+  );
+}
+
+export async function markZoneSyncError(zoneName: string, error: string): Promise<void> {
+  await db.runAsync(`UPDATE shared_entities SET last_sync_error = ? WHERE zone_name = ?`, [
+    error,
+    zoneName,
+  ]);
+}
+
+/** Owner: setează permisiunea unei zone (read / readwrite). */
+export async function setSharePermission(
+  zoneName: string,
+  permission: SharePermission
+): Promise<void> {
+  await db.runAsync(`UPDATE shared_entities SET permission = ? WHERE zone_name = ?`, [
+    permission,
+    zoneName,
+  ]);
+  emit('sharing:changed');
+}
+
+/**
+ * Toate share-urile active a căror entitate e legată de acest document (prin
+ * `document_entities`). Un document poate fi în mai multe zone (legat de mai
+ * multe entități partajate). Folosit ca să știm unde să propagăm o modificare de doc.
+ */
+export async function getZonesForDocument(documentId: string): Promise<SharedEntity[]> {
+  const rows = await db.getAllAsync<SharedEntityRow>(
+    `SELECT se.* FROM shared_entities se
+       JOIN document_entities de
+         ON de.entity_type = se.entity_type AND de.entity_id = se.entity_id
+     WHERE de.document_id = ? AND se.revoked_at IS NULL`,
+    [documentId]
+  );
+  // Dedup pe zone_name (un doc legat de aceeași entitate de mai multe ori).
+  const seen = new Set<string>();
+  const out: SharedEntity[] = [];
+  for (const r of rows) {
+    if (seen.has(r.zone_name)) continue;
+    seen.add(r.zone_name);
+    out.push(mapSharedEntity(r));
+  }
+  return out;
+}
+
+/**
+ * True dacă documentul e read-only pentru userul curent — legat de ORICE zonă
+ * unde sunt participant cu `permission!=='readwrite'`, indiferent dacă mai e
+ * legat și de o zonă deținută/readwrite (decizie conservativă: evită push
+ * accidental într-o zonă unde n-am drept de scriere). Document nepartajat sau
+ * legat doar de zone deținute/readwrite → false.
+ */
+export async function isDocumentReadOnlyForMe(documentId: string): Promise<boolean> {
+  const zones = await getZonesForDocument(documentId);
+  return zones.some(z => z.role === 'participant' && z.permission !== 'readwrite');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Coadă de push offline (model `pending_uploads`). Un rând per (zonă, record).
+// ─────────────────────────────────────────────────────────────────────────
+
+export type SharePushOp = 'upsert' | 'delete';
+export type PushScope = 'private' | 'shared';
+/** Ce tip de rând local e `record_name` — `flushSharePushes` re-derivă payload-ul
+ * la flush time, deci coada trebuie să știe unde să caute (persons/... vs documents). */
+export type SharePushKind = 'entity' | 'document';
+
+export interface PendingSharePush {
+  id: number;
+  zone_name: string;
+  record_name: string;
+  op: SharePushOp;
+  scope: PushScope;
+  kind: SharePushKind;
+  owner_name?: string;
+  attempt_count: number;
+  created_at: number;
+}
+
+interface PendingSharePushRow {
+  id: number;
+  zone_name: string;
+  record_name: string;
+  op: string;
+  scope: string;
+  kind: string;
+  owner_name: string | null;
+  attempt_count: number;
+  created_at: number;
+}
+
+function mapPendingPush(r: PendingSharePushRow): PendingSharePush {
+  return {
+    id: r.id,
+    zone_name: r.zone_name,
+    record_name: r.record_name,
+    op: r.op as SharePushOp,
+    scope: r.scope as PushScope,
+    kind: (r.kind as SharePushKind) ?? 'document',
+    owner_name: r.owner_name ?? undefined,
+    attempt_count: r.attempt_count,
+    created_at: r.created_at,
+  };
+}
+
+/**
+ * Pune la coadă un push. Idempotent pe (zone_name, record_name): dacă există deja
+ * un push în așteptare pentru acel record, îl suprascrie cu op-ul nou (ultima
+ * intenție câștigă — ex. un `upsert` urmat de `delete` devine `delete`).
+ */
+export async function enqueueSharePush(params: {
+  zoneName: string;
+  recordName: string;
+  op: SharePushOp;
+  scope: PushScope;
+  kind: SharePushKind;
+  ownerName?: string;
+}): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO pending_share_pushes (zone_name, record_name, op, scope, kind, owner_name, attempt_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+     ON CONFLICT(zone_name, record_name) DO UPDATE SET
+       op = excluded.op,
+       scope = excluded.scope,
+       kind = excluded.kind,
+       owner_name = excluded.owner_name,
+       attempt_count = 0,
+       last_error = NULL`,
+    [
+      params.zoneName,
+      params.recordName,
+      params.op,
+      params.scope,
+      params.kind,
+      params.ownerName ?? null,
+      Date.now(),
+    ]
+  );
+}
+
+export async function getPendingSharePushes(): Promise<PendingSharePush[]> {
+  const rows = await db.getAllAsync<PendingSharePushRow>(
+    `SELECT * FROM pending_share_pushes ORDER BY created_at ASC`
+  );
+  return rows.map(mapPendingPush);
+}
+
+export async function deleteSharePush(id: number): Promise<void> {
+  await db.runAsync(`DELETE FROM pending_share_pushes WHERE id = ?`, [id]);
+}
+
+export async function bumpSharePushAttempt(id: number, error: string): Promise<void> {
+  await db.runAsync(
+    `UPDATE pending_share_pushes SET attempt_count = attempt_count + 1, last_error = ? WHERE id = ?`,
+    [error, id]
+  );
 }

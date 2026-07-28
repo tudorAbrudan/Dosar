@@ -16,7 +16,8 @@ export type AppEvent =
   | 'entities:changed'
   | 'customTypes:changed'
   | 'settings:changed'
-  | 'reminders:changed';
+  | 'reminders:changed'
+  | 'sharing:changed';
 
 const listeners: Record<AppEvent, Set<() => void>> = {
   'documents:changed': new Set(),
@@ -25,6 +26,7 @@ const listeners: Record<AppEvent, Set<() => void>> = {
   'customTypes:changed': new Set(),
   'settings:changed': new Set(),
   'reminders:changed': new Set(),
+  'sharing:changed': new Set(),
 };
 
 const pending = new Set<AppEvent>();

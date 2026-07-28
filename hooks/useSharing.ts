@@ -2,22 +2,33 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { EntityType } from '@/types';
 import { getSharedEntities } from '@/services/sharing';
-import type { SharedEntity } from '@/services/sharing';
+import type { SharedEntity, SharePermission } from '@/services/sharing';
 import {
   friendlyCloudKitMessage,
+  getShareDiagnostics,
   isCloudKitAvailable,
   revokeEntityShare,
   shareEntity,
   syncSharedEntities,
 } from '@/services/cloudShare';
+import type { ShareZoneDiagnostic } from '@/services/cloudShare';
+
+export interface ShareDiagnostics {
+  zones: ShareZoneDiagnostic[];
+  pendingPushCount: number;
+  stuckCount: number;
+}
+
+const EMPTY_DIAGNOSTICS: ShareDiagnostics = { zones: [], pendingPushCount: 0, stuckCount: 0 };
 
 export interface UseSharing {
   shares: SharedEntity[];
   available: boolean;
+  diagnostics: ShareDiagnostics;
   loading: boolean;
   error: string | null;
   refresh(): Promise<void>;
-  share(entityType: EntityType, entityId: string): Promise<void>;
+  share(entityType: EntityType, entityId: string, permission?: SharePermission): Promise<void>;
   revoke(entityType: EntityType, entityId: string): Promise<void>;
   sync(): Promise<void>;
 }
@@ -25,6 +36,7 @@ export interface UseSharing {
 export function useSharing(): UseSharing {
   const [shares, setShares] = useState<SharedEntity[]>([]);
   const [available, setAvailable] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<ShareDiagnostics>(EMPTY_DIAGNOSTICS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +46,7 @@ export function useSharing(): UseSharing {
     try {
       setAvailable(await isCloudKitAvailable());
       setShares(await getSharedEntities());
+      setDiagnostics(await getShareDiagnostics());
     } catch (e) {
       setError(friendlyCloudKitMessage(e));
     } finally {
@@ -42,10 +55,10 @@ export function useSharing(): UseSharing {
   }, []);
 
   const share = useCallback(
-    async (entityType: EntityType, entityId: string) => {
+    async (entityType: EntityType, entityId: string, permission: SharePermission = 'read') => {
       setError(null);
       try {
-        await shareEntity(entityType, entityId);
+        await shareEntity(entityType, entityId, permission);
         await refresh();
       } catch (e) {
         setError(friendlyCloudKitMessage(e));
@@ -87,5 +100,5 @@ export function useSharing(): UseSharing {
     void refresh().then(() => sync());
   }, [refresh, sync]);
 
-  return { shares, available, loading, error, refresh, share, revoke, sync };
+  return { shares, available, diagnostics, loading, error, refresh, share, revoke, sync };
 }

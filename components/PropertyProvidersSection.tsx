@@ -29,6 +29,7 @@ import type { ServiceProvider, UtilityType } from '@/types';
 
 type Props = {
   propertyId: string;
+  readOnly?: boolean;
 };
 
 const DEFAULT_TYPE: UtilityType = 'curent';
@@ -43,9 +44,13 @@ function emptyForm() {
   };
 }
 
-export function PropertyProvidersSection({ propertyId }: Props) {
+export function PropertyProvidersSection({ propertyId, readOnly = false }: Props) {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const C = Colors[scheme];
+
+  function blockReadOnly() {
+    Alert.alert('Doar citire', 'Furnizorii sunt partajați cu tine ca doar-citire — nu poți edita.');
+  }
 
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,6 +145,10 @@ export function PropertyProvidersSection({ propertyId }: Props) {
   // ─── Modal helpers ─────────────────────────────────────────────────────────
 
   function openAddModal() {
+    if (readOnly) {
+      blockReadOnly();
+      return;
+    }
     const f = emptyForm();
     setEditingId(null);
     setType(f.type);
@@ -151,6 +160,10 @@ export function PropertyProvidersSection({ propertyId }: Props) {
   }
 
   function openEditModal(p: ServiceProvider) {
+    if (readOnly) {
+      blockReadOnly();
+      return;
+    }
     setEditingId(p.id);
     setType(p.type);
     setProviderName(p.provider_name ?? '');
@@ -161,6 +174,10 @@ export function PropertyProvidersSection({ propertyId }: Props) {
   }
 
   async function handleSave() {
+    if (readOnly) {
+      blockReadOnly();
+      return;
+    }
     setSaving(true);
     try {
       const input = {
@@ -185,6 +202,10 @@ export function PropertyProvidersSection({ propertyId }: Props) {
   }
 
   function handleLongPress(p: ServiceProvider) {
+    if (readOnly) {
+      blockReadOnly();
+      return;
+    }
     const label = p.provider_name ?? UTILITY_TYPE_LABELS[p.type];
     Alert.alert('Șterge furnizor', `Ștergi „${label}"?`, [
       { text: 'Anulează', style: 'cancel' },
@@ -264,6 +285,7 @@ export function PropertyProvidersSection({ propertyId }: Props) {
           styles.addBtn,
           { borderColor: primary },
           pressed && styles.addBtnPressed,
+          readOnly && styles.addBtnDisabled,
         ]}
         onPress={openAddModal}
       >
@@ -436,6 +458,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   addBtnPressed: { opacity: 0.7 },
+  addBtnDisabled: { opacity: 0.4 },
   addBtnText: { fontSize: 15, fontWeight: '600' },
 
   // Scan button

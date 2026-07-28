@@ -2,9 +2,14 @@
  * Unit test — transformările pure CloudKit (cloudShareMapping.ts).
  * Nu ating modulul nativ sau DB → rulează fără mock.
  */
-import { bundleToPushBundle, fileKey, parseFetchedRecords } from '@/services/cloudShareMapping';
+import {
+  bundleToPushBundle,
+  fileKey,
+  parseFetchedRecords,
+  shareableDocToPushRecord,
+} from '@/services/cloudShareMapping';
 import type { FetchedRecord } from '@/services/cloudShareMapping';
-import type { EntityShareBundle } from '@/services/sharing';
+import type { EntityShareBundle, ShareableDocumentRecord } from '@/services/sharing';
 
 describe('fileKey', () => {
   it('main vs page', () => {
@@ -44,6 +49,33 @@ describe('bundleToPushBundle', () => {
     expect(push.documents[0].recordType).toBe('document');
     expect(push.documents[0].files).toEqual([
       { key: 'file_main', path: 'file:///docs/documents/a.jpg' },
+      { key: 'file_page_1', path: 'file:///docs/documents/a2.jpg' },
+    ]);
+  });
+});
+
+describe('shareableDocToPushRecord — mainFileUnchanged (decizia 5, CKAsset skip)', () => {
+  const doc: ShareableDocumentRecord = {
+    recordName: 'doc-1',
+    fields: { type: 'talon', note: 'x' },
+    files: [
+      { file_path: 'documents/a.jpg', role: 'main' },
+      { file_path: 'documents/a2.jpg', role: 'page', page_order: 1 },
+    ],
+  };
+
+  it('mainFileUnchanged=false (default) → toate fișierele pleacă cu path', () => {
+    const rec = shareableDocToPushRecord(doc, rel => `file:///docs/${rel}`);
+    expect(rec.files).toEqual([
+      { key: 'file_main', path: 'file:///docs/documents/a.jpg' },
+      { key: 'file_page_1', path: 'file:///docs/documents/a2.jpg' },
+    ]);
+  });
+
+  it('mainFileUnchanged=true → file_main devine {key, unchanged: true} fără path; paginile neafectate', () => {
+    const rec = shareableDocToPushRecord(doc, rel => `file:///docs/${rel}`, true);
+    expect(rec.files).toEqual([
+      { key: 'file_main', unchanged: true },
       { key: 'file_page_1', path: 'file:///docs/documents/a2.jpg' },
     ]);
   });

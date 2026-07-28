@@ -112,6 +112,7 @@ export async function createPerson(
   );
   await assignNextOrder('person', id);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('person', id, 'upsert')).catch(() => {});
   return { id, name, phone, email, date_of_birth, createdAt: created_at };
 }
 
@@ -125,6 +126,7 @@ export async function createProperty(name: string): Promise<Property> {
   ]);
   await assignNextOrder('property', id);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('property', id, 'upsert')).catch(() => {});
   return { id, name, createdAt: created_at };
 }
 
@@ -138,6 +140,7 @@ export async function createVehicle(name: string): Promise<Vehicle> {
   ]);
   await assignNextOrder('vehicle', id);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('vehicle', id, 'upsert')).catch(() => {});
   return { id, name, createdAt: created_at };
 }
 
@@ -165,11 +168,13 @@ export async function updatePerson(
     [name, phone ?? null, email ?? null, date_of_birth ?? null, id]
   );
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('person', id, 'upsert')).catch(() => {});
 }
 
 export async function updateProperty(id: string, name: string): Promise<void> {
   await db.runAsync('UPDATE properties SET name = ? WHERE id = ?', [name, id]);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('property', id, 'upsert')).catch(() => {});
 }
 
 export async function updateVehicle(
@@ -208,6 +213,7 @@ export async function updateVehicle(
   }
 
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('vehicle', id, 'upsert')).catch(() => {});
 }
 
 export async function updateCard(
@@ -245,6 +251,7 @@ export async function deletePerson(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('person', id, 'delete')).catch(() => {});
 }
 
 export async function deleteProperty(id: string): Promise<void> {
@@ -255,6 +262,7 @@ export async function deleteProperty(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('property', id, 'delete')).catch(() => {});
 }
 
 export async function deleteVehicle(id: string): Promise<void> {
@@ -290,6 +298,7 @@ export async function deleteVehicle(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('vehicle', id, 'delete')).catch(() => {});
 }
 
 export async function deleteCard(id: string): Promise<void> {
@@ -328,12 +337,14 @@ export async function createAnimal(name: string, species: string): Promise<Anima
   ]);
   await assignNextOrder('animal', id);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('animal', id, 'upsert')).catch(() => {});
   return { id, name, species, createdAt: created_at };
 }
 
 export async function updateAnimal(id: string, name: string, species: string): Promise<void> {
   await db.runAsync('UPDATE animals SET name = ?, species = ? WHERE id = ?', [name, species, id]);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('animal', id, 'upsert')).catch(() => {});
 }
 
 export async function deleteAnimal(id: string): Promise<void> {
@@ -343,6 +354,7 @@ export async function deleteAnimal(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('animal', id, 'delete')).catch(() => {});
 }
 
 export async function getCompanies(): Promise<Company[]> {
@@ -381,6 +393,7 @@ export async function createCompany(
   );
   await assignNextOrder('company', id);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('company', id, 'upsert')).catch(() => {});
   return { id, name, cui, reg_com, createdAt: created_at };
 }
 
@@ -397,6 +410,7 @@ export async function updateCompany(
     id,
   ]);
   emit('entities:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('company', id, 'upsert')).catch(() => {});
 }
 
 export async function deleteCompany(id: string): Promise<void> {
@@ -406,4 +420,5 @@ export async function deleteCompany(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterEntityMutation('company', id, 'delete')).catch(() => {});
 }

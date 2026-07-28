@@ -9,6 +9,12 @@ import { useEntities } from '@/hooks/useEntities';
 import { useSharing } from '@/hooks/useSharing';
 import { ENTITY_TYPE_EMOJI, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
+import type { SharePermission } from '@/services/sharing';
+
+const PERMISSION_LABELS: Record<SharePermission, string> = {
+  read: 'Doar citire',
+  readwrite: 'Poate edita',
+};
 
 interface ShareableRow {
   type: EntityType;
@@ -16,12 +22,26 @@ interface ShareableRow {
   name: string;
 }
 
+function formatRelativeTime(isoString: string): string {
+  const diff = Math.max(0, Date.now() - new Date(isoString).getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'acum';
+  if (minutes < 60) return `acum ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `acum ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `acum ${days} ${days === 1 ? 'zi' : 'zile'}`;
+}
+
 export default function PartajareScreen() {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
 
   const { persons, vehicles, properties, animals, companies } = useEntities();
-  const { shares, available, loading, error, share, revoke, sync } = useSharing();
+  const { shares, available, diagnostics, loading, error, share, revoke, sync } = useSharing();
+
+  const zoneDiagnostic = (type: EntityType, id: string) =>
+    diagnostics.zones.find(z => z.entityType === type && z.entityId === id);
 
   const shareable = useMemo<ShareableRow[]>(
     () => [
@@ -37,13 +57,24 @@ export default function PartajareScreen() {
   const ownedShares = useMemo(() => shares.filter(s => s.role === 'owner'), [shares]);
   const receivedShares = useMemo(() => shares.filter(s => s.role === 'participant'), [shares]);
 
-  const isShared = (type: EntityType, id: string) =>
-    ownedShares.some(s => s.entity_type === type && s.entity_id === id);
+  const findOwnedShare = (type: EntityType, id: string) =>
+    ownedShares.find(s => s.entity_type === type && s.entity_id === id);
+  const isShared = (type: EntityType, id: string) => !!findOwnedShare(type, id);
 
   const onShare = (row: ShareableRow) => {
-    share(row.type, row.id).catch(() => {
-      Alert.alert('Partajare', 'Nu s-a putut partaja. Verifică iCloud și conexiunea.');
-    });
+    const doShare = (permission: SharePermission) =>
+      share(row.type, row.id, permission).catch(() => {
+        Alert.alert('Partajare', 'Nu s-a putut partaja. Verifică iCloud și conexiunea.');
+      });
+    Alert.alert(
+      'Partajează',
+      `Ce acces are persoana cu care partajezi „${row.name}"?`,
+      [
+        { text: 'Anulează', style: 'cancel' },
+        { text: 'Doar citire', onPress: () => void doShare('read') },
+        { text: 'Poate edita', onPress: () => void doShare('readwrite') },
+      ]
+    );
   };
 
   const onRevoke = (row: ShareableRow) => {
@@ -80,6 +111,20 @@ export default function PartajareScreen() {
             Partajează o entitate cu familia. Documentele medicale, notele private și cardurile
             rămân doar la tine.
           </Text>
+          {diagnostics.pendingPushCount > 0 ? (
+            <Text style={[styles.hint, { color: statusColors.warning, marginTop: 4 }]}>
+              {diagnostics.pendingPushCount}{' '}
+              {diagnostics.pendingPushCount === 1 ? 'modificare' : 'modificări'} în așteptare de
+              sincronizare.
+            </Text>
+          ) : null}
+          {diagnostics.stuckCount > 0 ? (
+            <Text style={[styles.hint, { color: statusColors.critical, marginTop: 4 }]}>
+              {diagnostics.stuckCount}{' '}
+              {diagnostics.stuckCount === 1 ? 'modificare blocată' : 'modificări blocate'} — au
+              eșuat repetat. Verifică iCloud și conexiunea, apoi apasă „Reîmprospătează".
+            </Text>
+          ) : null}
         </View>
 
         {error ? (
@@ -95,7 +140,9 @@ export default function PartajareScreen() {
             </Text>
           ) : (
             shareable.map((row, idx) => {
-              const shared = isShared(row.type, row.id);
+              const ownedShare = findOwnedShare(row.type, row.id);
+              const shared = !!ownedShare;
+              const diag = shared ? zoneDiagnostic(row.type, row.id) : undefined;
               return (
                 <View
                   key={`${row.type}-${row.id}`}
@@ -114,7 +161,20 @@ export default function PartajareScreen() {
                     </Text>
                     <Text style={[styles.rowSub, { color: palette.textSecondary }]}>
                       {ENTITY_TYPE_LABELS[row.type]}
+                      {ownedShare ? ` • ${PERMISSION_LABELS[ownedShare.permission]}` : ''}
                     </Text>
+                    {diag?.lastSyncError ? (
+                      <Text
+                        style={[styles.rowDiagnostic, { color: statusColors.critical }]}
+                        numberOfLines={1}
+                      >
+                        Eroare sincronizare: {diag.lastSyncError}
+                      </Text>
+                    ) : diag?.lastSyncedAt ? (
+                      <Text style={[styles.rowDiagnostic, { color: palette.textSecondary }]}>
+                        Sincronizat {formatRelativeTime(diag.lastSyncedAt)}
+                      </Text>
+                    ) : null}
                   </View>
                   {shared ? (
                     <TouchableOpacity onPress={() => onRevoke(row)} style={styles.action}>
@@ -146,28 +206,43 @@ export default function PartajareScreen() {
               Nimic încă. Când cineva îți partajează o entitate, apare aici.
             </Text>
           ) : (
-            receivedShares.map((s, idx) => (
-              <View
-                key={s.id}
-                style={[
-                  styles.row,
-                  idx > 0 && {
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: palette.border,
-                  },
-                ]}
-              >
-                <Text style={styles.emoji}>{ENTITY_TYPE_EMOJI[s.entity_type]}</Text>
-                <View style={styles.rowText}>
-                  <Text style={[styles.rowName, { color: palette.text }]} numberOfLines={1}>
-                    {ENTITY_TYPE_LABELS[s.entity_type]}
-                  </Text>
-                  <Text style={[styles.rowSub, { color: palette.textSecondary }]}>
-                    {s.owner_name ?? 'partajat'}
-                  </Text>
+            receivedShares.map((s, idx) => {
+              const diag = diagnostics.zones.find(z => z.zoneName === s.zone_name);
+              return (
+                <View
+                  key={s.id}
+                  style={[
+                    styles.row,
+                    idx > 0 && {
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: palette.border,
+                    },
+                  ]}
+                >
+                  <Text style={styles.emoji}>{ENTITY_TYPE_EMOJI[s.entity_type]}</Text>
+                  <View style={styles.rowText}>
+                    <Text style={[styles.rowName, { color: palette.text }]} numberOfLines={1}>
+                      {ENTITY_TYPE_LABELS[s.entity_type]}
+                    </Text>
+                    <Text style={[styles.rowSub, { color: palette.textSecondary }]}>
+                      {s.owner_name ?? 'partajat'} • {PERMISSION_LABELS[s.permission]}
+                    </Text>
+                    {diag?.lastSyncError ? (
+                      <Text
+                        style={[styles.rowDiagnostic, { color: statusColors.critical }]}
+                        numberOfLines={1}
+                      >
+                        Eroare sincronizare: {diag.lastSyncError}
+                      </Text>
+                    ) : diag?.lastSyncedAt ? (
+                      <Text style={[styles.rowDiagnostic, { color: palette.textSecondary }]}>
+                        Sincronizat {formatRelativeTime(diag.lastSyncedAt)}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
 
@@ -195,6 +270,7 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   rowName: { fontSize: 15, fontWeight: '500' },
   rowSub: { fontSize: 12, marginTop: 2 },
+  rowDiagnostic: { fontSize: 11, marginTop: 2 },
   action: { paddingHorizontal: 10, paddingVertical: 6 },
   actionText: { fontSize: 14, fontWeight: '600' },
   actionPrimary: {

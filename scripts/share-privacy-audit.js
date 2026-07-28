@@ -30,7 +30,8 @@ const APP_DIR = path.resolve(__dirname, '..');
 const SHARING_SERVICE = 'services/sharing.ts';
 const NATIVE_MODULE_DIR = 'modules/expo-cloudkit-share/src';
 
-const EXTRA_SHARE_FILES = ['services/cloudShare.ts', 'services/cloudShareMapping.ts'];
+const CLOUD_SHARE_SERVICE = 'services/cloudShare.ts';
+const EXTRA_SHARE_FILES = [CLOUD_SHARE_SERVICE, 'services/cloudShareMapping.ts'];
 
 function collectTargets() {
   const targets = [];
@@ -68,9 +69,10 @@ function auditFile(rel, source) {
     if (/private_notes/.test(line) && !/\.includes\(|throw new Error\(/.test(line)) {
       violations.push({ file: rel, line: i + 1, rule: 'A', msg: 'private_notes referit în calea de share (folosește whitelist, nu-l atinge)' });
     }
-    // Rule B — spread de Document
-    if (/\.\.\.(doc|document|d)\b/.test(line)) {
-      violations.push({ file: rel, line: i + 1, rule: 'B', msg: 'spread de Document ocolește whitelist-ul — construiește explicit câmpurile' });
+    // Rule B — spread de Document SAU de rând brut de entitate (ocolește
+    // whitelist-ul ENTITY_SYNC_FIELDS/SHAREABLE_DOC_FIELDS).
+    if (/\.\.\.(doc|document|d|entityRow|row)\b/.test(line)) {
+      violations.push({ file: rel, line: i + 1, rule: 'B', msg: 'spread de Document/rând brut ocolește whitelist-ul — construiește explicit câmpurile' });
     }
   });
 
@@ -82,8 +84,21 @@ function auditFile(rel, source) {
     if (!/SHAREABLE_DOC_FIELDS/.test(source)) {
       violations.push({ file: rel, line: 0, rule: 'C', msg: 'whitelist-ul SHAREABLE_DOC_FIELDS lipsește' });
     }
+    if (!/ENTITY_SYNC_FIELDS/.test(source)) {
+      violations.push({ file: rel, line: 0, rule: 'C', msg: 'whitelist-ul ENTITY_SYNC_FIELDS lipsește (entitățile ar trimite orb toate coloanele string)' });
+    }
     if (/\bgetDocuments\s*\(/.test(source)) {
       violations.push({ file: rel, line: 0, rule: 'D', msg: 'getDocuments() raw — folosește getDocumentsByEntity / getShareBundle' });
+    }
+  }
+
+  // Rule E — orice cale de push granular trebuie să provină din whitelist
+  // (getShareBundle / toShareableDocument / getEntityShareFields), nu dintr-un
+  // fetch brut de rând.
+  if (rel === CLOUD_SHARE_SERVICE) {
+    if (/\bpushRecords\s*\(/.test(source) &&
+        !/(getShareBundle|toShareableDocument|getEntityShareFields)/.test(source)) {
+      violations.push({ file: rel, line: 0, rule: 'E', msg: 'pushRecords fără provenance din getShareBundle/toShareableDocument/getEntityShareFields' });
     }
   }
 

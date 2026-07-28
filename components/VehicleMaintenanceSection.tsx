@@ -21,6 +21,7 @@ import type { VehicleMaintenanceTask, MaintenancePreset } from '@/types';
 type Props = {
   vehicleId: string;
   vehicleName: string;
+  readOnly?: boolean;
 };
 
 const emptyForm: MaintenanceFormState = {
@@ -39,7 +40,7 @@ export type VehicleMaintenanceSectionHandle = {
 };
 
 export const VehicleMaintenanceSection = forwardRef<VehicleMaintenanceSectionHandle, Props>(
-  function VehicleMaintenanceSection({ vehicleId, vehicleName }, ref) {
+  function VehicleMaintenanceSection({ vehicleId, vehicleName, readOnly = false }, ref) {
     const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
     const C = Colors[scheme];
     const { tasks, currentKm, refresh } = useMaintenanceTasks(vehicleId);
@@ -50,11 +51,19 @@ export const VehicleMaintenanceSection = forwardRef<VehicleMaintenanceSectionHan
     const [form, setForm] = useState<MaintenanceFormState>(emptyForm);
     const [saving, setSaving] = useState(false);
 
+    const blockReadOnly = useCallback(() => {
+      Alert.alert('Doar citire', 'Mentenanța e partajată cu tine ca doar-citire — nu poți edita.');
+    }, []);
+
     const openAddModal = useCallback(() => {
+      if (readOnly) {
+        blockReadOnly();
+        return;
+      }
       setEditingId(null);
       setForm({ ...emptyForm, lastDoneDate: new Date().toISOString().slice(0, 10) });
       setModalVisible(true);
-    }, []);
+    }, [readOnly, blockReadOnly]);
 
     useImperativeHandle(ref, () => ({ openAddModal }), [openAddModal]);
 
@@ -256,6 +265,10 @@ export const VehicleMaintenanceSection = forwardRef<VehicleMaintenanceSectionHan
 
     const handleTaskOptions = useCallback(
       (task: VehicleMaintenanceTask) => {
+        if (readOnly) {
+          blockReadOnly();
+          return;
+        }
         Alert.alert(task.name, 'Ce vrei să faci?', [
           { text: 'Anulează', style: 'cancel' },
           { text: 'Marchează efectuat', onPress: () => handleMarkDone(task) },
@@ -263,7 +276,7 @@ export const VehicleMaintenanceSection = forwardRef<VehicleMaintenanceSectionHan
           { text: 'Șterge', style: 'destructive', onPress: () => handleDelete(task) },
         ]);
       },
-      [handleMarkDone, openEditModal, handleDelete]
+      [readOnly, blockReadOnly, handleMarkDone, openEditModal, handleDelete]
     );
 
     const tasksWithStatus = useMemo(

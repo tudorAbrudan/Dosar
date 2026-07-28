@@ -298,3 +298,39 @@ export async function getThemePreference(): Promise<ThemePreference> {
 export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await AsyncStorage.setItem(KEY_THEME_PREFERENCE, pref);
 }
+
+// ── CloudKit sharing — token DB-level (fetchDatabaseChanges) ──────────────────
+// Separat de token-ul per-zonă (shared_entities.change_token, SQLite). Increment 2
+// folosește doar scope='shared' (participant pull); 'private' rămâne inert până la
+// Faza 2 (owner-ul își trage propria zonă pt. push-back).
+
+const KEY_CK_DB_TOKEN_PREFIX = 'cloudkit_db_change_token_';
+const KEY_CK_DB_SUBSCRIBED_PREFIX = 'cloudkit_db_subscribed_';
+
+export async function getCloudKitDbChangeToken(
+  scope: 'private' | 'shared'
+): Promise<string | null> {
+  return AsyncStorage.getItem(`${KEY_CK_DB_TOKEN_PREFIX}${scope}`);
+}
+
+export async function setCloudKitDbChangeToken(
+  scope: 'private' | 'shared',
+  token: string | null
+): Promise<void> {
+  if (token == null) {
+    await AsyncStorage.removeItem(`${KEY_CK_DB_TOKEN_PREFIX}${scope}`);
+  } else {
+    await AsyncStorage.setItem(`${KEY_CK_DB_TOKEN_PREFIX}${scope}`, token);
+  }
+}
+
+export async function getCloudKitDbSubscribed(scope: 'private' | 'shared'): Promise<boolean> {
+  return (await AsyncStorage.getItem(`${KEY_CK_DB_SUBSCRIBED_PREFIX}${scope}`)) === 'true';
+}
+
+export async function setCloudKitDbSubscribed(
+  scope: 'private' | 'shared',
+  subscribed: boolean
+): Promise<void> {
+  await AsyncStorage.setItem(`${KEY_CK_DB_SUBSCRIBED_PREFIX}${scope}`, subscribed ? 'true' : 'false');
+}

@@ -24,8 +24,10 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { getDocuments, linkDocumentToEntity } from '@/services/documents';
 import { toFileUri, toRelativePath } from '@/services/fileUtils';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
-import type { Document as DocType, DocumentType } from '@/types';
+import type { Document as DocType, DocumentType, EntityType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
+import { useEntityReadOnly } from '@/hooks/useShareReadOnly';
+import { ReadOnlyShareBanner } from '@/components/ReadOnlyShareBanner';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleLegalStatus } from '@/components/VehicleLegalStatus';
@@ -44,6 +46,19 @@ import {
 } from '@/components/VehicleMaintenanceSection';
 import { PropertyProvidersSection } from '@/components/PropertyProvidersSection';
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
+
+// check-hardcoded-entities-disable-next-cluster
+const ENTITY_KIND_TO_TYPE: Record<
+  'person_id' | 'property_id' | 'vehicle_id' | 'card_id' | 'animal_id' | 'company_id',
+  EntityType
+> = {
+  person_id: 'person',
+  property_id: 'property',
+  vehicle_id: 'vehicle',
+  card_id: 'card',
+  animal_id: 'animal',
+  company_id: 'company',
+};
 
 export default function EntityDetailScreen() {
   const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
@@ -110,6 +125,7 @@ export default function EntityDetailScreen() {
     scrollY.value = e.contentOffset.y;
   });
   const vehicleStatus = useVehicleStatus(entityKind === 'vehicle_id' ? vehicle : undefined);
+  const { readOnly: isReadOnly } = useEntityReadOnly(ENTITY_KIND_TO_TYPE[entityKind], id ?? '');
 
   useEffect(() => {
     if (!id) return;
@@ -183,6 +199,10 @@ export default function EntityDetailScreen() {
   };
 
   async function openLinkDoc() {
+    if (isReadOnly) {
+      Alert.alert('Doar citire', 'Entitatea e partajată cu tine ca doar-citire — nu poți asocia documente.');
+      return;
+    }
     const all = await getDocuments();
     setUnlinkedDocs(
       all.filter(
@@ -205,6 +225,10 @@ export default function EntityDetailScreen() {
   }
 
   const handleDelete = () => {
+    if (isReadOnly) {
+      Alert.alert('Doar citire', 'Entitatea e partajată cu tine ca doar-citire — nu poți șterge.');
+      return;
+    }
     Alert.alert('Ștergere', `Ștergi „${entityName}"? Documentele legate nu vor fi șterse.`, [
       { text: 'Anulează', style: 'cancel' },
       {
@@ -228,6 +252,10 @@ export default function EntityDetailScreen() {
   };
 
   const openEditModal = () => {
+    if (isReadOnly) {
+      Alert.alert('Doar citire', 'Entitatea e partajată cu tine ca doar-citire — nu poți edita.');
+      return;
+    }
     if (entityKind === 'card_id') {
       const card = cards.find(c => c.id === id);
       setEditNickname(card?.nickname ?? '');
@@ -418,7 +446,11 @@ export default function EntityDetailScreen() {
           ),
           headerRight: () => (
             <Pressable onPress={openEditModal} hitSlop={12} style={{ paddingLeft: 8 }}>
-              <Ionicons name="create-outline" size={24} color={primary} />
+              <Ionicons
+                name="create-outline"
+                size={24}
+                color={isReadOnly ? C.textSecondary : primary}
+              />
             </Pressable>
           ),
         }}
@@ -442,6 +474,8 @@ export default function EntityDetailScreen() {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
+        {isReadOnly && <ReadOnlyShareBanner />}
+
         {isPerson &&
           (() => {
             const person = persons.find(p => p.id === id);
@@ -467,10 +501,13 @@ export default function EntityDetailScreen() {
             ref={maintenanceRef}
             vehicleId={id as string}
             vehicleName={vehicle?.name ?? entityName}
+            readOnly={isReadOnly}
           />
         )}
 
-        {entityKind === 'property_id' && <PropertyProvidersSection propertyId={id as string} />}
+        {entityKind === 'property_id' && (
+          <PropertyProvidersSection propertyId={id as string} readOnly={isReadOnly} />
+        )}
 
         <RNText style={[styles.sectionTitle, { color: C.textSecondary }]}>DOCUMENTE LEGATE</RNText>
 
@@ -544,6 +581,7 @@ export default function EntityDetailScreen() {
                   icon: 'construct-outline',
                   label: 'Mentenanță',
                   onPress: () => maintenanceRef.current?.openAddModal(),
+                  disabled: isReadOnly,
                 },
               ] as BottomAction[])
             : undefined
@@ -554,17 +592,20 @@ export default function EntityDetailScreen() {
             label: 'Adaugă doc',
             onPress: () =>
               router.push({ pathname: '/(tabs)/documente/add', params: { [entityKind]: id } }),
+            disabled: isReadOnly,
           },
           {
             icon: 'link-outline',
             label: 'Asociază',
             onPress: openLinkDoc,
+            disabled: isReadOnly,
           },
           {
             icon: 'trash-outline',
             label: 'Șterge',
             onPress: handleDelete,
             danger: true,
+            disabled: isReadOnly,
           },
         ]}
       />
@@ -594,7 +635,7 @@ export default function EntityDetailScreen() {
               placeholder="Nume"
               value={editName}
               onChangeText={setEditName}
-              editable={!editLoading}
+              editable={!editLoading && !isReadOnly}
             />
           </RNView>
         )}
@@ -605,7 +646,7 @@ export default function EntityDetailScreen() {
             photoUri={editPhotoUri}
             plate={editPlate}
             fuelType={editFuelType}
-            disabled={editLoading}
+            disabled={editLoading || isReadOnly}
             onPickPhoto={handlePickPhoto}
             onRemovePhoto={handleRemovePhoto}
             onChangePlate={setEditPlate}
@@ -619,7 +660,7 @@ export default function EntityDetailScreen() {
             phone={editPhone}
             email={editEmail}
             dateOfBirth={editDateOfBirth}
-            disabled={editLoading}
+            disabled={editLoading || isReadOnly}
             onChangePhone={setEditPhone}
             onChangeEmail={setEditEmail}
             onChangeDateOfBirth={setEditDateOfBirth}
@@ -631,7 +672,7 @@ export default function EntityDetailScreen() {
             scheme={scheme}
             cui={editCui}
             regCom={editRegCom}
-            disabled={editLoading}
+            disabled={editLoading || isReadOnly}
             onChangeCui={setEditCui}
             onChangeRegCom={setEditRegCom}
           />
@@ -641,7 +682,7 @@ export default function EntityDetailScreen() {
           <AnimalEditFields
             scheme={scheme}
             species={editSpecies}
-            disabled={editLoading}
+            disabled={editLoading || isReadOnly}
             onChangeSpecies={setEditSpecies}
           />
         )}
@@ -652,7 +693,7 @@ export default function EntityDetailScreen() {
             nickname={editNickname}
             last4={editLast4}
             expiry={editExpiry}
-            disabled={editLoading}
+            disabled={editLoading || isReadOnly}
             onChangeNickname={setEditNickname}
             onChangeLast4={setEditLast4}
             onChangeExpiry={setEditExpiry}

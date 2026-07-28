@@ -27,6 +27,7 @@ import type { ThemePreference } from '@/hooks/useThemeScheme';
 import { useAppLock } from '@/hooks/useAppLock';
 import { useReviewPrompt } from '@/hooks/useReviewPrompt';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
+import { useSharingSync } from '@/hooks/useSharingSync';
 import { releaseModelForBackground } from '@/services/localModel';
 import { db } from '@/services/db';
 import * as settings from '@/services/settings';
@@ -82,6 +83,7 @@ function RootLayoutNav() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const reviewPrompt = useReviewPrompt();
   useCloudBackup(); // global AppState wiring; result is unused at root.
+  useSharingSync(); // AppState-active + onRemoteChange pentru CloudKit sharing (Increment 2)
 
   const showReviewModal =
     reviewPrompt.visible && onboardingDone === true && !appLock.locked && !updateInfo;

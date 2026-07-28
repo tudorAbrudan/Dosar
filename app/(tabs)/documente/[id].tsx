@@ -71,6 +71,8 @@ import {
 import type { Document as DocType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntities } from '@/hooks/useEntities';
+import { useDocumentReadOnly } from '@/hooks/useShareReadOnly';
+import { ReadOnlyShareBanner } from '@/components/ReadOnlyShareBanner';
 import { DOCUMENT_FIELDS, EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 import type { FieldDef } from '@/types/documentFields';
 
@@ -155,6 +157,13 @@ export default function DocumentDetailScreen() {
   } | null>(null);
   const [reExtracting, setReExtracting] = useState(false);
   const [docReminders, setDocReminders] = useState<Reminder[]>([]);
+  const { readOnly: isReadOnly } = useDocumentReadOnly(typeof id === 'string' ? id : '');
+
+  const blockIfReadOnly = useCallback(() => {
+    if (!isReadOnly) return false;
+    Alert.alert('Doar citire', 'Documentul e partajat cu tine ca doar-citire — nu poți edita.');
+    return true;
+  }, [isReadOnly]);
 
   const refreshReminders = useCallback(async () => {
     if (!id || typeof id !== 'string') return;
@@ -423,7 +432,7 @@ export default function DocumentDetailScreen() {
   }
 
   async function handleRotate(pageId: string, degrees: number) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     const page = allPages.find(p => p.id === pageId);
     if (!page) return;
     const sourceUri = rotatedUris[page.file_path] ?? toFileUri(page.file_path);
@@ -450,7 +459,7 @@ export default function DocumentDetailScreen() {
   }
 
   async function handleDeletePage(pageId: string) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     const page = allPages.find(p => p.id === pageId);
     if (!page) return;
     Alert.alert('Șterge pagina', 'Ești sigur că vrei să ștergi această pagină?', [
@@ -487,7 +496,7 @@ export default function DocumentDetailScreen() {
   }
 
   async function handleReorderPage(fromIndex: number, toIndex: number) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     const paths = allPages.map(p => p.file_path);
     const newPaths = [...paths];
     const [moved] = newPaths.splice(fromIndex, 1);
@@ -502,7 +511,7 @@ export default function DocumentDetailScreen() {
   }
 
   async function handleOcrSave(text: string) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     await setDocumentOcrText(doc.id, text);
     const updated = await getDocumentById(doc.id);
     setDoc(updated);
@@ -640,6 +649,7 @@ export default function DocumentDetailScreen() {
   }
 
   function handleAddPage() {
+    if (blockIfReadOnly()) return;
     Alert.alert('Adaugă atașament', '', [
       { text: 'Scanează document', onPress: scanAndAddPages },
       {
@@ -694,6 +704,7 @@ export default function DocumentDetailScreen() {
   }
 
   const handleOcr = async () => {
+    if (blockIfReadOnly()) return;
     if (allPages.length === 0) {
       Alert.alert('Fără imagini', 'Nu există imagini atașate acestui document.');
       return;
@@ -821,7 +832,7 @@ export default function DocumentDetailScreen() {
   };
 
   const handleCalendar = async () => {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     if (!isCalendarAvailable()) {
       Alert.alert('Calendar indisponibil', 'Calendarul necesită un build nativ (expo run:ios).');
       return;
@@ -883,7 +894,7 @@ export default function DocumentDetailScreen() {
   };
 
   const handleDelete = () => {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     Alert.alert('Ștergere', `Ștergi documentul „${getDocumentLabel(doc, customTypes)}"?`, [
       { text: 'Anulează', style: 'cancel' },
       {
@@ -1048,22 +1059,30 @@ export default function DocumentDetailScreen() {
           ),
           headerRight: () => (
             <Pressable
-              onPress={() => router.push(`/(tabs)/documente/edit?id=${doc.id}`)}
+              onPress={() => {
+                if (blockIfReadOnly()) return;
+                router.push(`/(tabs)/documente/edit?id=${doc.id}`);
+              }}
               hitSlop={12}
               style={{ paddingLeft: 8 }}
             >
-              <Ionicons name="create-outline" size={24} color={primary} />
+              <Ionicons
+                name="create-outline"
+                size={24}
+                color={isReadOnly ? palette.textSecondary : primary}
+              />
             </Pressable>
           ),
         }}
       />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {isReadOnly && <ReadOnlyShareBanner />}
         <DocumentPhotoSection
           pages={photoPages.filter(p => !isPdfFile(p.uri) && !isPdfFile(p.id))}
           ocrLoading={ocrLoading}
           ocrText={doc.ocr_text ?? undefined}
           isEditing={false}
-          canAddPage={true}
+          canAddPage={!isReadOnly}
           refreshKey={focusNonce}
           onAddPage={handleAddPage}
           onRotate={handleRotate}
@@ -1371,6 +1390,7 @@ export default function DocumentDetailScreen() {
             label: 'Șterge',
             onPress: handleDelete,
             danger: true,
+            disabled: isReadOnly,
           },
         ]}
       />

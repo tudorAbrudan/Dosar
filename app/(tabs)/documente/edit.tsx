@@ -68,6 +68,8 @@ import type { Document as DocType, DocumentType, DocumentEntityLink, EntityType 
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useEntities } from '@/hooks/useEntities';
+import { useDocumentReadOnly } from '@/hooks/useShareReadOnly';
+import { ReadOnlyShareBanner } from '@/components/ReadOnlyShareBanner';
 import { EXPIRY_FIELD_LABEL } from '@/types/documentFields';
 
 export default function EditDocumentScreen() {
@@ -101,6 +103,13 @@ export default function EditDocumentScreen() {
   const [entityLinks, setEntityLinks] = useState<DocumentEntityLink[]>([]);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
   const [rotatedUris, setRotatedUris] = useState<Record<string, string>>({});
+
+  const { readOnly: isReadOnly } = useDocumentReadOnly(typeof id === 'string' ? id : '');
+  const blockIfReadOnly = useCallback(() => {
+    if (!isReadOnly) return false;
+    Alert.alert('Doar citire', 'Documentul e partajat cu tine ca doar-citire — nu poți edita.');
+    return true;
+  }, [isReadOnly]);
 
   // Picker entitate-aware (Option B): dacă documentul e atașat la entități,
   // afișează tipurile relevante pentru acele entități, ignorând setările globale.
@@ -229,7 +238,7 @@ export default function EditDocumentScreen() {
   // ── Photo management (immediate, persists to DB) ─────────────────────────
 
   async function handleRotate(pageId: string, degrees: number) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     const page = allPages.find(p => p.id === pageId);
     if (!page) return;
     const sourceUri = rotatedUris[page.file_path] ?? toFileUri(page.file_path);
@@ -256,7 +265,7 @@ export default function EditDocumentScreen() {
   }
 
   async function handleDeletePage(pageId: string) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     Alert.alert('Șterge pagina', 'Ești sigur că vrei să ștergi această pagină?', [
       { text: 'Anulează', style: 'cancel' },
       {
@@ -294,7 +303,7 @@ export default function EditDocumentScreen() {
   }
 
   async function handleReorderPage(fromIndex: number, toIndex: number) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     const paths = allPages.map(p => p.file_path);
     const newPaths = [...paths];
     const [moved] = newPaths.splice(fromIndex, 1);
@@ -309,13 +318,14 @@ export default function EditDocumentScreen() {
   }
 
   async function handleOcrSave(text: string) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     await setDocumentOcrText(doc.id, text);
     const updated = await getDocumentById(doc.id);
     setDoc(updated);
   }
 
   async function runAiImageAnalysis() {
+    if (blockIfReadOnly()) return;
     if (allPages.length === 0) {
       Alert.alert('Fără imagini', 'Nu există imagini atașate documentului.');
       return;
@@ -514,6 +524,7 @@ export default function EditDocumentScreen() {
   }
 
   function handleAddPage() {
+    if (blockIfReadOnly()) return;
     Alert.alert('Adaugă pagină', '', [
       { text: 'Scanează document', onPress: scanAndAddPages },
       {
@@ -616,6 +627,7 @@ export default function EditDocumentScreen() {
   }
 
   const handleOcr = async () => {
+    if (blockIfReadOnly()) return;
     if (allPages.length === 0) {
       Alert.alert('Fără imagini', 'Nu există imagini atașate acestui document.');
       return;
@@ -719,7 +731,7 @@ export default function EditDocumentScreen() {
   // ── Entity ────────────────────────────────────────────────────────────────
 
   async function handleAddEntityLink(link: DocumentEntityLink) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     await addEntityLinkToDocument(doc.id, link);
     const updated = await getDocumentEntityLinks(doc.id);
     setEntityLinks(updated);
@@ -727,7 +739,7 @@ export default function EditDocumentScreen() {
   }
 
   async function handleRemoveEntityLink(link: DocumentEntityLink) {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     await removeEntityLinkFromDocument(doc.id, link);
     const updated = await getDocumentEntityLinks(doc.id);
     setEntityLinks(updated);
@@ -736,7 +748,7 @@ export default function EditDocumentScreen() {
   // ── Save ─────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!doc) return;
+    if (!doc || blockIfReadOnly()) return;
     setSaving(true);
     try {
       // ocr_text NU se include — e gestionat exclusiv prin setDocumentOcrText
@@ -858,11 +870,14 @@ export default function EditDocumentScreen() {
         title={getDocumentLabel(doc, customTypes)}
         onSave={handleSave}
         saving={saving}
+        saveDisabled={isReadOnly}
         scrollContentStyle={styles.content}
         keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
+        {isReadOnly && <ReadOnlyShareBanner />}
+
         {/* 1. POZE & OCR */}
         <Text style={styles.sectionLabel}>Poze / scan</Text>
         <DocumentPhotoSection

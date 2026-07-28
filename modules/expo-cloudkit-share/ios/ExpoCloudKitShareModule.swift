@@ -3,26 +3,40 @@ import CloudKit
 import UIKit
 
 /**
- * Spike Faza 0 — dovedește round-trip CKShare între două conturi iCloud.
+ * CloudKit zone sharing (CKShare) — Increment 2: motor live (fetch incremental
+ * cu token, push granular per-record cu LWW, silent push via CKDatabaseSubscription).
+ * Vezi docs/superpowers/plans/2026-07-27-cloudkit-bidirectional-sharing.md.
  *
- * Owner side (device A):
- *   isAvailable → createSharedZone → putRecord → shareZone (prezintă invitația)
- * Participant side (device B), după accept share:
- *   listSharedZones → getRecord (din sharedCloudDatabase)
+ * Deployment target iOS 16 → CKDatabase manual (NU CKSyncEngine, care cere iOS 17).
  *
- * ⚠️ De verificat pe device fizic (nu pe simulator):
- *   - accountStatus == available cu 2 Apple ID-uri diferite
- *   - CKShare(recordZoneID:) funcționează pe zonă custom (zone-wide sharing)
- *   - link-ul de invitație e acceptat pe device-ul B și zona apare în shared DB
- *   - accept-handler-ul (userDidAcceptCloudKitShareWith) — wiring separat în AppDelegate
- *
- * Containerul e hardcodat la spike; în Faza 1 devine configurabil.
+ * ⚠️ Fluxul CloudKit real (push/pull între două conturi, silent push) rămâne
+ * UNVERIFIED on-device fără un al doilea cont iCloud — validare reală = TestFlight
+ * pe două telefoane.
  */
 public class ExpoCloudKitShareModule: Module {
   private let container = CKContainer(identifier: "iCloud.com.ax.documente")
 
   public func definition() -> ModuleDefinition {
     Name("ExpoCloudKitShare")
+
+    Events("onRemoteChange")
+
+    // Silent push CloudKit (AppDelegate → NotificationCenter) + schimbare de cont
+    // iCloud — ambele re-emise ca „onRemoteChange" către JS, care doar re-rulează
+    // syncSharedEntities() (guard-ul isCloudKitAvailable() de acolo tratează și
+    // pauza/re-verificarea de cont).
+    OnCreate {
+      NotificationCenter.default.addObserver(
+        forName: Notification.Name("ExpoCloudKitShareRemoteChange"), object: nil, queue: nil
+      ) { _ in
+        self.sendEvent("onRemoteChange", ["reason": "push"])
+      }
+      NotificationCenter.default.addObserver(
+        forName: .CKAccountChanged, object: nil, queue: nil
+      ) { _ in
+        self.sendEvent("onRemoteChange", ["reason": "accountChanged"])
+      }
+    }
 
     // ─── isAvailable ─────────────────────────────────────────────────────
     // Statusul contului iCloud. `available` = putem folosi CloudKit DB.
@@ -35,7 +49,7 @@ public class ExpoCloudKitShareModule: Module {
     }
 
     // ─── createSharedZone ────────────────────────────────────────────────
-    // Creează o zonă custom în private DB. O zonă per entitate partajată (D5).
+    // Creează o zonă custom în private DB. O zonă per entitate partajată.
     AsyncFunction("createSharedZone") { (zoneName: String) async throws -> [String: Any] in
       let zone = CKRecordZone(zoneName: zoneName)
       let db = self.container.privateCloudDatabase
@@ -45,8 +59,8 @@ public class ExpoCloudKitShareModule: Module {
     }
 
     // ─── putRecord ───────────────────────────────────────────────────────
-    // Fetch-or-create + salvare. Câmpuri string (spike). Nu suprascrie orb
-    // changeTag-ul — citim recordul existent înainte, ca la LWW real (D2).
+    // Fetch-or-create + salvare. Câmpuri string. Nu suprascrie orb changeTag-ul —
+    // citim recordul existent înainte.
     AsyncFunction("putRecord") { (options: [String: Any]) async throws -> [String: Any] in
       guard let zoneName = options["zoneName"] as? String,
             let recordName = options["recordName"] as? String,
@@ -64,7 +78,7 @@ public class ExpoCloudKitShareModule: Module {
       } else {
         record = CKRecord(recordType: recordType, recordID: recordID)
       }
-      for (key, value) in fields { record[key] = value as CKRecordValue }
+      applyFields(fields, to: record)
 
       let saved = try await db.save(record)
       return [
@@ -105,31 +119,40 @@ public class ExpoCloudKitShareModule: Module {
     }
 
     // ─── shareZone ───────────────────────────────────────────────────────
-    // Creează CKShare pe zonă + prezintă UICloudSharingController (invitația
-    // nativă). Returnează URL-ul share-ului. Promise callback-style fiindcă
-    // prezentarea UI trebuie pe main thread.
+    // Prezintă invitația nativă pe zonă. Dacă zona e deja partajată, reprezintă
+    // share-ul EXISTENT (`CKRecordNameZoneWideShare`) — crearea unui al doilea
+    // CKShare pe aceeași zonă eșuează. Promise callback-style fiindcă prezentarea
+    // UI trebuie pe main thread.
     AsyncFunction("shareZone") { (options: [String: Any], promise: Promise) in
       guard let zoneName = options["zoneName"] as? String else {
         promise.reject(makeError(3, "zoneName obligatoriu"))
         return
       }
       let title = (options["title"] as? String) ?? "Entitate Dosar"
+      let permission = (options["permission"] as? String) ?? "read"
       let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
 
       Task {
         do {
-          let share = CKShare(recordZoneID: zoneID)
-          share[CKShare.SystemFieldKey.title] = title as CKRecordValue
-          // Link public read-only: oricine deschide link-ul (trimis pe WhatsApp/
-          // Messages) intră ca participant și poate CITI. `.none` ar cere invitație
-          // punctuală per Apple ID → link-ul copiat nu ar da acces. Read-only se
-          // potrivește cu sync-ul one-directional actual (owner → participant);
-          // când adăugăm sync bidirecțional, urcăm la `.readWrite`.
-          share.publicPermission = .readOnly
-
           let db = self.container.privateCloudDatabase
-          let (saveResults, _) = try await db.modifyRecords(saving: [share], deleting: [])
-          for (_, result) in saveResults { _ = try result.get() }
+          let existingShareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
+
+          let share: CKShare
+          if let existingRecord = try? await db.record(for: existingShareID),
+             let existingShare = existingRecord as? CKShare {
+            share = existingShare
+          } else {
+            let newShare = CKShare(recordZoneID: zoneID)
+            newShare[CKShare.SystemFieldKey.title] = title as CKRecordValue
+            // Permisiunea se stabilește DOAR la crearea share-ului nou (Faza 2:
+            // alegere „Doar citire"/„Poate edita" la share). Re-share pe zonă deja
+            // partajată (ramura de mai sus) NU o schimbă retroactiv — nu există UI
+            // pentru asta încă.
+            newShare.publicPermission = permission == "readwrite" ? .readWrite : .readOnly
+            let (saveResults, _) = try await db.modifyRecords(saving: [newShare], deleting: [])
+            for (_, result) in saveResults { _ = try result.get() }
+            share = newShare
+          }
 
           let shareURL = share.url?.absoluteString ?? ""
           await MainActor.run {
@@ -153,65 +176,10 @@ public class ExpoCloudKitShareModule: Module {
       }
     }
 
-    // ─── pushBundle ──────────────────────────────────────────────────────
-    // Owner side: creează/actualizează entity CKRecord + document CKRecords +
-    // CKAsset-uri, într-o zonă. Bundle-ul vine DEJA fără private_notes/medical
-    // (services/sharing.ts). Returnează change-tag per recordName.
-    // ⚠️ UNVERIFIED on-device (nu există al 2-lea cont iCloud pentru test).
-    AsyncFunction("pushBundle") { (bundle: [String: Any]) async throws -> [String: Any] in
-      guard let zoneName = bundle["zoneName"] as? String else {
-        throw makeError(10, "zoneName obligatoriu")
-      }
-      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
-      let db = self.container.privateCloudDatabase
-
-      let (zoneResults, _) = try await db.modifyRecordZones(
-        saving: [CKRecordZone(zoneID: zoneID)], deleting: []
-      )
-      for (_, r) in zoneResults { _ = try r.get() }
-
-      guard let entity = bundle["entity"] as? [String: Any],
-            let entityRecordName = entity["recordName"] as? String,
-            let entityRecordType = entity["recordType"] as? String else {
-        throw makeError(11, "entity invalid în bundle")
-      }
-      let entityID = CKRecord.ID(recordName: entityRecordName, zoneID: zoneID)
-      let entityRecord =
-        (try? await db.record(for: entityID)) ?? CKRecord(recordType: entityRecordType, recordID: entityID)
-      applyFields(entity["fields"] as? [String: String] ?? [:], to: entityRecord)
-
-      var toSave: [CKRecord] = [entityRecord]
-      for doc in bundle["documents"] as? [[String: Any]] ?? [] {
-        guard let recordName = doc["recordName"] as? String else { continue }
-        let recordType = (doc["recordType"] as? String) ?? "document"
-        let recordID = CKRecord.ID(recordName: recordName, zoneID: zoneID)
-        let record =
-          (try? await db.record(for: recordID)) ?? CKRecord(recordType: recordType, recordID: recordID)
-        applyFields(doc["fields"] as? [String: String] ?? [:], to: record)
-        record.parent = CKRecord.Reference(recordID: entityID, action: .none)
-        for file in doc["files"] as? [[String: Any]] ?? [] {
-          guard let key = file["key"] as? String, let path = file["path"] as? String else { continue }
-          let localPath = path.replacingOccurrences(of: "file://", with: "")
-          if FileManager.default.fileExists(atPath: localPath) {
-            record[key] = CKAsset(fileURL: URL(fileURLWithPath: localPath))
-          }
-        }
-        toSave.append(record)
-      }
-
-      let (saveResults, _) = try await db.modifyRecords(saving: toSave, deleting: [])
-      var changeTags: [String: String] = [:]
-      for (id, result) in saveResults {
-        if let rec = try? result.get() { changeTags[id.recordName] = rec.recordChangeTag ?? "" }
-      }
-      return ["changeTags": changeTags]
-    }
-
     // ─── fetchZoneChanges ────────────────────────────────────────────────
-    // Pull toate recordurile dintr-o zonă. scope 'private' (owner) sau 'shared'
-    // (participant). CKAsset-urile se descarcă în tmp și se întorc ca path.
-    // ⚠️ UNVERIFIED. Full-fetch (since: nil); incremental cu token = Faza 4.
-    // ⚠️ De verificat forma `recordZoneChanges` față de SDK-ul curent pe device.
+    // Pull incremental dintr-o zonă (scope 'private' owner / 'shared' participant),
+    // cu `sinceToken` → `newToken`. Loop `moreComing`; pe `.changeTokenExpired`
+    // resetează tokenul (o singură dată) și reia full-fetch.
     AsyncFunction("fetchZoneChanges") { (options: [String: Any]) async throws -> [String: Any] in
       guard let zoneName = options["zoneName"] as? String else {
         throw makeError(12, "zoneName obligatoriu")
@@ -221,41 +189,198 @@ public class ExpoCloudKitShareModule: Module {
       let db = scope == "private" ? self.container.privateCloudDatabase : self.container.sharedCloudDatabase
       let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: ownerName)
 
-      let result = try await db.recordZoneChanges(inZoneWith: zoneID, since: nil)
+      var token = decodeToken(options["sinceToken"] as? String)
       var records: [[String: Any]] = []
-      for modification in result.modificationResultsByID.values {
-        guard let record = try? modification.get().record else { continue }
-        // Sari record-urile de sistem CloudKit (`cloudkit.share` etc.) — nu sunt
-        // date de-ale noastre și n-au câmpurile entității.
-        if record.recordType.hasPrefix("cloudkit.") { continue }
-        var fields: [String: String] = [:]
-        var assets: [[String: String]] = []
-        for key in record.allKeys() {
-          if let s = record[key] as? String {
-            fields[key] = s
-          } else if let asset = record[key] as? CKAsset, let src = asset.fileURL {
-            let dest = FileManager.default.temporaryDirectory
-              .appendingPathComponent("ckasset_\(record.recordID.recordName)_\(key)")
-            try? FileManager.default.removeItem(at: dest)
-            try? FileManager.default.copyItem(at: src, to: dest)
-            assets.append(["key": key, "path": dest.path])
+      var deletedNames: [String] = []
+      var expiredRetried = false
+
+      while true {
+        do {
+          var moreComing = true
+          while moreComing {
+            let result = try await db.recordZoneChanges(inZoneWith: zoneID, since: token)
+            for modification in result.modificationResultsByID.values {
+              guard let record = try? modification.get().record else { continue }
+              // Record-urile de sistem CloudKit (`cloudkit.share` etc.) nu sunt
+              // date de-ale noastre.
+              if record.recordType.hasPrefix("cloudkit.") { continue }
+              var fields: [String: String] = [:]
+              var assets: [[String: String]] = []
+              for key in record.allKeys() {
+                if let s = record[key] as? String {
+                  fields[key] = s
+                } else if let asset = record[key] as? CKAsset, let src = asset.fileURL {
+                  let dest = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("ckasset_\(record.recordID.recordName)_\(key)")
+                  try? FileManager.default.removeItem(at: dest)
+                  try? FileManager.default.copyItem(at: src, to: dest)
+                  assets.append(["key": key, "path": dest.path])
+                }
+              }
+              records.append([
+                "recordName": record.recordID.recordName,
+                "recordType": record.recordType,
+                "changeTag": record.recordChangeTag ?? "",
+                "fields": fields,
+                "assets": assets,
+              ])
+            }
+            deletedNames.append(contentsOf: result.deletions.map { $0.recordID.recordName })
+            token = result.changeToken
+            moreComing = result.moreComing
+          }
+          break
+        } catch let error as CKError where error.code == .changeTokenExpired && !expiredRetried {
+          expiredRetried = true
+          token = nil
+          records = []
+          deletedNames = []
+        }
+      }
+
+      return [
+        "records": records,
+        "deletedRecordNames": deletedNames,
+        "newToken": encodeTokenValue(token),
+      ]
+    }
+
+    // ─── fetchDatabaseChanges ────────────────────────────────────────────
+    // Ce ZONE s-au schimbat/dispărut într-o bază (private/shared), fără să le
+    // viziteze pe toate — token DB-level, SEPARAT de tokenul per-zonă.
+    AsyncFunction("fetchDatabaseChanges") { (options: [String: Any]) async throws -> [String: Any] in
+      let scope = (options["scope"] as? String) ?? "shared"
+      let db = scope == "private" ? self.container.privateCloudDatabase : self.container.sharedCloudDatabase
+
+      var token = decodeToken(options["sinceToken"] as? String)
+      var changed: [[String: Any]] = []
+      var deleted: [[String: Any]] = []
+      var expiredRetried = false
+
+      while true {
+        do {
+          var moreComing = true
+          while moreComing {
+            let result = try await db.databaseChanges(since: token)
+            changed.append(contentsOf: result.modifications.map {
+              ["zoneName": $0.zoneID.zoneName, "ownerName": $0.zoneID.ownerName]
+            })
+            deleted.append(contentsOf: result.deletions.map {
+              ["zoneName": $0.zoneID.zoneName, "ownerName": $0.zoneID.ownerName]
+            })
+            token = result.changeToken
+            moreComing = result.moreComing
+          }
+          break
+        } catch let error as CKError where error.code == .changeTokenExpired && !expiredRetried {
+          expiredRetried = true
+          token = nil
+          changed = []
+          deleted = []
+        }
+      }
+
+      return ["changedZones": changed, "deletedZones": deleted, "newToken": encodeTokenValue(token)]
+    }
+
+    // ─── pushRecords ─────────────────────────────────────────────────────
+    // Push granular per-record (create/update individual) + ștergeri. LWW pe
+    // conflict (`.serverRecordChanged` → merge câmpurile noastre pe server record,
+    // re-save, max 3 încercări); `.zoneBusy`/`.requestRateLimited` → respectă
+    // `retryAfterSeconds` (contor SEPARAT de cel de conflict). Chunk ≤400/apel.
+    // CKAsset: `files[].path` → asset nou; `files[].unchanged` → asset existent
+    // neatins; orice cheie `file_*` de pe record absentă din `files[]` → ștearsă
+    // (altfel o pagină eliminată local lasă un CKAsset orfan pe server).
+    // Rezultate PER-RECORD — un eșec izolat nu pică tot batch-ul.
+    AsyncFunction("pushRecords") { (options: [String: Any]) async throws -> [String: Any] in
+      guard let zoneName = options["zoneName"] as? String else {
+        throw makeError(13, "zoneName obligatoriu")
+      }
+      let scope = (options["scope"] as? String) ?? "private"
+      let ownerName = (options["ownerName"] as? String) ?? CKCurrentUserDefaultName
+      let db = scope == "private" ? self.container.privateCloudDatabase : self.container.sharedCloudDatabase
+      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: ownerName)
+
+      let inputRecords = options["records"] as? [[String: Any]] ?? []
+      let deletionNames = options["deletions"] as? [String] ?? []
+
+      var toSave: [CKRecord] = []
+      for rec in inputRecords {
+        guard let recordName = rec["recordName"] as? String,
+              let recordType = rec["recordType"] as? String else { continue }
+        let recordID = CKRecord.ID(recordName: recordName, zoneID: zoneID)
+        let record = (try? await db.record(for: recordID)) ?? CKRecord(recordType: recordType, recordID: recordID)
+        applyFields(rec["fields"] as? [String: String] ?? [:], to: record)
+
+        let files = rec["files"] as? [[String: Any]] ?? []
+        var desiredKeys = Set<String>()
+        for file in files {
+          guard let key = file["key"] as? String else { continue }
+          desiredKeys.insert(key)
+          if let unchanged = file["unchanged"] as? Bool, unchanged { continue }
+          guard let path = file["path"] as? String else { continue }
+          let localPath = path.replacingOccurrences(of: "file://", with: "")
+          if FileManager.default.fileExists(atPath: localPath) {
+            record[key] = CKAsset(fileURL: URL(fileURLWithPath: localPath))
           }
         }
-        records.append([
-          "recordName": record.recordID.recordName,
-          "recordType": record.recordType,
-          "changeTag": record.recordChangeTag ?? "",
-          "fields": fields,
-          "assets": assets,
-        ])
+        // Curăță CKAsset-uri orfane (pagini eliminate local de la ultimul push).
+        for key in record.allKeys() where key.hasPrefix("file_") && !desiredKeys.contains(key) {
+          record[key] = nil
+        }
+        toSave.append(record)
       }
-      let deleted = result.deletions.map { $0.recordID.recordName }
-      return ["records": records, "deletedRecordNames": deleted]
+
+      var succeeded: [String: String] = [:]
+      var failed: [String: String] = [:]
+
+      for chunk in toSave.dosarChunked(into: 400) {
+        await self.pushChunk(db: db, records: chunk, succeeded: &succeeded, failed: &failed, attempt: 1)
+      }
+
+      let deletionIDs = deletionNames.map { CKRecord.ID(recordName: $0, zoneID: zoneID) }
+      for chunk in deletionIDs.dosarChunked(into: 400) {
+        do {
+          let (_, deleteResults) = try await db.modifyRecords(saving: [], deleting: chunk, savePolicy: .ifServerRecordUnchanged, atomically: false)
+          for (id, result) in deleteResults {
+            switch result {
+            case .success:
+              succeeded[id.recordName] = "deleted"
+            case .failure(let error):
+              // Deja șters pe server → succes silențios, nu eroare.
+              if let ckError = error as? CKError, ckError.code == .unknownItem {
+                succeeded[id.recordName] = "deleted"
+              } else {
+                failed[id.recordName] = error.localizedDescription
+              }
+            }
+          }
+        } catch {
+          for id in chunk { failed[id.recordName] = error.localizedDescription }
+        }
+      }
+
+      return ["succeeded": succeeded, "failed": failed]
+    }
+
+    // ─── subscribeDatabase ───────────────────────────────────────────────
+    // CKDatabaseSubscription (NU zone subscription — nesuportat în shared/public
+    // DB), una per DB, cu silent push (`shouldSendContentAvailable`).
+    AsyncFunction("subscribeDatabase") { (options: [String: Any]) async throws -> [String: Any] in
+      let scope = (options["scope"] as? String) ?? "shared"
+      let db = scope == "private" ? self.container.privateCloudDatabase : self.container.sharedCloudDatabase
+      let subscription = CKDatabaseSubscription(subscriptionID: "\(scope)-db-changes")
+      let info = CKSubscription.NotificationInfo()
+      info.shouldSendContentAvailable = true
+      subscription.notificationInfo = info
+      let (saveResults, _) = try await db.modifySubscriptions(saving: [subscription], deleting: [])
+      for (_, result) in saveResults { _ = try result.get() }
+      return ["subscribed": true]
     }
 
     // ─── stopSharing ─────────────────────────────────────────────────────
     // Owner side: șterge CKShare-ul zonei → participanții pierd accesul
-    // (forward-only). Datele rămân la owner. ⚠️ UNVERIFIED on-device.
+    // (forward-only). Datele rămân la owner.
     AsyncFunction("stopSharing") { (zoneName: String) async throws -> [String: Any] in
       let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
       let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
@@ -264,6 +389,52 @@ public class ExpoCloudKitShareModule: Module {
       )
       for (_, r) in deleteResults { _ = try r.get() }
       return ["revoked": true]
+    }
+  }
+
+  // MARK: - pushRecords helper
+
+  // Recursiv: trimite un chunk, colectează succese, pe `.serverRecordChanged`
+  // reîncearcă DOAR recordurile în conflict (merge pe server record), max 3
+  // încercări; pe `.zoneBusy`/`.requestRateLimited` reîncearcă tot chunk-ul după
+  // `retryAfterSeconds` (contor separat — nu consumă din cele 3 încercări LWW).
+  private func pushChunk(
+    db: CKDatabase,
+    records: [CKRecord],
+    succeeded: inout [String: String],
+    failed: inout [String: String],
+    attempt: Int
+  ) async {
+    do {
+      let (saveResults, _) = try await db.modifyRecords(
+        saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false
+      )
+      var retryRecords: [CKRecord] = []
+      for (id, result) in saveResults {
+        switch result {
+        case .success(let saved):
+          succeeded[id.recordName] = saved.recordChangeTag ?? ""
+        case .failure(let error):
+          if let ckError = error as? CKError, ckError.code == .serverRecordChanged,
+             attempt < 3,
+             let serverRecord = ckError.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord,
+             let ours = records.first(where: { $0.recordID == id }) {
+            for key in ours.allKeys() { serverRecord[key] = ours[key] }
+            retryRecords.append(serverRecord)
+          } else {
+            failed[id.recordName] = error.localizedDescription
+          }
+        }
+      }
+      if !retryRecords.isEmpty {
+        await pushChunk(db: db, records: retryRecords, succeeded: &succeeded, failed: &failed, attempt: attempt + 1)
+      }
+    } catch let error as CKError where error.code == .zoneBusy || error.code == .requestRateLimited {
+      let delay = error.retryAfterSeconds ?? 2
+      try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      await pushChunk(db: db, records: records, succeeded: &succeeded, failed: &failed, attempt: attempt)
+    } catch {
+      for record in records { failed[record.recordID.recordName] = error.localizedDescription }
     }
   }
 
@@ -357,4 +528,33 @@ private func makeError(_ code: Int, _ message: String) -> NSError {
 
 private func applyFields(_ fields: [String: String], to record: CKRecord) {
   for (key, value) in fields { record[key] = value as CKRecordValue }
+}
+
+// MARK: - CKServerChangeToken (de)serialization
+
+/** `NSKeyedArchiver` base64 — reprezentarea pe care JS-ul o pasează înapoi ca `sinceToken`. */
+private func encodeTokenValue(_ token: CKServerChangeToken?) -> Any {
+  guard let token = token,
+        let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
+  else {
+    return NSNull()
+  }
+  return data.base64EncodedString()
+}
+
+private func decodeToken(_ base64: String?) -> CKServerChangeToken? {
+  guard let base64 = base64, let data = Data(base64Encoded: base64) else { return nil }
+  return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+}
+
+// MARK: - Chunking
+
+private extension Array {
+  /** Prefix `dosar` — evită coliziune cu vreun `chunked` adăugat de o dependință viitoare. */
+  func dosarChunked(into size: Int) -> [[Element]] {
+    guard size > 0, !isEmpty else { return isEmpty ? [] : [self] }
+    return stride(from: 0, to: count, by: size).map {
+      Array(self[$0..<Swift.min($0 + size, count)])
+    }
+  }
 }

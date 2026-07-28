@@ -32,6 +32,10 @@
         ]
       },
       "infoPlist": {
+        "CKSharingSupported": true,
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
         "NSCalendarsFullAccessUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
         "NSRemindersUsageDescription": "Aplicația poate adăuga remindere pentru expirarea documentelor.",

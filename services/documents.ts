@@ -519,6 +519,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     await syncDocumentExpiryReminder(doc);
   }
 
+  void import('./cloudShare').then(m => m.afterDocumentMutation(id, 'upsert')).catch(() => {});
+
   return doc;
 }
 
@@ -600,6 +602,7 @@ export async function deleteDocument(id: string): Promise<void> {
 
   emit('documents:changed');
   emit('links:changed');
+  void import('./cloudShare').then(m => m.afterDocumentMutation(id, 'delete')).catch(() => {});
 }
 
 export interface UpdateDocumentInput {
@@ -715,6 +718,7 @@ export async function updateDocument(id: string, input: UpdateDocumentInput): Pr
   }
 
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterDocumentMutation(id, 'upsert')).catch(() => {});
 }
 
 export async function linkDocumentToEntity(
@@ -790,6 +794,7 @@ export async function addEntityLinkToDocument(
   }
   emit('documents:changed');
   emit('links:changed');
+  void import('./cloudShare').then(m => m.afterDocumentMutation(documentId, 'upsert')).catch(() => {});
 }
 
 export async function removeEntityLinkFromDocument(
@@ -820,6 +825,11 @@ export async function removeEntityLinkFromDocument(
   }
   emit('documents:changed');
   emit('links:changed');
+  // NU afterDocumentMutation — are nevoie de zona SPECIFICĂ tocmai eliminată,
+  // care nu mai apare în getZonesForDocument după unlink.
+  void import('./cloudShare')
+    .then(m => m.afterDocumentUnlinked(documentId, link))
+    .catch(() => {});
 }
 
 export async function getDocumentEntityLinks(documentId: string): Promise<DocumentEntityLink[]> {
@@ -849,14 +859,15 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
   }
 
   emit('documents:changed');
+  void import('./cloudShare').then(m => m.afterDocumentMutation(documentId, 'upsert')).catch(() => {});
   return pageId;
 }
 
 export async function removeDocumentPage(pageId: string): Promise<void> {
   // Colectează fișierul ÎNAINTE de a șterge rândul, ca să-l putem curăța de pe disc
   // + din cloud. Fără asta fișierul rămânea pe disc, iar cloud-ul îl re-urca.
-  const row = await db.getFirstAsync<{ file_path: string | null }>(
-    'SELECT file_path FROM document_pages WHERE id = ?',
+  const row = await db.getFirstAsync<{ file_path: string | null; document_id: string }>(
+    'SELECT file_path, document_id FROM document_pages WHERE id = ?',
     [pageId]
   );
   await db.runAsync('DELETE FROM document_pages WHERE id = ?', [pageId]);
@@ -875,6 +886,11 @@ export async function removeDocumentPage(pageId: string): Promise<void> {
   }
 
   emit('documents:changed');
+  if (row?.document_id) {
+    void import('./cloudShare')
+      .then(m => m.afterDocumentMutation(row.document_id, 'upsert'))
+      .catch(() => {});
+  }
 }
 
 // Reordonează TOATE fișierele unui document (inclusiv pagina principală din file_path).

@@ -56,6 +56,12 @@ function insertPerson(id: string, name: string): void {
     .run(id, name, '2026-07-22T00:00:00Z');
 }
 
+function insertVehicle(id: string, fields: { name: string; photo_uri?: string }): void {
+  testDb._raw
+    .prepare(`INSERT INTO vehicles (id, name, photo_uri, created_at) VALUES (?, ?, ?, ?)`)
+    .run(id, fields.name, fields.photo_uri ?? null, '2026-07-22T00:00:00Z');
+}
+
 function insertDoc(fields: {
   id: string;
   type: string;
@@ -255,5 +261,204 @@ describe('store cloud_records', () => {
 
     const byLocal = await sharing.getCloudRecordForLocal('documents', 'doc-1');
     expect(byLocal!.record_name).toBe('doc-1');
+  });
+});
+
+describe('rowToShareFields — decizia 6 (numeric) + 7 (whitelist per entitate)', () => {
+  it('păstrează string-urile nevide din whitelist', () => {
+    const out = sharing.rowToShareFields({ name: 'Ana', phone: '0722', extra: 'x' }, [
+      'name',
+      'phone',
+    ]);
+    expect(out).toEqual({ name: 'Ana', phone: '0722' });
+  });
+
+  it('convertește number/boolean la String(v)', () => {
+    const out = sharing.rowToShareFields({ mileage: 12345, is_full: 1, active: true }, [
+      'mileage',
+      'is_full',
+      'active',
+    ]);
+    expect(out).toEqual({ mileage: '12345', is_full: '1', active: 'true' });
+  });
+
+  it('sare coloanele absente din whitelist, null și string gol', () => {
+    const out = sharing.rowToShareFields(
+      { name: 'Ana', private_notes: 'CVV_SECRET', email: '', date_of_birth: null },
+      ['name', 'email', 'date_of_birth']
+    );
+    expect(out).toEqual({ name: 'Ana' });
+    expect(out.private_notes).toBeUndefined();
+  });
+});
+
+describe('getEntityShareFields — whitelist per tip (decizia 7)', () => {
+  it('exclude photo_uri pe vehicul (cale locală, fără sens cross-device)', async () => {
+    insertVehicle('veh-1', { name: 'Logan', photo_uri: 'documents/poza.jpg' });
+    const fields = await sharing.getEntityShareFields('vehicle', 'veh-1');
+    expect(fields).not.toBeNull();
+    expect(fields!.name).toBe('Logan');
+    expect(fields!.photo_uri).toBeUndefined();
+  });
+
+  it('null pentru entitate inexistentă sau tip ne-shareable', async () => {
+    expect(await sharing.getEntityShareFields('vehicle', 'lipsa')).toBeNull();
+    expect(await sharing.getEntityShareFields('card', 'c1')).toBeNull();
+  });
+});
+
+describe('get/setZoneChangeToken — round-trip', () => {
+  it('null implicit, apoi persistă tokenul setat', async () => {
+    const zone = sharing.zoneNameFor('vehicle', 'veh-tok');
+    await sharing.recordShare({ entityType: 'vehicle', entityId: 'veh-tok', zoneName: zone, role: 'participant' });
+
+    expect(await sharing.getZoneChangeToken(zone)).toBeNull();
+
+    await sharing.setZoneChangeToken(zone, 'base64token==');
+    expect(await sharing.getZoneChangeToken(zone)).toBe('base64token==');
+
+    await sharing.setZoneChangeToken(zone, null);
+    expect(await sharing.getZoneChangeToken(zone)).toBeNull();
+  });
+});
+
+describe('isEntityReadOnlyForMe — Faza 2 gating', () => {
+  it('owner → false (control total local)', async () => {
+    const zone = sharing.zoneNameFor('vehicle', 'veh-owner');
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-owner',
+      zoneName: zone,
+      role: 'owner',
+      permission: 'read',
+    });
+    expect(await sharing.isEntityReadOnlyForMe('vehicle', 'veh-owner')).toBe(false);
+  });
+
+  it('participant + read → true', async () => {
+    const zone = sharing.zoneNameFor('vehicle', 'veh-p-read');
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-p-read',
+      zoneName: zone,
+      role: 'participant',
+      permission: 'read',
+    });
+    expect(await sharing.isEntityReadOnlyForMe('vehicle', 'veh-p-read')).toBe(true);
+  });
+
+  it('participant + readwrite → false', async () => {
+    const zone = sharing.zoneNameFor('vehicle', 'veh-p-rw');
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-p-rw',
+      zoneName: zone,
+      role: 'participant',
+      permission: 'readwrite',
+    });
+    expect(await sharing.isEntityReadOnlyForMe('vehicle', 'veh-p-rw')).toBe(false);
+  });
+
+  it('entitate nepartajată → false', async () => {
+    expect(await sharing.isEntityReadOnlyForMe('vehicle', 'veh-unshared')).toBe(false);
+  });
+});
+
+describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', () => {
+  function linkDocToEntity(documentId: string, entityType: string, entityId: string): void {
+    testDb._raw
+      .prepare(
+        `INSERT INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)`
+      )
+      .run(`${documentId}-${entityType}-${entityId}`, documentId, entityType, entityId);
+  }
+
+  it('document nepartajat → false', async () => {
+    insertDoc({ id: 'doc-free', type: 'buletin' });
+    expect(await sharing.isDocumentReadOnlyForMe('doc-free')).toBe(false);
+  });
+
+  it('legat de zonă owned → false', async () => {
+    insertPerson('pers-own', 'Ana');
+    insertDoc({ id: 'doc-own', type: 'buletin', personId: 'pers-own' });
+    linkDocToEntity('doc-own', 'person', 'pers-own');
+    const zone = sharing.zoneNameFor('person', 'pers-own');
+    await sharing.recordShare({ entityType: 'person', entityId: 'pers-own', zoneName: zone, role: 'owner' });
+    expect(await sharing.isDocumentReadOnlyForMe('doc-own')).toBe(false);
+  });
+
+  it('legat de zonă participant+read → true', async () => {
+    insertPerson('pers-read', 'Ion');
+    insertDoc({ id: 'doc-read', type: 'buletin', personId: 'pers-read' });
+    linkDocToEntity('doc-read', 'person', 'pers-read');
+    const zone = sharing.zoneNameFor('person', 'pers-read');
+    await sharing.recordShare({
+      entityType: 'person',
+      entityId: 'pers-read',
+      zoneName: zone,
+      role: 'participant',
+      permission: 'read',
+    });
+    expect(await sharing.isDocumentReadOnlyForMe('doc-read')).toBe(true);
+  });
+
+  it('legat de zonă participant+readwrite → false', async () => {
+    insertPerson('pers-rw', 'Maria');
+    insertDoc({ id: 'doc-rw', type: 'buletin', personId: 'pers-rw' });
+    linkDocToEntity('doc-rw', 'person', 'pers-rw');
+    const zone = sharing.zoneNameFor('person', 'pers-rw');
+    await sharing.recordShare({
+      entityType: 'person',
+      entityId: 'pers-rw',
+      zoneName: zone,
+      role: 'participant',
+      permission: 'readwrite',
+    });
+    expect(await sharing.isDocumentReadOnlyForMe('doc-rw')).toBe(false);
+  });
+
+  it('legat de DOUĂ zone, una read + una readwrite → true (conservativ, decizia 1)', async () => {
+    insertPerson('pers-mix1', 'Radu');
+    insertPerson('pers-mix2', 'Vlad');
+    insertDoc({ id: 'doc-mix', type: 'buletin', personId: 'pers-mix1' });
+    linkDocToEntity('doc-mix', 'person', 'pers-mix1');
+    linkDocToEntity('doc-mix', 'person', 'pers-mix2');
+
+    const zone1 = sharing.zoneNameFor('person', 'pers-mix1');
+    await sharing.recordShare({
+      entityType: 'person',
+      entityId: 'pers-mix1',
+      zoneName: zone1,
+      role: 'participant',
+      permission: 'readwrite',
+    });
+    const zone2 = sharing.zoneNameFor('person', 'pers-mix2');
+    await sharing.recordShare({
+      entityType: 'person',
+      entityId: 'pers-mix2',
+      zoneName: zone2,
+      role: 'participant',
+      permission: 'read',
+    });
+
+    expect(await sharing.isDocumentReadOnlyForMe('doc-mix')).toBe(true);
+  });
+});
+
+describe('markZoneSyncSuccess / markZoneSyncError — diagnostics', () => {
+  it('succes setează last_synced_at și curăță eroarea; eșecul păstrează ultimul sync reușit', async () => {
+    const zone = sharing.zoneNameFor('vehicle', 'veh-diag');
+    await sharing.recordShare({ entityType: 'vehicle', entityId: 'veh-diag', zoneName: zone, role: 'participant' });
+
+    await sharing.markZoneSyncSuccess(zone);
+    let share = await sharing.getShareForEntity('vehicle', 'veh-diag');
+    expect(share!.last_synced_at).toBeTruthy();
+    expect(share!.last_sync_error).toBeUndefined();
+
+    const firstSyncedAt = share!.last_synced_at;
+    await sharing.markZoneSyncError(zone, 'rețea indisponibilă');
+    share = await sharing.getShareForEntity('vehicle', 'veh-diag');
+    expect(share!.last_sync_error).toBe('rețea indisponibilă');
+    expect(share!.last_synced_at).toBe(firstSyncedAt); // nu s-a schimbat la eroare
   });
 });
