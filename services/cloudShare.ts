@@ -3,7 +3,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type * as CloudKitShareModule from '@/modules/expo-cloudkit-share/src';
 import type { DocumentEntityLink, EntityType } from '@/types';
 
-import { entityToPushRecord, parseFetchedRecords, shareableDocToPushRecord } from './cloudShareMapping';
+import {
+  entityToPushRecord,
+  parseFetchedRecords,
+  shareableDocToPushRecord,
+} from './cloudShareMapping';
 import type { FetchedRecord, PushRecord } from './cloudShareMapping';
 import { db } from './db';
 import { getDocumentById } from './documents';
@@ -18,6 +22,7 @@ import {
   ENTITY_SYNC_FIELDS,
   bumpSharePushAttempt,
   deleteCloudRecord,
+  deleteCloudRecordsForZone,
   deleteSharePush,
   enqueueSharePush,
   getCloudRecord,
@@ -85,7 +90,13 @@ const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = Object.fromEntries(
   Object.entries(ENTITY_TABLE).map(([entityType, table]) => [table, entityType as EntityType])
 );
 
-export type LocalTable = 'persons' | 'properties' | 'vehicles' | 'animals' | 'companies' | 'documents';
+export type LocalTable =
+  | 'persons'
+  | 'properties'
+  | 'vehicles'
+  | 'animals'
+  | 'companies'
+  | 'documents';
 
 export async function isCloudKitAvailable(): Promise<boolean> {
   try {
@@ -151,10 +162,18 @@ export async function shareEntity(
   // fișier neschimbat) — vezi shareableDocToPushRecord (cloudShareMapping.ts).
   for (const doc of bundle.documents) {
     const fullDoc = await getDocumentById(doc.recordName);
-    if (fullDoc?.file_hash) await setCloudRecordFileHash(zoneName, doc.recordName, fullDoc.file_hash);
+    if (fullDoc?.file_hash)
+      await setCloudRecordFileHash(zoneName, doc.recordName, fullDoc.file_hash);
   }
 
-  await recordShare({ entityType, entityId, zoneName, role: 'owner', shareUrl: shareURL, permission });
+  await recordShare({
+    entityType,
+    entityId,
+    zoneName,
+    role: 'owner',
+    shareUrl: shareURL,
+    permission,
+  });
   return shareURL;
 }
 
@@ -172,6 +191,26 @@ export async function revokeEntityShare(entityType: EntityType, entityId: string
     if (!isZoneGoneError(e)) throw e;
   }
   await revokeShare(share.zone_name);
+}
+
+/**
+ * Participant: renunță la propriul acces (owner-ul și ceilalți participanți
+ * nu sunt afectați — vezi `leaveShare` nativ). No-op dacă nu ești participant
+ * pe entitatea respectivă (ex. eroare de UI care ar chema asta pe o entitate
+ * proprie).
+ */
+export async function leaveEntityShare(entityType: EntityType, entityId: string): Promise<void> {
+  const share = await getShareForEntity(entityType, entityId);
+  if (!share || share.role !== 'participant') return;
+  try {
+    await native().leaveShare({ zoneName: share.zone_name, ownerName: share.owner_name });
+  } catch (e) {
+    // Zona/share-ul poate fi deja dispărut (owner a revocat între timp) —
+    // scopul e local, nu rămânem blocați cu un rând agățat.
+    if (!isZoneGoneError(e)) throw e;
+  }
+  await revokeShare(share.zone_name);
+  await deleteCloudRecordsForZone(share.zone_name);
 }
 
 /** True dacă eroarea CloudKit înseamnă „zona nu (mai) există pe server". */
@@ -210,6 +249,34 @@ export function friendlyCloudKitMessage(e: unknown): string {
  * datele deja copiate rămân la participant, dar nu mai apar în listă și nu mai
  * sincronizează.
  */
+/**
+ * Fallback manual: participantul lipește URL-ul share-ului primit (WhatsApp
+ * etc.) în loc să se bazeze pe handler-ul de sistem
+ * (`windowScene(_:userDidAcceptCloudKitShareWith:)` — verificat pe device
+ * 2026-07-29 că nu se apelează deloc pe iOS 26.5.2, deși iOS confirmă
+ * acceptarea la nivel de sistem). Acceptă direct via `acceptShareURL`, apoi
+ * rulează sincronizarea completă ca să tragă entitatea imediat.
+ */
+export async function acceptShareByURL(url: string): Promise<void> {
+  const accepted = await native().acceptShareURL(url);
+  // Înregistrează imediat share-ul cu numele din metadata acceptării (deja
+  // disponibil, fără fetch suplimentar) — `syncSharedEntities` mai jos ar
+  // re-descoperi zona oricum prin `reconcileParticipantShares`, dar fără nume
+  // (acela cere un fetch separat pe care doar acest punct îl are gratis).
+  const parsed = parseZoneName(accepted.zoneName);
+  if (parsed) {
+    await recordShare({
+      entityType: parsed.entityType,
+      entityId: parsed.entityId,
+      zoneName: accepted.zoneName,
+      role: 'participant',
+      ownerName: accepted.ownerName,
+      ownerDisplayName: accepted.ownerDisplayName,
+    });
+  }
+  await syncSharedEntities();
+}
+
 export async function reconcileParticipantShares(): Promise<void> {
   const zones = await native().listSharedZones();
   const liveZoneNames = new Set(zones.map(z => z.zoneName));
@@ -223,12 +290,26 @@ export async function reconcileParticipantShares(): Promise<void> {
     if (knownParticipant.has(zone.zoneName)) continue;
     const parsed = parseZoneName(zone.zoneName);
     if (!parsed) continue; // zonă de sistem sau tip necunoscut — nu inventăm entitate
+    // Best-effort: `listSharedZones` nu întoarce numele afișabil (doar
+    // identificatorul opac) — fetch separat pe CKShare-ul zonei. Dacă eșuează
+    // (offline, share dispărut între timp), rândul se creează oricum fără nume.
+    let ownerDisplayName: string | undefined;
+    try {
+      const fetched = await native().fetchShareOwnerName({
+        zoneName: zone.zoneName,
+        ownerName: zone.ownerName,
+      });
+      ownerDisplayName = fetched.ownerDisplayName;
+    } catch {
+      // silent — UI cade pe fallback (owner_name brut / „partajat")
+    }
     await recordShare({
       entityType: parsed.entityType,
       entityId: parsed.entityId,
       zoneName: zone.zoneName,
       role: 'participant',
       ownerName: zone.ownerName,
+      ownerDisplayName,
     });
   }
 
@@ -385,7 +466,7 @@ export async function flushSharePushes(): Promise<void> {
 
   const groups = new Map<string, PendingSharePush[]>();
   for (const row of pending) {
-    const key = `${row.zone_name} ${row.scope} ${row.owner_name ?? ''}`;
+    const key = `${row.zone_name}\u0000${row.scope}\u0000${row.owner_name ?? ''}`;
     const list = groups.get(key);
     if (list) list.push(row);
     else groups.set(key, [row]);
@@ -467,7 +548,8 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
         zoneName,
         recordName: row.record_name,
         recordType: row.kind === 'entity' ? (entityType ?? 'entity') : 'document',
-        localTable: row.kind === 'entity' ? (entityType ? ENTITY_TABLE[entityType] : 'unknown') : 'documents',
+        localTable:
+          row.kind === 'entity' ? (entityType ? ENTITY_TABLE[entityType] : 'unknown') : 'documents',
         localId: row.record_name,
         changeTag,
       });
@@ -582,7 +664,9 @@ async function pullOwnedChanges(): Promise<void> {
 
   const shares = await getSharedEntities();
   const byZone = new Map(
-    shares.filter(s => s.role === 'owner' && s.permission === 'readwrite').map(s => [s.zone_name, s])
+    shares
+      .filter(s => s.role === 'owner' && s.permission === 'readwrite')
+      .map(s => [s.zone_name, s])
   );
 
   let anyFailed = false;
@@ -636,7 +720,13 @@ async function applyFetchedRecords(share: SharedEntity, records: FetchedRecord[]
   for (const doc of documents) {
     if (!(await shouldApplyRecord(share.zone_name, doc))) continue;
     await applyDocumentRow(share, doc);
-    await rememberAppliedRecord(share.zone_name, doc.recordName, 'document', 'documents', doc.changeTag);
+    await rememberAppliedRecord(
+      share.zone_name,
+      doc.recordName,
+      'document',
+      'documents',
+      doc.changeTag
+    );
   }
 }
 
@@ -661,7 +751,14 @@ async function rememberAppliedRecord(
   localTable: string,
   changeTag: string
 ): Promise<void> {
-  await upsertCloudRecord({ zoneName, recordName, recordType, localTable, localId: recordName, changeTag });
+  await upsertCloudRecord({
+    zoneName,
+    recordName,
+    recordType,
+    localTable,
+    localId: recordName,
+    changeTag,
+  });
 }
 
 /**
@@ -678,7 +775,8 @@ async function applyEntityRow(
   if (!table) return;
   if (!fields.name) return; // NOT NULL guard — record de sistem/payload incomplet
 
-  const allowed = (ENTITY_SYNC_FIELDS as Partial<Record<EntityType, readonly string[]>>)[entityType] ?? [];
+  const allowed =
+    (ENTITY_SYNC_FIELDS as Partial<Record<EntityType, readonly string[]>>)[entityType] ?? [];
   const cols = allowed.filter(c => c in fields);
   const setClause =
     cols.length > 0 ? cols.map(c => `${c} = excluded.${c}`).join(', ') : 'name = excluded.name';
@@ -746,7 +844,13 @@ async function applyDocumentRow(share: SharedEntity, rec: FetchedRecord): Promis
     await db.runAsync(
       `INSERT INTO document_pages (id, document_id, page_order, file_path, created_at)
        VALUES (?, ?, ?, ?, ?)`,
-      [`${rec.recordName}_p${page.order}`, rec.recordName, page.order, page.rel, new Date().toISOString()]
+      [
+        `${rec.recordName}_p${page.order}`,
+        rec.recordName,
+        page.order,
+        page.rel,
+        new Date().toISOString(),
+      ]
     );
   }
 

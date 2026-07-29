@@ -269,6 +269,8 @@ export interface SharedEntity {
   permission: SharePermission;
   share_url?: string;
   owner_name?: string;
+  /** Nume afișabil (din CKUserIdentity) — absent dacă owner-ul nu e descoperibil. */
+  owner_display_name?: string;
   created_at: string;
   revoked_at?: string;
   /** Diagnostics — ultimul pull reușit / ultima eroare de sync (SharingBetaSection/partajare.tsx). */
@@ -297,6 +299,7 @@ interface SharedEntityRow {
   permission: string | null;
   share_url: string | null;
   owner_name: string | null;
+  owner_display_name: string | null;
   created_at: string;
   revoked_at: string | null;
   change_token: string | null;
@@ -326,6 +329,7 @@ function mapSharedEntity(r: SharedEntityRow): SharedEntity {
     permission: (r.permission as SharePermission) ?? 'read',
     share_url: r.share_url ?? undefined,
     owner_name: r.owner_name ?? undefined,
+    owner_display_name: r.owner_display_name ?? undefined,
     created_at: r.created_at,
     revoked_at: r.revoked_at ?? undefined,
     last_synced_at: r.last_synced_at ?? undefined,
@@ -380,16 +384,20 @@ export async function recordShare(params: {
   permission?: SharePermission;
   shareUrl?: string;
   ownerName?: string;
+  ownerDisplayName?: string;
 }): Promise<SharedEntity> {
   const id = generateId();
   const createdAt = new Date().toISOString();
   // Upsert pe zone_name: la re-înregistrare (ex. reconcile participant) NU
   // clobber-ăm `change_token` / `id` / `created_at` existente — doar câmpurile
   // descriptive. `INSERT OR REPLACE` ar șterge rândul și ar reseta token-ul de sync.
+  // owner_display_name: COALESCE cu valoarea existentă — un apel ulterior fără
+  // acest parametru (ex. reconcile care nu a reușit fetch-ul de nume) nu trebuie
+  // să șteargă un nume aflat deja la un apel anterior (ex. acceptShareByURL).
   await db.runAsync(
     `INSERT INTO shared_entities
-       (id, entity_type, entity_id, zone_name, role, permission, share_url, owner_name, created_at, revoked_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       (id, entity_type, entity_id, zone_name, role, permission, share_url, owner_name, owner_display_name, created_at, revoked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(zone_name) DO UPDATE SET
        entity_type = excluded.entity_type,
        entity_id = excluded.entity_id,
@@ -397,6 +405,7 @@ export async function recordShare(params: {
        permission = excluded.permission,
        share_url = excluded.share_url,
        owner_name = excluded.owner_name,
+       owner_display_name = COALESCE(excluded.owner_display_name, shared_entities.owner_display_name),
        revoked_at = NULL`,
     [
       id,
@@ -407,6 +416,7 @@ export async function recordShare(params: {
       params.permission ?? 'read',
       params.shareUrl ?? null,
       params.ownerName ?? null,
+      params.ownerDisplayName ?? null,
       createdAt,
     ]
   );
@@ -415,21 +425,24 @@ export async function recordShare(params: {
     [params.zoneName]
   );
   emit('sharing:changed');
-  return row ? mapSharedEntity(row) : mapSharedEntity({
-    id,
-    entity_type: params.entityType,
-    entity_id: params.entityId,
-    zone_name: params.zoneName,
-    role: params.role,
-    permission: params.permission ?? 'read',
-    share_url: params.shareUrl ?? null,
-    owner_name: params.ownerName ?? null,
-    created_at: createdAt,
-    revoked_at: null,
-    change_token: null,
-    last_synced_at: null,
-    last_sync_error: null,
-  });
+  return row
+    ? mapSharedEntity(row)
+    : mapSharedEntity({
+        id,
+        entity_type: params.entityType,
+        entity_id: params.entityId,
+        zone_name: params.zoneName,
+        role: params.role,
+        permission: params.permission ?? 'read',
+        share_url: params.shareUrl ?? null,
+        owner_name: params.ownerName ?? null,
+        owner_display_name: params.ownerDisplayName ?? null,
+        created_at: createdAt,
+        revoked_at: null,
+        change_token: null,
+        last_synced_at: null,
+        last_sync_error: null,
+      });
 }
 
 export async function getSharedEntities(includeRevoked = false): Promise<SharedEntity[]> {
@@ -570,17 +583,21 @@ export async function deleteCloudRecord(zoneName: string, recordName: string): P
   ]);
 }
 
+/** Curăță TOATE record-urile unei zone (participant care renunță la share — `leaveEntityShare`). */
+export async function deleteCloudRecordsForZone(zoneName: string): Promise<void> {
+  await db.runAsync(`DELETE FROM cloud_records WHERE zone_name = ?`, [zoneName]);
+}
+
 /** CKAsset hash-skip (decizia 5): fișierul principal se re-urcă doar dacă hash-ul s-a schimbat. */
 export async function setCloudRecordFileHash(
   zoneName: string,
   recordName: string,
   hash: string | null
 ): Promise<void> {
-  await db.runAsync(`UPDATE cloud_records SET file_hash = ? WHERE zone_name = ? AND record_name = ?`, [
-    hash,
-    zoneName,
-    recordName,
-  ]);
+  await db.runAsync(
+    `UPDATE cloud_records SET file_hash = ? WHERE zone_name = ? AND record_name = ?`,
+    [hash, zoneName, recordName]
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────

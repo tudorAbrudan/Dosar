@@ -19,11 +19,22 @@ import { primary, statusColors, onPrimary } from '@/theme/colors';
 import { iconColors } from '@/theme/iconColors';
 import { useEntities } from '@/hooks/useEntities';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
+import { useSharedEntityMap } from '@/hooks/useSharing';
 import { DraggableEntityList } from '@/components/DraggableEntityList';
 import { EntityListCard } from '@/components/entity/EntityListCard';
+import type { EntitySharedBadge } from '@/components/entity/EntityListCard';
 import { VehiclePhotoCard } from '@/components/entity/VehiclePhotoCard';
 import type { EntityRef } from '@/services/entityOrder';
-import type { EntityType, Person, Property, Vehicle, Card, Animal, Company, MedicalRecord } from '@/types';
+import type {
+  EntityType,
+  Person,
+  Property,
+  Vehicle,
+  Card,
+  Animal,
+  Company,
+  MedicalRecord,
+} from '@/types';
 
 type AnyEntity = Person | Property | Vehicle | Card | Animal | Company | MedicalRecord;
 type EntityTab = EntityType | 'all';
@@ -86,6 +97,7 @@ export default function EntitatiListScreen() {
   const [tab, setTab] = useState<EntityTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const { visibleEntityTypes } = useVisibilitySettings();
+  const { map: sharedMap } = useSharedEntityMap();
   const TABS = ALL_TABS.filter(
     t => t.key === 'all' || visibleEntityTypes.includes(t.key as EntityType)
   );
@@ -131,7 +143,10 @@ export default function EntitatiListScreen() {
       ...cards.map(e => ({ item: e as AnyEntity, entityType: 'card' as EntityType })),
       ...animals.map(e => ({ item: e as AnyEntity, entityType: 'animal' as EntityType })),
       ...companies.map(e => ({ item: e as AnyEntity, entityType: 'company' as EntityType })),
-      ...medicalRecords.map(e => ({ item: e as AnyEntity, entityType: 'medical_record' as EntityType })),
+      ...medicalRecords.map(e => ({
+        item: e as AnyEntity,
+        entityType: 'medical_record' as EntityType,
+      })),
     ];
     return combined.sort((a, b) => {
       const sa = globalOrderMap.get(`${a.entityType}:${a.item.id}`);
@@ -227,9 +242,22 @@ export default function EntitatiListScreen() {
 
   const isSearching = !!searchQuery.trim();
 
+  // Badge „partajată" — owner (eu partajez) vs participant (partajată cu mine).
+  // Sursă: `shared_entities` locale (fără apeluri CloudKit — vezi useSharedEntityMap).
+  const badgeFor = (entityType: EntityType, id: string): EntitySharedBadge | undefined => {
+    const share = sharedMap.get(`${entityType}:${id}`);
+    if (!share) return undefined;
+    if (share.role === 'owner') return { icon: 'share-social-outline', label: 'Partajată' };
+    return {
+      icon: 'people-outline',
+      label: share.owner_display_name ?? share.owner_name ?? 'Partajată cu tine',
+    };
+  };
+
   const renderCard = (typed: TypedEntity, info: { isActive: boolean; onLongPress: () => void }) => {
     const { item, entityType } = typed;
     const vehiclePhoto = entityType === 'vehicle' ? (item as Vehicle).photo_uri : undefined;
+    const badge = badgeFor(entityType, item.id);
 
     const handleEntityPress = () => {
       if (entityType === 'medical_record') {
@@ -249,6 +277,7 @@ export default function EntitatiListScreen() {
           isActive={info.isActive}
           onPress={handleEntityPress}
           onLongPress={info.onLongPress}
+          badgeLabel={badge ? `🔗 ${badge.label}` : undefined}
         />
       );
     }
@@ -264,6 +293,7 @@ export default function EntitatiListScreen() {
         isActive={info.isActive}
         onPress={handleEntityPress}
         onLongPress={info.onLongPress}
+        badge={badge}
       />
     );
   };

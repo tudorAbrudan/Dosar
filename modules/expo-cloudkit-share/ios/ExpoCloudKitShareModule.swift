@@ -176,6 +176,52 @@ public class ExpoCloudKitShareModule: Module {
       }
     }
 
+    // ─── acceptShareURL ──────────────────────────────────────────────────
+    // Fallback manual: acceptă un CKShare direct dintr-un URL lipit de user,
+    // fără să depindă de handler-ul de sistem (windowScene(_:userDidAcceptCloudKitShareWith:)
+    // — verificat pe device 2026-07-29 că nu se apelează deloc pe iOS 26.5.2,
+    // deși iOS confirmă acceptarea la nivel de sistem). Semnături verificate
+    // direct în CKContainer.h: fetchShareMetadataWithURL:completionHandler:
+    // (NS_SWIFT_ASYNC_NAME shareMetadata(for:)) + acceptShareMetadata:.
+    AsyncFunction("acceptShareURL") { (urlString: String) async throws -> [String: Any] in
+      guard let url = URL(string: urlString) else {
+        throw makeError(14, "URL invalid")
+      }
+      let metadata = try await self.container.shareMetadata(for: url)
+      let accepted = try await self.container.accept(metadata)
+      var result: [String: Any] = [
+        "zoneName": accepted.recordID.zoneID.zoneName,
+        "ownerName": accepted.recordID.zoneID.ownerName,
+      ]
+      // `metadata.ownerIdentity` e disponibil direct din fetch-ul share-ului —
+      // nu necesită un apel separat. Poate fi nil dacă owner-ul nu e descoperibil
+      // (fără contact/profil public) — atunci UI-ul cade pe fallback-ul existent.
+      if let displayName = Self.formatUserIdentity(metadata.ownerIdentity) {
+        result["ownerDisplayName"] = displayName
+      }
+      return result
+    }
+
+    // ─── fetchShareOwnerName ─────────────────────────────────────────────
+    // Best-effort, pentru zone descoperite prin `listSharedZones()` (nu prin
+    // `acceptShareURL`, care deja are numele din metadata) — ex. dacă vreodată
+    // handler-ul de sistem chiar livrează acceptarea. Fetch-uiește CKShare-ul
+    // zonei ca să afle `owner.userIdentity`.
+    AsyncFunction("fetchShareOwnerName") { (options: [String: Any]) async throws -> [String: Any] in
+      guard let zoneName = options["zoneName"] as? String else {
+        throw makeError(16, "zoneName obligatoriu")
+      }
+      let ownerName = (options["ownerName"] as? String) ?? CKCurrentUserDefaultName
+      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: ownerName)
+      let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
+      guard let record = try? await self.container.sharedCloudDatabase.record(for: shareID),
+            let share = record as? CKShare,
+            let displayName = Self.formatUserIdentity(share.owner.userIdentity) else {
+        return [:]
+      }
+      return ["ownerDisplayName": displayName]
+    }
+
     // ─── fetchZoneChanges ────────────────────────────────────────────────
     // Pull incremental dintr-o zonă (scope 'private' owner / 'shared' participant),
     // cu `sinceToken` → `newToken`. Loop `moreComing`; pe `.changeTokenExpired`
@@ -390,6 +436,27 @@ public class ExpoCloudKitShareModule: Module {
       for (_, r) in deleteResults { _ = try r.get() }
       return ["revoked": true]
     }
+
+    // ─── leaveShare ──────────────────────────────────────────────────────
+    // Participant side: renunță la accesul propriu. Ștergerea zonei direct
+    // din `sharedCloudDatabase` e respinsă de CloudKit („Zone delete not
+    // allowed") — mecanismul corect e ștergerea recordului CKShare din shared
+    // DB, pe care CloudKit îl interpretează ca auto-eliminare a participantului
+    // (owner-ul și restul participanților rămân neafectați). Owner-ul rulează
+    // simetricul pe `privateCloudDatabase` (`stopSharing` mai sus).
+    AsyncFunction("leaveShare") { (options: [String: Any]) async throws -> [String: Any] in
+      guard let zoneName = options["zoneName"] as? String else {
+        throw makeError(15, "zoneName obligatoriu")
+      }
+      let ownerName = (options["ownerName"] as? String) ?? CKCurrentUserDefaultName
+      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: ownerName)
+      let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
+      let (_, deleteResults) = try await self.container.sharedCloudDatabase.modifyRecords(
+        saving: [], deleting: [shareID]
+      )
+      for (_, r) in deleteResults { _ = try r.get() }
+      return ["left": true]
+    }
   }
 
   // MARK: - pushRecords helper
@@ -452,7 +519,12 @@ public class ExpoCloudKitShareModule: Module {
     controller.delegate = delegate
     // Reține delegate-ul cât trăiește controllerul (altfel e dealloc imediat).
     objc_setAssociatedObject(controller, &SharingDelegate.assocKey, delegate, .OBJC_ASSOCIATION_RETAIN)
-    controller.availablePermissions = [.allowReadWrite, .allowPrivate]
+    // .allowPublic ESTE necesar: fluxul de acceptare al aplicației e link-paste
+    // (`acceptShareURL`), nu invitație pe contact — fără el, sheet-ul forțează
+    // modul „doar persoane invitate", unde `share.publicPermission` (setat mai
+    // sus după alegerea „Doar citire"/„Poate edita") e ignorat de CloudKit, iar
+    // participantul primește read-only implicit indiferent de alegere.
+    controller.availablePermissions = [.allowPublic, .allowPrivate, .allowReadOnly, .allowReadWrite]
 
     if let popover = controller.popoverPresentationController {
       popover.sourceView = top.view
@@ -465,6 +537,25 @@ public class ExpoCloudKitShareModule: Module {
   }
 
   // MARK: - Helpers
+
+  /**
+   * Nume afișabil dintr-un `CKUserIdentity` — folosit pentru „partajat de la ...".
+   * NU confunda cu `CKRecordZone.ID.ownerName` (identificator opac CloudKit,
+   * niciodată un nume) — acela rămâne folosit strict pentru construcția
+   * `CKRecordZone.ID`/`CKRecord.ID` în celelalte funcții din acest modul.
+   * `nameComponents` poate lipsi dacă owner-ul nu e descoperibil (fără contact/
+   * profil public) — atunci încercăm email/telefon din `lookupInfo`, altfel nil.
+   */
+  private static func formatUserIdentity(_ identity: CKUserIdentity?) -> String? {
+    guard let identity = identity else { return nil }
+    if let components = identity.nameComponents {
+      let formatted = PersonNameComponentsFormatter.localizedString(from: components, style: .default)
+      if !formatted.isEmpty { return formatted }
+    }
+    if let email = identity.lookupInfo?.emailAddress { return email }
+    if let phone = identity.lookupInfo?.phoneNumber { return phone }
+    return nil
+  }
 
   private static func accountStatusString(_ status: CKAccountStatus) -> String {
     switch status {

@@ -848,6 +848,12 @@ safeAlterTable('ALTER TABLE shared_entities ADD COLUMN last_sync_error TEXT');
 safeAlterTable('ALTER TABLE cloud_records ADD COLUMN file_hash TEXT');
 safeAlterTable("ALTER TABLE pending_share_pushes ADD COLUMN kind TEXT NOT NULL DEFAULT 'document'");
 
+// Migrare: nume afișabil al owner-ului unui share primit (din CKUserIdentity),
+// SEPARAT de owner_name (care rămâne `CKRecordZone.ID.ownerName` — identificator
+// opac CloudKit, necesar pentru construcția zoneID în apelurile native, NU un
+// nume). owner_display_name poate rămâne NULL dacă owner-ul nu e descoperibil.
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_display_name TEXT');
+
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
 // origin: 'ai' | 'derived' | 'manual' — pentru filtrare și audit.
@@ -933,7 +939,10 @@ try {
     const { backfillDocumentExpiryReminders } = require('./reminders');
     await backfillDocumentExpiryReminders();
   } catch (e) {
-    console.warn('[initDb] backfillDocumentExpiryReminders failed:', e instanceof Error ? e.message : e);
+    console.warn(
+      '[initDb] backfillDocumentExpiryReminders failed:',
+      e instanceof Error ? e.message : e
+    );
   }
 })();
 

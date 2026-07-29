@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { LONG_PRESS_DELAY_MS } from '@/components/DraggableEntityList';
 import { toFileUri } from '@/services/fileUtils';
+import { primary } from '@/theme/colors';
 
 interface VehiclePhotoCardProps {
   photoUri: string;
@@ -15,6 +16,8 @@ interface VehiclePhotoCardProps {
   isActive: boolean;
   onPress: () => void;
   onLongPress: () => void;
+  /** Etichetă „partajat" — vezi EntitySharedBadge din EntityListCard. */
+  badgeLabel?: string;
 }
 
 export function VehiclePhotoCard({
@@ -24,6 +27,7 @@ export function VehiclePhotoCard({
   isActive,
   onPress,
   onLongPress,
+  badgeLabel,
 }: VehiclePhotoCardProps) {
   return (
     <Pressable
@@ -49,6 +53,11 @@ export function VehiclePhotoCard({
         {plateNumber ? (
           <Text style={styles.plate} numberOfLines={1}>
             {plateNumber}
+          </Text>
+        ) : null}
+        {badgeLabel ? (
+          <Text style={styles.badge} numberOfLines={1}>
+            {badgeLabel}
           </Text>
         ) : null}
       </View>
@@ -82,5 +91,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
     // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
     color: 'rgba(255,255,255,0.85)',
+  },
+  badge: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+    color: primary,
   },
 });

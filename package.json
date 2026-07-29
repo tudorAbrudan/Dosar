@@ -1,13 +1,14 @@
 {
   "name": "app",
   "main": "expo-router/entry",
-  "version": "3.11.0",
+  "version": "3.11.2",
   "expo": {
     "autolinking": {
       "nativeModulesDir": "./modules"
     }
   },
   "scripts": {
+    "postinstall": "patch-package",
     "start": "expo start --clear",
     "android": "expo run:android",
     "ios": "expo run:ios --device \"00008110-001E74AC0A52801E\"",
@@ -17,7 +18,7 @@
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,json}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json}\"",
-    "prebuild": "expo prebuild --clean && node scripts/patch-share-extension-swift.js",
+    "prebuild": "expo prebuild --clean && node scripts/patch-share-extension-swift.js && node scripts/patch-cloudkit-scene-delegate.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:characterization": "jest __tests__/characterization/ --runInBand",
@@ -155,6 +156,7 @@
     "eslint-plugin-prettier": "^5.1.3",
     "jest": "^29.7.0",
     "jest-expo": "^55.0.11",
+    "patch-package": "^8.0.1",
     "prettier": "^3.2.5",
     "standard-version": "^9.5.0",
     "typescript": "~5.9.2"

@@ -1,5 +1,13 @@
-import { useMemo } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 
@@ -9,7 +17,7 @@ import { useEntities } from '@/hooks/useEntities';
 import { useSharing } from '@/hooks/useSharing';
 import { ENTITY_TYPE_EMOJI, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
-import type { SharePermission } from '@/services/sharing';
+import type { SharedEntity, SharePermission } from '@/services/sharing';
 
 const PERMISSION_LABELS: Record<SharePermission, string> = {
   read: 'Doar citire',
@@ -38,7 +46,23 @@ export default function PartajareScreen() {
   const palette = scheme === 'dark' ? dark : light;
 
   const { persons, vehicles, properties, animals, companies } = useEntities();
-  const { shares, available, diagnostics, loading, error, share, revoke, sync } = useSharing();
+  const {
+    shares,
+    available,
+    diagnostics,
+    loading,
+    error,
+    share,
+    revoke,
+    leave,
+    sync,
+    acceptByURL,
+  } = useSharing();
+  // Cheia rândului aflat momentan într-un apel CloudKit (createSharedZone +
+  // pushRecords + shareZone durează câteva secunde) — arată un spinner cât
+  // timp userul altfel n-ar avea niciun semn că s-a întâmplat ceva.
+  const [sharingKey, setSharingKey] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState(false);
 
   const zoneDiagnostic = (type: EntityType, id: string) =>
     diagnostics.zones.find(z => z.entityType === type && z.entityId === id);
@@ -57,23 +81,55 @@ export default function PartajareScreen() {
   const ownedShares = useMemo(() => shares.filter(s => s.role === 'owner'), [shares]);
   const receivedShares = useMemo(() => shares.filter(s => s.role === 'participant'), [shares]);
 
+  // Numele real al entității primite — odată sincronizată, apare în `shareable`
+  // (aceleași liste locale). Înainte de primul sync reușit, cade pe eticheta de tip.
+  const entityNameByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of shareable) map.set(`${row.type}:${row.id}`, row.name);
+    return map;
+  }, [shareable]);
+
   const findOwnedShare = (type: EntityType, id: string) =>
     ownedShares.find(s => s.entity_type === type && s.entity_id === id);
   const isShared = (type: EntityType, id: string) => !!findOwnedShare(type, id);
 
   const onShare = (row: ShareableRow) => {
-    const doShare = (permission: SharePermission) =>
-      share(row.type, row.id, permission).catch(() => {
-        Alert.alert('Partajare', 'Nu s-a putut partaja. Verifică iCloud și conexiunea.');
-      });
-    Alert.alert(
-      'Partajează',
-      `Ce acces are persoana cu care partajezi „${row.name}"?`,
+    const rowKey = `${row.type}-${row.id}`;
+    const doShare = (permission: SharePermission) => {
+      setSharingKey(rowKey);
+      return share(row.type, row.id, permission)
+        .catch(() => {
+          Alert.alert('Partajare', 'Nu s-a putut partaja. Verifică iCloud și conexiunea.');
+        })
+        .finally(() => setSharingKey(null));
+    };
+    Alert.alert('Partajează', `Ce acces are persoana cu care partajezi „${row.name}"?`, [
+      { text: 'Anulează', style: 'cancel' },
+      { text: 'Doar citire', onPress: () => void doShare('read') },
+      { text: 'Poate edita', onPress: () => void doShare('readwrite') },
+    ]);
+  };
+
+  const onAcceptByURL = () => {
+    Alert.prompt(
+      'Am un link de partajare',
+      'Lipește link-ul de partajare primit (ex. WhatsApp).',
       [
         { text: 'Anulează', style: 'cancel' },
-        { text: 'Doar citire', onPress: () => void doShare('read') },
-        { text: 'Poate edita', onPress: () => void doShare('readwrite') },
-      ]
+        {
+          text: 'Acceptă',
+          onPress: (url?: string) => {
+            if (!url) return;
+            setAccepting(true);
+            void acceptByURL(url.trim())
+              .catch(() => {
+                Alert.alert('Partajare', 'Nu s-a putut accepta link-ul. Verifică-l și reîncearcă.');
+              })
+              .finally(() => setAccepting(false));
+          },
+        },
+      ],
+      'plain-text'
     );
   };
 
@@ -84,6 +140,23 @@ export default function PartajareScreen() {
       [
         { text: 'Anulează', style: 'cancel' },
         { text: 'Revocă', style: 'destructive', onPress: () => void revoke(row.type, row.id) },
+      ]
+    );
+  };
+
+  const onLeave = (s: SharedEntity) => {
+    const name =
+      entityNameByKey.get(`${s.entity_type}:${s.entity_id}`) ?? ENTITY_TYPE_LABELS[s.entity_type];
+    Alert.alert(
+      'Renunță la partajare',
+      `Nu mai primești actualizări pentru „${name}"? Ce ai văzut deja rămâne la tine.`,
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Renunță',
+          style: 'destructive',
+          onPress: () => void leave(s.entity_type, s.entity_id),
+        },
       ]
     );
   };
@@ -143,6 +216,7 @@ export default function PartajareScreen() {
               const ownedShare = findOwnedShare(row.type, row.id);
               const shared = !!ownedShare;
               const diag = shared ? zoneDiagnostic(row.type, row.id) : undefined;
+              const isSharing = sharingKey === `${row.type}-${row.id}`;
               return (
                 <View
                   key={`${row.type}-${row.id}`}
@@ -186,10 +260,16 @@ export default function PartajareScreen() {
                     <TouchableOpacity
                       onPress={() => onShare(row)}
                       style={[styles.actionPrimary, { backgroundColor: primary }]}
-                      disabled={!available}
+                      disabled={!available || isSharing}
                     >
-                      <Ionicons name="share-outline" size={16} color={onPrimary} />
-                      <Text style={styles.actionPrimaryText}>Partajează</Text>
+                      {isSharing ? (
+                        <ActivityIndicator size="small" color={onPrimary} />
+                      ) : (
+                        <Ionicons name="share-outline" size={16} color={onPrimary} />
+                      )}
+                      <Text style={styles.actionPrimaryText}>
+                        {isSharing ? 'Se partajează…' : 'Partajează'}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -199,7 +279,18 @@ export default function PartajareScreen() {
         </View>
 
         {/* Partajat cu mine */}
-        <Text style={[styles.section, { color: palette.textSecondary }]}>PARTAJAT CU MINE</Text>
+        <View style={styles.sectionRow}>
+          <Text style={[styles.section, styles.sectionInRow, { color: palette.textSecondary }]}>
+            PARTAJAT CU MINE
+          </Text>
+          <TouchableOpacity onPress={onAcceptByURL} disabled={accepting}>
+            {accepting ? (
+              <ActivityIndicator size="small" color={primary} />
+            ) : (
+              <Text style={[styles.sectionAction, { color: primary }]}>+ Am un link</Text>
+            )}
+          </TouchableOpacity>
+        </View>
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
           {receivedShares.length === 0 ? (
             <Text style={[styles.empty, { color: palette.textSecondary }]}>
@@ -222,10 +313,12 @@ export default function PartajareScreen() {
                   <Text style={styles.emoji}>{ENTITY_TYPE_EMOJI[s.entity_type]}</Text>
                   <View style={styles.rowText}>
                     <Text style={[styles.rowName, { color: palette.text }]} numberOfLines={1}>
-                      {ENTITY_TYPE_LABELS[s.entity_type]}
+                      {entityNameByKey.get(`${s.entity_type}:${s.entity_id}`) ??
+                        ENTITY_TYPE_LABELS[s.entity_type]}
                     </Text>
                     <Text style={[styles.rowSub, { color: palette.textSecondary }]}>
-                      {s.owner_name ?? 'partajat'} • {PERMISSION_LABELS[s.permission]}
+                      {s.owner_display_name ?? s.owner_name ?? 'partajat'} •{' '}
+                      {PERMISSION_LABELS[s.permission]}
                     </Text>
                     {diag?.lastSyncError ? (
                       <Text
@@ -240,6 +333,11 @@ export default function PartajareScreen() {
                       </Text>
                     ) : null}
                   </View>
+                  <TouchableOpacity onPress={() => onLeave(s)} style={styles.action}>
+                    <Text style={[styles.actionText, { color: statusColors.critical }]}>
+                      Renunță
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               );
             })
@@ -265,6 +363,16 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, marginTop: 8, lineHeight: 18 },
   error: { fontSize: 13, marginBottom: 8 },
   section: { fontSize: 12, fontWeight: '600', marginTop: 16, marginBottom: 6, marginLeft: 4 },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  sectionInRow: { marginTop: 0, marginBottom: 0, marginLeft: 0 },
+  sectionAction: { fontSize: 12, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
   emoji: { fontSize: 22 },
   rowText: { flex: 1 },

@@ -10,8 +10,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
 import { LONG_PRESS_DELAY_MS } from '@/components/DraggableEntityList';
 import Colors from '@/constants/Colors';
+import { primary } from '@/theme/colors';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+export interface EntitySharedBadge {
+  label: string;
+  icon: IoniconName;
+}
 
 interface EntityListCardProps {
   title: string;
@@ -23,6 +29,8 @@ interface EntityListCardProps {
   isActive: boolean;
   onPress: () => void;
   onLongPress: () => void;
+  /** Marcaj „partajată de mine" / „partajată cu mine (de la X)" — vezi hooks/useSharing.ts. */
+  badge?: EntitySharedBadge;
 }
 
 export function EntityListCard({
@@ -35,6 +43,7 @@ export function EntityListCard({
   isActive,
   onPress,
   onLongPress,
+  badge,
 }: EntityListCardProps) {
   const C = Colors[scheme];
   return (
@@ -61,6 +70,14 @@ export function EntityListCard({
           <Text style={[styles.sub, { color: C.textSecondary }]} numberOfLines={1}>
             {subtitle}
           </Text>
+        )}
+        {badge && (
+          <View style={styles.badgeRow}>
+            <Ionicons name={badge.icon} size={11} color={primary} />
+            <Text style={[styles.badgeText, { color: primary }]} numberOfLines={1}>
+              {badge.label}
+            </Text>
+          </View>
         )}
       </View>
       <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
@@ -99,4 +116,6 @@ const styles = StyleSheet.create({
   content: { flex: 1, justifyContent: 'center', gap: 2 },
   title: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
   sub: { fontSize: 12, lineHeight: 17 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
+  badgeText: { fontSize: 11, fontWeight: '600', lineHeight: 15 },
 });

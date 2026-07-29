@@ -70,6 +70,19 @@ export interface ShareZoneResult {
 export interface SharedZone {
   zoneName: string;
   ownerName: string;
+  /** Nume afișabil al owner-ului (din CKUserIdentity) — absent dacă owner-ul nu e descoperibil. */
+  ownerDisplayName?: string;
+}
+
+export interface FetchShareOwnerNameOptions {
+  zoneName: string;
+  /** `CKRecordZone.ID.ownerName` — identificatorul opac, nu numele. */
+  ownerName?: string;
+}
+
+export interface LeaveShareOptions {
+  zoneName: string;
+  ownerName?: string;
 }
 
 /** Fișier atașat unui record (devine CKAsset). */
@@ -209,6 +222,16 @@ export function listSharedZones(): Promise<SharedZone[]> {
   return NativeModule.listSharedZones();
 }
 
+/**
+ * Fallback manual: acceptă un CKShare direct dintr-un URL lipit de user
+ * (windowScene(_:userDidAcceptCloudKitShareWith:) nu se apelează fiabil pe
+ * toate versiunile iOS — vezi ExpoCloudKitShareModule.swift).
+ */
+export function acceptShareURL(url: string): Promise<SharedZone> {
+  if (!url) throw new Error('acceptShareURL: url obligatoriu');
+  return NativeModule.acceptShareURL(url);
+}
+
 /** Pull incremental dintr-o zonă (scope 'private' owner / 'shared' participant). */
 export function fetchZoneChanges(
   options: FetchZoneChangesOptions
@@ -243,6 +266,24 @@ export function subscribeDatabase(
 export function stopSharing(zoneName: string): Promise<{ revoked: boolean }> {
   if (!zoneName) throw new Error('stopSharing: zoneName obligatoriu');
   return NativeModule.stopSharing(zoneName);
+}
+
+/**
+ * Best-effort: numele afișabil al owner-ului unei zone, pentru zone descoperite
+ * prin `listSharedZones()` fără să fi trecut prin `acceptShareURL` (care are
+ * deja numele din metadata share-ului). Poate întoarce obiect gol.
+ */
+export function fetchShareOwnerName(
+  options: FetchShareOwnerNameOptions
+): Promise<{ ownerDisplayName?: string }> {
+  if (!options.zoneName) throw new Error('fetchShareOwnerName: zoneName obligatoriu');
+  return NativeModule.fetchShareOwnerName(options);
+}
+
+/** Participant: renunță la accesul propriu (owner-ul și ceilalți participanți nu sunt afectați). */
+export function leaveShare(options: LeaveShareOptions): Promise<{ left: boolean }> {
+  if (!options.zoneName) throw new Error('leaveShare: zoneName obligatoriu');
+  return NativeModule.leaveShare(options);
 }
 
 /**

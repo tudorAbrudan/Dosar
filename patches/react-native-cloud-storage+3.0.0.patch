@@ -1,0 +1,21 @@
+diff --git a/node_modules/react-native-cloud-storage/ios/RCTCloudStorageCloudKit.mm b/node_modules/react-native-cloud-storage/ios/RCTCloudStorageCloudKit.mm
+index 3098fa4..ee8aced 100644
+--- a/node_modules/react-native-cloud-storage/ios/RCTCloudStorageCloudKit.mm
++++ b/node_modules/react-native-cloud-storage/ios/RCTCloudStorageCloudKit.mm
+@@ -63,6 +63,16 @@ - (void)setEventEmitterCallback:(EventEmitterCallbackWrapper *)eventEmitterCallb
+ 
+ - (void)emitCloudAvailabilityChanged
+ {
++  // Guard: NSUbiquityIdentityDidChangeNotification can fire before React Native
++  // has wired up the TurboModule event emitter (e.g. right after an app update
++  // that changes iCloud entitlements, which makes iOS re-evaluate the ubiquity
++  // identity very early on first launch). Calling emitOnCloudAvailabilityChanged:
++  // at that point invokes an unset std::function and crashes with
++  // std::bad_function_call. setEventEmitterCallback: re-emits once it's ready,
++  // so skipping here just means catching up a moment later, not losing state.
++  if (!_eventEmitterCallback) {
++    return;
++  }
+   BOOL isCloudAvailable = [NSFileManager defaultManager].ubiquityIdentityToken != nil;
+   [self emitOnCloudAvailabilityChanged:@{ @"available" : @(isCloudAvailable) }];
+ }

@@ -28,6 +28,8 @@ import type { Document as DocType, DocumentType, EntityType } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntityReadOnly } from '@/hooks/useShareReadOnly';
 import { ReadOnlyShareBanner } from '@/components/ReadOnlyShareBanner';
+import { getShareForEntity } from '@/services/sharing';
+import { leaveEntityShare } from '@/services/cloudShare';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleLegalStatus } from '@/components/VehicleLegalStatus';
@@ -200,7 +202,10 @@ export default function EntityDetailScreen() {
 
   async function openLinkDoc() {
     if (isReadOnly) {
-      Alert.alert('Doar citire', 'Entitatea e partajată cu tine ca doar-citire — nu poți asocia documente.');
+      Alert.alert(
+        'Doar citire',
+        'Entitatea e partajată cu tine ca doar-citire — nu poți asocia documente.'
+      );
       return;
     }
     const all = await getDocuments();
@@ -236,12 +241,20 @@ export default function EntityDetailScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
+            const entityType = ENTITY_KIND_TO_TYPE[entityKind];
+            const share = await getShareForEntity(entityType, id!);
             if (entityKind === 'person_id') await deletePerson(id!);
             else if (entityKind === 'property_id') await deleteProperty(id!);
             else if (entityKind === 'vehicle_id') await deleteVehicle(id!);
             else if (entityKind === 'animal_id') await deleteAnimal(id!);
             else if (entityKind === 'company_id') await deleteCompany(id!);
             else await deleteCard(id!);
+            // Entitate primită prin partajare (drept de editare, altfel butonul
+            // e blocat mai sus) — curăță bookkeeping-ul de sharing, altfel
+            // rândul rămâne agățat în „Partajat cu mine" fără entitate locală.
+            if (share?.role === 'participant') {
+              await leaveEntityShare(entityType, id!).catch(() => {});
+            }
             router.back();
           } catch (e) {
             Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut șterge');
