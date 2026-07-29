@@ -16,6 +16,11 @@ npm run release:dry      # preview fără modificări
 
 ## [3.11.3] (2026-07-29) — build 73
 
+### Reparat — Lipsea ajustarea marginilor la poze adăugate într-un document existent
+- Când adăugai o poză din Galerie sau Din Fișiere la un document deja salvat (din editare sau din ecranul de detaliu), imaginea se salva direct, fără pasul de decupare a marginilor. Pasul exista doar la crearea unui document nou — același flux scris în trei locuri, două rămase în urmă.
+- Acum toate cele trei ecrane trec prin același `cropImage()`. Scanarea cu camera rămâne neschimbată (scanner-ul iOS face deja detecția marginilor și le poți ajusta acolo).
+- Adăugat `scripts/cropper-flow-audit.js` (strict, în `npm run audit` + pre-commit): pică dacă o imagine aleasă din galerie/fișiere ajunge salvată fără pasul de decupare. Verifică fiecare punct de alegere separat, deci un ecran cu o cale corectă și una ruptă nu mai trece.
+
 ### Adăugat — „Repară fișierele documentelor"
 - Setări → Backup și restaurare → „Repară fișierele documentelor": verifică fiecare poză/PDF referit de un document, de o pagină sau de un vehicul și corectează legăturile rupte (căi absolute rămase din formatul vechi, care se sparg la reinstalare pentru că iOS schimbă identificatorul folderului aplicației).
 - Aceeași verificare rulează tăcut la fiecare pornire, deci de obicei se repară singură.

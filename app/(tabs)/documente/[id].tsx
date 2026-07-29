@@ -18,7 +18,15 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import { DocumentDetailCard } from '@/components/DocumentDetailCard';
 import { DocumentDetailRow } from '@/components/DocumentDetailRow';
 import { useColorScheme } from '@/components/useColorScheme';
-import { light, dark, primary, sensitive, sensitiveBorder, sensitiveBg, statusColors } from '@/theme/colors';
+import {
+  light,
+  dark,
+  primary,
+  sensitive,
+  sensitiveBorder,
+  sensitiveBg,
+  statusColors,
+} from '@/theme/colors';
 import {
   getDocumentById,
   deleteDocument,
@@ -61,7 +69,8 @@ import { FullscreenPdfModal } from '@/components/document/FullscreenPdfModal';
 import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
 import { DuplicateGroupsCard } from '@/components/document/DuplicateGroupsCard';
 import { scanDocumentPages } from '@/services/documentScanner';
-import { processDocumentImage } from '@/services/imageProcessing';
+import { saveImageAsPage } from '@/services/documentPageStorage';
+import { cropImage } from '@/services/cropperBridge';
 import {
   getDocumentLabel,
   ENTITY_TYPE_EMOJI,
@@ -102,20 +111,14 @@ function renderMarkdown(text: string, textColor: string): ReactNode {
     if (trimmed.startsWith('- ')) {
       const content = trimmed.slice(2);
       return (
-        <Text
-          key={idx}
-          style={{ color: textColor, fontSize: 14, lineHeight: 20, marginBottom: 4 }}
-        >
+        <Text key={idx} style={{ color: textColor, fontSize: 14, lineHeight: 20, marginBottom: 4 }}>
           {'•  '}
           {renderInlineMarkdown(content)}
         </Text>
       );
     }
     return (
-      <Text
-        key={idx}
-        style={{ color: textColor, fontSize: 14, lineHeight: 20, marginBottom: 4 }}
-      >
+      <Text key={idx} style={{ color: textColor, fontSize: 14, lineHeight: 20, marginBottom: 4 }}>
         {renderInlineMarkdown(trimmed)}
       </Text>
     );
@@ -175,64 +178,61 @@ export default function DocumentDetailScreen() {
     refreshReminders();
   }, [refreshReminders]);
 
-  const runReExtractAndReport = useCallback(
-    async (docId: string) => {
-      // User-initiated re-extract: resetează flag-ul de prompt ca extractor-ul
-      // să poată repopula pending_reminders_json (guard din medicalExtractor.ts
-      // §540 împiedică suprascrierea dacă utilizatorul a fost deja promptat).
-      // Asta permite modal-ul să reapară cu noile recomandări.
-      await setMedicalRemindersPromptedAt(docId, null);
-      const { extractFromDocument } = await import('@/services/medicalExtractor');
-      const result = await extractFromDocument(docId);
-      const updated = await getDocumentById(docId);
-      setDoc(updated);
-      // Și refresh entity links ca să se vadă noul medical_record în diagnostic.
-      const links = await getDocumentEntityLinks(docId);
-      setEntityLinks(links);
-      const itemsCount = updated?.pending_reminders_json
-        ? (() => {
-            try {
-              return JSON.parse(updated.pending_reminders_json).length;
-            } catch {
-              return 0;
-            }
-          })()
-        : 0;
-      // Pentru eșec (status='failed') arătăm doar mesajul AI ca să știe userul
-      // de ce (de obicei: limită zilnică atinsă sau cheie API expirată).
-      if (result.status === 'failed') {
-        const aiError = result.debug?.llm_response_sample ?? 'Eroare necunoscută la apelul AI.';
-        Alert.alert(
-          'Extragere AI eșuată',
-          `${aiError.slice(0, 300)}\n\nVerifică Setări → Asistent AI dacă ai cheie validă sau limită rămasă.`
-        );
-        return;
-      }
-      // Pentru ne-eșec arătăm sumar succint, explicând clar CE s-a întâmplat
-      // (utilizatorul confunda „re-extrage" cu „rezumă nota").
-      const statusLine =
-        result.status === 'ok'
-          ? `${result.inserted} ${result.inserted === 1 ? 'valoare numerică extrasă' : 'valori numerice extrase'} (analize)`
-          : result.status === 'no_data'
-            ? 'AI a citit documentul, dar nu a găsit valori numerice de extras'
-            : `Extragere observații: ${result.status}`;
+  const runReExtractAndReport = useCallback(async (docId: string) => {
+    // User-initiated re-extract: resetează flag-ul de prompt ca extractor-ul
+    // să poată repopula pending_reminders_json (guard din medicalExtractor.ts
+    // §540 împiedică suprascrierea dacă utilizatorul a fost deja promptat).
+    // Asta permite modal-ul să reapară cu noile recomandări.
+    await setMedicalRemindersPromptedAt(docId, null);
+    const { extractFromDocument } = await import('@/services/medicalExtractor');
+    const result = await extractFromDocument(docId);
+    const updated = await getDocumentById(docId);
+    setDoc(updated);
+    // Și refresh entity links ca să se vadă noul medical_record în diagnostic.
+    const links = await getDocumentEntityLinks(docId);
+    setEntityLinks(links);
+    const itemsCount = updated?.pending_reminders_json
+      ? (() => {
+          try {
+            return JSON.parse(updated.pending_reminders_json).length;
+          } catch {
+            return 0;
+          }
+        })()
+      : 0;
+    // Pentru eșec (status='failed') arătăm doar mesajul AI ca să știe userul
+    // de ce (de obicei: limită zilnică atinsă sau cheie API expirată).
+    if (result.status === 'failed') {
+      const aiError = result.debug?.llm_response_sample ?? 'Eroare necunoscută la apelul AI.';
       Alert.alert(
-        'Re-extragere AI terminată',
-        [
-          'Textul documentului a fost trimis la AI pentru analiză.',
-          '',
-          `• ${statusLine}`,
-          updated?.ai_summary
-            ? '• Rezumat AI generat (vezi secțiunea „Rezumat AI")'
-            : '• Rezumat AI: nu a fost generat',
-          itemsCount > 0
-            ? `• ${itemsCount} recomandări cu termen — deschide dosarul medical pentru calendar`
-            : '• Niciun reminder cu termen explicit',
-        ].join('\n')
+        'Extragere AI eșuată',
+        `${aiError.slice(0, 300)}\n\nVerifică Setări → Asistent AI dacă ai cheie validă sau limită rămasă.`
       );
-    },
-    []
-  );
+      return;
+    }
+    // Pentru ne-eșec arătăm sumar succint, explicând clar CE s-a întâmplat
+    // (utilizatorul confunda „re-extrage" cu „rezumă nota").
+    const statusLine =
+      result.status === 'ok'
+        ? `${result.inserted} ${result.inserted === 1 ? 'valoare numerică extrasă' : 'valori numerice extrase'} (analize)`
+        : result.status === 'no_data'
+          ? 'AI a citit documentul, dar nu a găsit valori numerice de extras'
+          : `Extragere observații: ${result.status}`;
+    Alert.alert(
+      'Re-extragere AI terminată',
+      [
+        'Textul documentului a fost trimis la AI pentru analiză.',
+        '',
+        `• ${statusLine}`,
+        updated?.ai_summary
+          ? '• Rezumat AI generat (vezi secțiunea „Rezumat AI")'
+          : '• Rezumat AI: nu a fost generat',
+        itemsCount > 0
+          ? `• ${itemsCount} recomandări cu termen — deschide dosarul medical pentru calendar`
+          : '• Niciun reminder cu termen explicit',
+      ].join('\n')
+    );
+  }, []);
 
   const handleReExtractMedical = useCallback(async () => {
     if (!doc) return;
@@ -279,10 +279,7 @@ export default function DocumentDetailScreen() {
                     });
                     await runReExtractAndReport(doc.id);
                   } catch (e) {
-                    Alert.alert(
-                      'Eroare',
-                      e instanceof Error ? e.message : 'Eroare necunoscută'
-                    );
+                    Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
                   } finally {
                     setReExtracting(false);
                   }
@@ -296,10 +293,7 @@ export default function DocumentDetailScreen() {
 
       await runReExtractAndReport(doc.id);
     } catch (e) {
-      Alert.alert(
-        'Eroare re-extragere',
-        e instanceof Error ? e.message : 'Eroare necunoscută'
-      );
+      Alert.alert('Eroare re-extragere', e instanceof Error ? e.message : 'Eroare necunoscută');
     } finally {
       setReExtracting(false);
     }
@@ -517,17 +511,18 @@ export default function DocumentDetailScreen() {
     setDoc(updated);
   }
 
+  /** Galerie / Din Fișiere → ajustare margini, apoi salvare ca pagină.
+   *  Scanner-ul nativ NU trece pe aici (face deja detecția marginilor). */
+  async function cropAndAddPage(uri: string) {
+    const croppedUri = await cropImage(uri);
+    if (!croppedUri) return;
+    await saveAndAddPage(croppedUri);
+  }
+
   async function saveAndAddPage(uri: string) {
     if (!doc) return;
     try {
-      const filename = `doc_${Date.now()}.jpg`;
-      const relativePath = `documents/${filename}`;
-      const dest = `${FileSystem.documentDirectory}${relativePath}`;
-      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {
-        intermediates: true,
-      });
-      const processedUri = await processDocumentImage(uri, doc.type);
-      await FileSystem.copyAsync({ from: processedUri, to: dest });
+      const { relativePath } = await saveImageAsPage(uri, doc.type);
       if (!doc.file_path) {
         await updateDocument(doc.id, {
           type: doc.type,
@@ -664,7 +659,7 @@ export default function DocumentDetailScreen() {
             mediaTypes: ['images'],
             quality: 1,
           });
-          if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
+          if (!result.canceled && result.assets[0]) await cropAndAddPage(result.assets[0].uri);
         },
       },
       {
@@ -676,7 +671,7 @@ export default function DocumentDetailScreen() {
               copyToCacheDirectory: true,
             });
             if (!result.canceled && result.assets[0]?.uri) {
-              await saveAndAddPage(result.assets[0].uri);
+              await cropAndAddPage(result.assets[0].uri);
             }
           } catch (e) {
             Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta imaginea');
@@ -796,9 +791,7 @@ export default function DocumentDetailScreen() {
                 // Dacă tipul efectiv e NO_EXPIRY, scriem explicit `undefined`
                 // ca să curățăm orice expiry stale; altfel păstrăm valoarea
                 // existentă dacă OCR nu a găsit ceva nou.
-                const finalExpiry = allowExpiry
-                  ? (newExpiry ?? doc!.expiry_date)
-                  : undefined;
+                const finalExpiry = allowExpiry ? (newExpiry ?? doc!.expiry_date) : undefined;
                 await updateDocument(doc!.id, {
                   type: typeChanged ? effectiveType : doc!.type,
                   issue_date: newIssue ?? doc!.issue_date,

@@ -17,7 +17,7 @@ import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { primary, primaryMuted, sensitiveBorder, sensitiveBg } from '@/theme/colors';
-import { awaitCropper, makeRequestId } from '@/services/cropperBridge';
+import { awaitCropper, makeRequestId, cropImage } from '@/services/cropperBridge';
 import { useDocuments } from '@/hooks/useDocuments';
 import { useEntities } from '@/hooks/useEntities';
 import { scheduleExpirationReminders } from '@/services/notifications';
@@ -1061,10 +1061,7 @@ export default function AddDocumentScreen() {
   /** Trimite imaginea prin cropper (fullScreenModal) și salvează rezultatul
    *  ca pagină. Folosit de ambele surse: Galerie și Fișiere. */
   async function cropAndProcessImage(uri: string) {
-    const requestId = makeRequestId();
-    const cropPromise = awaitCropper(requestId);
-    router.push({ pathname: '/cropper', params: { uri, requestId } });
-    const croppedUri = await cropPromise;
+    const croppedUri = await cropImage(uri);
     if (!croppedUri) return;
 
     // Imaginea cropped a fost generată de expo-perspective-crop → EXIF

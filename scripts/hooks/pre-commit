@@ -16,6 +16,7 @@
 #   8. modal-input-audit (warn)              — Modal transparent cu input
 #   8b. double-modal-audit (warn)            — ≥2 Modal-like siblings cu visible distinct (iOS stacking)
 #   8c. alert-modal-race-audit (--strict)    — Alert.alert onPress deschide Modal direct (iOS present-on-presenting)
+#   8d. cropper-flow-audit (--strict)        — imagine din galerie/fișiere salvată fără pasul de decupare margini
 #   9. expo-public-secrets-audit (warn)      — EXPO_PUBLIC_* cu nume de secret
 #  10. pin-secure-store-audit (--strict)     — PIN în AsyncStorage
 #  11. medical-ai-summary-isolation (strict) — ai_summary/pending_reminders nu leak în FTS/chat
@@ -61,6 +62,9 @@ node scripts/double-modal-audit.js
 
 echo "▸ Alert→Modal race audit (strict — flag Alert.alert onPress care deschide Modal direct)..."
 node scripts/alert-modal-race-audit.js --strict
+
+echo "▸ Cropper flow audit (strict — imagine aleasă din galerie/fișiere fără pas de decupare)..."
+node scripts/cropper-flow-audit.js --strict
 
 echo "▸ EXPO_PUBLIC secrets audit (warn în hook — finding critic în .env)..."
 node scripts/expo-public-secrets-audit.js

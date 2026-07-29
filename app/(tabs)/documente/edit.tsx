@@ -50,6 +50,7 @@ import { extractDocumentInfo, detectDocumentType, formatOcrSummary } from '@/ser
 import { ocrWithAutoRotate } from '@/services/ocrAutoRotate';
 import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
+import { cropImage } from '@/services/cropperBridge';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
@@ -364,7 +365,11 @@ export default function EditDocumentScreen() {
       // din candidați ca reclasificarea să nu escaladeze la fluxul medical.
       const classifyCandidates = await filterMedicalCandidatesForAi(undefined, entityLinks);
       try {
-        const classify = await classifyDocument(doc?.ocr_text ?? '', imageBase64, classifyCandidates);
+        const classify = await classifyDocument(
+          doc?.ocr_text ?? '',
+          imageBase64,
+          classifyCandidates
+        );
         console.warn(
           `[runAiImageAnalysis] classify: type=${classify.type} conf=${classify.confidence.toFixed(2)} current=${type} top3=${classify.top3.map(t => `${t.type}:${t.confidence.toFixed(2)}`).join(',')}`
         );
@@ -463,6 +468,14 @@ export default function EditDocumentScreen() {
     }
   }
 
+  /** Galerie / Din Fișiere → ajustare margini, apoi salvare ca pagină.
+   *  Scanner-ul nativ NU trece pe aici (face deja detecția marginilor). */
+  async function cropAndAddPage(uri: string) {
+    const croppedUri = await cropImage(uri);
+    if (!croppedUri) return;
+    await saveAndAddPage(croppedUri);
+  }
+
   async function saveAndAddPage(uri: string) {
     if (!doc) return;
     try {
@@ -539,7 +552,7 @@ export default function EditDocumentScreen() {
             mediaTypes: ['images'],
             quality: 1,
           });
-          if (!result.canceled && result.assets[0]) await saveAndAddPage(result.assets[0].uri);
+          if (!result.canceled && result.assets[0]) await cropAndAddPage(result.assets[0].uri);
         },
       },
       {
@@ -551,7 +564,7 @@ export default function EditDocumentScreen() {
               copyToCacheDirectory: true,
             });
             if (!result.canceled && result.assets[0]?.uri) {
-              await saveAndAddPage(result.assets[0].uri);
+              await cropAndAddPage(result.assets[0].uri);
             }
           } catch (e) {
             Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut selecta imaginea');
@@ -806,7 +819,10 @@ export default function EditDocumentScreen() {
             entityName: entityName ?? undefined,
             documentId: doc.id,
             note: note.trim() || undefined,
-            displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
+            displayLabel: getDocumentLabel(
+              { type, custom_type_id: customTypeId ?? undefined },
+              customTypes
+            ),
           });
           if (newId && newId !== hasEvent) await setDocumentCalendarEventId(doc.id, newId);
         } else {
@@ -842,7 +858,10 @@ export default function EditDocumentScreen() {
           expiryDate: finalExpiry,
           entityName: entityName ?? undefined,
           note: note.trim() || undefined,
-          displayLabel: getDocumentLabel({ type, custom_type_id: customTypeId ?? undefined }, customTypes),
+          displayLabel: getDocumentLabel(
+            { type, custom_type_id: customTypeId ?? undefined },
+            customTypes
+          ),
           onDone: navigateBack,
         });
         return;
