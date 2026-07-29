@@ -25,9 +25,10 @@ npm run release:dry      # preview fără modificări
 ### Reparat — Eroare criptică la „Trimite documentul la AI"
 - Când fișierul imaginii lipsea de pe telefon, mesajul era o cale internă `/var/mobile/Containers/...` trunchiată. Acum spune ce s-a întâmplat și trimite la reparare.
 
-### Reparat — Asistentul nu găsea informații care există în documente
-- Căutarea în textul OCR folosea exact cuvintele din întrebare: la „ce dimensiune au cauciucurile", documentul care scrie „ANVELOPE" nu era considerat relevant, primea doar un fragment scurt din text și AI-ul răspundea că informația nu apare în acte. Adăugate grupuri de sinonime (cauciuc/anvelopă/pneu, șasiu/caroserie, cilindree, proprietar/titular ș.a.).
-- La întrebări țintite pe puține documente, fiecare document trimite acum textul OCR complet (6000 de caractere în loc de 1000-3000), ca informația căutată să nu cadă în partea tăiată.
+### Îmbunătățit — Asistentul găsește mai bine informațiile din documente
+- Căutarea în textul OCR folosea exact cuvintele din întrebare, deci „ce dimensiune au cauciucurile" nu potrivea un document care scrie „ANVELOPE". Adăugate grupuri de sinonime (cauciuc/anvelopă/pneu, șasiu/caroserie, cilindree, proprietar/titular ș.a.).
+- La întrebări țintite pe puține documente, fiecare document trimite acum textul OCR complet (6000 de caractere în loc de 1000), ca informația căutată să nu cadă în partea tăiată — relevant pentru acte dense, unde datele tehnice stau spre final.
+- Notă: aceste două schimbări NU explică sesizarea din 2026-07-29 („asistentul zice că dimensiunea anvelopelor nu apare în acte"). Acolo cauza a fost alta: documentul nu avea deloc text OCR, iar asistentul nu citește pozele. Sunt îmbunătățiri care contează după ce documentul are text extras.
 
 ## [3.11.2] (2026-07-29) — build 72
 
