@@ -14,6 +14,51 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.11.3] (2026-07-29) — build 73
+
+### Adăugat — „Repară fișierele documentelor"
+- Setări → Backup și restaurare → „Repară fișierele documentelor": verifică fiecare poză/PDF referit de un document, de o pagină sau de un vehicul și corectează legăturile rupte (căi absolute rămase din formatul vechi, care se sparg la reinstalare pentru că iOS schimbă identificatorul folderului aplicației).
+- Aceeași verificare rulează tăcut la fiecare pornire, deci de obicei se repară singură.
+- Raportează explicit fișierele care chiar lipsesc de pe telefon — până acum, un document rămas fără fișiere arăta pur și simplu gol, iar problema apărea abia ca eroare tehnică în engleză la „Trimite documentul la AI".
+- Nu șterge nimic niciodată: nici rândurile din bază, nici fișierele nefolosite (originalele dinainte de decupare) — exact ele au permis recuperarea unui document pe 2026-07-29.
+
+### Reparat — Eroare criptică la „Trimite documentul la AI"
+- Când fișierul imaginii lipsea de pe telefon, mesajul era o cale internă `/var/mobile/Containers/...` trunchiată. Acum spune ce s-a întâmplat și trimite la reparare.
+
+### Reparat — Asistentul nu găsea informații care există în documente
+- Căutarea în textul OCR folosea exact cuvintele din întrebare: la „ce dimensiune au cauciucurile", documentul care scrie „ANVELOPE" nu era considerat relevant, primea doar un fragment scurt din text și AI-ul răspundea că informația nu apare în acte. Adăugate grupuri de sinonime (cauciuc/anvelopă/pneu, șasiu/caroserie, cilindree, proprietar/titular ș.a.).
+- La întrebări țintite pe puține documente, fiecare document trimite acum textul OCR complet (6000 de caractere în loc de 1000-3000), ca informația căutată să nu cadă în partea tăiată.
+
+## [3.11.2] (2026-07-29) — build 72
+
+### Reparat — Permisiune „Poate edita" ignorată la partajare
+- **Cauză:** sheet-ul nativ de partajare (`UICloudSharingController`) era limitat la modul „doar persoane invitate" (`.allowPrivate`), fără opțiunea „oricine are link-ul" (`.allowPublic`). În acel mod, `publicPermission` (setat corect după alegerea „Doar citire"/„Poate edita" din aplicație) era ignorat de CloudKit, iar participantul primea acces read-only indiferent de alegere — exact fluxul folosit de aplicație (link copiat/lipit, nu invitație pe contact).
+- Fix: adăugat `.allowPublic` la `availablePermissions`.
+
+### Reparat — Numele owner-ului la „Partajat cu mine"
+- Câmpul afișat era `CKRecordZone.ID.ownerName` — un identificator opac CloudKit, nu un nume real (apărea ca un șir aiurea, nu ca numele persoanei). Acum se obține numele afișabil real din `CKUserIdentity` (la acceptarea link-ului, sau printr-un fetch separat pentru zonele descoperite altfel), păstrat separat de identificatorul opac (folosit în continuare intern pentru apelurile CloudKit).
+- Titlul rândului din „Partajat cu mine" arată acum numele real al entității (ex. „Golf"), nu doar tipul generic („Vehicul").
+
+### Adăugat — Participantul poate renunța la o partajare primită
+- Buton „Renunță" pe fiecare rând din „Partajat cu mine" — oprește sincronizarea din partea ta, fără să afecteze owner-ul sau ceilalți participanți (ce ai văzut deja rămâne la tine). Anterior doar owner-ul putea opri partajarea.
+- Ștergerea locală a unei entități primite curăță acum corect bookkeeping-ul de partajare (nu mai rămâne agățată în listă fără date).
+
+### Adăugat — Marcaj vizual pentru entitățile partajate
+- În lista de Entități, entitățile partajate (de tine sau cu tine) au acum un mic marcaj distinctiv (owner: „Partajată"; participant: numele celui care a partajat).
+
+## [3.11.1] (2026-07-29) — build 71
+
+### Reparat — Crash la Partajează (prima folosire după update)
+- **Aplicația nu mai crapă la primul tap pe „Partajează".** Cauză: `react-native-cloud-storage` (librăria de backup iCloud) încerca să trimită un eveniment către JS printr-un callback neinițializat (`std::bad_function_call`), declanșat de notificarea de schimbare a identității iCloud care apare des la prima lansare după un update cu entitlements noi. Patch aplicat prin `patch-package` (gardă pe callback-ul neinițializat).
+
+### Reparat — Entitatea partajată nu apărea la participant
+- **Cauză confirmată pe device:** pe iOS 26, `windowScene(_:userDidAcceptCloudKitShareWith:)` (înlocuitorul handler-ului vechi din `AppDelegate`) nu se apelează deloc, deși iOS confirmă acceptarea share-ului la nivel de sistem — o limitare/bug de platformă, nu de cod.
+- **Flux manual de rezervă:** ecranul Partajare → „Partajat cu mine" → „+ Am un link" — participantul lipește URL-ul primit (WhatsApp etc.), iar aplicația acceptă direct share-ul (`CKFetchShareMetadataOperation` + `accept`), ocolind complet handler-ul de sistem.
+- Adăugat și `SceneDelegate` propriu (cerut de `UIApplicationSceneManifest`) — bootstrap-ul React Native mutat din `AppDelegate` acolo unde iOS îl cere pentru aplicații cu scene.
+
+### Îmbunătățit — Feedback vizual la partajare
+- Buton „Partajează" arată spinner + „Se partajează…" cât timp durează apelurile CloudKit (câteva secunde), ca userul să știe că se întâmplă ceva.
+
 ## [3.10.1] (2026-07-27) — build 69
 
 ### Reparat — Partajare entități (recepția la destinatar)

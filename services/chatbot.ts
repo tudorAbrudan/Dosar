@@ -174,16 +174,54 @@ const STOP_WORDS = new Set([
 ]);
 
 /**
+ * Grupuri de sinonime: cuvântul din întrebarea utilizatorului diferă de cel
+ * tipărit în document. Un termen care începe cu oricare rădăcină din grup
+ * caută în OCR TOATE rădăcinile grupului.
+ *
+ * Ex. real (2026-07-29): „ce dimensiune au cauciucurile la Westfalia?" — cartea
+ * de identitate a vehiculului scrie „ANVELOPE", niciodată „cauciucuri", deci
+ * documentul nu era găsit de căutarea în OCR și primea doar bugetul scurt de
+ * text → AI-ul răspundea că informația nu apare în acte.
+ *
+ * Reguli pentru rădăcini noi: minim 4 caractere și fără substringuri ambigue
+ * (căutarea e `includes`, deci „vin" ar prinde și „vinietă", „kg" orice).
+ */
+const OCR_SYNONYM_GROUPS: readonly (readonly string[])[] = [
+  ['cauciuc', 'anvelop', 'pneu', 'reifen', 'bereifung'],
+  ['jant', 'roata', 'roti'],
+  ['motorin', 'diesel'],
+  ['benzin', 'ottokraftstoff'],
+  ['proprietar', 'titular', 'detinator', 'halter'],
+  ['sasiu', 'caroserie', 'fahrgestell'],
+  ['cilindree', 'cilindrica', 'hubraum'],
+  ['culoare', 'farbe'],
+];
+
+/** Adaugă la termenii extrași rădăcinile sinonime din același grup. */
+function expandWithSynonyms(terms: string[]): string[] {
+  const expanded = new Set(terms);
+  for (const term of terms) {
+    for (const group of OCR_SYNONYM_GROUPS) {
+      if (!group.some(root => term.startsWith(root))) continue;
+      for (const root of group) expanded.add(root);
+    }
+  }
+  return [...expanded];
+}
+
+/**
  * Extrage termeni de căutare semnificativi din mesajul userului.
- * Elimină prefixul de mențiuni, stop words și cuvinte prea scurte.
+ * Elimină prefixul de mențiuni, stop words și cuvinte prea scurte, apoi
+ * adaugă sinonimele documentare (vezi `OCR_SYNONYM_GROUPS`).
  */
 function extractSearchTerms(message: string): string[] {
   const clean = message.replace(/^\[Context mențiuni:[^\]]*\]\n?/, '');
   const norm = normalize(clean);
-  return norm
+  const terms = norm
     .split(/\s+/)
     .map(w => w.replace(/[^a-z0-9]/g, ''))
     .filter(w => w.length >= 3 && !STOP_WORDS.has(w));
+  return expandWithSynonyms(terms);
 }
 
 /**
@@ -298,13 +336,24 @@ function collectHistoryMentions(history: ChatMessage[], lastN = 6): Set<string> 
 // ─── Construire context filtrat ───────────────────────────────────────────────
 
 // Limite pentru provider-e remote (Mistral cloud / OpenAI etc., context 32K+).
+// `ocrLimitFull` primesc doar documentele găsite prin căutare în OCR sau o
+// selecție îngustă (vezi FULL_OCR_DOC_BUDGET), deci worst-case sunt 8 × 6000 =
+// 48K caractere ≈ 12K tokeni — confortabil pentru Mistral Large.
 const REMOTE_LIMITS = {
   maxDocsFull: 80,
   maxDocsFiltered: 40,
   noteLimit: 500,
   ocrLimit: 1000,
-  ocrLimitFull: 3000,
+  ocrLimitFull: 6000,
 } as const;
+
+/**
+ * Câte documente pot primi OCR-ul complet într-un răspuns. Când întrebarea e
+ * țintită (mențiune de entitate / filtru de tip) și rămân puține documente,
+ * fiecare primește `ocrLimitFull` — altfel informația cerută poate cădea exact
+ * în partea tăiată a textului OCR (regresia „dimensiune cauciucuri", 2026-07-29).
+ */
+const FULL_OCR_DOC_BUDGET = 8;
 
 // Limite pentru model local pe device (context util ~8K tokeni — n_ctx pe GPU
 // e plafonat de memoria Metal a A15, vezi localModel.ts). buildAppKnowledge()
@@ -525,6 +574,10 @@ async function buildContext(
     ].slice(0, maxDocs);
   }
 
+  // Întrebare țintită pe puține documente → fiecare primește OCR-ul complet,
+  // nu doar cele care au potrivit textual pe termenii căutării.
+  const narrowSelection = isFiltered && filteredDocs.length <= FULL_OCR_DOC_BUDGET;
+
   // ── Construire string context ──────────────────────────────────────────────
 
   const lines: string[] = ['=== DATE APLICAȚIE ==='];
@@ -602,9 +655,10 @@ async function buildContext(
 
   for (const doc of filteredDocs) {
     // OCR limit per document:
-    // - găsit prin căutare text → OCR complet (limits.ocrLimitFull)
+    // - găsit prin căutare text SAU selecție îngustă → OCR complet (ocrLimitFull)
     // - restul → limits.ocrLimit
-    const ocrLimit = ocrMatchedIds.has(doc.id) ? limits.ocrLimitFull : limits.ocrLimit;
+    const ocrLimit =
+      ocrMatchedIds.has(doc.id) || narrowSelection ? limits.ocrLimitFull : limits.ocrLimit;
     const entity =
       persons.find(p => p.id === doc.person_id)?.name ??
       vehicles.find(v => v.id === doc.vehicle_id)?.name ??

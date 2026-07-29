@@ -960,3 +960,16 @@ try {
     );
   }
 })();
+
+// Reparare căi de fișiere rupte de o schimbare de container iOS (reinstalare,
+// restore, trecere dev build → App Store). Rândurile cu cale absolută din
+// containerul vechi sunt rescrise la calea relativă a fișierului real de pe
+// disc. Idempotentă și non-distructivă — vezi `services/filePathRepair.ts`.
+(async () => {
+  try {
+    const { repairFilePathsOnStartup } = require('./filePathRepair');
+    await repairFilePathsOnStartup();
+  } catch (e) {
+    console.warn('[initDb] repairFilePaths failed:', e instanceof Error ? e.message : e);
+  }
+})();

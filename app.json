@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dosar",
     "slug": "dosar-documente",
-    "version": "3.11.0",
+    "version": "3.11.3",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "acte",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ax.documente",
-      "buildNumber": "70",
+      "buildNumber": "73",
       "deploymentTarget": "16.0",
       "usesIcloudStorage": true,
       "entitlements": {
@@ -36,6 +36,17 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [
+              {
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "$(PRODUCT_MODULE_NAME).SceneDelegate"
+              }
+            ]
+          }
+        },
         "NSCalendarsUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
         "NSCalendarsFullAccessUsageDescription": "Aplicația adaugă remindere de expirare documente în calendarul tău.",
         "NSRemindersUsageDescription": "Aplicația poate adăuga remindere pentru expirarea documentelor.",

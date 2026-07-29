@@ -393,6 +393,16 @@ export function humanizeAiError(e: unknown): string {
     return 'Fără conexiune la internet. Verifică rețeaua și încearcă din nou.';
   }
 
+  // Fișierul imaginii lipsește de la calea din DB — tipic după o reinstalare sau
+  // un restore care schimbă UUID-ul containerului iOS. Mesajul brut e o cale
+  // `/var/mobile/Containers/...` inutilă pentru user; îl trimitem la reparare.
+  if (/does not exist|no such file|isn't readable|readAsStringAsync/i.test(raw)) {
+    return (
+      'Fișierul imaginii nu se găsește pe telefon. Mergi în Setări → Backup și restaurare → ' +
+      '„Repară fișierele documentelor" și încearcă din nou.'
+    );
+  }
+
   // Erorile noastre `Eroare AI (<status>): <body brut>` — mapăm status-ul,
   // aruncăm body-ul (poate conține JSON englez de la provider).
   const statusMatch = raw.match(/^Eroare AI \((\d{3})\)/);

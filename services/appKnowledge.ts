@@ -181,6 +181,15 @@ Aplicația poate salva automat copii ale documentelor în iCloud Drive-ul person
 - **Coexistă cu backup manual ZIP:** opțiunea de export ZIP din Setări (pentru Drive / oriunde) rămâne disponibilă în paralel cu backup-ul automat.
 - **Disponibilitate:** doar pe iOS cu iCloud Drive activ în Setări iOS și logat la Apple ID. Pe Android funcționează doar export ZIP manual.
 
+## Repară fișierele documentelor (poze care nu se mai afișează)
+
+Dacă pozele unui document nu se mai văd, iar OCR-ul sau trimiterea la AI dă eroare de tipul „File ... does not exist", legătura dintre document și fișierul de pe telefon s-a rupt — se întâmplă după o reinstalare sau o restaurare, care schimbă identificatorul intern al folderului aplicației.
+
+- **Unde:** Setări → „Backup și restaurare" → „Repară fișierele documentelor".
+- **Ce face:** caută fișierele reale pe telefon și corectează legăturile din aplicație. Nu șterge nimic; documentele, textul OCR și metadatele rămân intacte chiar dacă un fișier chiar lipsește.
+- **Automat:** aceeași verificare rulează tăcut la fiecare pornire a aplicației, deci de obicei problema se repară de la sine.
+- **Dacă un fișier chiar lipsește de pe telefon:** îl recuperezi importând un backup (ZIP sau iCloud); documentul rămâne pe loc, cu tot ce știa despre el.
+
 ## Sugestii pe Acasă („De completat")
 
 Pe ecranul Home, sub statisticile principale, apare o secțiune „DE COMPLETAT" cu carduri colapsabile când există date parțiale. Detectează automat 4 tipuri de înregistrări incomplete:

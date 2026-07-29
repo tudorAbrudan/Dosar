@@ -48,6 +48,7 @@ const ENTRIES = {
     documents: { required: true, keywords: ['document', 'adaugă'] },
     entities: { required: true, keywords: ['entități', 'entitate'] },
     expiry: { required: true, keywords: ['expir'] },
+    filePathRepair: { required: true, keywords: ['Repară fișierele', 'nu se mai afișează'] },
     fuel: { required: true, keywords: ['carburant', 'consum'] },
     localModel: { required: true, keywords: ['model local', 'on-device'] },
     maintenance: { required: true, keywords: ['mentenanță', 'revizie'] },

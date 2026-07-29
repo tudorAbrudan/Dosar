@@ -64,6 +64,7 @@ import {
   EXPORT_SIZE_WARN_BYTES,
 } from '@/services/backup';
 import { formatBytes } from '@/services/cloudSync';
+import { repairFilePaths } from '@/services/filePathRepair';
 import { checkForUpdateForced, openAppStore } from '@/services/updateCheck';
 import {
   getLastCrash,
@@ -172,6 +173,7 @@ export default function SetariScreen() {
   });
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
+  const [filesRepairing, setFilesRepairing] = useState(false);
   const [backupCollapsed, setBackupCollapsed] = useState(true);
   const [entitiesCollapsed, setEntitiesCollapsed] = useState(true);
   const [docTypesCollapsed, setDocTypesCollapsed] = useState(true);
@@ -364,6 +366,44 @@ export default function SetariScreen() {
         },
       ]
     );
+  };
+
+  // ── Reparare fișiere ─────────────────────────────────────────────────────────
+  // Căile pot rămâne rupte după o reinstalare/restore care schimbă UUID-ul
+  // containerului iOS (poze care nu se mai afișează, OCR/AI care eșuează cu
+  // „File ... does not exist"). Vezi services/filePathRepair.ts.
+  const handleRepairFiles = async () => {
+    setFilesRepairing(true);
+    try {
+      const report = await repairFilePaths();
+      if (report.repaired === 0 && report.missing === 0) {
+        Alert.alert(
+          'Totul e în regulă',
+          `Am verificat ${report.scanned} fișiere — toate sunt la locul lor.`
+        );
+      } else if (report.missing === 0) {
+        Alert.alert(
+          'Reparat',
+          `Am corectat legăturile pentru ${report.repaired} din ${report.scanned} fișiere. ` +
+            'Pozele ar trebui să apară din nou.'
+        );
+      } else {
+        const samples = report.missingSamples.length
+          ? `\n\nLipsesc:\n${report.missingSamples.join('\n')}`
+          : '';
+        Alert.alert(
+          'Reparare parțială',
+          `Am corectat ${report.repaired} legături din ${report.scanned} fișiere verificate. ` +
+            `${report.missing} fișiere nu se mai găsesc pe telefon. Documentele, textul OCR și ` +
+            'legăturile lor rămân intacte — poți reface pozele scanând din nou documentul sau ' +
+            `importând un backup mai vechi.${samples}`
+        );
+      }
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Repararea a eșuat');
+    } finally {
+      setFilesRepairing(false);
+    }
   };
 
   // ── Tipuri personalizate ─────────────────────────────────────────────────────
@@ -1053,11 +1093,13 @@ export default function SetariScreen() {
           collapsed={backupCollapsed}
           exporting={backupExporting}
           importing={backupImporting}
+          repairing={filesRepairing}
           scheme={scheme}
           onToggleCollapsed={() => setBackupCollapsed(v => !v)}
           onOpenCloudBackup={() => router.push('/cloud-backup')}
           onExport={handleExportBackup}
           onImport={handleImportBackup}
+          onRepairFiles={handleRepairFiles}
         />
 
         <SharingBetaSection scheme={scheme} onOpenSharing={() => router.push('/partajare')} />

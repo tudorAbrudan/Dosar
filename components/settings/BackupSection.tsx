@@ -9,22 +9,26 @@ interface BackupSectionProps {
   collapsed: boolean;
   exporting: boolean;
   importing: boolean;
+  repairing: boolean;
   scheme: 'light' | 'dark';
   onToggleCollapsed: () => void;
   onOpenCloudBackup: () => void;
   onExport: () => void;
   onImport: () => void;
+  onRepairFiles: () => void;
 }
 
 export function BackupSection({
   collapsed,
   exporting,
   importing,
+  repairing,
   scheme,
   onToggleCollapsed,
   onOpenCloudBackup,
   onExport,
   onImport,
+  onRepairFiles,
 }: BackupSectionProps) {
   const C = Colors[scheme];
   return (
@@ -49,8 +53,8 @@ export function BackupSection({
             scheme={scheme}
           />
           <Text style={[styles.hint, { color: C.textSecondary }]}>
-            Exportă toate datele și pozele ca fișier ZIP și salvează-l în iCloud Drive sau Files.
-            La schimbarea telefonului, importă fișierul pentru a restaura complet datele și pozele.
+            Exportă toate datele și pozele ca fișier ZIP și salvează-l în iCloud Drive sau Files. La
+            schimbarea telefonului, importă fișierul pentru a restaura complet datele și pozele.
           </Text>
           <Pressable
             style={({ pressed }) => [styles.btn, { opacity: pressed || exporting ? 0.85 : 1 }]}
@@ -61,12 +65,7 @@ export function BackupSection({
             {exporting ? (
               <ActivityIndicator size="small" color="#fff" style={styles.btnIcon} />
             ) : (
-              <Ionicons
-                name="cloud-upload-outline"
-                size={18}
-                color="#fff"
-                style={styles.btnIcon}
-              />
+              <Ionicons name="cloud-upload-outline" size={18} color="#fff" style={styles.btnIcon} />
             )}
             <Text style={styles.btnText}>
               {exporting ? 'Se exportă...' : 'Exportă backup (ZIP)'}
@@ -93,6 +92,29 @@ export function BackupSection({
             )}
             <Text style={[styles.btnOutlineText, { color: primary }]}>
               {importing ? 'Se importă...' : 'Importă din fișier backup'}
+            </Text>
+          </Pressable>
+          <Text style={[styles.hint, { color: C.textSecondary }]}>
+            Dacă pozele unui document nu se mai afișează după o reinstalare sau o restaurare,
+            repararea caută fișierele pe disc și corectează legăturile din aplicație. Nu șterge
+            nimic.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.btnOutline,
+              { borderColor: primary, opacity: pressed || repairing ? 0.85 : 1 },
+            ]}
+            onPress={onRepairFiles}
+            disabled={repairing}
+            accessibilityLabel="Repară fișierele documentelor"
+          >
+            {repairing ? (
+              <ActivityIndicator size="small" color={primary} style={styles.btnIcon} />
+            ) : (
+              <Ionicons name="build-outline" size={18} color={primary} style={styles.btnIcon} />
+            )}
+            <Text style={[styles.btnOutlineText, { color: primary }]}>
+              {repairing ? 'Se verifică...' : 'Repară fișierele documentelor'}
             </Text>
           </Pressable>
         </View>
