@@ -4,6 +4,8 @@ Cronologic, descrescător. Front-matter pe fiecare fișier: `date`, `tags`, `tri
 
 | Data | Subiect | Tags |
 |---|---|---|
+| 2026-07-30 | [Date primite din exterior: scrie pe toate căile pe care UI-ul citește](2026-07-30-shared-docs-legacy-column.md) | sqlite, sharing, cloudkit, junction-table, regression |
+| 2026-07-30 | [`{succeeded, failed}` — `failed` nu se ignoră](2026-07-30-per-record-failures-swallowed.md) | cloudkit, error-handling, batch, diagnostics |
 | 2026-07-13 | [`UIGraphicsImageRenderer` folosește scala ecranului, nu 1×](2026-07-13-uigraphics-renderer-scale.md) | ios, swift, native-module, exif, coreimage, crop |
 | 2026-05-31 | [Cross-tab `router.push` → trimite `from` + `entityId`](2026-05-31-cross-tab-back-navigation.md) | react-native, expo-router, navigation, tabs, ux |
 | 2026-04-22 | [iOS linker / pcm errors](2026-04-22-ios-linker-pcm.md) | ios, build, pods, xcode, linker |

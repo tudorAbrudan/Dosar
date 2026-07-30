@@ -74,7 +74,18 @@ export interface SharedZone {
   ownerDisplayName?: string;
 }
 
-export interface FetchShareOwnerNameOptions {
+/** Ce se poate afla despre un CKShare primit. Fiecare câmp lipsește dacă nu e determinabil. */
+export interface ShareInfo {
+  ownerDisplayName?: string;
+  /** `CKShare.SystemFieldKey.title` — numele entității, setat de owner la partajare. */
+  title?: string;
+  /** Permisiunea EFECTIVĂ a userului curent pe share. */
+  permission?: 'read' | 'readwrite';
+}
+
+export interface AcceptedShare extends SharedZone, ShareInfo {}
+
+export interface FetchShareInfoOptions {
   zoneName: string;
   /** `CKRecordZone.ID.ownerName` — identificatorul opac, nu numele. */
   ownerName?: string;
@@ -227,7 +238,7 @@ export function listSharedZones(): Promise<SharedZone[]> {
  * (windowScene(_:userDidAcceptCloudKitShareWith:) nu se apelează fiabil pe
  * toate versiunile iOS — vezi ExpoCloudKitShareModule.swift).
  */
-export function acceptShareURL(url: string): Promise<SharedZone> {
+export function acceptShareURL(url: string): Promise<AcceptedShare> {
   if (!url) throw new Error('acceptShareURL: url obligatoriu');
   return NativeModule.acceptShareURL(url);
 }
@@ -269,15 +280,14 @@ export function stopSharing(zoneName: string): Promise<{ revoked: boolean }> {
 }
 
 /**
- * Best-effort: numele afișabil al owner-ului unei zone, pentru zone descoperite
- * prin `listSharedZones()` fără să fi trecut prin `acceptShareURL` (care are
- * deja numele din metadata share-ului). Poate întoarce obiect gol.
+ * Best-effort: owner + titlu + permisiune pentru o zonă descoperită prin
+ * `listSharedZones()` fără să fi trecut prin `acceptShareURL` (care are deja
+ * totul din metadata share-ului) — cazul normal la tap pe link, unde sistemul
+ * acceptă share-ul singur. Poate întoarce obiect gol.
  */
-export function fetchShareOwnerName(
-  options: FetchShareOwnerNameOptions
-): Promise<{ ownerDisplayName?: string }> {
-  if (!options.zoneName) throw new Error('fetchShareOwnerName: zoneName obligatoriu');
-  return NativeModule.fetchShareOwnerName(options);
+export function fetchShareInfo(options: FetchShareInfoOptions): Promise<ShareInfo> {
+  if (!options.zoneName) throw new Error('fetchShareInfo: zoneName obligatoriu');
+  return NativeModule.fetchShareInfo(options);
 }
 
 /** Participant: renunță la accesul propriu (owner-ul și ceilalți participanți nu sunt afectați). */

@@ -26,6 +26,8 @@ const mockNative = {
   getRecord: jest.fn(),
   shareZone: jest.fn(),
   listSharedZones: jest.fn(),
+  acceptShareURL: jest.fn(),
+  fetchShareInfo: jest.fn(),
   stopSharing: jest.fn(),
   fetchZoneChanges: jest.fn(),
   fetchDatabaseChanges: jest.fn(),
@@ -42,6 +44,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let sharing: typeof import('@/services/sharing');
 let cloudShare: typeof import('@/services/cloudShare');
+let documents: typeof import('@/services/documents');
 let AsyncStorage: { setItem: jest.Mock; getItem: jest.Mock };
 
 beforeAll(() => {
@@ -51,6 +54,7 @@ beforeAll(() => {
     testDb = db as unknown as TestDb;
     sharing = require('@/services/sharing');
     cloudShare = require('@/services/cloudShare');
+    documents = require('@/services/documents');
     AsyncStorage = require('@react-native-async-storage/async-storage').default;
   });
 });
@@ -77,11 +81,20 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockNative.isAvailable.mockResolvedValue({ available: true, accountStatus: 'available' });
   mockNative.listSharedZones.mockResolvedValue([]);
+  mockNative.fetchShareInfo.mockResolvedValue({});
   mockNative.subscribeDatabase.mockResolvedValue({ subscribed: true });
   mockNative.pushRecords.mockResolvedValue({ succeeded: {}, failed: {} });
   mockNative.stopSharing.mockResolvedValue({ revoked: true });
-  mockNative.fetchDatabaseChanges.mockResolvedValue({ changedZones: [], deletedZones: [], newToken: null });
-  mockNative.fetchZoneChanges.mockResolvedValue({ records: [], deletedRecordNames: [], newToken: null });
+  mockNative.fetchDatabaseChanges.mockResolvedValue({
+    changedZones: [],
+    deletedZones: [],
+    newToken: null,
+  });
+  mockNative.fetchZoneChanges.mockResolvedValue({
+    records: [],
+    deletedRecordNames: [],
+    newToken: null,
+  });
 });
 
 // ── Seed helpers (INSERT direct — nu trecem prin services/entities.ts sau
@@ -167,9 +180,16 @@ function insertPendingPush(params: {
     );
 }
 
-function linkDocumentEntity(id: string, documentId: string, entityType: string, entityId: string): void {
+function linkDocumentEntity(
+  id: string,
+  documentId: string,
+  entityType: string,
+  entityId: string
+): void {
   testDb._raw
-    .prepare(`INSERT INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)`)
+    .prepare(
+      `INSERT INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)`
+    )
     .run(id, documentId, entityType, entityId);
 }
 
@@ -209,7 +229,9 @@ describe('applyDocumentRow — upsert non-destructiv (decizia 4)', () => {
     });
     linkDocumentEntity('link-1', 'doc-1', 'vehicle', 'veh-1');
 
-    mockNative.listSharedZones.mockResolvedValue([{ zoneName: 'entity_vehicle_veh-1', ownerName: 'owner1' }]);
+    mockNative.listSharedZones.mockResolvedValue([
+      { zoneName: 'entity_vehicle_veh-1', ownerName: 'owner1' },
+    ]);
     mockNative.fetchDatabaseChanges.mockResolvedValueOnce({
       changedZones: [{ zoneName: 'entity_vehicle_veh-1', ownerName: 'owner1' }],
       deletedZones: [],
@@ -385,7 +407,12 @@ describe('pushLocalChange — Faza 1: doar owner scrie', () => {
 
   it("'delete' pe entitate owner apelează revokeEntityShare (stopSharing), nu push de delete brut", async () => {
     insertVehicle('veh-6');
-    insertSharedEntity({ zoneName: 'entity_vehicle_veh-6', entityType: 'vehicle', entityId: 'veh-6', role: 'owner' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-6',
+      entityType: 'vehicle',
+      entityId: 'veh-6',
+      role: 'owner',
+    });
 
     await cloudShare.afterEntityMutation('vehicle', 'veh-6', 'delete');
 
@@ -395,7 +422,12 @@ describe('pushLocalChange — Faza 1: doar owner scrie', () => {
   });
 
   it('push de delete pe document DUPĂ ce document_entities a fost deja curățat rezolvă zona din cloud_records', async () => {
-    insertSharedEntity({ zoneName: 'entity_vehicle_veh-7', entityType: 'vehicle', entityId: 'veh-7', role: 'owner' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-7',
+      entityType: 'vehicle',
+      entityId: 'veh-7',
+      role: 'owner',
+    });
     insertCloudRecord({
       zoneName: 'entity_vehicle_veh-7',
       recordName: 'doc-7',
@@ -415,7 +447,12 @@ describe('pushLocalChange — Faza 1: doar owner scrie', () => {
 
   it('push de entitate trimite DOAR câmpurile whitelisted (fără photo_uri)', async () => {
     insertVehicle('veh-8', { photo_uri: 'documents/poza.jpg' });
-    insertSharedEntity({ zoneName: 'entity_vehicle_veh-8', entityType: 'vehicle', entityId: 'veh-8', role: 'owner' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-8',
+      entityType: 'vehicle',
+      entityId: 'veh-8',
+      role: 'owner',
+    });
 
     mockNative.pushRecords.mockResolvedValueOnce({ succeeded: { 'veh-8': 'tag1' }, failed: {} });
 
@@ -446,7 +483,11 @@ describe('pushLocalChange — Faza 2: participant readwrite push-back', () => {
     await cloudShare.pushLocalChange('vehicles', 'veh-rw', 'upsert');
 
     expect(mockNative.pushRecords).toHaveBeenCalledWith(
-      expect.objectContaining({ zoneName: 'entity_vehicle_veh-rw', scope: 'shared', ownerName: 'owner1' })
+      expect.objectContaining({
+        zoneName: 'entity_vehicle_veh-rw',
+        scope: 'shared',
+        ownerName: 'owner1',
+      })
     );
   });
 
@@ -497,12 +538,19 @@ describe('pushLocalChange — Faza 2: participant readwrite push-back', () => {
     });
     linkDocumentEntity('link-drw', 'doc-rw', 'vehicle', 'veh-drw');
 
-    mockNative.pushRecords.mockResolvedValueOnce({ succeeded: { 'doc-rw': 'tag-doc-rw' }, failed: {} });
+    mockNative.pushRecords.mockResolvedValueOnce({
+      succeeded: { 'doc-rw': 'tag-doc-rw' },
+      failed: {},
+    });
 
     await cloudShare.pushLocalChange('documents', 'doc-rw', 'upsert');
 
     expect(mockNative.pushRecords).toHaveBeenCalledWith(
-      expect.objectContaining({ zoneName: 'entity_vehicle_veh-drw', scope: 'shared', ownerName: 'owner2' })
+      expect.objectContaining({
+        zoneName: 'entity_vehicle_veh-drw',
+        scope: 'shared',
+        ownerName: 'owner2',
+      })
     );
   });
 
@@ -647,9 +695,10 @@ describe('applyFetchedRecords — supresie ecou (decizia 4/9, generalizată)', (
 
     await cloudShare.syncSharedEntities();
 
-    const row = await db.getFirstAsync<{ note: string }>('SELECT note FROM documents WHERE id = ?', [
-      'doc-echo',
-    ]);
+    const row = await db.getFirstAsync<{ note: string }>(
+      'SELECT note FROM documents WHERE id = ?',
+      ['doc-echo']
+    );
     expect(row!.note).toBe('nota noua locala'); // NU a fost clobber-uită de ecou
     // Tokenul de zonă tot avansează — pull-ul a rulat, doar apply-ul individual a fost skip-uit.
     expect(await sharing.getZoneChangeToken('entity_vehicle_veh-echo')).toBe('zone-echo-token');
@@ -699,9 +748,10 @@ describe('applyFetchedRecords — supresie ecou (decizia 4/9, generalizată)', (
 
     await cloudShare.syncSharedEntities();
 
-    const row = await db.getFirstAsync<{ note: string }>('SELECT note FROM documents WHERE id = ?', [
-      'doc-real',
-    ]);
+    const row = await db.getFirstAsync<{ note: string }>(
+      'SELECT note FROM documents WHERE id = ?',
+      ['doc-real']
+    );
     expect(row!.note).toBe('nota noua server');
     const rec = await sharing.getCloudRecord('entity_vehicle_veh-real', 'doc-real');
     expect(rec!.change_tag).toBe('tag-new');
@@ -712,12 +762,35 @@ describe('getShareDiagnostics — stuckCount (Faza 3 dead-letter)', () => {
   it('numără doar push-urile cu attempt_count >= 5', async () => {
     insertVehicle('veh-diag1');
     insertVehicle('veh-diag2');
-    insertSharedEntity({ zoneName: 'entity_vehicle_veh-diag1', entityType: 'vehicle', entityId: 'veh-diag1', role: 'owner' });
-    insertSharedEntity({ zoneName: 'entity_vehicle_veh-diag2', entityType: 'vehicle', entityId: 'veh-diag2', role: 'owner' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-diag1',
+      entityType: 'vehicle',
+      entityId: 'veh-diag1',
+      role: 'owner',
+    });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-diag2',
+      entityType: 'vehicle',
+      entityId: 'veh-diag2',
+      role: 'owner',
+    });
 
-    insertPendingPush({ zoneName: 'entity_vehicle_veh-diag1', recordName: 'veh-diag1', attemptCount: 5 });
-    insertPendingPush({ zoneName: 'entity_vehicle_veh-diag2', recordName: 'veh-diag2', attemptCount: 6 });
-    insertPendingPush({ zoneName: 'entity_vehicle_veh-diag2', recordName: 'doc-below', attemptCount: 3, kind: 'document' });
+    insertPendingPush({
+      zoneName: 'entity_vehicle_veh-diag1',
+      recordName: 'veh-diag1',
+      attemptCount: 5,
+    });
+    insertPendingPush({
+      zoneName: 'entity_vehicle_veh-diag2',
+      recordName: 'veh-diag2',
+      attemptCount: 6,
+    });
+    insertPendingPush({
+      zoneName: 'entity_vehicle_veh-diag2',
+      recordName: 'doc-below',
+      attemptCount: 3,
+      kind: 'document',
+    });
 
     const diag = await cloudShare.getShareDiagnostics();
 
@@ -729,5 +802,404 @@ describe('getShareDiagnostics — stuckCount (Faza 3 dead-letter)', () => {
     const diag = await cloudShare.getShareDiagnostics();
     expect(diag.pendingPushCount).toBe(0);
     expect(diag.stuckCount).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Regresiile raportate pe device 2026-07-30 (versiunea 3.11.x din App Store):
+// „entitatea partajată apare, dar fără documente" + „entitatea primită nu apare
+// nicăieri, fără nicio eroare". Fiecare test de aici este plasa care le prinde.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('document primit prin partajare — vizibil pe ecranul entității', () => {
+  it('apare în getDocumentsByEntity, deși nu are coloana legacy vehicle_id setată', async () => {
+    insertVehicle('veh-recv', { name: 'Logan primit' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-recv',
+      entityType: 'vehicle',
+      entityId: 'veh-recv',
+      role: 'participant',
+      ownerName: 'owner-x',
+    });
+    mockNative.listSharedZones.mockResolvedValue([
+      { zoneName: 'entity_vehicle_veh-recv', ownerName: 'owner-x' },
+    ]);
+    mockNative.fetchDatabaseChanges.mockResolvedValueOnce({
+      changedZones: [{ zoneName: 'entity_vehicle_veh-recv', ownerName: 'owner-x' }],
+      deletedZones: [],
+      newToken: 'db-1',
+    });
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records: [
+        {
+          recordName: 'doc-recv',
+          recordType: 'document',
+          changeTag: 't1',
+          fields: { type: 'rca', expiry_date: '2027-01-01' },
+          assets: [],
+        },
+      ],
+      deletedRecordNames: [],
+      newToken: 'z-1',
+    });
+
+    await cloudShare.syncSharedEntities();
+
+    // Ecranul entității (`app/(tabs)/entitati/[id].tsx`) citește pe această cale.
+    const list = await documents.getDocumentsByEntity('vehicle_id', 'veh-recv');
+    expect(list.map(d => d.id)).toEqual(['doc-recv']);
+  });
+});
+
+describe('pullSharedChanges — zonă acceptată în afara ferestrei tokenului DB', () => {
+  it('trage o zonă fără change_token chiar dacă fetchDatabaseChanges nu o raportează', async () => {
+    insertSharedEntity({
+      zoneName: 'entity_person_per-late',
+      entityType: 'person',
+      entityId: 'per-late',
+      role: 'participant',
+      ownerName: 'owner-late',
+    });
+    mockNative.listSharedZones.mockResolvedValue([
+      { zoneName: 'entity_person_per-late', ownerName: 'owner-late' },
+    ]);
+    // Tokenul DB-level a avansat deja peste acceptarea share-ului: nicio zonă
+    // raportată ca schimbată. Fără force-fetch, entitatea nu apărea NICIODATĂ.
+    mockNative.fetchDatabaseChanges.mockResolvedValue({
+      changedZones: [],
+      deletedZones: [],
+      newToken: 'db-late',
+    });
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records: [
+        {
+          recordName: 'per-late',
+          recordType: 'person',
+          changeTag: 'p1',
+          fields: { name: 'Ana Primită', phone: '0700' },
+          assets: [],
+        },
+      ],
+      deletedRecordNames: [],
+      newToken: 'z-late',
+    });
+
+    await cloudShare.syncSharedEntities();
+
+    const row = await db.getFirstAsync<{ name: string }>('SELECT name FROM persons WHERE id = ?', [
+      'per-late',
+    ]);
+    expect(row?.name).toBe('Ana Primită');
+  });
+
+  it('nu avansează tokenul DB-level când o zonă de-a noastră nu e încă înregistrată local', async () => {
+    mockNative.listSharedZones.mockResolvedValue([]); // reconcile nu o prinde încă
+    mockNative.fetchDatabaseChanges.mockResolvedValueOnce({
+      changedZones: [{ zoneName: 'entity_vehicle_veh-unknown', ownerName: 'owner-u' }],
+      deletedZones: [],
+      newToken: 'db-must-not-persist',
+    });
+
+    await cloudShare.syncSharedEntities();
+
+    const persisted = AsyncStorage.setItem.mock.calls.filter(c => c[1] === 'db-must-not-persist');
+    expect(persisted).toHaveLength(0);
+  });
+});
+
+describe('applyEntityRow — entitatea primită e vizibilă în lista Entități', () => {
+  it('primește un rând în entity_order (altfel se sortează după toate entitățile proprii)', async () => {
+    insertSharedEntity({
+      zoneName: 'entity_animal_ani-recv',
+      entityType: 'animal',
+      entityId: 'ani-recv',
+      role: 'participant',
+      ownerName: 'owner-a',
+    });
+    mockNative.listSharedZones.mockResolvedValue([
+      { zoneName: 'entity_animal_ani-recv', ownerName: 'owner-a' },
+    ]);
+    mockNative.fetchDatabaseChanges.mockResolvedValueOnce({
+      changedZones: [{ zoneName: 'entity_animal_ani-recv', ownerName: 'owner-a' }],
+      deletedZones: [],
+      newToken: 'db-a',
+    });
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records: [
+        {
+          recordName: 'ani-recv',
+          recordType: 'animal',
+          changeTag: 'a1',
+          fields: { name: 'Rex', species: 'câine' },
+          assets: [],
+        },
+      ],
+      deletedRecordNames: [],
+      newToken: 'z-a',
+    });
+
+    await cloudShare.syncSharedEntities();
+
+    const order = await db.getFirstAsync<{ cnt: number }>(
+      'SELECT COUNT(*) AS cnt FROM entity_order WHERE entity_type = ? AND entity_id = ?',
+      ['animal', 'ani-recv']
+    );
+    expect(order?.cnt).toBe(1);
+  });
+});
+
+describe('shareEntity — eșecurile de push nu mai sunt tăcute', () => {
+  beforeEach(() => {
+    mockNative.createSharedZone.mockResolvedValue({ zoneName: 'z' });
+    mockNative.shareZone.mockResolvedValue({
+      shareURL: 'https://icloud.com/share/X',
+      presented: true,
+    });
+  });
+
+  it('entitatea picată la push → aruncă, fără invitație și fără rând de share', async () => {
+    insertVehicle('veh-fail', { name: 'Duster' });
+    mockNative.pushRecords.mockResolvedValue({
+      succeeded: {},
+      failed: { 'veh-fail': 'Cannot create new type vehicle in production schema' },
+    });
+
+    await expect(cloudShare.shareEntity('vehicle', 'veh-fail', 'read')).rejects.toThrow(
+      /production schema/
+    );
+    expect(mockNative.shareZone).not.toHaveBeenCalled();
+    expect(await sharing.getShareForEntity('vehicle', 'veh-fail')).toBeNull();
+  });
+
+  it('document picat la push → share valid, document în coada de retry + eroare pe zonă', async () => {
+    insertVehicle('veh-partial', { name: 'Logan' });
+    insertDocument('doc-partial', { type: 'rca' });
+    linkDocumentEntity('l-partial', 'doc-partial', 'vehicle', 'veh-partial');
+    mockNative.pushRecords.mockResolvedValue({
+      succeeded: { 'veh-partial': 'tag-v' },
+      failed: { 'doc-partial': 'Field file_page_0 not marked queryable' },
+    });
+
+    await cloudShare.shareEntity('vehicle', 'veh-partial', 'read');
+
+    const share = await sharing.getShareForEntity('vehicle', 'veh-partial');
+    expect(share).not.toBeNull();
+    expect(share!.last_sync_error).toMatch(/nu s-au urcat/);
+    const pending = await sharing.getPendingSharePushes();
+    expect(pending.map(p => p.record_name)).toEqual(['doc-partial']);
+    // Bookkeeping-ul NU pretinde că documentul e pe server.
+    expect(await sharing.getCloudRecord('entity_vehicle_veh-partial', 'doc-partial')).toBeNull();
+  });
+
+  it('include în bundle documentele legate DOAR prin document_entities (multi-link)', async () => {
+    insertVehicle('veh-junction', { name: 'Logan' });
+    insertDocument('doc-junction', { type: 'rca' });
+    linkDocumentEntity('l-junction', 'doc-junction', 'vehicle', 'veh-junction');
+    mockNative.pushRecords.mockResolvedValue({
+      succeeded: { 'veh-junction': 'tag-v', 'doc-junction': 'tag-d' },
+      failed: {},
+    });
+
+    await cloudShare.shareEntity('vehicle', 'veh-junction', 'read');
+
+    const pushed = mockNative.pushRecords.mock.calls[0][0].records.map(
+      (r: { recordName: string }) => r.recordName
+    );
+    expect(pushed).toContain('doc-junction');
+  });
+});
+
+describe('recordShare — permisiunea participantului nu se retrogradează', () => {
+  it('un reconcile fără informație de permisiune păstrează readwrite', async () => {
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-rw',
+      entityType: 'vehicle',
+      entityId: 'veh-rw',
+      role: 'participant',
+      ownerName: 'owner-rw',
+      permission: 'readwrite',
+    });
+
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-rw',
+      zoneName: 'entity_vehicle_veh-rw',
+      role: 'participant',
+      ownerName: 'owner-rw',
+    });
+
+    const share = await sharing.getShareForEntity('vehicle', 'veh-rw');
+    expect(share!.permission).toBe('readwrite');
+  });
+
+  it('permisiunea explicită din accept se scrie peste cea existentă', async () => {
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-up',
+      entityType: 'vehicle',
+      entityId: 'veh-up',
+      role: 'participant',
+      ownerName: 'owner-up',
+      permission: 'read',
+    });
+
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-up',
+      zoneName: 'entity_vehicle_veh-up',
+      role: 'participant',
+      ownerName: 'owner-up',
+      permission: 'readwrite',
+      shareTitle: 'Logan de la Ana',
+    });
+
+    const share = await sharing.getShareForEntity('vehicle', 'veh-up');
+    expect(share!.permission).toBe('readwrite');
+    expect(share!.share_title).toBe('Logan de la Ana');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Format pagini v2: fiecare pagină = CKRecord `document_page` cu câmpuri FIXE.
+// Vechiul format punea asset-urile în câmpuri `file_page_<N>`, cu nume derivat
+// din numărul de pagini — imposibil de publicat în schema Production, care e
+// blocată: primul document cu o pagină în plus era respins integral de server.
+// ─────────────────────────────────────────────────────────────────────────
+
+function insertPage(id: string, documentId: string, order: number, filePath: string): void {
+  testDb._raw
+    .prepare(
+      `INSERT INTO document_pages (id, document_id, page_order, file_path, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(id, documentId, order, filePath, '2026-07-01T00:00:00Z');
+}
+
+describe('push pagini — recorduri separate, fără câmpuri cu nume dinamic', () => {
+  it('un document cu 2 pagini produce 3 recorduri, toate cu chei fixe', async () => {
+    insertVehicle('veh-pg');
+    insertDocument('doc-pg', { type: 'talon', file_path: 'documents/main.jpg' });
+    insertPage('pg-a', 'doc-pg', 0, 'documents/p0.jpg');
+    insertPage('pg-b', 'doc-pg', 1, 'documents/p1.jpg');
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-pg',
+      entityType: 'vehicle',
+      entityId: 'veh-pg',
+      role: 'owner',
+    });
+    linkDocumentEntity('l-pg', 'doc-pg', 'vehicle', 'veh-pg');
+
+    await cloudShare.pushLocalChange('documents', 'doc-pg', 'upsert');
+
+    const call = mockNative.pushRecords.mock.calls[0][0];
+    const names = call.records.map((r: { recordName: string }) => r.recordName);
+    expect(names).toEqual(['doc-pg', 'doc-pg__p__pg-a', 'doc-pg__p__pg-b']);
+
+    const keys = call.records.flatMap((r: { files?: { key: string }[] }) =>
+      (r.files ?? []).map(f => f.key)
+    );
+    expect(keys).toEqual(['file_main', 'file', 'file']);
+    expect(keys.some((k: string) => k.startsWith('file_page_'))).toBe(false);
+  });
+
+  it('pagină ștearsă local → tombstone pe recordul ei, documentul rămâne', async () => {
+    insertVehicle('veh-del');
+    insertDocument('doc-del', { type: 'talon' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-del',
+      entityType: 'vehicle',
+      entityId: 'veh-del',
+      role: 'owner',
+    });
+    linkDocumentEntity('l-del', 'doc-del', 'vehicle', 'veh-del');
+    // Pagina există pe server (bookkeeping), dar nu mai există local.
+    insertCloudRecord({
+      zoneName: 'entity_vehicle_veh-del',
+      recordName: 'doc-del__p__pg-gone',
+      recordType: 'document_page',
+      localTable: 'document_pages',
+      localId: 'pg-gone',
+    });
+
+    await cloudShare.pushLocalChange('documents', 'doc-del', 'upsert');
+
+    const call = mockNative.pushRecords.mock.calls[0][0];
+    expect(call.deletions).toEqual(['doc-del__p__pg-gone']);
+    expect(call.records.map((r: { recordName: string }) => r.recordName)).toEqual(['doc-del']);
+  });
+});
+
+describe('pull pagini — record `document_page` → rând în document_pages', () => {
+  beforeEach(() => {
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-in',
+      entityType: 'vehicle',
+      entityId: 'veh-in',
+      role: 'participant',
+      ownerName: 'owner-in',
+    });
+    mockNative.listSharedZones.mockResolvedValue([
+      { zoneName: 'entity_vehicle_veh-in', ownerName: 'owner-in' },
+    ]);
+    mockNative.fetchDatabaseChanges.mockResolvedValueOnce({
+      changedZones: [{ zoneName: 'entity_vehicle_veh-in', ownerName: 'owner-in' }],
+      deletedZones: [],
+      newToken: 'db-in',
+    });
+  });
+
+  it('aplică pagina primită, chiar dacă vine înaintea documentului ei', async () => {
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records: [
+        {
+          recordName: 'doc-in__p__pg-1',
+          recordType: 'document_page',
+          changeTag: 'p1',
+          fields: { document_id: 'doc-in', page_order: '2' },
+          assets: [{ key: 'file', path: '/tmp/ck/p1.jpg' }],
+        },
+        {
+          recordName: 'doc-in',
+          recordType: 'document',
+          changeTag: 'd1',
+          fields: { type: 'talon' },
+          assets: [{ key: 'file_main', path: '/tmp/ck/main.jpg' }],
+        },
+      ],
+      deletedRecordNames: [],
+      newToken: 'z-in',
+    });
+
+    await cloudShare.syncSharedEntities();
+
+    const page = await db.getFirstAsync<{
+      document_id: string;
+      page_order: number;
+      file_path: string;
+    }>('SELECT document_id, page_order, file_path FROM document_pages WHERE id = ?', [
+      'doc-in__p__pg-1',
+    ]);
+    expect(page?.document_id).toBe('doc-in');
+    expect(page?.page_order).toBe(2);
+    expect(page?.file_path).toContain('shared/entity_vehicle_veh-in/');
+  });
+
+  it('ștergerea unei pagini pe server nu atinge documentul-părinte', async () => {
+    insertDocument('doc-keep', { type: 'talon' });
+    insertPage('doc-keep__p__pg-x', 'doc-keep', 0, 'shared/z/pg-x.jpg');
+    linkDocumentEntity('l-keep', 'doc-keep', 'vehicle', 'veh-in');
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records: [],
+      deletedRecordNames: ['doc-keep__p__pg-x'],
+      newToken: 'z-in2',
+    });
+
+    await cloudShare.syncSharedEntities();
+
+    const page = await db.getFirstAsync('SELECT id FROM document_pages WHERE id = ?', [
+      'doc-keep__p__pg-x',
+    ]);
+    expect(page).toBeNull();
+    const doc = await db.getFirstAsync('SELECT id FROM documents WHERE id = ?', ['doc-keep']);
+    expect(doc).not.toBeNull();
   });
 });

@@ -38,6 +38,8 @@ import { resolveDocumentEntityName } from '@/services/documentEntityName';
 import { isStaleExpired } from '@/services/expiry';
 import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
 import { CloudBackupBanner } from '@/components/CloudBackupBanner';
+import { CloudDriveOffBanner } from '@/components/cloud/CloudDriveOffBanner';
+import { useCloudDriveWarning } from '@/hooks/useCloudDriveWarning';
 import { findPersonsWithOrphanMedicalDocs } from '@/services/medicalRecord';
 import { MigrateOrphansWizard } from '@/components/medical/MigrateOrphansWizard';
 
@@ -92,6 +94,7 @@ export default function HomeScreen() {
   const [duplicateGroups, setDuplicateGroups] = useState<Document[][]>([]);
   const backfillDoneRef = useRef(false);
   const cloud = useCloudRestoreDetector();
+  const cloudDrive = useCloudDriveWarning();
   const [orphanMedicalCount, setOrphanMedicalCount] = useState(0);
   const [showMigrateWizard, setShowMigrateWizard] = useState(false);
   // Documente cu reminderul de expirare dismissed în tabul Expirări — excluse
@@ -231,6 +234,9 @@ export default function HomeScreen() {
           />
         )}
 
+        {/* ── Banner iCloud Drive oprit din iOS (backup activat, dar mut) ── */}
+        {cloudDrive.show && <CloudDriveOffBanner onPress={() => router.push('/cloud-backup')} />}
+
         {/* ── Banner migrare documente medicale orfane ── */}
         {orphanMedicalCount > 0 && (
           <Pressable
@@ -240,7 +246,12 @@ export default function HomeScreen() {
               { backgroundColor: C.card, borderColor: C.primary },
             ]}
           >
-            <Ionicons name="medkit-outline" size={18} color={C.primary} style={{ marginRight: 8 }} />
+            <Ionicons
+              name="medkit-outline"
+              size={18}
+              color={C.primary}
+              style={{ marginRight: 8 }}
+            />
             <RNText style={[styles.medicalOrphanText, { color: C.text }]}>
               {'Ai '}
               <RNText style={{ fontWeight: '700' }}>{orphanMedicalCount}</RNText>

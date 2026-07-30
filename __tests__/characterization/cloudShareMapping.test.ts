@@ -4,18 +4,22 @@
  */
 import {
   bundleToPushBundle,
-  fileKey,
+  docWithPagesToPushRecords,
+  pageRecordName,
   parseFetchedRecords,
   shareableDocToPushRecord,
 } from '@/services/cloudShareMapping';
 import type { FetchedRecord } from '@/services/cloudShareMapping';
 import type { EntityShareBundle, ShareableDocumentRecord } from '@/services/sharing';
 
-describe('fileKey', () => {
-  it('main vs page', () => {
-    expect(fileKey('main')).toBe('file_main');
-    expect(fileKey('page', 3)).toBe('file_page_3');
-    expect(fileKey('page')).toBe('file_page_0');
+describe('pageRecordName', () => {
+  it('prefixează cu documentul, ca paginile lui să fie găsibile după prefix', () => {
+    expect(pageRecordName('doc-1', 'pg-9')).toBe('doc-1__p__pg-9');
+  });
+
+  it('e idempotent — un nume deja prefixat nu se re-prefixează', () => {
+    const once = pageRecordName('doc-1', 'pg-9');
+    expect(pageRecordName('doc-1', once)).toBe(once);
   });
 });
 
@@ -28,10 +32,8 @@ describe('bundleToPushBundle', () => {
       {
         recordName: 'doc-1',
         fields: { type: 'talon', note: 'x' },
-        files: [
-          { file_path: 'documents/a.jpg', role: 'main' },
-          { file_path: 'documents/a2.jpg', role: 'page', page_order: 1 },
-        ],
+        mainFilePath: 'documents/a.jpg',
+        pages: [{ id: 'pg-1', file_path: 'documents/a2.jpg', page_order: 1 }],
       },
     ],
   };
@@ -45,12 +47,20 @@ describe('bundleToPushBundle', () => {
       recordType: 'vehicle',
       fields: { id: 'veh-1', name: 'Logan' },
     });
-    expect(push.documents).toHaveLength(1);
+    // Documentul + pagina lui = DOUĂ recorduri. Numele câmpurilor sunt fixe
+    // (`file_main`, `file`) — schema Production nu poate fi depășită de un
+    // document cu multe pagini, cum se întâmpla cu `file_page_<N>`.
+    expect(push.documents).toHaveLength(2);
     expect(push.documents[0].recordType).toBe('document');
     expect(push.documents[0].files).toEqual([
       { key: 'file_main', path: 'file:///docs/documents/a.jpg' },
-      { key: 'file_page_1', path: 'file:///docs/documents/a2.jpg' },
     ]);
+    expect(push.documents[1]).toEqual({
+      recordName: 'doc-1__p__pg-1',
+      recordType: 'document_page',
+      fields: { document_id: 'doc-1', page_order: '1' },
+      files: [{ key: 'file', path: 'file:///docs/documents/a2.jpg' }],
+    });
   });
 });
 
@@ -58,26 +68,24 @@ describe('shareableDocToPushRecord — mainFileUnchanged (decizia 5, CKAsset ski
   const doc: ShareableDocumentRecord = {
     recordName: 'doc-1',
     fields: { type: 'talon', note: 'x' },
-    files: [
-      { file_path: 'documents/a.jpg', role: 'main' },
-      { file_path: 'documents/a2.jpg', role: 'page', page_order: 1 },
-    ],
+    mainFilePath: 'documents/a.jpg',
+    pages: [{ id: 'pg-1', file_path: 'documents/a2.jpg', page_order: 1 }],
   };
 
-  it('mainFileUnchanged=false (default) → toate fișierele pleacă cu path', () => {
+  it('mainFileUnchanged=false (default) → fișierul principal pleacă cu path', () => {
     const rec = shareableDocToPushRecord(doc, rel => `file:///docs/${rel}`);
-    expect(rec.files).toEqual([
-      { key: 'file_main', path: 'file:///docs/documents/a.jpg' },
-      { key: 'file_page_1', path: 'file:///docs/documents/a2.jpg' },
-    ]);
+    expect(rec.files).toEqual([{ key: 'file_main', path: 'file:///docs/documents/a.jpg' }]);
   });
 
-  it('mainFileUnchanged=true → file_main devine {key, unchanged: true} fără path; paginile neafectate', () => {
+  it('mainFileUnchanged=true → file_main devine {key, unchanged: true} fără path', () => {
     const rec = shareableDocToPushRecord(doc, rel => `file:///docs/${rel}`, true);
-    expect(rec.files).toEqual([
-      { key: 'file_main', unchanged: true },
-      { key: 'file_page_1', path: 'file:///docs/documents/a2.jpg' },
-    ]);
+    expect(rec.files).toEqual([{ key: 'file_main', unchanged: true }]);
+  });
+
+  it('paginile NU sunt afectate de mainFileUnchanged — au recordurile lor', () => {
+    const recs = docWithPagesToPushRecords(doc, rel => `file:///docs/${rel}`, true);
+    expect(recs).toHaveLength(2);
+    expect(recs[1].files).toEqual([{ key: 'file', path: 'file:///docs/documents/a2.jpg' }]);
   });
 });
 
@@ -97,6 +105,29 @@ describe('parseFetchedRecords', () => {
     const parsed = parseFetchedRecords(records);
     expect(parsed.entity?.recordName).toBe('veh-1');
     expect(parsed.documents.map(d => d.recordName)).toEqual(['doc-1', 'doc-2']);
+  });
+
+  it('separă paginile (document_page) de documente și de entitate', () => {
+    const parsed = parseFetchedRecords([
+      { recordName: 'doc-1', recordType: 'document', changeTag: 't1', fields: {}, assets: [] },
+      {
+        recordName: 'doc-1__p__pg-1',
+        recordType: 'document_page',
+        changeTag: 't2',
+        fields: { document_id: 'doc-1', page_order: '1' },
+        assets: [],
+      },
+      {
+        recordName: 'veh-1',
+        recordType: 'vehicle',
+        changeTag: 't3',
+        fields: { name: 'Logan' },
+        assets: [],
+      },
+    ]);
+    expect(parsed.entity?.recordName).toBe('veh-1');
+    expect(parsed.documents.map(d => d.recordName)).toEqual(['doc-1']);
+    expect(parsed.pages.map(p => p.recordName)).toEqual(['doc-1__p__pg-1']);
   });
 
   it('entity null dacă lipsește recordul non-document', () => {

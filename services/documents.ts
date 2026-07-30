@@ -193,8 +193,7 @@ function mapRow(r: Row, pages?: DocumentPage[]): Document {
   // expiră real (certificat naștere/căsătorie/botez, diplome, acte proprietate,
   // documente medicale snapshot, bonuri, vizite vet). Filtrul aici acoperă
   // automat Expirări, Home, notificări, calendar — fără să modificăm DB.
-  const expiryDate =
-    r.expiry_date && !NO_EXPIRY_DOC_TYPES.has(type) ? r.expiry_date : undefined;
+  const expiryDate = r.expiry_date && !NO_EXPIRY_DOC_TYPES.has(type) ? r.expiry_date : undefined;
   return {
     id: r.id,
     main_orientation_locked: r.main_orientation_locked === 1,
@@ -326,13 +325,33 @@ export async function getDocumentById(id: string): Promise<Document | null> {
   return mapRow(row, pages);
 }
 
+/**
+ * Documentele legate de o entitate — pe AMBELE căi de legătură:
+ *   - coloana legacy `<tip>_id` (denormalizarea PRIMULUI link de acel tip);
+ *   - `document_entities` (sursa completă: multi-link + documentele primite prin
+ *     partajare CloudKit, care se inserează DOAR în junction — vezi
+ *     `cloudShare.applyDocumentRow`).
+ *
+ * Fără ramura `document_entities`, un document primit de la altcineva nu apare
+ * NICIODATĂ pe ecranul entității (regresia raportată 2026-07-30: „entitatea
+ * partajată apare, dar fără documente"), iar al doilea vehicul legat de același
+ * document lipsea din bundle-ul de share. Verificat de
+ * `scripts/entity-doc-links-audit.js`.
+ */
 export async function getDocumentsByEntity(
   kind: 'person_id' | 'property_id' | 'vehicle_id' | 'card_id' | 'animal_id' | 'company_id',
   id: string
 ): Promise<Document[]> {
+  const entityType = kind.slice(0, -'_id'.length);
   const rows = await db.getAllAsync<Row>(
-    `SELECT * FROM documents WHERE ${kind} = ? ${DOCUMENTS_ORDER_BY}`,
-    [id]
+    `SELECT * FROM documents d
+      WHERE d.${kind} = ?
+         OR EXISTS (SELECT 1 FROM document_entities de
+                     WHERE de.document_id = d.id
+                       AND de.entity_type = ?
+                       AND de.entity_id = ?)
+      ${DOCUMENTS_ORDER_BY}`,
+    [id, entityType, id]
   );
   return rows.map(r => mapRow(r));
 }
@@ -785,7 +804,9 @@ export async function addEntityLinkToDocument(
   // medicale standard sunt deja indexate prin medicalExtractor.extractAsync.
   // Apelul e idempotent: rescrie chunks-urile pentru toate dosarele legate.
   if (link.entityType === 'medical_record') {
-    void import('./medicalFts').then(m => m.indexDocumentForMedicalChat(documentId)).catch(() => {});
+    void import('./medicalFts')
+      .then(m => m.indexDocumentForMedicalChat(documentId))
+      .catch(() => {});
     // Simetrie cu createDocument: asocierea la un dosar medical declanșează
     // extracția observațiilor în background. Guard-uit intern de toggle AI
     // medical + ai_consent_at pe dosar. Idempotent (șterge observațiile vechi
@@ -794,7 +815,9 @@ export async function addEntityLinkToDocument(
   }
   emit('documents:changed');
   emit('links:changed');
-  void import('./cloudShare').then(m => m.afterDocumentMutation(documentId, 'upsert')).catch(() => {});
+  void import('./cloudShare')
+    .then(m => m.afterDocumentMutation(documentId, 'upsert'))
+    .catch(() => {});
 }
 
 export async function removeEntityLinkFromDocument(
@@ -821,15 +844,15 @@ export async function removeEntityLinkFromDocument(
   // pentru dosarul respectiv. `indexDocumentForMedicalChat` curăță tot și
   // reinsereazã doar pentru dosarele rămase legate.
   if (link.entityType === 'medical_record') {
-    void import('./medicalFts').then(m => m.indexDocumentForMedicalChat(documentId)).catch(() => {});
+    void import('./medicalFts')
+      .then(m => m.indexDocumentForMedicalChat(documentId))
+      .catch(() => {});
   }
   emit('documents:changed');
   emit('links:changed');
   // NU afterDocumentMutation — are nevoie de zona SPECIFICĂ tocmai eliminată,
   // care nu mai apare în getZonesForDocument după unlink.
-  void import('./cloudShare')
-    .then(m => m.afterDocumentUnlinked(documentId, link))
-    .catch(() => {});
+  void import('./cloudShare').then(m => m.afterDocumentUnlinked(documentId, link)).catch(() => {});
 }
 
 export async function getDocumentEntityLinks(documentId: string): Promise<DocumentEntityLink[]> {
@@ -859,7 +882,9 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
   }
 
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterDocumentMutation(documentId, 'upsert')).catch(() => {});
+  void import('./cloudShare')
+    .then(m => m.afterDocumentMutation(documentId, 'upsert'))
+    .catch(() => {});
   return pageId;
 }
 
@@ -1089,10 +1114,7 @@ export async function setDocumentAiSummary(
   documentId: string,
   summary: string | null
 ): Promise<void> {
-  await db.runAsync(
-    'UPDATE documents SET ai_summary = ? WHERE id = ?',
-    [summary, documentId]
-  );
+  await db.runAsync('UPDATE documents SET ai_summary = ? WHERE id = ?', [summary, documentId]);
   emit('entities:changed');
 }
 
@@ -1104,10 +1126,10 @@ export async function setMedicalRemindersPromptedAt(
   documentId: string,
   iso: string | null
 ): Promise<void> {
-  await db.runAsync(
-    'UPDATE documents SET medical_reminders_prompted_at = ? WHERE id = ?',
-    [iso, documentId]
-  );
+  await db.runAsync('UPDATE documents SET medical_reminders_prompted_at = ? WHERE id = ?', [
+    iso,
+    documentId,
+  ]);
   emit('entities:changed');
 }
 
@@ -1115,14 +1137,11 @@ export async function setMedicalRemindersPromptedAt(
  * Setează JSON-ul tranzitoriu cu `actionable_items` pentru modal (D13).
  * `null` la închiderea modalului.
  */
-export async function setPendingReminders(
-  documentId: string,
-  json: string | null
-): Promise<void> {
-  await db.runAsync(
-    'UPDATE documents SET pending_reminders_json = ? WHERE id = ?',
-    [json, documentId]
-  );
+export async function setPendingReminders(documentId: string, json: string | null): Promise<void> {
+  await db.runAsync('UPDATE documents SET pending_reminders_json = ? WHERE id = ?', [
+    json,
+    documentId,
+  ]);
   emit('entities:changed');
 }
 
@@ -1147,7 +1166,8 @@ export async function getPendingReminders(documentId: string): Promise<Actionabl
       if (typeof i !== 'object' || i === null) return false;
       const item = i as { label?: unknown; suggested_date_iso?: unknown };
       if (typeof item.label !== 'string') return false;
-      if (item.suggested_date_iso !== null && typeof item.suggested_date_iso !== 'string') return false;
+      if (item.suggested_date_iso !== null && typeof item.suggested_date_iso !== 'string')
+        return false;
       return true;
     });
   } catch {

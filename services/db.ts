@@ -854,6 +854,12 @@ safeAlterTable("ALTER TABLE pending_share_pushes ADD COLUMN kind TEXT NOT NULL D
 // nume). owner_display_name poate rămâne NULL dacă owner-ul nu e descoperibil.
 safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_display_name TEXT');
 
+// Migrare: titlul share-ului primit (CKShare.SystemFieldKey.title = numele
+// entității, setat de owner la partajare). Singura sursă de nume pentru un share
+// primit ÎNAINTE de primul pull reușit — fără el, „Partajat cu mine" afișa doar
+// eticheta de tip („Vehicul"), niciodată numele entității.
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN share_title TEXT');
+
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
 // origin: 'ai' | 'derived' | 'manual' — pentru filtrare și audit.

@@ -242,6 +242,30 @@ Primele două ar fi ars iterații de TestFlight.
    propriile push-uri; un ecou vechi peste o editare locală mai nouă = clobber. Skip pe
    `changeTag` identic cu `cloud_records.change_tag` (sau `lastModifiedUserRecordID` == self).
 
+## Formatul pe sârmă (v2, 2026-07-30 — după testul real pe două telefoane)
+
+**Regulă absolută: niciun nume de câmp sau tip de record nu se derivă din date.**
+Mediul Production are schema BLOCATĂ — un câmp inexistent face serverul să respingă
+recordul ÎNTREG. Formatul v1 punea paginile în `file_page_<N>`, cu N = numărul paginii,
+deci primul document cu o pagină în plus față de ce fusese publicat în Production
+eșua permanent (și tăcut, până la repararea contabilizării `failed`).
+
+| Ce | Record type | Câmpuri | Asset |
+|---|---|---|---|
+| Entitate | `person` / `vehicle` / `property` / `animal` / `company` | whitelist `ENTITY_SYNC_FIELDS` | — |
+| Document | `document` | `type`, `issue_date`, `expiry_date`, `note`, `created_at`, `metadata` | `file_main` |
+| Pagină | `document_page` | `document_id`, `page_order` | `file` |
+
+Numele recordului unei pagini: `<documentId>__p__<pageId>` — prefixul permite găsirea
+paginilor unui document în `cloud_records` fără rândul local, deci ștergerea de pe
+server a paginilor eliminate local (inclusiv la reordonare, care recreează rândurile
+cu id-uri noi). `pageRecordName()` e idempotentă, ca participantul care re-trimite o
+pagină primită să nu dubleze prefixul.
+
+**Operațional:** tipul `document_page` trebuie să existe în schema Production. Se
+creează automat la primul push dintr-un build Development, apoi *Deploy Schema to
+Production* în CloudKit Console. Verificat de `scripts/cloudkit-field-names-audit.js`.
+
 ## Invariante care NU se strică (privacy — testate azi)
 
 - `MEDICAL_DOC_TYPES` și `private_notes` NU pleacă NICIODATĂ (whitelist

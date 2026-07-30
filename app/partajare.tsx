@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { friendlyCloudKitMessage } from '@/services/cloudShare';
 import { dark, light, onPrimary, primary, statusColors } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useSharing } from '@/hooks/useSharing';
@@ -98,8 +99,10 @@ export default function PartajareScreen() {
     const doShare = (permission: SharePermission) => {
       setSharingKey(rowKey);
       return share(row.type, row.id, permission)
-        .catch(() => {
-          Alert.alert('Partajare', 'Nu s-a putut partaja. Verifică iCloud și conexiunea.');
+        .catch(e => {
+          // Cauza reală, nu un „reîncearcă" generic: aici ajung erorile CloudKit
+          // care altfel lăsau un share creat peste o zonă goală.
+          Alert.alert('Partajare', friendlyCloudKitMessage(e));
         })
         .finally(() => setSharingKey(null));
     };
@@ -146,7 +149,9 @@ export default function PartajareScreen() {
 
   const onLeave = (s: SharedEntity) => {
     const name =
-      entityNameByKey.get(`${s.entity_type}:${s.entity_id}`) ?? ENTITY_TYPE_LABELS[s.entity_type];
+      entityNameByKey.get(`${s.entity_type}:${s.entity_id}`) ??
+      s.share_title ??
+      ENTITY_TYPE_LABELS[s.entity_type];
     Alert.alert(
       'Renunță la partajare',
       `Nu mai primești actualizări pentru „${name}"? Ce ai văzut deja rămâne la tine.`,
@@ -184,6 +189,12 @@ export default function PartajareScreen() {
             Partajează o entitate cu familia. Documentele medicale, notele private și cardurile
             rămân doar la tine.
           </Text>
+          {!available ? (
+            <Text style={[styles.hint, { color: statusColors.warning, marginTop: 4 }]}>
+              Telefonul nu e conectat la un cont iCloud, deci partajarea nu poate porni. Setări →
+              [numele tău] → iCloud.
+            </Text>
+          ) : null}
           {diagnostics.pendingPushCount > 0 ? (
             <Text style={[styles.hint, { color: statusColors.warning, marginTop: 4 }]}>
               {diagnostics.pendingPushCount}{' '}
@@ -299,6 +310,10 @@ export default function PartajareScreen() {
           ) : (
             receivedShares.map((s, idx) => {
               const diag = diagnostics.zones.find(z => z.zoneName === s.zone_name);
+              // Entitatea a ajuns efectiv local? (numele se resolvă din listele
+              // locale). Dacă nu, rândul nu e „gata" — spune-o explicit, în loc să
+              // arate un share aparent normal care nu duce nicăieri.
+              const arrived = entityNameByKey.has(`${s.entity_type}:${s.entity_id}`);
               return (
                 <View
                   key={s.id}
@@ -314,18 +329,26 @@ export default function PartajareScreen() {
                   <View style={styles.rowText}>
                     <Text style={[styles.rowName, { color: palette.text }]} numberOfLines={1}>
                       {entityNameByKey.get(`${s.entity_type}:${s.entity_id}`) ??
+                        s.share_title ??
                         ENTITY_TYPE_LABELS[s.entity_type]}
                     </Text>
                     <Text style={[styles.rowSub, { color: palette.textSecondary }]}>
-                      {s.owner_display_name ?? s.owner_name ?? 'partajat'} •{' '}
+                      {/* owner_name e identificatorul opac CloudKit (`_a1b2…`) — a-l
+                          afișa e mai rău decât inutil. */}
+                      {s.owner_display_name ?? 'partajat de cineva'} •{' '}
                       {PERMISSION_LABELS[s.permission]}
                     </Text>
                     {diag?.lastSyncError ? (
                       <Text
                         style={[styles.rowDiagnostic, { color: statusColors.critical }]}
-                        numberOfLines={1}
+                        numberOfLines={2}
                       >
                         Eroare sincronizare: {diag.lastSyncError}
+                      </Text>
+                    ) : !arrived ? (
+                      <Text style={[styles.rowDiagnostic, { color: statusColors.warning }]}>
+                        Datele nu au ajuns încă — apasă ⟳ sus. Dacă rămâne așa, cel care a partajat
+                        trebuie să reîncerce.
                       </Text>
                     ) : diag?.lastSyncedAt ? (
                       <Text style={[styles.rowDiagnostic, { color: palette.textSecondary }]}>

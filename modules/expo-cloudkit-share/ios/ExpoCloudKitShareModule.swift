@@ -199,15 +199,28 @@ public class ExpoCloudKitShareModule: Module {
       if let displayName = Self.formatUserIdentity(metadata.ownerIdentity) {
         result["ownerDisplayName"] = displayName
       }
+      // Titlul (= numele entității, setat de owner la `shareZone`) e singurul nume
+      // afișabil al entității înainte de primul pull reușit.
+      if let title = Self.shareTitle(accepted) ?? Self.shareTitle(metadata.share) {
+        result["title"] = title
+      }
+      // Permisiunea REALĂ a participantului. Fără ea, JS presupune 'read' și un
+      // share „Poate edita" rămâne read-only pe device-ul participantului (UI
+      // blocat + push-back refuzat de `pushLocalChange`).
+      if let permission = Self.permissionString(accepted) ?? Self.permissionString(metadata.share) {
+        result["permission"] = permission
+      }
       return result
     }
 
-    // ─── fetchShareOwnerName ─────────────────────────────────────────────
+    // ─── fetchShareInfo ──────────────────────────────────────────────────
     // Best-effort, pentru zone descoperite prin `listSharedZones()` (nu prin
-    // `acceptShareURL`, care deja are numele din metadata) — ex. dacă vreodată
-    // handler-ul de sistem chiar livrează acceptarea. Fetch-uiește CKShare-ul
-    // zonei ca să afle `owner.userIdentity`.
-    AsyncFunction("fetchShareOwnerName") { (options: [String: Any]) async throws -> [String: Any] in
+    // `acceptShareURL`, care are deja totul din metadata) — cazul normal când
+    // sistemul acceptă share-ul singur, la tap pe link. Fetch-uiește CKShare-ul
+    // zonei: numele owner-ului, titlul (= numele entității) și permisiunea mea.
+    // Fiecare cheie lipsește din rezultat dacă nu e determinabilă — JS păstrează
+    // atunci valoarea deja cunoscută, nu o suprascrie cu un default greșit.
+    AsyncFunction("fetchShareInfo") { (options: [String: Any]) async throws -> [String: Any] in
       guard let zoneName = options["zoneName"] as? String else {
         throw makeError(16, "zoneName obligatoriu")
       }
@@ -215,11 +228,20 @@ public class ExpoCloudKitShareModule: Module {
       let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: ownerName)
       let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
       guard let record = try? await self.container.sharedCloudDatabase.record(for: shareID),
-            let share = record as? CKShare,
-            let displayName = Self.formatUserIdentity(share.owner.userIdentity) else {
+            let share = record as? CKShare else {
         return [:]
       }
-      return ["ownerDisplayName": displayName]
+      var result: [String: Any] = [:]
+      if let displayName = Self.formatUserIdentity(share.owner.userIdentity) {
+        result["ownerDisplayName"] = displayName
+      }
+      if let title = Self.shareTitle(share) {
+        result["title"] = title
+      }
+      if let permission = Self.permissionString(share) {
+        result["permission"] = permission
+      }
+      return result
     }
 
     // ─── fetchZoneChanges ────────────────────────────────────────────────
@@ -555,6 +577,32 @@ public class ExpoCloudKitShareModule: Module {
     if let email = identity.lookupInfo?.emailAddress { return email }
     if let phone = identity.lookupInfo?.phoneNumber { return phone }
     return nil
+  }
+
+  /** Titlul share-ului (`CKShare.SystemFieldKey.title`) — setat de owner la `shareZone` = numele entității. */
+  private static func shareTitle(_ share: CKShare) -> String? {
+    guard let title = share[CKShare.SystemFieldKey.title] as? String, !title.isEmpty else {
+      return nil
+    }
+    return title
+  }
+
+  /**
+   * Permisiunea EFECTIVĂ a userului curent pe un share primit: participantul
+   * propriu dacă e determinat, altfel permisiunea publică a link-ului (fluxul
+   * acestei aplicații e link-paste, unde accesul vine din `publicPermission`).
+   * `nil` = nedeterminabilă → apelantul păstrează ce știe deja.
+   */
+  private static func permissionString(_ share: CKShare) -> String? {
+    var effective = share.currentUserParticipant?.permission ?? .unknown
+    if effective != .readOnly && effective != .readWrite {
+      effective = share.publicPermission
+    }
+    switch effective {
+    case .readWrite: return "readwrite"
+    case .readOnly: return "read"
+    default: return nil
+    }
   }
 
   private static func accountStatusString(_ status: CKAccountStatus) -> String {

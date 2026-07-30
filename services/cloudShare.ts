@@ -4,13 +4,19 @@ import type * as CloudKitShareModule from '@/modules/expo-cloudkit-share/src';
 import type { DocumentEntityLink, EntityType } from '@/types';
 
 import {
+  MAIN_FILE_KEY,
+  PAGE_FILE_KEY,
+  PAGE_RECORD_TYPE,
+  docWithPagesToPushRecords,
   entityToPushRecord,
+  pageRecordName,
+  pageRecordPrefix,
   parseFetchedRecords,
-  shareableDocToPushRecord,
 } from './cloudShareMapping';
 import type { FetchedRecord, PushRecord } from './cloudShareMapping';
 import { db } from './db';
 import { getDocumentById } from './documents';
+import { assignNextOrder } from './entityOrder';
 import { toFileUri } from './fileUtils';
 import {
   getCloudKitDbChangeToken,
@@ -26,6 +32,7 @@ import {
   deleteSharePush,
   enqueueSharePush,
   getCloudRecord,
+  getCloudRecordsByPrefix,
   getCloudRecordsForLocal,
   getEntityShareFields,
   getPendingSharePushes,
@@ -48,6 +55,7 @@ import {
 import type {
   PendingSharePush,
   PushScope,
+  ShareableDocumentRecord,
   SharedEntity,
   SharePermission,
   SharePushOp,
@@ -90,6 +98,16 @@ const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = Object.fromEntries(
   Object.entries(ENTITY_TABLE).map(([entityType, table]) => [table, entityType as EntityType])
 );
 
+/**
+ * Coloana legacy denormalizată din `documents` pentru un tip de entitate —
+ * convenția `${entityType}_id` (sursa: `LEGACY_ENTITY_COLUMN` din
+ * `services/documents.ts`). `null` pentru tipuri nepartajabile, ceea ce face
+ * interpolarea în SQL sigură (cheia e validată prin `ENTITY_TABLE`).
+ */
+function legacyColumnFor(entityType: EntityType): string | null {
+  return ENTITY_TABLE[entityType] ? `${entityType}_id` : null;
+}
+
 export type LocalTable =
   | 'persons'
   | 'properties'
@@ -121,14 +139,34 @@ export async function shareEntity(
 
   const records: PushRecord[] = [
     entityToPushRecord(bundle),
-    ...bundle.documents.map(doc => shareableDocToPushRecord(doc, rel => toFileUri(rel))),
+    ...bundle.documents.flatMap(doc => docWithPagesToPushRecords(doc, rel => toFileUri(rel))),
   ];
-  const { succeeded } = await native().pushRecords({
+  const { succeeded, failed } = await native().pushRecords({
     zoneName,
     scope: 'private',
     records,
     deletions: [],
   });
+
+  // Eșecurile PER-RECORD nu mai sunt tăcute. `pushRecords` raportează fiecare
+  // record separat (schema CloudKit nepublicată în Production, quota iCloud
+  // plină, fișier lipsă) — ignorând `failed`, owner-ul vedea „partajat" cu bifă
+  // verde, iar participantul primea o zonă GOALĂ, fără nicio eroare nicăieri
+  // (regresia raportată 2026-07-30). Entitatea-rădăcină lipsă = share inutil →
+  // aruncă ÎNAINTE de a prezenta invitația, ca userul să nu trimită un link mort.
+  const entityError = failed[bundle.entityRecordName];
+  if (entityError) {
+    throw new Error(`Entitatea nu s-a putut urca în iCloud: ${entityError}`);
+  }
+  // Un document e „picat" dacă a eșuat recordul lui SAU oricare pagină a lui —
+  // altfel participantul ar primi un document cu pagini lipsă, fără să afle.
+  const failedDocs = bundle.documents.filter(
+    d => failed[d.recordName] || d.pages.some(p => failed[pageRecordName(d.recordName, p.id)])
+  );
+  const firstFailure = (doc: (typeof bundle.documents)[number]): string =>
+    failed[doc.recordName] ??
+    doc.pages.map(p => failed[pageRecordName(doc.recordName, p.id)]).find(Boolean) ??
+    'eroare necunoscută';
 
   // Prezintă invitația ÎNAINTE de a persista starea locală. Dacă CloudKit refuză
   // share-ul (ex: schema neplublicată în Production → „Cannot create new type
@@ -149,21 +187,24 @@ export async function shareEntity(
     changeTag: succeeded[bundle.entityRecordName],
   });
   for (const doc of bundle.documents) {
-    await upsertCloudRecord({
-      zoneName,
-      recordName: doc.recordName,
-      recordType: 'document',
-      localTable: 'documents',
-      localId: doc.recordName,
-      changeTag: succeeded[doc.recordName],
-    });
-  }
-  // Hash bookkeeping pentru push-urile incrementale viitoare (skip CKAsset la
-  // fișier neschimbat) — vezi shareableDocToPushRecord (cloudShareMapping.ts).
-  for (const doc of bundle.documents) {
-    const fullDoc = await getDocumentById(doc.recordName);
-    if (fullDoc?.file_hash)
-      await setCloudRecordFileHash(zoneName, doc.recordName, fullDoc.file_hash);
+    // Bookkeeping doar pentru ce EXISTĂ pe server — per record, nu per document:
+    // o pagină picată nu trebuie să șteargă evidența documentului urcat corect.
+    if (!failed[doc.recordName]) {
+      await upsertCloudRecord({
+        zoneName,
+        recordName: doc.recordName,
+        recordType: 'document',
+        localTable: 'documents',
+        localId: doc.recordName,
+        changeTag: succeeded[doc.recordName],
+      });
+      // Hash bookkeeping pentru push-urile incrementale viitoare (skip CKAsset la
+      // fișier neschimbat) — vezi shareableDocToPushRecord (cloudShareMapping.ts).
+      const fullDoc = await getDocumentById(doc.recordName);
+      if (fullDoc?.file_hash)
+        await setCloudRecordFileHash(zoneName, doc.recordName, fullDoc.file_hash);
+    }
+    await rememberPushedPages(zoneName, doc, succeeded, failed);
   }
 
   await recordShare({
@@ -173,8 +214,69 @@ export async function shareEntity(
     role: 'owner',
     shareUrl: shareURL,
     permission,
+    shareTitle: bundle.entityFields.name,
   });
+
+  // Documente picate: share-ul e valid (entitatea a urcat), dar incomplet. Le
+  // pune în coada de retry (vizibile în UI ca „modificări în așteptare") ȘI
+  // marchează eroarea pe zonă, ca userul să vadă DE CE lipsesc, în loc să
+  // descopere de la celălalt telefon că entitatea a ajuns goală.
+  if (failedDocs.length > 0) {
+    for (const doc of failedDocs) {
+      await enqueueSharePush({
+        zoneName,
+        recordName: doc.recordName,
+        op: 'upsert',
+        scope: 'private',
+        kind: 'document',
+      });
+    }
+    await markZoneSyncError(
+      zoneName,
+      `${failedDocs.length} ${failedDocs.length === 1 ? 'document' : 'documente'} nu s-au urcat: ${firstFailure(failedDocs[0])}`
+    );
+  }
   return shareURL;
+}
+
+/**
+ * Înregistrează în `cloud_records` paginile urcate cu succes ale unui document.
+ * Evidența e per pagină fiindcă de ea depinde ștergerea de pe server a paginilor
+ * eliminate ulterior local (vezi `pageDeletionsFor`).
+ */
+async function rememberPushedPages(
+  zoneName: string,
+  doc: ShareableDocumentRecord,
+  succeeded: Record<string, string>,
+  failed: Record<string, string>
+): Promise<void> {
+  for (const page of doc.pages) {
+    const recordName = pageRecordName(doc.recordName, page.id);
+    if (failed[recordName]) continue;
+    await upsertCloudRecord({
+      zoneName,
+      recordName,
+      recordType: PAGE_RECORD_TYPE,
+      localTable: 'document_pages',
+      localId: page.id,
+      changeTag: succeeded[recordName],
+    });
+  }
+}
+
+/**
+ * Paginile prezente pe server pentru un document, dar absente din setul local
+ * curent → trebuie șterse din zonă. Fără asta, o pagină eliminată local (sau
+ * reordonarea, care recreează rândurile cu id-uri noi) ar lăsa recorduri orfane
+ * care reapar la participant.
+ */
+async function pageDeletionsFor(
+  zoneName: string,
+  documentRecordName: string,
+  desiredRecordNames: Set<string>
+): Promise<string[]> {
+  const known = await getCloudRecordsByPrefix(zoneName, pageRecordPrefix(documentRecordName));
+  return known.map(r => r.record_name).filter(name => !desiredRecordNames.has(name));
 }
 
 /** Owner: revocă accesul (forward-only). */
@@ -231,10 +333,15 @@ export function friendlyCloudKitMessage(e: unknown): string {
   if (/network|connection|offline|internet/i.test(msg)) {
     return 'Fără conexiune. Verifică internetul și reîncearcă.';
   }
+  if (/quota|storage.*full|exceeded.*storage/i.test(msg)) {
+    return 'Spațiul iCloud e plin — documentele nu se pot urca. Eliberează spațiu în iCloud și reîncearcă.';
+  }
   if (isZoneGoneError(e)) {
     return 'Zona partajată nu mai există pe server.';
   }
-  return 'Partajarea nu a reușit. Reîncearcă.';
+  // Mesajul brut CloudKit rămâne vizibil: funcția e în Beta și un „Reîncearcă"
+  // fără cauză a costat deja o rundă de debugging pe două telefoane.
+  return `Partajarea nu a reușit: ${msg}`;
 }
 
 /**
@@ -265,16 +372,67 @@ export async function acceptShareByURL(url: string): Promise<void> {
   // (acela cere un fetch separat pe care doar acest punct îl are gratis).
   const parsed = parseZoneName(accepted.zoneName);
   if (parsed) {
-    await recordShare({
+    const share = await recordShare({
       entityType: parsed.entityType,
       entityId: parsed.entityId,
       zoneName: accepted.zoneName,
       role: 'participant',
       ownerName: accepted.ownerName,
       ownerDisplayName: accepted.ownerDisplayName,
+      shareTitle: accepted.title,
+      permission: accepted.permission,
     });
+    queueReceivedNotice(parsed.entityType, parsed.entityId, accepted.title);
+    // Trage ȚINTIT zona tocmai acceptată, fără să depindă de fereastra tokenului
+    // DB-level și fără să aștepte un sync general care poate fi deja în curs
+    // (trecut de faza de reconcile) — userul se așteaptă să vadă entitatea
+    // imediat după „Acceptă".
+    try {
+      await syncOneZone(share);
+      await markZoneSyncSuccess(share.zone_name);
+    } catch (e) {
+      await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+    }
   }
   await syncSharedEntities();
+}
+
+/**
+ * Un share nou intrat pe device în sincronizarea curentă. Coada e drenată de
+ * `useSharingSync` DUPĂ pull, ca să anunțe userul și să-l ducă la entitate —
+ * altfel tap-ul pe link deschide aplicația și nu se întâmplă nimic vizibil
+ * (reclamat 2026-07-30: „a deschis Dosar… nu m-a dus nicăieri").
+ */
+export interface ReceivedShareNotice {
+  entityType: EntityType;
+  entityId: string;
+  /** Titlul share-ului (numele entității la owner), dacă e cunoscut. */
+  title?: string;
+  /** true = rândul entității există deja local, deci navigarea are ce afișa. */
+  arrived: boolean;
+}
+
+const receivedNotices: { entityType: EntityType; entityId: string; title?: string }[] = [];
+
+function queueReceivedNotice(entityType: EntityType, entityId: string, title?: string): void {
+  if (receivedNotices.some(n => n.entityType === entityType && n.entityId === entityId)) return;
+  receivedNotices.push({ entityType, entityId, title });
+}
+
+/** Golește coada, completând pentru fiecare notice dacă entitatea a ajuns local. */
+export async function takeReceivedShareNotices(): Promise<ReceivedShareNotice[]> {
+  const drained = receivedNotices.splice(0, receivedNotices.length);
+  const out: ReceivedShareNotice[] = [];
+  for (const n of drained) {
+    const table = ENTITY_TABLE[n.entityType];
+    const row = table
+      ? await db.getFirstAsync<{ name: string }>(`SELECT name FROM ${table} WHERE id = ?`, [
+          n.entityId,
+        ])
+      : null;
+    out.push({ ...n, title: row?.name ?? n.title, arrived: !!row });
+  }
+  return out;
 }
 
 export async function reconcileParticipantShares(): Promise<void> {
@@ -290,18 +448,18 @@ export async function reconcileParticipantShares(): Promise<void> {
     if (knownParticipant.has(zone.zoneName)) continue;
     const parsed = parseZoneName(zone.zoneName);
     if (!parsed) continue; // zonă de sistem sau tip necunoscut — nu inventăm entitate
-    // Best-effort: `listSharedZones` nu întoarce numele afișabil (doar
-    // identificatorul opac) — fetch separat pe CKShare-ul zonei. Dacă eșuează
-    // (offline, share dispărut între timp), rândul se creează oricum fără nume.
-    let ownerDisplayName: string | undefined;
+    // Best-effort: `listSharedZones` întoarce doar identificatori opaci — fetch
+    // separat pe CKShare-ul zonei pentru numele owner-ului, titlul (= numele
+    // entității) și permisiunea mea reală. Dacă eșuează (offline, share dispărut
+    // între timp), rândul se creează oricum, iar un reconcile ulterior completează.
+    let info: { ownerDisplayName?: string; title?: string; permission?: SharePermission } = {};
     try {
-      const fetched = await native().fetchShareOwnerName({
+      info = await native().fetchShareInfo({
         zoneName: zone.zoneName,
         ownerName: zone.ownerName,
       });
-      ownerDisplayName = fetched.ownerDisplayName;
     } catch {
-      // silent — UI cade pe fallback (owner_name brut / „partajat")
+      // silent — UI cade pe fallback („partajat de cineva" + eticheta de tip)
     }
     await recordShare({
       entityType: parsed.entityType,
@@ -309,8 +467,45 @@ export async function reconcileParticipantShares(): Promise<void> {
       zoneName: zone.zoneName,
       role: 'participant',
       ownerName: zone.ownerName,
-      ownerDisplayName,
+      ownerDisplayName: info.ownerDisplayName,
+      shareTitle: info.title,
+      permission: info.permission,
     });
+    queueReceivedNotice(parsed.entityType, parsed.entityId, info.title);
+  }
+
+  // Zone deja cunoscute, dar cu metadate incomplete (rândul a fost creat de un
+  // reconcile offline sau de un build vechi): completează titlul/permisiunea la
+  // următoarea trecere. Fără asta, un share „Poate edita" rămâne pe veci
+  // read-only local, iar rândul rămâne fără numele entității.
+  for (const share of active) {
+    if (share.role !== 'participant') continue;
+    // Titlul e reper: îl setăm mereu la partajare, deci absența lui = rând
+    // incomplet. `owner_display_name` poate lipsi legitim pentru totdeauna
+    // (owner nedescoperibil) — a-l folosi drept condiție ar însemna un fetch
+    // de rețea la FIECARE sincronizare, degeaba.
+    if (share.share_title) continue;
+    if (!liveZoneNames.has(share.zone_name)) continue;
+    try {
+      const info = await native().fetchShareInfo({
+        zoneName: share.zone_name,
+        ownerName: share.owner_name,
+      });
+      if (info.ownerDisplayName || info.title || info.permission) {
+        await recordShare({
+          entityType: share.entity_type,
+          entityId: share.entity_id,
+          zoneName: share.zone_name,
+          role: 'participant',
+          ownerName: share.owner_name,
+          ownerDisplayName: info.ownerDisplayName,
+          shareTitle: info.title,
+          permission: info.permission,
+        });
+      }
+    } catch {
+      // best-effort, ca mai sus
+    }
   }
 
   for (const share of active) {
@@ -485,10 +680,21 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
   const records: PushRecord[] = [];
   const deletions: string[] = [];
   const skipIds: number[] = [];
+  // Rând din coadă → recordurile de pagină trimise pentru el. Un document e
+  // „reușit" doar dacă au reușit ȘI paginile lui; altfel rândul rămâne în coadă.
+  const pageRecordsByRow = new Map<number, string[]>();
 
   for (const row of rows) {
     if (row.op === 'delete') {
       deletions.push(row.record_name);
+      if (row.kind === 'document') {
+        // Paginile sunt recorduri separate: fără ștergerea lor explicită ar
+        // rămâne orfane în zonă după ștergerea documentului.
+        const pages = await getCloudRecordsByPrefix(zoneName, pageRecordPrefix(row.record_name));
+        const pageNames = pages.map(p => p.record_name);
+        deletions.push(...pageNames);
+        pageRecordsByRow.set(row.id, pageNames);
+      }
       continue;
     }
     if (row.kind === 'entity') {
@@ -508,13 +714,26 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
         // doar dacă exista deja pe server, altfel nu inventăm un delete pentru
         // ceva ce n-a fost niciodată pushuit.
         const wasSynced = await getCloudRecord(zoneName, row.record_name);
-        if (wasSynced) deletions.push(row.record_name);
-        else skipIds.push(row.id);
+        if (wasSynced) {
+          deletions.push(row.record_name);
+          const pages = await getCloudRecordsByPrefix(zoneName, pageRecordPrefix(row.record_name));
+          deletions.push(...pages.map(p => p.record_name));
+          pageRecordsByRow.set(
+            row.id,
+            pages.map(p => p.record_name)
+          );
+        } else skipIds.push(row.id);
         continue;
       }
       const existing = await getCloudRecord(zoneName, row.record_name);
       const mainUnchanged = !!doc!.file_hash && doc!.file_hash === existing?.file_hash;
-      records.push(shareableDocToPushRecord(shareable, rel => toFileUri(rel), mainUnchanged));
+      const docRecords = docWithPagesToPushRecords(shareable, rel => toFileUri(rel), mainUnchanged);
+      records.push(...docRecords);
+      const pageNames = docRecords.slice(1).map(r => r.recordName);
+      pageRecordsByRow.set(row.id, pageNames);
+      // Pagini rămase pe server dar eliminate local (ștergere de pagină sau
+      // reordonare, care recreează rândurile cu id-uri noi) → tombstone.
+      deletions.push(...(await pageDeletionsFor(zoneName, row.record_name, new Set(pageNames))));
     }
   }
 
@@ -529,9 +748,16 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
       records,
       deletions,
     });
+    // Ștergerile de pagini care nu aparțin niciunui rând din coadă (orfane
+    // detectate la push) — curăță evidența locală după succes pe server.
+    for (const name of deletions) {
+      if (!failed[name] && name.includes('__p__')) await deleteCloudRecord(zoneName, name);
+    }
+
     for (const row of rows) {
       if (skipIds.includes(row.id)) continue;
-      const errorMsg = failed[row.record_name];
+      const pageNames = pageRecordsByRow.get(row.id) ?? [];
+      const errorMsg = failed[row.record_name] ?? pageNames.map(n => failed[n]).find(Boolean);
       if (errorMsg) {
         await bumpSharePushAttempt(row.id, errorMsg);
         continue;
@@ -540,6 +766,18 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
       if (row.op === 'delete') {
         await deleteCloudRecord(zoneName, row.record_name);
         continue;
+      }
+      for (const name of pageNames) {
+        const pageTag = succeeded[name];
+        if (!pageTag) continue;
+        await upsertCloudRecord({
+          zoneName,
+          recordName: name,
+          recordType: PAGE_RECORD_TYPE,
+          localTable: 'document_pages',
+          localId: name.slice(name.indexOf('__p__') + '__p__'.length),
+          changeTag: pageTag,
+        });
       }
       const changeTag = succeeded[row.record_name];
       if (!changeTag) continue;
@@ -579,7 +817,25 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
  * apoi trage schimbările — atât ca participant cât și, pentru share-urile
  * readwrite, ca owner. Fără cont iCloud (simulator, delogat) → no-op liniștit.
  */
-export async function syncSharedEntities(): Promise<void> {
+let syncInFlight: Promise<void> | null = null;
+
+/**
+ * Serializează sincronizările. `useSharingSync` (mount + AppState → active +
+ * silent push) și ecranul Partajare (`useSharing`) pornesc fiecare propriul
+ * sync; două rulări concurente consumă aceeași fereastră de token DB-level, iar
+ * una dintre ele poate sări o zonă pe care cealaltă n-a înregistrat-o încă
+ * (vezi `pullSharedChanges`). Al doilea apelant așteaptă rularea în curs.
+ */
+export function syncSharedEntities(): Promise<void> {
+  if (syncInFlight) return syncInFlight;
+  const run = runSyncSharedEntities().finally(() => {
+    if (syncInFlight === run) syncInFlight = null;
+  });
+  syncInFlight = run;
+  return run;
+}
+
+async function runSyncSharedEntities(): Promise<void> {
   if (!(await isCloudKitAvailable())) return;
 
   // Întâi înregistrează zonele nou-acceptate/dispărute.
@@ -625,12 +881,38 @@ async function pullSharedChanges(): Promise<void> {
   }
 
   const shares = await getSharedEntities();
-  const byZone = new Map(shares.filter(s => s.role === 'participant').map(s => [s.zone_name, s]));
+  const participants = shares.filter(s => s.role === 'participant');
+  const byZone = new Map(participants.map(s => [s.zone_name, s]));
 
-  let anyFailed = false;
+  // Ce zone tragem: cele raportate ca schimbate + TOATE cele care n-au tras
+  // niciodată nimic (fără `change_token`). Al doilea set e obligatoriu: tokenul
+  // DB-level e o fereastră consumabilă, iar o zonă poate rămâne pe dinafara ei
+  // (share acceptat de sistem într-o sesiune anterioară, două sync-uri
+  // concurente — ecranul Partajare + `useSharingSync` — sau o zonă raportată
+  // înainte de a fi înregistrată local). Fără force-fetch, zona rămâne GOALĂ pe
+  // veci și fără nicio eroare: exact „apare în «Partajat cu mine», dar entitatea
+  // nu apare nicăieri" (raportat 2026-07-30). Un fetch full pe o zonă fără token
+  // e ieftin și se întâmplă o singură dată per zonă.
+  const zonesToSync = new Map<string, SharedEntity>();
+  let missedOwnZone = false;
   for (const z of changedZones) {
     const share = byZone.get(z.zoneName);
-    if (!share) continue; // zonă necunoscută încă — următorul reconcile o prinde
+    if (!share) {
+      // Zonă a APLICAȚIEI, dar încă neînregistrată local (reconcile-ul o prinde
+      // la următoarea trecere) → NU avansa tokenul, altfel îi pierdem definitiv
+      // notificarea. Zonele străine (nume neparsabil) nu blochează tokenul.
+      if (parseZoneName(z.zoneName)) missedOwnZone = true;
+      continue;
+    }
+    zonesToSync.set(share.zone_name, share);
+  }
+  for (const share of participants) {
+    if (zonesToSync.has(share.zone_name)) continue;
+    if (!(await getZoneChangeToken(share.zone_name))) zonesToSync.set(share.zone_name, share);
+  }
+
+  let anyFailed = false;
+  for (const share of zonesToSync.values()) {
     try {
       await syncOneZone(share);
       await markZoneSyncSuccess(share.zone_name);
@@ -640,11 +922,12 @@ async function pullSharedChanges(): Promise<void> {
     }
   }
 
-  // Tokenul DB-level avansează DOAR dacă nicio zonă din pagina asta n-a eșuat.
-  // Zonele deja reușite și-au avansat tokenul PER-zonă (shared_entities.change_token)
-  // — reîncercarea întregii pagini la următorul sync e ieftină pentru ele (fetch
-  // incremental întoarce empty), deci nu-i nevoie de logică de „skip zonele reușite".
-  if (!anyFailed) {
+  // Tokenul DB-level avansează DOAR dacă nicio zonă din pagina asta n-a eșuat și
+  // nicio zonă de-a noastră n-a fost sărită. Zonele deja reușite și-au avansat
+  // tokenul PER-zonă (shared_entities.change_token) — reîncercarea întregii
+  // pagini la următorul sync e ieftină pentru ele (fetch incremental întoarce
+  // empty), deci nu-i nevoie de logică de „skip zonele reușite".
+  if (!anyFailed && !missedOwnZone) {
     await setCloudKitDbChangeToken('shared', newToken);
   }
 }
@@ -672,7 +955,11 @@ async function pullOwnedChanges(): Promise<void> {
   let anyFailed = false;
   for (const z of changedZones) {
     const share = byZone.get(z.zoneName);
-    if (!share) continue; // zonă read-only sau necunoscută — n-avem ce trage acolo
+    // Zonă read-only, revocată sau necunoscută — n-avem ce trage acolo. Nu
+    // blochează avansul tokenului: zonele PROPRII sunt înregistrate local de
+    // `shareEntity` înainte de orice push, deci nu există fereastră de pierdut
+    // (spre deosebire de partea de participant, unde zona apare din exterior).
+    if (!share) continue;
     try {
       await syncOneZone(share);
       await markZoneSyncSuccess(share.zone_name);
@@ -706,7 +993,7 @@ async function syncOneZone(share: SharedEntity): Promise<void> {
 }
 
 async function applyFetchedRecords(share: SharedEntity, records: FetchedRecord[]): Promise<void> {
-  const { entity, documents } = parseFetchedRecords(records);
+  const { entity, documents, pages } = parseFetchedRecords(records);
   if (entity && (await shouldApplyRecord(share.zone_name, entity))) {
     await applyEntityRow(share.entity_type, entity.recordName, entity.fields);
     await rememberAppliedRecord(
@@ -726,6 +1013,19 @@ async function applyFetchedRecords(share: SharedEntity, records: FetchedRecord[]
       'document',
       'documents',
       doc.changeTag
+    );
+  }
+  // Paginile pot sosi înaintea documentului lor (batch-uri diferite);
+  // `document_pages.document_id` n-are FK, deci ordinea nu contează.
+  for (const page of pages) {
+    if (!(await shouldApplyRecord(share.zone_name, page))) continue;
+    await applyPageRow(share, page);
+    await rememberAppliedRecord(
+      share.zone_name,
+      page.recordName,
+      PAGE_RECORD_TYPE,
+      'document_pages',
+      page.changeTag
     );
   }
 }
@@ -788,6 +1088,16 @@ async function applyEntityRow(
      ON CONFLICT(id) DO UPDATE SET ${setClause}`,
     [recordName, ...cols.map(c => fields[c]), createdAt]
   );
+
+  // Ordinea globală din lista Entități: fără un rând în `entity_order`, entitatea
+  // primită se duce DUPĂ toate entitățile proprii (vezi sortarea din
+  // `app/(tabs)/entitati/index.tsx`) — invizibilă în practică la o listă lungă.
+  // `assignNextOrder` o pune în TOP, la fel ca o entitate nou creată local.
+  const hasOrder = await db.getFirstAsync<{ cnt: number }>(
+    'SELECT COUNT(*) AS cnt FROM entity_order WHERE entity_type = ? AND entity_id = ?',
+    [entityType, recordName]
+  );
+  if (!hasOrder?.cnt) await assignNextOrder(entityType, recordName);
 }
 
 /**
@@ -798,20 +1108,8 @@ async function applyEntityRow(
  * ON DELETE CASCADE) — regresie descrisă în plan, decizia 4.
  */
 async function applyDocumentRow(share: SharedEntity, rec: FetchedRecord): Promise<void> {
-  let mainRel: string | null = null;
-  const pageRels: { order: number; rel: string }[] = [];
-
-  for (const asset of rec.assets) {
-    const rel = `shared/${share.zone_name}/${rec.recordName}_${asset.key}`;
-    await ensureParentDir(rel);
-    await FileSystem.copyAsync({ from: toFileUri(asset.path), to: toFileUri(rel) }).catch(() => {});
-    if (asset.key === 'file_main') {
-      mainRel = rel;
-    } else if (asset.key.startsWith('file_page_')) {
-      const order = Number(asset.key.replace('file_page_', '')) || 0;
-      pageRels.push({ order, rel });
-    }
-  }
+  const mainAsset = rec.assets.find(a => a.key === MAIN_FILE_KEY);
+  const mainRel = mainAsset ? await copyAssetLocally(share, rec.recordName, mainAsset) : null;
 
   const f = rec.fields;
   const createdAt = f.created_at ?? new Date().toISOString();
@@ -837,27 +1135,58 @@ async function applyDocumentRow(share: SharedEntity, rec: FetchedRecord): Promis
     ]
   );
 
-  // Pagini: replace-all scoped la acest document — `document_pages` n-are
-  // copii CASCADE, deci delete+re-insert e sigur (spre deosebire de `documents`).
-  await db.runAsync('DELETE FROM document_pages WHERE document_id = ?', [rec.recordName]);
-  for (const page of pageRels) {
-    await db.runAsync(
-      `INSERT INTO document_pages (id, document_id, page_order, file_path, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        `${rec.recordName}_p${page.order}`,
-        rec.recordName,
-        page.order,
-        page.rel,
-        new Date().toISOString(),
-      ]
-    );
-  }
-
   await db.runAsync(
     `INSERT OR IGNORE INTO document_entities (id, document_id, entity_type, entity_id)
      VALUES (?, ?, ?, ?)`,
     [`${rec.recordName}_shlink`, rec.recordName, share.entity_type, share.entity_id]
+  );
+
+  // Denormalizarea legacy `documents.<tip>_id` — aceeași convenție ca
+  // `addEntityLinkToDocument` (prima entitate de acel tip). Restul aplicației
+  // (query-uri de vehicul, expirări, export PDF) citește încă aceste coloane;
+  // fără ele, un document primit rămâne invizibil pe fluxurile respective.
+  const legacyCol = legacyColumnFor(share.entity_type);
+  if (legacyCol) {
+    await db.runAsync(
+      `UPDATE documents SET ${legacyCol} = ? WHERE id = ? AND ${legacyCol} IS NULL`,
+      [share.entity_id, rec.recordName]
+    );
+  }
+}
+
+/** Copiază un CKAsset descărcat (tmp) în DocumentsDirectory; întoarce calea relativă. */
+async function copyAssetLocally(
+  share: SharedEntity,
+  recordName: string,
+  asset: { key: string; path: string }
+): Promise<string> {
+  const rel = `shared/${share.zone_name}/${recordName}_${asset.key}`;
+  await ensureParentDir(rel);
+  await FileSystem.copyAsync({ from: toFileUri(asset.path), to: toFileUri(rel) }).catch(() => {});
+  return rel;
+}
+
+/**
+ * O pagină primită → rând în `document_pages`. Upsert pe id (numele recordului),
+ * nu delete-all-and-reinsert ca înainte: paginile sunt acum recorduri
+ * independente, care pot sosi câte una, în orice ordine, fără documentul lor.
+ */
+async function applyPageRow(share: SharedEntity, rec: FetchedRecord): Promise<void> {
+  const documentId = rec.fields.document_id;
+  if (!documentId) return; // payload incomplet — nu inventăm o pagină orfană
+  const asset = rec.assets.find(a => a.key === PAGE_FILE_KEY);
+  if (!asset) return; // pagină fără fișier n-are ce afișa (file_path e NOT NULL)
+
+  const rel = await copyAssetLocally(share, rec.recordName, asset);
+  const order = Number(rec.fields.page_order ?? '0') || 0;
+  await db.runAsync(
+    `INSERT INTO document_pages (id, document_id, page_order, file_path, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       document_id = excluded.document_id,
+       page_order = excluded.page_order,
+       file_path = excluded.file_path`,
+    [rec.recordName, documentId, order, rel, new Date().toISOString()]
   );
 }
 
@@ -868,6 +1197,23 @@ async function applyDocumentRow(share: SharedEntity, rec: FetchedRecord): Promis
 async function applyDeletions(share: SharedEntity, deletedRecordNames: string[]): Promise<void> {
   for (const recordName of deletedRecordNames) {
     if (recordName === share.entity_id) continue; // zone-root — revocarea reală vine prin deletedZones, nu de aici
+
+    // Pagină ștearsă la owner (eliminare de pagină sau reordonare): dispare
+    // singură, fără să atingă documentul-părinte.
+    if (recordName.includes('__p__')) {
+      const page = await db.getFirstAsync<{ file_path: string }>(
+        'SELECT file_path FROM document_pages WHERE id = ?',
+        [recordName]
+      );
+      await db.runAsync('DELETE FROM document_pages WHERE id = ?', [recordName]);
+      await deleteCloudRecord(share.zone_name, recordName);
+      if (page?.file_path) {
+        await FileSystem.deleteAsync(toFileUri(page.file_path), { idempotent: true }).catch(
+          () => {}
+        );
+      }
+      continue;
+    }
 
     await db.runAsync(
       'DELETE FROM document_entities WHERE document_id = ? AND entity_type = ? AND entity_id = ?',

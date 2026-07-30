@@ -109,17 +109,28 @@ export function rowToShareFields(
  */
 const SHAREABLE_DOC_FIELDS = ['type', 'issue_date', 'expiry_date', 'note', 'created_at'] as const;
 
-export interface ShareBundleFile {
+/**
+ * O pagină secundară a unui document → CKRecord PROPRIU (`document_page`), nu un
+ * câmp pe recordul documentului. Numele câmpurilor CloudKit trebuie să fie FIXE:
+ * schema din mediul Production e blocată, iar vechiul format (`file_page_<N>`,
+ * nume derivat din numărul de pagini) însemna că primul document cu o pagină în
+ * plus față de ce fusese publicat era respins integral de server. Vezi
+ * `docs/superpowers/plans/2026-07-27-cloudkit-bidirectional-sharing.md`.
+ */
+export interface ShareableDocumentPage {
+  /** `document_pages.id` — devine (prefixat) numele recordului CloudKit. */
+  id: string;
   /** Cale relativă în DocumentsDirectory → devine CKAsset. */
   file_path: string;
-  role: 'main' | 'page';
-  page_order?: number;
+  page_order: number;
 }
 
 export interface ShareableDocumentRecord {
   recordName: string; // = doc.id
   fields: Record<string, string>;
-  files: ShareBundleFile[];
+  /** Fișierul principal (CKAsset `file_main` pe recordul documentului). */
+  mainFilePath?: string;
+  pages: ShareableDocumentPage[];
 }
 
 export interface EntityShareBundle {
@@ -130,6 +141,7 @@ export interface EntityShareBundle {
 }
 
 interface PageRef {
+  id: string;
   file_path: string;
   page_order: number;
 }
@@ -153,16 +165,17 @@ export function toShareableDocument(
     fields.metadata = JSON.stringify(doc.metadata);
   }
 
-  const files: ShareBundleFile[] = [];
-  if (doc.file_path) files.push({ file_path: doc.file_path, role: 'main' });
   const pageList = pages.length > 0 ? pages : (doc.pages ?? []);
-  for (const page of pageList) {
-    if (page.file_path) {
-      files.push({ file_path: page.file_path, role: 'page', page_order: page.page_order });
-    }
-  }
+  const sharePages: ShareableDocumentPage[] = pageList
+    .filter(p => !!p.file_path)
+    .map(p => ({ id: p.id, file_path: p.file_path, page_order: p.page_order }));
 
-  return { recordName: doc.id, fields, files };
+  return {
+    recordName: doc.id,
+    fields,
+    mainFilePath: doc.file_path || undefined,
+    pages: sharePages,
+  };
 }
 
 /**
@@ -213,7 +226,7 @@ export async function getShareBundle(
   const documents: ShareableDocumentRecord[] = [];
   for (const doc of docs) {
     const pages = await db.getAllAsync<PageRef>(
-      'SELECT file_path, page_order FROM document_pages WHERE document_id = ? ORDER BY page_order ASC',
+      'SELECT id, file_path, page_order FROM document_pages WHERE document_id = ? ORDER BY page_order ASC',
       [doc.id]
     );
     const record = toShareableDocument(doc, pages);
@@ -271,6 +284,11 @@ export interface SharedEntity {
   owner_name?: string;
   /** Nume afișabil (din CKUserIdentity) — absent dacă owner-ul nu e descoperibil. */
   owner_display_name?: string;
+  /**
+   * Titlul CKShare-ului (= numele entității la momentul partajării). Singurul
+   * nume disponibil pentru un share primit înainte de primul pull reușit.
+   */
+  share_title?: string;
   created_at: string;
   revoked_at?: string;
   /** Diagnostics — ultimul pull reușit / ultima eroare de sync (SharingBetaSection/partajare.tsx). */
@@ -300,6 +318,7 @@ interface SharedEntityRow {
   share_url: string | null;
   owner_name: string | null;
   owner_display_name: string | null;
+  share_title: string | null;
   created_at: string;
   revoked_at: string | null;
   change_token: string | null;
@@ -330,6 +349,7 @@ function mapSharedEntity(r: SharedEntityRow): SharedEntity {
     share_url: r.share_url ?? undefined,
     owner_name: r.owner_name ?? undefined,
     owner_display_name: r.owner_display_name ?? undefined,
+    share_title: r.share_title ?? undefined,
     created_at: r.created_at,
     revoked_at: r.revoked_at ?? undefined,
     last_synced_at: r.last_synced_at ?? undefined,
@@ -385,27 +405,33 @@ export async function recordShare(params: {
   shareUrl?: string;
   ownerName?: string;
   ownerDisplayName?: string;
+  shareTitle?: string;
 }): Promise<SharedEntity> {
   const id = generateId();
   const createdAt = new Date().toISOString();
   // Upsert pe zone_name: la re-înregistrare (ex. reconcile participant) NU
   // clobber-ăm `change_token` / `id` / `created_at` existente — doar câmpurile
   // descriptive. `INSERT OR REPLACE` ar șterge rândul și ar reseta token-ul de sync.
-  // owner_display_name: COALESCE cu valoarea existentă — un apel ulterior fără
-  // acest parametru (ex. reconcile care nu a reușit fetch-ul de nume) nu trebuie
-  // să șteargă un nume aflat deja la un apel anterior (ex. acceptShareByURL).
+  // owner_display_name / share_title: COALESCE cu valoarea existentă — un apel
+  // ulterior fără acești parametri (ex. reconcile care nu a reușit fetch-ul de
+  // nume) nu trebuie să șteargă valori aflate la un apel anterior (ex. accept).
+  // `permission` NU se atinge deloc pe conflict: coloana e NOT NULL (deci nu
+  // putem trece NULL = „nu știu"), iar un reconcile fără informație de permisiune
+  // ar retrograda un share 'readwrite' la 'read' — adică ar face participantul
+  // read-only pe o entitate pe care are drept de editare. Se scrie explicit mai
+  // jos, doar când apelantul chiar cunoaște permisiunea.
   await db.runAsync(
     `INSERT INTO shared_entities
-       (id, entity_type, entity_id, zone_name, role, permission, share_url, owner_name, owner_display_name, created_at, revoked_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       (id, entity_type, entity_id, zone_name, role, permission, share_url, owner_name, owner_display_name, share_title, created_at, revoked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(zone_name) DO UPDATE SET
        entity_type = excluded.entity_type,
        entity_id = excluded.entity_id,
        role = excluded.role,
-       permission = excluded.permission,
        share_url = excluded.share_url,
        owner_name = excluded.owner_name,
        owner_display_name = COALESCE(excluded.owner_display_name, shared_entities.owner_display_name),
+       share_title = COALESCE(excluded.share_title, shared_entities.share_title),
        revoked_at = NULL`,
     [
       id,
@@ -417,9 +443,16 @@ export async function recordShare(params: {
       params.shareUrl ?? null,
       params.ownerName ?? null,
       params.ownerDisplayName ?? null,
+      params.shareTitle ?? null,
       createdAt,
     ]
   );
+  if (params.permission) {
+    await db.runAsync(`UPDATE shared_entities SET permission = ? WHERE zone_name = ?`, [
+      params.permission,
+      params.zoneName,
+    ]);
+  }
   const row = await db.getFirstAsync<SharedEntityRow>(
     `SELECT * FROM shared_entities WHERE zone_name = ?`,
     [params.zoneName]
@@ -437,6 +470,7 @@ export async function recordShare(params: {
         share_url: params.shareUrl ?? null,
         owner_name: params.ownerName ?? null,
         owner_display_name: params.ownerDisplayName ?? null,
+        share_title: params.shareTitle ?? null,
         created_at: createdAt,
         revoked_at: null,
         change_token: null,
@@ -571,6 +605,24 @@ export async function getCloudRecordsForLocal(
   const rows = await db.getAllAsync<CloudRecordRow>(
     `SELECT * FROM cloud_records WHERE local_table = ? AND local_id = ?`,
     [localTable, localId]
+  );
+  return rows.map(mapCloudRecord);
+}
+
+/**
+ * Recordurile unei zone al căror nume începe cu un prefix — folosit pentru
+ * paginile unui document (`<documentId>__p__…`), ca să știm ce pagini există pe
+ * server și să le ștergem pe cele eliminate local. `LIKE` cu `ESCAPE` fiindcă
+ * `_` e wildcard în LIKE, iar prefixul conține patru.
+ */
+export async function getCloudRecordsByPrefix(
+  zoneName: string,
+  prefix: string
+): Promise<CloudRecordRef[]> {
+  const escaped = prefix.replace(/[\\%_]/g, c => `\\${c}`);
+  const rows = await db.getAllAsync<CloudRecordRow>(
+    `SELECT * FROM cloud_records WHERE zone_name = ? AND record_name LIKE ? ESCAPE '\\'`,
+    [zoneName, `${escaped}%`]
   );
   return rows.map(mapCloudRecord);
 }

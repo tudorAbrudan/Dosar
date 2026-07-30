@@ -109,7 +109,8 @@ describe('toShareableDocument — whitelist + excludere medicală', () => {
     expect(record!.fields.type).toBe('buletin');
     // file_path e CKAsset, nu field
     expect(record!.fields.file_path).toBeUndefined();
-    expect(record!.files).toEqual([{ file_path: 'files/ci.jpg', role: 'main' }]);
+    expect(record!.mainFilePath).toBe('files/ci.jpg');
+    expect(record!.pages).toEqual([]);
     expect(JSON.stringify(record)).not.toContain('CVV_SECRET_999');
     expect(JSON.stringify(record)).not.toContain('private_notes');
   });
@@ -147,10 +148,10 @@ describe('getShareBundle — bundle pe entitate', () => {
     expect(serialized).not.toContain('private_notes');
 
     const buletin = bundle.documents.find(d => d.recordName === 'doc-buletin')!;
-    expect(buletin.files).toEqual([
-      { file_path: 'files/ci.jpg', role: 'main' },
-      { file_path: 'files/ci-verso.jpg', role: 'page', page_order: 1 },
-    ]);
+    expect(buletin.mainFilePath).toBe('files/ci.jpg');
+    // Paginile poartă id-ul rândului local — devine numele recordului CloudKit,
+    // deci trebuie să ajungă în bundle, nu doar calea fișierului.
+    expect(buletin.pages).toEqual([{ id: 'pg-1', file_path: 'files/ci-verso.jpg', page_order: 1 }]);
   });
 
   it('aruncă pentru entități ne-partajabile (card, medical_record)', async () => {
@@ -310,7 +311,12 @@ describe('getEntityShareFields — whitelist per tip (decizia 7)', () => {
 describe('get/setZoneChangeToken — round-trip', () => {
   it('null implicit, apoi persistă tokenul setat', async () => {
     const zone = sharing.zoneNameFor('vehicle', 'veh-tok');
-    await sharing.recordShare({ entityType: 'vehicle', entityId: 'veh-tok', zoneName: zone, role: 'participant' });
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-tok',
+      zoneName: zone,
+      role: 'participant',
+    });
 
     expect(await sharing.getZoneChangeToken(zone)).toBeNull();
 
@@ -383,7 +389,12 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
     insertDoc({ id: 'doc-own', type: 'buletin', personId: 'pers-own' });
     linkDocToEntity('doc-own', 'person', 'pers-own');
     const zone = sharing.zoneNameFor('person', 'pers-own');
-    await sharing.recordShare({ entityType: 'person', entityId: 'pers-own', zoneName: zone, role: 'owner' });
+    await sharing.recordShare({
+      entityType: 'person',
+      entityId: 'pers-own',
+      zoneName: zone,
+      role: 'owner',
+    });
     expect(await sharing.isDocumentReadOnlyForMe('doc-own')).toBe(false);
   });
 
@@ -448,7 +459,12 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
 describe('markZoneSyncSuccess / markZoneSyncError — diagnostics', () => {
   it('succes setează last_synced_at și curăță eroarea; eșecul păstrează ultimul sync reușit', async () => {
     const zone = sharing.zoneNameFor('vehicle', 'veh-diag');
-    await sharing.recordShare({ entityType: 'vehicle', entityId: 'veh-diag', zoneName: zone, role: 'participant' });
+    await sharing.recordShare({
+      entityType: 'vehicle',
+      entityId: 'veh-diag',
+      zoneName: zone,
+      role: 'participant',
+    });
 
     await sharing.markZoneSyncSuccess(zone);
     let share = await sharing.getShareForEntity('vehicle', 'veh-diag');

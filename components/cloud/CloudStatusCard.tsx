@@ -78,6 +78,19 @@ export function CloudStatusCard({ cloud, scheme }: CloudStatusCardProps) {
       {cloud.error ? (
         <Text style={[styles.errorText, { color: statusColors.critical }]}>{cloud.error}</Text>
       ) : null}
+      {/* „iCloud indisponibil" singur nu spune nimic: cauza reală e aproape
+          mereu iCloud Drive oprit din iOS, iar backup-ul tace la nesfârșit.
+          Pașii sunt exacți fiindcă iOS îi ascunde sub „Vezi tot". */}
+      {cloud.status === 'unavailable' ? (
+        <Text style={[styles.hintText, { color: C.textSecondary }]}>
+          iOS nu ne dă acces la iCloud, deci nu se salvează nimic. Verifică pe telefon:{' '}
+          <Text style={{ fontWeight: '600' }}>
+            Setări → [numele tău] → iCloud → Vezi tot → iCloud Drive
+          </Text>{' '}
+          să fie pornit, iar în listă aplicația <Text style={{ fontWeight: '600' }}>Dosar</Text> să
+          fie activată. Dacă tocmai le-ai pornit, revino aici — starea se reîmprospătează singură.
+        </Text>
+      ) : null}
       <View style={styles.statRow}>
         <Text style={[styles.statLabel, { color: C.textSecondary }]}>Ultimul backup</Text>
         <Text style={[styles.statValue, { color: C.text }]}>
@@ -139,8 +152,7 @@ export function CloudStatusCard({ cloud, scheme }: CloudStatusCardProps) {
         </View>
       ) : null}
       {cloud.backupProgress &&
-      (cloud.backupProgress.phase === 'manifest' ||
-        cloud.backupProgress.phase === 'snapshot') ? (
+      (cloud.backupProgress.phase === 'manifest' || cloud.backupProgress.phase === 'snapshot') ? (
         <Text style={[styles.progressLabel, { color: C.textSecondary }]}>
           {cloud.backupProgress.phase === 'manifest'
             ? 'Actualizez manifestul...'
@@ -164,6 +176,7 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusLabel: { fontSize: 16, fontWeight: '600' },
   errorText: { fontSize: 13, marginBottom: 8 },
+  hintText: { fontSize: 13, lineHeight: 19, marginBottom: 8 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   statLabel: { fontSize: 13 },
   statValue: { fontSize: 13, fontWeight: '600' },
