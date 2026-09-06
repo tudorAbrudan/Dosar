@@ -10,7 +10,9 @@ App **local-first**: date în SQLite pe device, fișiere locale, backup în iClo
 - Blocare Face ID / Touch ID / PIN
 - Notificări locale de expirare (configurabile)
 - Organizat pe Persoane / Vehicule / Proprietăți / Carduri / Animale / Firme
-- Backup complet în iCloud / Drive și transfer între dispozitive
+- Backup automat în iCloud (versiuni, criptare opțională) + export manual .zip
+- Partajare entități cu familia prin iCloud (drepturi de vizualizare sau editare, revocabile)
+- AI nelimitat: model local on-device sau cheie API proprie
 - Export reminder expirare în calendarul nativ
 - Scanner nativ multi-pagină cu detecție margini (VisionKit / ML Kit)
 - OCR on-device pentru extragere automată de text

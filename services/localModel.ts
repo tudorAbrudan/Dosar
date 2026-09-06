@@ -84,7 +84,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     id: 'gemma4-e2b-q3',
     name: 'Gemma 4 E2B (6GB)',
     description:
-      'Google Gemma 4 E2B, cuantizare Q3_K_S — optimizată pentru telefoane de 6GB (iPhone 13/14 Pro). Modernă și eficientă, doar text. ~2.3GB spațiu liber.',
+      'Google Gemma 4 E2B, cuantizare Q3_K_S — pentru telefoane de 6GB (iPhone 13/14 Pro). Cel mai PRECIS model care intră pe 6GB: respectă cel mai bine instrucțiunile și nu inventează datele lipsă. În schimb e de ~2 ori mai lent decât Qwen 3.5 2B. Doar text. ~2.3GB spațiu liber.',
     sizeBytes: Math.round(2.28 * 1024 * 1024 * 1024),
     sizeLabel: '~2.3GB',
     minRamBytes: 5 * 1024 * 1024 * 1024,
@@ -101,7 +101,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     id: 'gemma4-e2b-q8',
     name: 'Gemma 4 E2B (calitate maximă)',
     description:
-      'Google Gemma 4 E2B, cuantizare Q8_0 — calitate aproape identică cu modelul plin. Necesită iPhone 15 Pro+ (8GB). ~4.7GB spațiu liber. Doar text.',
+      'Google Gemma 4 E2B, cuantizare Q8_0 — calitate aproape identică cu modelul plin. Precizie mare, viteză moderată. Necesită iPhone 15 Pro+ (8GB). ~4.7GB spațiu liber. Doar text.',
     sizeBytes: Math.round(4.7 * 1024 * 1024 * 1024),
     sizeLabel: '~4.7GB',
     minRamBytes: 7 * 1024 * 1024 * 1024,
@@ -115,7 +115,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     id: 'gemma4-e4b',
     name: 'Gemma 4 E4B IT',
     description:
-      'Google Gemma 4 E4B — model mai mare și mai capabil decât E2B, cuantizare Q4_K_M. Necesită iPhone 15 Pro+ (8GB). ~4.6GB spațiu liber. Doar text.',
+      'Google Gemma 4 E4B — mai mare și mai capabil decât E2B, cuantizare Q4_K_M. Cea mai bună calitate disponibilă local, dar și cel mai LENT. Necesită iPhone 15 Pro+ (8GB). ~4.6GB spațiu liber. Doar text.',
     sizeBytes: Math.round(4.64 * 1024 * 1024 * 1024),
     sizeLabel: '~4.6GB',
     minRamBytes: 7 * 1024 * 1024 * 1024,
@@ -145,7 +145,7 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     id: 'qwen35-2b',
     name: 'Qwen 3.5 2B',
     description:
-      'Qwen 3.5 — cel mai mic model din listă (~1.2GB) și cel mai bun la limba română dintre modelele rapide. Context 16K. iPhone 13+. Doar text.',
+      'Qwen 3.5 — cel mai mic (~1.2GB) și cel mai RAPID din listă, de ~2 ori mai rapid decât Gemma. Bun la limba română. Ocazional încurcă între ele câmpuri asemănătoare. Alege-l pentru răspunsuri prompte; alege Gemma pentru precizie maximă. Context 16K. iPhone 13+. Doar text.',
     sizeBytes: 1280835840,
     sizeLabel: '~1.2GB',
     minRamBytes: 5 * 1024 * 1024 * 1024,

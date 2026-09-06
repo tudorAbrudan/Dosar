@@ -142,10 +142,30 @@ const FEATURES = [
   {
     id: 'backup',
     icon: '☁️',
-    title: 'Backup & transfer între dispozitive',
-    desc: 'Export complet (.zip cu date + fișiere) în iCloud Drive sau prin AirDrop. Muți totul pe un device nou în câteva secunde.',
-    readmeBullet: 'Backup complet în iCloud / Drive și transfer între dispozitive',
-    chatbot: 'backup iCloud/Drive',
+    title: 'Backup automat în iCloud',
+    desc: 'Datele și fișierele se salvează singure în iCloud-ul tău, cu istoric de versiuni și criptare opțională cu parolă. Reinstalezi aplicația sau treci pe un telefon nou și îți recuperezi tot. Separat, poți exporta oricând manual o arhivă .zip pe care o ții unde vrei.',
+    readmeBullet: 'Backup automat în iCloud (versiuni, criptare opțională) + export manual .zip',
+    chatbot: 'backup automat iCloud + export manual ZIP',
+  },
+  {
+    id: 'sharing',
+    icon: '👨‍👩‍👧',
+    title: 'Partajezi cu familia',
+    desc: 'Trimiți o entitate — o mașină, o persoană, o proprietate — cuiva din familie, cu documentele ei. Alegi dacă poate doar să vadă sau și să modifice, iar accesul se retrage oricând. Merge prin iCloud, fără cont nou și fără server intermediar.',
+    readmeBullet: 'Partajare entități cu familia prin iCloud (drepturi de vizualizare sau editare, revocabile)',
+    chatbot: 'partajare entități în familie',
+    faq: {
+      q: 'Pot împărți documentele cu cineva din familie?',
+      a: 'Da. Deschizi entitatea (mașină, persoană, proprietate) și alegi „Partajează". Persoana primește un link prin iCloud și vede documentele acelei entități — restul dosarului tău rămâne privat. Poți da drept doar de vizualizare sau și de modificare, iar accesul se retrage oricând din aceeași secțiune. Nu e nevoie de cont nou și datele nu trec prin niciun server al aplicației.',
+    },
+  },
+  {
+    id: 'ai-unlimited',
+    icon: '🔑',
+    title: 'AI-ul tău, fără limită',
+    desc: 'Asistentul inclus e gratuit, dar limitat la 10 întrebări pe zi. Poți trece oricând la un model care rulează chiar pe telefon (privat, offline, nelimitat) sau la cheia ta de la un furnizor AI. <a href="support.html#cheie-api" style="color: var(--primary);">Ghid pas cu pas →</a>',
+    readmeBullet: 'AI nelimitat: model local on-device sau cheie API proprie',
+    chatbot: 'AI nelimitat cu model local sau cheie proprie',
   },
   {
     id: 'calendar',
@@ -175,7 +195,7 @@ const FEATURES = [
     id: 'vehicle-tracker',
     icon: '🚗',
     title: 'Tracker auto complet',
-    desc: 'RCA, ITP, CASCO, Vignetă, Talon, Carte auto — toate la un loc, cu alerte înainte de expirare.',
+    desc: 'RCA, ITP, CASCO, Vignetă, Talon, Carte auto — toate la un loc, cu alerte înainte de expirare. <a href="gestiune-auto.html" style="color: var(--primary);">Vezi tot ce poate face pentru mașina ta →</a>',
     readmeBullet: 'Tracker auto (RCA, ITP, CASCO, Vignetă, Talon)',
   },
   {
