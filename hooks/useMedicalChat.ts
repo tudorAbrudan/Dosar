@@ -7,6 +7,7 @@ import {
   deleteThread as deleteThreadSvc,
   renameThread as renameThreadSvc,
 } from '@/services/medicalChat';
+import { humanizeAiError } from '@/services/aiProvider';
 import { on as subscribe } from '@/services/events';
 import type { MedicalChatMessage, MedicalChatThread } from '@/types';
 
@@ -38,7 +39,7 @@ export function useMedicalChat(
     try {
       setMessages(await listMessages(threadId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+      setError(humanizeAiError(e));
     } finally {
       setLoading(false);
     }
@@ -55,7 +56,7 @@ export function useMedicalChat(
         await sendMessage({ threadId, recordId, question: trimmed });
         await refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+        setError(humanizeAiError(e));
       } finally {
         setSending(false);
       }
@@ -95,7 +96,7 @@ export function useMedicalChatThreads(recordId: string | null): UseMedicalChatTh
     try {
       setThreads(await listThreads(recordId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+      setError(humanizeAiError(e));
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export function useMedicalChatThreads(recordId: string | null): UseMedicalChatTh
         await refresh();
         return t;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+        setError(humanizeAiError(e));
         return null;
       }
     },
@@ -122,7 +123,7 @@ export function useMedicalChatThreads(recordId: string | null): UseMedicalChatTh
         await deleteThreadSvc(threadId);
         await refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+        setError(humanizeAiError(e));
       }
     },
     [refresh]
@@ -134,7 +135,7 @@ export function useMedicalChatThreads(recordId: string | null): UseMedicalChatTh
         await renameThreadSvc(threadId, title);
         await refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+        setError(humanizeAiError(e));
       }
     },
     [refresh]

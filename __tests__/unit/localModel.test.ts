@@ -4,6 +4,7 @@
 
 import {
   LOCAL_MODEL_CATALOG,
+  stripReasoning,
   LocalModelEntry,
   getIphoneGeneration,
   isModelCompatible,
@@ -35,6 +36,16 @@ describe('LOCAL_MODEL_CATALOG', () => {
       expect(model.qualityStars).toBeGreaterThanOrEqual(1);
       expect(model.qualityStars).toBeLessThanOrEqual(5);
       expect(model.downloadUrl).toMatch(/^https:\/\//);
+      expect(model.nCtx).toBeGreaterThan(0);
+    }
+  });
+
+  it('nBatch, când e specificat, e o putere a lui 2 între 128 și 512', () => {
+    // n_ubatch prea mare = vârf de memorie la prefill = jetsam pe 6GB.
+    // Vezi PREFILL_BATCH_DEFAULT în services/localModel.ts.
+    for (const model of LOCAL_MODEL_CATALOG) {
+      if (model.nBatch === undefined) continue;
+      expect([128, 256, 512]).toContain(model.nBatch);
     }
   });
 
@@ -68,42 +79,64 @@ describe('getIphoneGeneration', () => {
 });
 
 describe('isModelCompatible', () => {
-  // ministral-3b: minRam=5GiB, minGen=14
-  const modelMinistral: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[0] };
-  // mistral-7b: minRam=7GiB, minGen=15
-  const modelMistral7b: LocalModelEntry = { ...LOCAL_MODEL_CATALOG[1] };
+  // Fixture-uri sintetice, NU intrări din catalog. Testele de aici verifică
+  // logica de compatibilitate, nu conținutul catalogului — indexarea pozițională
+  // (`LOCAL_MODEL_CATALOG[0]`) le lega de ordinea modelelor și le rupea la
+  // fiecare adăugare/scoatere. Vezi curățarea Ministral/Mistral 7B, 2026-09-03.
+  const baseModel: Omit<LocalModelEntry, 'minRamBytes' | 'minIphoneGen'> = {
+    id: 'fixture',
+    name: 'Fixture',
+    description: 'Model sintetic pentru teste',
+    sizeBytes: 2 * 1024 * 1024 * 1024,
+    sizeLabel: '~2GB',
+    qualityStars: 4,
+    nCtx: 8192,
+    downloadUrl: 'https://huggingface.co/fixture/model.gguf',
+  };
+  /** Prag mic: 5GiB RAM, iPhone 14+ */
+  const modelGen14: LocalModelEntry = {
+    ...baseModel,
+    minRamBytes: 5 * 1024 * 1024 * 1024,
+    minIphoneGen: 14,
+  };
+  /** Prag mare: 7GiB RAM, iPhone 15+ */
+  const modelGen15: LocalModelEntry = {
+    ...baseModel,
+    minRamBytes: 7 * 1024 * 1024 * 1024,
+    minIphoneGen: 15,
+  };
 
   // Real device values: iOS NSProcessInfo.physicalMemory reports less than marketed RAM
   const RAM_IPHONE14PRO = 5905580032; // iPhone 14 Pro (marketed 6GB) — real reported value
   const RAM_IPHONE15PRO = 8053063680; // iPhone 15 Pro (marketed 8GB) — real reported value
   const RAM_6GIB = 6 * 1024 * 1024 * 1024; // idealized binary value
 
-  it('compatibil: ministral-3b pe iPhone 14 Pro (valoare RAM reală)', () => {
-    expect(isModelCompatible(modelMinistral, RAM_IPHONE14PRO, 14)).toBe(true);
+  it('compatibil: prag 5GiB/gen14 pe iPhone 14 Pro (valoare RAM reală)', () => {
+    expect(isModelCompatible(modelGen14, RAM_IPHONE14PRO, 14)).toBe(true);
   });
 
-  it('compatibil: ministral-3b pe iPhone 14 cu RAM idealizat 6GiB', () => {
-    expect(isModelCompatible(modelMinistral, RAM_6GIB, 14)).toBe(true);
+  it('compatibil: prag 5GiB/gen14 pe iPhone 14 cu RAM idealizat 6GiB', () => {
+    expect(isModelCompatible(modelGen14, RAM_6GIB, 14)).toBe(true);
   });
 
-  it('incompatibil: ministral-3b pe telefon cu 4GB RAM', () => {
-    expect(isModelCompatible(modelMinistral, 4 * 1024 * 1024 * 1024, 14)).toBe(false);
+  it('incompatibil: prag 5GiB/gen14 pe telefon cu 4GB RAM', () => {
+    expect(isModelCompatible(modelGen14, 4 * 1024 * 1024 * 1024, 14)).toBe(false);
   });
 
   it('incompatibil: generație prea mică (iPhone 13 < 14)', () => {
-    expect(isModelCompatible(modelMinistral, RAM_IPHONE14PRO, 13)).toBe(false);
+    expect(isModelCompatible(modelGen14, RAM_IPHONE14PRO, 13)).toBe(false);
   });
 
-  it('compatibil: mistral-7b pe iPhone 15 Pro (valoare RAM reală)', () => {
-    expect(isModelCompatible(modelMistral7b, RAM_IPHONE15PRO, 15)).toBe(true);
+  it('compatibil: prag 7GiB/gen15 pe iPhone 15 Pro (valoare RAM reală)', () => {
+    expect(isModelCompatible(modelGen15, RAM_IPHONE15PRO, 15)).toBe(true);
   });
 
-  it('incompatibil: mistral-7b pe iPhone 15 standard (6GB RAM)', () => {
-    expect(isModelCompatible(modelMistral7b, RAM_IPHONE14PRO, 15)).toBe(false);
+  it('incompatibil: prag 7GiB/gen15 pe iPhone 15 standard (6GB RAM)', () => {
+    expect(isModelCompatible(modelGen15, RAM_IPHONE14PRO, 15)).toBe(false);
   });
 
   it('compatibil cu RAM null → true (emulator/dev)', () => {
-    expect(isModelCompatible(modelMinistral, null, 14)).toBe(true);
+    expect(isModelCompatible(modelGen14, null, 14)).toBe(true);
   });
 });
 
@@ -117,14 +150,14 @@ describe('getCompatibleModels', () => {
     }
   });
 
-  it('exclude mistral-7b (necesită 8GB RAM)', () => {
+  it('exclude gemma4-e4b (necesită 8GB RAM)', () => {
     const compatible = getCompatibleModels();
-    expect(compatible.find(m => m.id === 'mistral-7b')).toBeUndefined();
+    expect(compatible.find(m => m.id === 'gemma4-e4b')).toBeUndefined();
   });
 
-  it('include ministral-3b', () => {
+  it('include qwen35-2b', () => {
     const compatible = getCompatibleModels();
-    expect(compatible.find(m => m.id === 'ministral-3b')).toBeDefined();
+    expect(compatible.find(m => m.id === 'qwen35-2b')).toBeDefined();
   });
 });
 
@@ -161,9 +194,9 @@ describe('getSelectedModelId / setSelectedModelId', () => {
   });
 
   it('returnează id-ul salvat dacă există în catalog', async () => {
-    AsyncStorageMock.getItem.mockResolvedValue('ministral-3b');
+    AsyncStorageMock.getItem.mockResolvedValue('qwen35-2b');
     const { getSelectedModelId } = require('@/services/localModel');
-    expect(await getSelectedModelId()).toBe('ministral-3b');
+    expect(await getSelectedModelId()).toBe('qwen35-2b');
   });
 
   it('returnează null dacă id-ul salvat nu mai există în catalog', async () => {
@@ -185,7 +218,7 @@ describe('releaseModelForBackground', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    AsyncStorageMock.getItem.mockResolvedValue('ministral-3b');
+    AsyncStorageMock.getItem.mockResolvedValue('qwen35-2b');
     (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({
       exists: true,
       size: 2 * 1024 * 1024 * 1024, // 2GB, peste pragul de validare
@@ -206,7 +239,7 @@ describe('releaseModelForBackground', () => {
       release,
     });
     const { initLocalModel, releaseModelForBackground } = require('@/services/localModel');
-    await initLocalModel('ministral-3b');
+    await initLocalModel('qwen35-2b');
 
     expect(await releaseModelForBackground()).toBe(true);
     expect(release).toHaveBeenCalledTimes(1);
@@ -228,7 +261,7 @@ describe('releaseModelForBackground', () => {
     llama.initLlama.mockResolvedValueOnce({ completion, release });
 
     const mod = require('@/services/localModel');
-    await mod.initLocalModel('ministral-3b'); // preload cu contextul controlabil
+    await mod.initLocalModel('qwen35-2b'); // preload cu contextul controlabil
 
     const inference = mod.runLocalInference([{ role: 'user', content: 'salut' }]);
     // flush microtasks până când completion e apelat (inferență „în curs")
@@ -247,5 +280,26 @@ describe('releaseModelForBackground', () => {
     // după ce inferența s-a terminat, eliberarea reușește
     expect(await mod.releaseModelForBackground()).toBe(true);
     expect(release).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('stripReasoning — formate de „thinking"', () => {
+  it('elimină blocul [Start thinking] ... [End thinking]', () => {
+    // Gemma 4 și LFM2.5 emit acest format, în engleză, oricare ar fi limba
+    // promptului. Verificat pe GGUF 2026-09-04.
+    const raw = '[Start thinking]\nThe user wants...\n[End thinking]\n\nNr: B 123 XYZ';
+    expect(stripReasoning(raw)).toBe('Nr: B 123 XYZ');
+  });
+
+  it('elimină un bloc rămas deschis (răspuns trunchiat de n_predict)', () => {
+    expect(stripReasoning('[Start thinking]\nreasoning care nu se termina')).toBe('');
+  });
+
+  it('păstrează neatins textul fără marcaje', () => {
+    expect(stripReasoning('Silvia are 40 de ani.')).toBe('Silvia are 40 de ani.');
+  });
+
+  it('elimină în continuare formatul Gemma <|channel>', () => {
+    expect(stripReasoning('<|channel>thought bla<channel|>Raspuns')).toBe('Raspuns');
   });
 });

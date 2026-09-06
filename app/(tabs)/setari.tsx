@@ -50,6 +50,7 @@ import { LocalModelSelector } from '@/components/settings/LocalModelSelector';
 import { AiConsentBar } from '@/components/settings/AiConsentBar';
 import { AiPrivacyInfoCard } from '@/components/settings/AiPrivacyInfoCard';
 import { AiConfigModal } from '@/components/settings/AiConfigModal';
+import { useModelDownload } from '@/hooks/useModelDownload';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -79,7 +80,7 @@ import { emit } from '@/services/events';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { ONBOARDING_RESET_EVENT } from '@/app/_layout';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   ALL_ENTITY_TYPES,
   STANDARD_DOC_TYPES,
@@ -136,6 +137,13 @@ export default function SetariScreen() {
 
   // ── AI Provider ─────────────────────────────────────────────────────────────
   const [aiModalVisible, setAiModalVisible] = useState(false);
+  // Deschidere directă din banner-ul de descărcare de pe Acasă
+  // (router.push('/(tabs)/setari?openAi=1')). Fără asta, userul care apasă pe
+  // status ajunge în Setări dar trebuie să caute singur secțiunea AI.
+  const { openAi } = useLocalSearchParams<{ openAi?: string }>();
+  useEffect(() => {
+    if (openAi === '1') setAiModalVisible(true);
+  }, [openAi]);
   const [aiProviderType, setAiProviderType] = useState<AiProviderType>('none');
   const [aiProviderUrl, setAiProviderUrl] = useState('');
   const [aiProviderModel, setAiProviderModel] = useState('');
@@ -153,11 +161,10 @@ export default function SetariScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [compatibleModels, setCompatibleModels] = useState<ModelWithCompat[]>([]);
   const [downloadedModelIds, setDownloadedModelIds] = useState<string[]>([]);
-  const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [downloadedMb, setDownloadedMb] = useState(0);
-  const [downloadTotalMb, setDownloadTotalMb] = useState(0);
   const [selectedLocalModelId, setSelectedLocalModelId] = useState<string | null>(null);
+  // Descărcarea trăiește în singleton, nu aici: continuă când ieși din Setări și
+  // e aceeași pe care o vede onboarding-ul și banner-ul de pe Acasă.
+  const modelDownload = useModelDownload();
   const [orphanModels, setOrphanModels] = useState<localModel.OrphanModelFile[]>([]);
   const downloadResumableRef = useRef<ReturnType<typeof localModel.createModelDownload> | null>(
     null
@@ -519,56 +526,31 @@ export default function SetariScreen() {
 
     Alert.alert(
       'Descarcă model',
-      `${model.name} ocupă ${model.sizeLabel}. Asigură-te că ai spațiu liber și o conexiune Wi-Fi. Continui?`,
+      `${model.name} ocupă ${model.sizeLabel}. Descărcarea continuă în fundal cât timp folosești aplicația. Continui?`,
       [
         { text: 'Anulează', style: 'cancel' },
         {
           text: 'Descarcă',
           onPress: async () => {
-            setDownloadingModelId(modelId);
-            setDownloadProgress(0);
-            try {
-              await FileSystem.makeDirectoryAsync(
-                (FileSystem.documentDirectory ?? '') + 'models/',
-                { intermediates: true }
-              );
-              const resumable = localModel.createModelDownload(
-                modelId,
-                (progress, dlMb, totalMb) => {
-                  setDownloadProgress(progress);
-                  setDownloadedMb(dlMb);
-                  setDownloadTotalMb(totalMb);
-                }
-              );
-              downloadResumableRef.current = resumable;
-              const res = await resumable.downloadAsync();
-              // undefined = anulat via pauseAsync (handleCancelDownload a curățat
-              // deja fișierul); fără return aici, codul de mai jos ar marca un
-              // model INEXISTENT ca descărcat și ar comuta provider-ul pe el.
-              if (!res) return;
-              if (res.status !== 200) {
-                throw new Error(`Descărcarea a eșuat (HTTP ${res.status}). Încearcă din nou.`);
-              }
-              await localModel.finalizeModelDownload(modelId);
-              setDownloadedModelIds(prev => [...prev, modelId]);
-              await localModel.setSelectedModelId(modelId);
-              setSelectedLocalModelId(modelId);
-              setAiProviderType('local');
-              await aiProvider.saveAiConfig({
-                type: 'local',
-                url: '',
-                model: modelId,
-                visionUrl: '',
-                visionModel: '',
-                chatModelSupportsVision: false,
-              });
-            } catch (e) {
-              await localModel.deleteModel(modelId);
-              Alert.alert('Eroare', e instanceof Error ? e.message : 'Descărcarea a eșuat.');
-            } finally {
-              setDownloadingModelId(null);
-              downloadResumableRef.current = null;
+            // Prin managerul partajat: aceeași descărcare e vizibilă și în
+            // onboarding, și în banner-ul de pe Acasă. Două transferuri paralele
+            // pe același fișier l-ar corupe.
+            const ok = await modelDownload.start(modelId);
+            if (!ok) {
+              if (modelDownload.error) Alert.alert('Eroare', modelDownload.error);
+              return;
             }
+            setDownloadedModelIds(prev => (prev.includes(modelId) ? prev : [...prev, modelId]));
+            setSelectedLocalModelId(modelId);
+            setAiProviderType('local');
+            await aiProvider.saveAiConfig({
+              type: 'local',
+              url: '',
+              model: modelId,
+              visionUrl: '',
+              visionModel: '',
+              chatModelSupportsVision: false,
+            });
           },
         },
       ]
@@ -576,15 +558,7 @@ export default function SetariScreen() {
   };
 
   const handleCancelDownload = async () => {
-    if (downloadResumableRef.current) {
-      await downloadResumableRef.current.pauseAsync().catch(() => {});
-      downloadResumableRef.current = null;
-    }
-    if (downloadingModelId) {
-      await localModel.deleteModel(downloadingModelId);
-    }
-    setDownloadingModelId(null);
-    setDownloadProgress(0);
+    await modelDownload.cancel();
   };
 
   const handleDeleteModel = (modelId: string) => {
@@ -787,9 +761,14 @@ export default function SetariScreen() {
       });
       if (response.ok) return { ok: true, message: `${model} — conexiune OK` };
       const errText = await response.text().catch(() => '');
+      // Prin maparea comună: altfel userului îi apărea JSON-ul brut al providerului
+      // („{"object":"error","message":"Rate limit exceeded",...}"), în engleză și
+      // fără nicio indicație despre ce are de făcut. Raportat pe device 2026-09-04.
       return {
         ok: false,
-        message: `Eroare ${response.status}: ${errText.slice(0, 220) || 'răspuns invalid'}`,
+        message: aiProvider.humanizeAiError(
+          new Error(`Eroare AI (${response.status}): ${errText}`)
+        ),
       };
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : 'eroare rețea' };
@@ -1187,10 +1166,10 @@ export default function SetariScreen() {
         consentChecked={aiModalConsentChecked}
         compatibleModels={compatibleModels}
         downloadedIds={downloadedModelIds}
-        downloadingId={downloadingModelId}
-        downloadProgress={downloadProgress}
-        downloadedMb={downloadedMb}
-        downloadTotalMb={downloadTotalMb}
+        downloadingId={modelDownload.modelId}
+        downloadProgress={modelDownload.progress}
+        downloadedMb={modelDownload.downloadedMb}
+        downloadTotalMb={modelDownload.totalMb}
         selectedLocalModelId={selectedLocalModelId}
         orphanModels={orphanModels}
         onClose={() => setAiModalVisible(false)}

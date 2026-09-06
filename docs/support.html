@@ -251,6 +251,97 @@
     </div>
   </div>
 
+  <!-- GHID CHEIE API -->
+  <div class="section-title" id="cheie-api" style="margin-top: 48px;">
+    <span class="section-icon">🔑</span>
+    Cum îți configurezi propriul AI, fără limită
+  </div>
+
+  <p style="margin: 0 0 20px; line-height: 1.7;">
+    Asistentul inclus („Dosar AI") e gratuit, dar limitat la <strong>10 interogări pe zi</strong>,
+    pentru că folosește o cheie comună tuturor utilizatorilor. Ai două căi să treci peste limită,
+    amândouă nelimitate. Nu ai nevoie de cunoștințe tehnice pentru niciuna.
+  </p>
+
+  <div class="faq-list">
+
+    <div class="faq-item open">
+      <button class="faq-q" onclick="toggle(this)">
+        Varianta 1 — Model local (recomandat, gratuit, fără cont)
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        <p style="margin-top:0;">Modelul rulează <strong>pe telefonul tău</strong>. Datele nu pleacă
+        nicăieri, merge și fără internet, și nu are nicio limită de utilizare.</p>
+        <ol style="margin: 12px 0 0; padding-left: 20px; line-height: 1.9;">
+          <li>Deschide <strong>Setări → Asistent AI</strong>.</li>
+          <li>Alege <strong>„Model local"</strong>.</li>
+          <li>Apasă <strong>„Descarcă modelul"</strong> — între 1,2 și 4,7 GB, în funcție de model.
+              Recomandăm Wi-Fi.</li>
+          <li>Poți folosi aplicația în continuare cât se descarcă; progresul apare pe ecranul Acasă.</li>
+        </ol>
+        <p style="margin-bottom:0;"><strong>De reținut:</strong> ocupă spațiu pe telefon și răspunde
+        ceva mai lent decât varianta din cloud. Fiecare model are scris în descriere dacă e mai
+        rapid sau mai precis, ca să alegi în cunoștință de cauză.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Varianta 2 — Cheie API proprie de la Mistral (plan gratuit)
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        <p style="margin-top:0;">Îți faci cont la un furnizor de AI și folosești cheia ta. Mistral
+        are un plan gratuit generos și e furnizorul folosit implicit de aplicație.</p>
+        <ol style="margin: 12px 0 0; padding-left: 20px; line-height: 1.9;">
+          <li>Intră pe <a href="https://console.mistral.ai" target="_blank" rel="noopener">console.mistral.ai</a>
+              și fă-ți cont (e-mail sau Google).</li>
+          <li>Din meniul din stânga, deschide <strong>API Keys</strong>.</li>
+          <li>Apasă <strong>Create new key</strong>, dă-i un nume (ex. „Dosar") și confirmă.</li>
+          <li><strong>Copiază cheia imediat</strong> — se afișează o singură dată. Arată ca un șir
+              lung de litere și cifre.</li>
+          <li>În aplicație: <strong>Setări → Asistent AI → „Cheie API proprie"</strong>.</li>
+          <li>Completează:
+            <ul style="margin: 6px 0; padding-left: 18px;">
+              <li><strong>URL API:</strong> <code>https://api.mistral.ai/v1</code></li>
+              <li><strong>Cheie API:</strong> cheia copiată la pasul 4</li>
+              <li><strong>Model:</strong> <code>mistral-small-latest</code></li>
+            </ul>
+          </li>
+          <li>Apasă <strong>„Testează conexiunea"</strong>. Dacă scrie „conexiune OK", salvează.</li>
+        </ol>
+        <p style="margin-bottom:0;">Funcționează la fel cu <strong>orice furnizor compatibil OpenAI</strong>
+        — OpenAI, Groq, OpenRouter și altele. Schimbi doar URL-ul și numele modelului.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Cheia mea API e în siguranță?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Cheia se salvează <strong>doar pe telefonul tău</strong>, în stocarea securizată a sistemului
+        iOS. Nu ajunge la noi și nu pleacă nicăieri în afară de furnizorul pe care l-ai ales tu.
+        Poți să o ștergi oricând din Setări.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Ce se întâmplă când ating limita de 10 interogări?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-a">
+        Aplicația îți spune limpede și îți arată cele două variante de mai sus. Contorul
+        <strong>se resetează automat la miezul nopții</strong>, deci a doua zi ai din nou 10
+        interogări gratuite. Modelul local și cheia proprie nu au nicio limită.
+      </div>
+    </div>
+
+  </div>
+
   <!-- FAQ -->
   <div class="section-title" style="margin-top: 48px;">
     <span class="section-icon">❓</span>

@@ -19,6 +19,15 @@ export interface TaskField {
   key: string; // cheia exactă din metadata documentului sursă
   label: string; // eticheta umană (RO)
   required?: boolean; // true = obligatoriu pentru task
+  /**
+   * De unde se citește valoarea:
+   * - 'metadata' (default) → `key: value` din metadata documentului;
+   * - 'document' → coloană SQLite randată în header-ul documentului din
+   *   context (ex. `expiră: 2028-04-01`, `emis: ...`). Fără marcaj explicit,
+   *   modelul sare peste câmp: nu-l găsește în metadata și îl tratează ca
+   *   lipsă opțională (regresia „check-in avion fără data expirării", 2026-09-03).
+   */
+  source?: 'metadata' | 'document';
 }
 
 export interface TaskRequirement {
@@ -129,6 +138,12 @@ export const TASK_REQUIREMENTS: TaskRequirement[] = [
     sourceDocTypes: ['buletin', 'pasaport'],
     fields: [
       { key: 'series', label: 'Serie și număr', required: true },
+      {
+        key: 'expiry_date',
+        label: 'Valabilitate document (data expirării)',
+        required: true,
+        source: 'document',
+      },
       { key: 'cnp', label: 'CNP' },
     ],
     notes:
@@ -190,6 +205,12 @@ export const TASK_REQUIREMENTS: TaskRequirement[] = [
       { key: 'nationality', label: 'Cetățenie (cod 3 litere)', required: true },
       { key: 'birth_date', label: 'Data nașterii', required: true },
       { key: 'sex', label: 'Sex', required: true },
+      {
+        key: 'expiry_date',
+        label: 'Valabilitate document (data expirării)',
+        required: true,
+        source: 'document',
+      },
     ],
     notes:
       'Verifică `expiră:` din header-ul pașaportului — majoritatea consulatelor cer valabilitate ≥6 luni de la întoarcere; SUA cer ≥6 luni dincolo de durata șederii. Documente suplimentare (NU sunt în Dosar): poze format viză, dovezi financiare (extras cont 3-6 luni), itinerar zbor, rezervare hotel, scrisoare invitație/angajator, asigurare medicală călătorie ≥30.000 EUR (Schengen).',
@@ -260,6 +281,12 @@ export const TASK_REQUIREMENTS: TaskRequirement[] = [
       // Din buletin (sau pașaport pentru închirieri în străinătate)
       { key: 'cnp', label: 'CNP (alternativă: nr. pașaport)' },
       { key: 'address', label: 'Domiciliu' },
+      {
+        key: 'expiry_date',
+        label: 'Valabilitate document (data expirării)',
+        required: true,
+        source: 'document',
+      },
     ],
     notes:
       'Categoria B obligatorie pentru autoturisme; vârsta minimă tipic 21-25 ani, unele firme cer permis emis cu ≥2 ani în urmă (calcula din `issue_date` sau `expiră:` minus 10 ani). Card de credit pentru garanție (NU debit) — NU e în Dosar. Pentru închirieri în străinătate: pașaport în loc de buletin + IDP (International Driving Permit) pentru țări non-UE.',
@@ -291,6 +318,12 @@ export const TASK_REQUIREMENTS: TaskRequirement[] = [
       { key: 'sex', label: 'Sex', required: true },
       { key: 'nationality', label: 'Cetățenie (cod 3 litere, ex: ROU)' },
       { key: 'cnp', label: 'CNP (alternativă pe zboruri interne)' },
+      {
+        key: 'expiry_date',
+        label: 'Valabilitate document (data expirării)',
+        required: true,
+        source: 'document',
+      },
     ],
     notes:
       'Zboruri intra-Schengen / interne: acceptă buletin. Zboruri extra-Schengen: doar pașaport. Verifică `expiră: ...` din header-ul documentului — multe țări cer pașaport valid ≥6 luni de la întoarcere. Codul rezervării (PNR) și nr. card frequent flyer NU sunt în Dosar — le ai din emailul de la compania aeriană.',
@@ -334,10 +367,14 @@ export function formatTaskRequirementSpec(req: TaskRequirement): string {
   const lines: string[] = [];
   lines.push(`### ${req.label}`);
   lines.push(`Sursă: document de tip ${req.sourceDocTypes.join(' sau ')}.`);
-  lines.push('Câmpuri necesare (caută-le în metadata documentului):');
+  lines.push('Câmpuri necesare:');
   for (const f of req.fields) {
     const tag = f.required ? ' (obligatoriu)' : ' (opțional)';
-    lines.push(`- ${f.label}${tag} → cheie: \`${f.key}\``);
+    const where =
+      f.source === 'document'
+        ? `din header-ul documentului din context (\`${f.key === 'expiry_date' ? 'expiră' : f.key === 'issue_date' ? 'emis' : f.key}: ...\`)`
+        : `din metadata documentului, cheie \`${f.key}\``;
+    lines.push(`- ${f.label}${tag} → ${where}`);
   }
   if (req.notes) {
     lines.push(`Notă: ${req.notes}`);

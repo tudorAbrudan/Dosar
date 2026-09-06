@@ -10,6 +10,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { showAiErrorAlert } from '@/services/aiErrorAlert';
 import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
@@ -631,9 +632,7 @@ export default function AddDocumentScreen() {
     } catch (e) {
       // Eroarea de limită AI sau de rețea — nu blocăm utilizatorul, OCR local rămâne valid
       const msg = e instanceof Error ? e.message : 'Eroare AI';
-      if (msg.includes('limita')) {
-        Alert.alert('Limită AI atinsă', msg, [{ text: 'OK' }]);
-      }
+      if (msg.includes('limita')) showAiErrorAlert(e);
       // Alte erori sunt silențioase (OCR local deja aplicat)
     } finally {
       setAiOcrLoading(false);
@@ -775,15 +774,10 @@ export default function AddDocumentScreen() {
       const combined = fileNotes.join('\n___________\n');
       if (combined) setNote(combined);
     } catch (e) {
-      const msg = humanizeAiError(e);
-      if (msg.includes('limita')) {
-        Alert.alert('Limită AI atinsă', msg);
-      } else {
-        Alert.alert(
-          'AI nu a putut analiza documentul',
-          `${msg}\n\nDacă persistă, completează manual câmpurile.`
-        );
-      }
+      // Prin helperul comun: adaugă butonul „Deschide ghidul" când mesajul
+      // trimite spre ghidul de cheie proprie (într-un Alert nativ, un URL scris
+      // în text nu e apăsabil). Vezi services/aiErrorAlert.ts.
+      showAiErrorAlert(e, 'Dacă persistă, completează manual câmpurile.');
     } finally {
       setLlmFieldLoading(false);
     }

@@ -14,6 +14,69 @@ npm run release          # bump auto (patch/minor/major) din commits
 npm run release:dry      # preview fără modificări
 ```
 
+## [3.14.0] (2026-09-04) — build 76
+
+### Adăugat — Asistentul AI local, direct din configurarea inițială
+- La prima pornire, „Model local" e acum prima opțiune și cea recomandată: rulează pe telefon, nu are limită de întrebări și datele nu pleacă nicăieri.
+- Poți porni descărcarea chiar din acel pas și să mergi mai departe — se descarcă în fundal cât folosești aplicația, cu progresul vizibil pe ecranul Acasă. Apeși pe el și ajungi direct în setările asistentului.
+- Fiecare model spune acum limpede ce compromis face: care e mai rapid, care e mai precis. Alegi în cunoștință de cauză, nu după mărime.
+
+### Modificat — Limita asistentului inclus e acum 10 întrebări pe zi
+- Serviciul „Dosar AI" folosește o cheie comună tuturor utilizatorilor, iar limita a fost coborâtă de la 20 la 10 întrebări zilnic ca să ajungă la mai multă lume.
+- Când o atingi, aplicația îți arată clar cele două variante nelimitate — model local sau cheie proprie — cu buton direct către un ghid pas cu pas. Ghidul e nou și explică inclusiv cum îți faci cont și de unde copiezi cheia.
+
+### Reparat — Mesaje de eroare în engleză sau fără nicio soluție
+- „Context is full", „Rate limit exceeded" și JSON-ul brut al furnizorului ajungeau ca atare pe ecran. Acum toate erorile AI sunt în română, explică ce s-a întâmplat și ce ai de făcut.
+- Același mesaj apare peste tot: asistent, dosar medical, analiza documentelor, testarea conexiunii.
+- Când modelul local rămâne fără spațiu, îți sugerează și o întrebare mai scurtă, nu doar schimbarea furnizorului.
+
+### Reparat — Dosarul medical nu găsea informații pe care le afișa
+- „Ce grupă sanguină am?" primea „nu găsesc", deși valoarea era afișată în capul aceluiași ecran: datele de profil ale dosarului (grupă sanguină, alergii, contact de urgență) nu ajungeau deloc la asistent.
+- „Ultima analiză când am făcut-o?" nu funcționa, deși e una dintre întrebările sugerate de aplicație — lista documentelor din dosar nu intra în context.
+- „Ce nivel de fier am?" nu găsea nimic, pentru că analiza se numește „FERITINA". Acum ultima valoare a fiecărui parametru e disponibilă mereu, indiferent cum e formulată întrebarea.
+
+### Reparat — Butonul de trimitere din chat-ul medical, acoperit de tastatură
+- Rămânea pe jumătate sub tastatură. Poziția se calculează acum din înălțimea reală a barei de jos, deci e corectă pe orice model de iPhone.
+
+### Îmbunătățit — Modelele locale de AI rulează mai eficient
+- Motorul de inferență (`llama.rn`) a fost actualizat de la 0.12.5 la 0.12.9. Aduce reutilizarea contextului între mesajele aceleiași conversații — până acum, la fiecare întrebare se reprocesa tot promptul de la zero — plus o corecție pentru diacriticele stricate în textul generat.
+- Activate calcul de atenție optimizat (flash attention) și cache de context comprimat. Împreună eliberează memorie pe telefon, ceea ce a permis dublarea porției de text procesate odată — porția fusese redusă la jumătate în urma opririlor forțate din iunie 2026 și era principalul motiv pentru care modelele locale mergeau mai încet decât în aplicațiile native.
+
+### Reparat — Răspunsuri care se blocau în bucle sau inventau date
+- Modelele locale nu aveau nicio penalizare pentru repetiție. Fără ea, un model mic putea intra în buclă și emite același fragment până la epuizarea răspunsului: la întrebarea „dă-mi datele pentru RCA", răspunsul degenera într-un șir de cifre repetate în loc de lista cerută.
+- Cu penalizarea activată, același model răspunde corect și marchează explicit câmpurile lipsă cu „lipsește din talon — completează manual", în loc să inventeze cilindree sau putere plauzibile pentru marca respectivă.
+
+### Modificat — Lista de modele locale
+- Adăugate **Qwen 3.5 2B** (~1,2GB, iPhone 13+) și **Qwen 3.5 4B** (~2,7GB, iPhone 14+). Ambele folosesc cuantizare Q4, mai bună decât Q3-ul la care era forțat modelul de 6GB de până acum, la o dimensiune mai mică.
+- Eliminate **Ministral 3B** și **Mistral 7B**. Erau modele din 2024, cele mai vechi din listă, iar rolul lor e acoperit acum de Qwen 3.5 la dimensiuni mai mici.
+- Dacă aveai descărcat unul dintre modelele eliminate: aplicația îți cere să alegi altul din Setări → Asistent AI, iar fișierul rămas pe telefon apare în bannerul de curățare din același ecran, ca să eliberezi spațiul.
+
+### Reparat — Asistentul confunda persoanele și greșea vârstele
+- La o întrebare cu @mențiune („ce vârstă are @Silvia?"), asistentul putea răspunde despre altă persoană. Mențiunea filtra doar documentele, nu și lista de persoane trimisă modelului — care pleca întreagă, fără niciun indiciu despre cine e vorba. Acum se restrâng și entitățile la cele menționate.
+- Vârsta era calculată de model din data nașterii. Modelele mici greșesc aritmetica pe date (un răspuns real: „2 ani și 10 luni" pentru o persoană de 40). Acum vârsta se calculează în aplicație și se trimite gata făcută, deci nu mai poate fi greșită de niciun model.
+- Documentele persoanei menționate au acum prioritate când contextul e limitat, iar căutarea se uită și la documentele legate prin partajare sau la mai multe entități, nu doar la prima legătură.
+
+### Reparat — Întrebări care căutau prin documentele greșite
+- „Ce ITP expiră următorul?" ignora complet tipul cerut și căuta prin toate documentele: regula pentru „expiră" anula filtrul „ITP" acumulat înainte. Acum cele două se combină.
+- Cuvintele cheie se potriveau oriunde în text, nu la începutul cuvintelor: „CI" (carte de identitate) se potrivea în „fa**ci**", „de**ci**", „ai**ci**", iar întrebări fără nicio legătură primeau filtru de buletin. Formele articulate („pașaportul", „talonul") funcționează în continuare.
+
+### Adăugat — Răspunsuri instantanee la întrebările despre expirări
+- „Ce expiră următorul?", „ce-mi expiră luna asta?" — răspunsul se calculează direct din datele tale, fără să mai treacă prin AI. E instantaneu, identic indiferent de modelul ales, și nu poate conține informații inventate.
+
+### Îmbunătățit — Modelele locale folosesc tot contextul disponibil
+- Numărul de documente trimise modelului local era plafonat la 6, o valoare calibrată pentru modelele vechi. Acum se calculează din fereastra reală a modelului ales: Qwen 3.5 2B primește până la 36 de documente, Gemma 4 E2B până la 22. Creșterea a devenit posibilă după optimizările de memorie din aceeași versiune.
+- Efectul: răspunsurile pe model local se apropie de cele pe model online, care primește 40.
+
+### Reparat — Descărcare de model întreruptă, raportată greșit
+- O descărcare incompletă (conexiune pierdută) trecea de verificare și eșua abia la încărcare, cu mesajul „memorie insuficientă sau format incompatibil" — cauză greșită. Acum se verifică dimensiunea față de cea așteptată și mesajul spune exact ce s-a întâmplat: „Descărcarea modelului e incompletă (1465MB din 2331MB)".
+
+### Reparat — Text îngroșat afișat cu asteriscuri
+- Răspunsurile AI care foloseau `**text**` afișau asteriscurile ca atare. Acum se randează îngroșat, la orice provider.
+
+### Reparat — Data expirării lipsea din datele pentru check-in
+- La cererea datelor pentru check-in (avion, hotel), valabilitatea documentului nu apărea în răspuns: câmpul e o coloană a documentului, nu o valoare din metadata lui, iar asistentul îl trata ca pe o informație opțională absentă.
+- Acum specificația marchează explicit de unde se citește fiecare câmp, deci data expirării apare la toate task-urile care o cer.
+
 ## [3.11.3] (2026-07-29) — build 73
 
 ### Reparat — Lipsea ajustarea marginilor la poze adăugate într-un document existent

@@ -3,7 +3,29 @@ import * as SecureStore from 'expo-secure-store';
 
 // ─── Limită zilnică ────────────────────────────────────────────────────────────
 
-export const DAILY_AI_LIMIT = 20;
+export const DAILY_AI_LIMIT = 10;
+
+/** Ghidul public „cum îți iei cheie API proprie", linkat în mesajul de limită. */
+export const AI_KEY_GUIDE_URL = 'https://tudorabrudan.github.io/Dosar/support.html#cheie-api';
+
+/**
+ * Îndrumarea afișată ori de câte ori AI-ul e blocat de o limită — a noastră
+ * (DAILY_AI_LIMIT) sau a providerului din spate (HTTP 429).
+ *
+ * Text UNIC, folosit în toate punctele: chat, analiză document, test conexiune.
+ * Înainte, fiecare cale avea alt mesaj — chat-ul spunea doar „încearcă mai
+ * târziu", fără nicio alternativă, iar analiza documentului trimitea în Setări
+ * fără să spună ce să configureze acolo. Raportat pe device 2026-09-04.
+ */
+/** Trimitere scurtă la ghid, pentru mesajele care au deja explicația proprie. */
+export const AI_CONFIG_HINT = `Setări → Asistent AI → „Cheie API proprie". Ghid: ${AI_KEY_GUIDE_URL}`;
+
+export const AI_UNLIMITED_HINT =
+  'Ai două variante, ambele nelimitate:\n\n' +
+  '• Model local — rulează pe telefon, offline, datele nu pleacă nicăieri. ' +
+  'Setări → Asistent AI → Model local.\n\n' +
+  '• Cheie API proprie — de la Mistral (are plan gratuit) sau alt provider. ' +
+  `Ghid pas cu pas: ${AI_KEY_GUIDE_URL}`;
 export const AI_CONSENT_KEY = 'ai_assistant_consent_accepted';
 const KEY_DAILY_USAGE_PREFIX = 'ai_daily_usage_';
 
@@ -388,6 +410,19 @@ export function humanizeAiError(e: unknown): string {
   const raw = e instanceof Error ? e.message : '';
   if (!raw) return 'A apărut o eroare. Verifică conexiunea la internet și încearcă din nou.';
 
+  // Fereastra de context a modelului LOCAL s-a umplut. Mesajul brut al llama.cpp
+  // („Context is full") ajungea ca atare în interfață: englezesc, tehnic și fără
+  // nicio cale de ieșire. Un model din cloud are context de zeci de ori mai mare,
+  // deci cheia proprie chiar rezolvă problema. Raportat pe device 2026-09-04.
+  if (/context is full|context.{0,10}exceeded|too many tokens|context length/i.test(raw)) {
+    return (
+      'Întrebarea depășește cât poate ține minte modelul local deodată.\n\n' +
+      'Încearcă o întrebare mai scurtă sau despre o singură entitate ' +
+      '(folosește @ ca să te referi la o persoană sau la o mașină anume).\n\n' +
+      `Pentru context mult mai mare, treci pe un model din cloud cu cheia ta. ${AI_CONFIG_HINT}`
+    );
+  }
+
   // Erori de rețea RN (TypeError: Network request failed) — engleză, tehnice.
   if (/network request failed|failed to fetch/i.test(raw)) {
     return 'Fără conexiune la internet. Verifică rețeaua și încearcă din nou.';
@@ -412,12 +447,21 @@ export function humanizeAiError(e: unknown): string {
       return 'Cheie API invalidă sau expirată. Verifică în Setări → Asistent AI.';
     }
     if (status === 429) {
-      return 'Limită de utilizare atinsă la providerul AI. Încearcă mai târziu.';
+      // Limita providerului din spate (cheia Dosar AI e comună tuturor
+      // utilizatorilor), nu contorul nostru zilnic. Aceeași îndrumare: userul
+      // n-are cum să distingă între cele două, și oricum are aceleași soluții.
+      return `Serviciul AI inclus e ocupat acum (limită atinsă la provider).\n\n${AI_UNLIMITED_HINT}`;
     }
     if (status >= 500) {
       return 'Serviciul AI e temporar indisponibil. Încearcă din nou în câteva minute.';
     }
-    return `Providerul AI a refuzat cererea (cod ${status}). Verifică configurarea din Setări → Asistent AI.`;
+    if (status === 402) {
+      return `Contul de la providerul AI nu mai are credit.\n\n${AI_UNLIMITED_HINT}`;
+    }
+    return (
+      `Providerul AI a refuzat cererea (cod ${status}). Verifică configurarea din ` +
+      `Setări → Asistent AI.\n\n${AI_UNLIMITED_HINT}`
+    );
   }
 
   // Mesaj deja în română (ale noastre) sau necunoscut dar scurt → îl păstrăm;
@@ -519,7 +563,7 @@ export async function sendAiRequestWithImage(
     const used = await getAiUsageToday();
     if (used >= DAILY_AI_LIMIT) {
       throw new Error(
-        `Ai atins limita de ${DAILY_AI_LIMIT} interogări AI/zi cu cheia Dosar AI.\n\nPoți folosi nelimitat configurând propria cheie API din Setări → Asistent AI.`
+        `Ai atins limita de ${DAILY_AI_LIMIT} interogări pe zi cu Dosar AI.\n\n${AI_UNLIMITED_HINT}`
       );
     }
   }
@@ -636,7 +680,7 @@ export async function sendAiRequest(
     const used = await getAiUsageToday();
     if (used >= DAILY_AI_LIMIT) {
       throw new Error(
-        `Ai atins limita de ${DAILY_AI_LIMIT} interogări AI/zi cu cheia Dosar AI.\n\nPoți folosi nelimitat configurând propria cheie API din Setări → Asistent AI.`
+        `Ai atins limita de ${DAILY_AI_LIMIT} interogări pe zi cu Dosar AI.\n\n${AI_UNLIMITED_HINT}`
       );
     }
   }

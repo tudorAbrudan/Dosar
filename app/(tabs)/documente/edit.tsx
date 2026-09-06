@@ -38,6 +38,7 @@ import {
   lockMainOrientation,
   setDocumentCalendarEventId,
 } from '@/services/documents';
+import { showAiErrorAlert } from '@/services/aiErrorAlert';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import {
   updateExpiryCalendarEvent,
@@ -454,15 +455,10 @@ export default function EditDocumentScreen() {
         Alert.alert('Data ITP necesită completare manuală', warning);
       }
     } catch (e) {
-      const msg = humanizeAiError(e);
-      if (msg.includes('limita')) {
-        Alert.alert('Limită AI atinsă', msg);
-      } else {
-        Alert.alert(
-          'AI nu a putut analiza documentul',
-          `${msg}\n\nDacă persistă, completează manual câmpurile.`
-        );
-      }
+      // Prin helperul comun: adaugă butonul „Deschide ghidul" când mesajul
+      // trimite spre ghidul de cheie proprie (într-un Alert nativ, un URL scris
+      // în text nu e apăsabil). Vezi services/aiErrorAlert.ts.
+      showAiErrorAlert(e, 'Dacă persistă, completează manual câmpurile.');
     } finally {
       setLlmFieldLoading(false);
     }

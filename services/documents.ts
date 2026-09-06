@@ -253,9 +253,30 @@ export async function getDocumentsForAI(): Promise<Document[]> {
     "SELECT DISTINCT document_id FROM document_entities WHERE entity_type = 'medical_record'"
   );
   const medicalLinkedIds = new Set(medicalLinkedRows.map(r => r.document_id));
+
+  // Legăturile din junction, într-un singur query (nu N+1 pe documente).
+  // `getDocuments()` întoarce doar coloanele tabelei, deci `entity_links` ar
+  // rămâne undefined — iar filtrarea după @mențiune din chatbot.ts s-ar uita
+  // doar la coloanele legacy `*_id`, care țin PRIMUL link de fiecare tip. Fără
+  // asta, un document cu multi-link sau primit prin partajare nu s-ar potrivi
+  // niciodată cu entitatea menționată. Vezi `docEntityIds` în chatbot.ts.
+  const linkRows = await db.getAllAsync<{
+    document_id: string;
+    entity_type: string;
+    entity_id: string;
+  }>(
+    "SELECT document_id, entity_type, entity_id FROM document_entities WHERE entity_type != 'medical_record'"
+  );
+  const linksByDoc = new Map<string, DocumentEntityLink[]>();
+  for (const r of linkRows) {
+    const list = linksByDoc.get(r.document_id) ?? [];
+    list.push({ entityType: r.entity_type as EntityType, entityId: r.entity_id });
+    linksByDoc.set(r.document_id, list);
+  }
+
   return all
     .filter(d => !MEDICAL_DOC_TYPES.has(d.type) && !medicalLinkedIds.has(d.id))
-    .map(sanitizeDocumentForAI);
+    .map(d => sanitizeDocumentForAI({ ...d, entity_links: linksByDoc.get(d.id) ?? [] }));
 }
 
 async function loadPages(documentId: string): Promise<DocumentPage[]> {

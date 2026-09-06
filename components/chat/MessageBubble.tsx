@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Alert, StyleSheet } from 'react-native';
+import { View, Text, Pressable, Alert, StyleSheet, Linking } from 'react-native';
 import type { ChatMessage } from '@/services/chatbot';
 import { SelectTextModal } from './SelectTextModal';
 
@@ -24,6 +24,79 @@ interface MessageBubbleProps {
   colors: MessageBubbleColors;
 }
 
+/**
+ * Segmentele de text simplu dintre tag-uri, cu `**bold**` randat ca atare.
+ *
+ * Modelele scriu markdown din obișnuință („născută pe **1 februarie 2020**") și
+ * până acum asteriscurile ajungeau literal pe ecran — parser-ul cunoștea doar
+ * tag-urile [ID:]/[DOC:]/[ENT:]. Afecta orice provider, inclusiv cloud.
+ * Raportat 2026-09-03.
+ *
+ * Deliberat minimal: doar bold. Restul markdown-ului (liste, titluri, cod) nu
+ * apare în răspunsurile aplicației și n-ar merita un parser complet.
+ */
+function renderPlainText(text: string, keyPrefix: string, textColor: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  // URL-uri → link-uri apăsabile. Mesajele de limită AI conțin linkul către
+  // ghidul „cum îți iei cheie proprie"; ca text simplu, userul ar trebui să-l
+  // copieze de mână. Se aplică înainte de bold, ca să nu spargem tag-urile.
+  const urlRegex = /(https?:\/\/[^\s)]+)/g;
+  const withLinks = (chunk: string, keyBase: string): React.ReactNode[] => {
+    const out: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    urlRegex.lastIndex = 0;
+    while ((m = urlRegex.exec(chunk)) !== null) {
+      if (m.index > last) out.push(chunk.slice(last, m.index));
+      const url = m[1];
+      out.push(
+        <Text
+          key={`${keyBase}-u-${m.index}`}
+          style={styles.link}
+          onPress={() => {
+            void Linking.openURL(url).catch(() => undefined);
+          }}
+        >
+          {url}
+        </Text>
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < chunk.length) out.push(chunk.slice(last));
+    return out;
+  };
+  // Bullet-uri markdown la început de linie („* text" / „- text") → „• text".
+  // Modelele le emit din obișnuință; fără conversie, asteriscul apărea literal
+  // în listă („*   Vehiculul Dacia Duster are..."). Observat pe device 2026-09-04.
+  text = text.replace(/^[ \t]*[*-][ \t]+/gm, '• ');
+  const boldRegex = /\*\*([^*]+)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boldRegex.exec(text)) !== null) {
+    if (m.index > last) {
+      nodes.push(
+        <Text key={`${keyPrefix}-p-${last}`} style={{ color: textColor }}>
+          {withLinks(text.slice(last, m.index), `${keyPrefix}-${last}`)}
+        </Text>
+      );
+    }
+    nodes.push(
+      <Text key={`${keyPrefix}-b-${m.index}`} style={[styles.bold, { color: textColor }]}>
+        {m[1]}
+      </Text>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) {
+    nodes.push(
+      <Text key={`${keyPrefix}-p-${last}`} style={{ color: textColor }}>
+        {withLinks(text.slice(last), `${keyPrefix}-${last}`)}
+      </Text>
+    );
+  }
+  return nodes;
+}
+
 function renderMessageContent(
   content: string,
   onIdPress: (id: string) => void,
@@ -39,11 +112,7 @@ function renderMessageContent(
   while ((match = regex.exec(content)) !== null) {
     const before = content.slice(lastIndex, match.index);
     if (before) {
-      parts.push(
-        <Text key={`t-${lastIndex}`} style={{ color: textColor }}>
-          {before}
-        </Text>
-      );
+      parts.push(...renderPlainText(before, `t-${lastIndex}`, textColor));
     }
 
     if (match[1]) {
@@ -91,11 +160,7 @@ function renderMessageContent(
 
   const remaining = content.slice(lastIndex);
   if (remaining) {
-    parts.push(
-      <Text key="t-end" style={{ color: textColor }}>
-        {remaining}
-      </Text>
-    );
+    parts.push(...renderPlainText(remaining, 't-end', textColor));
   }
 
   return parts;
@@ -184,4 +249,6 @@ const styles = StyleSheet.create({
   assistantBubble: { alignSelf: 'flex-start', borderWidth: 1 },
   userText: { color: '#ffffff', fontSize: 15, lineHeight: 21 },
   idLink: { textDecorationLine: 'underline', fontWeight: '600' },
+  bold: { fontWeight: '700' },
+  link: { textDecorationLine: 'underline' },
 });

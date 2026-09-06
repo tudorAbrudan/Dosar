@@ -2,7 +2,7 @@
  * localModel.ts — Gestionează modele LLM locale (llama.rn / GGUF Q4_K_M).
  *
  * Responsabilități:
- * - Catalog static de modele (6 modele IT)
+ * - Catalog static de modele (5 modele IT)
  * - Verificare compatibilitate device (RAM + generație iPhone)
  * - Download cu progress callback
  * - Persistență selecție în AsyncStorage
@@ -34,6 +34,13 @@ export interface LocalModelEntry {
   qualityStars: number;
   /** Fereastra de context folosită la inițializare (tokeni) */
   nCtx: number;
+  /**
+   * Dimensiunea batch-ului de prefill (n_batch = n_ubatch). Cu cât mai mare, cu
+   * atât prefill-ul e mai rapid, dar crește vârful buffer-ului de compute pe GPU
+   * → risc de jetsam pe device-uri de 6GB. Vezi `PREFILL_BATCH_DEFAULT`.
+   * Omis → `PREFILL_BATCH_DEFAULT`.
+   */
+  nBatch?: number;
   /** URL HuggingFace pentru descărcare fișier GGUF */
   downloadUrl: string;
 }
@@ -44,37 +51,29 @@ export type DownloadProgressCallback = (
   totalMb: number
 ) => void;
 
+// ─── Parametri inferență ─────────────────────────────────────────────────────
+
+/**
+ * n_batch/n_ubatch implicit pentru prefill.
+ *
+ * Istoric: 128 a fost plasa anti-jetsam de la crash-urile 2026-06-30/07-01, când
+ * initLlama rula fără flash attention și cu KV cache f16. Prefill-ul e însă
+ * ~liniar în batch, deci 128 (vs default-ul 512 al llama.cpp) era principalul
+ * motiv pentru care modelele mergeau vizibil mai încet decât în app-urile native.
+ *
+ * Odată cu `flash_attn_type: 'auto'` + `cache_type_k/v: 'q8_0'` (2026-09-03),
+ * memoria recâștigată permite urcarea. 256 e pasul intermediar deliberat: se
+ * dublează viteza de prefill păstrând marjă pe A15/6GB. Următorul pas (512, adică
+ * default-ul llama.cpp) trebuie MĂSURAT pe iPhone 13 Pro Max real înainte de a fi
+ * adoptat — nu îl urca „pe încredere".
+ *
+ * Override per model: câmpul `nBatch` din `LocalModelEntry`.
+ */
+export const PREFILL_BATCH_DEFAULT = 256;
+
 // ─── Catalog ─────────────────────────────────────────────────────────────────
 
 export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
-  {
-    id: 'ministral-3b',
-    name: 'Ministral 3B IT',
-    description:
-      'Model Mistral compact, bun la urmarea instrucțiunilor. Context 16K tokeni. iPhone 14+.',
-    sizeBytes: 2000 * 1024 * 1024,
-    sizeLabel: '~2GB',
-    minRamBytes: 5 * 1024 * 1024 * 1024,
-    minIphoneGen: 14,
-    qualityStars: 4,
-    nCtx: 16384,
-    downloadUrl:
-      'https://huggingface.co/bartowski/Ministral-3B-Instruct-GGUF/resolve/main/Ministral-3B-Instruct-Q4_K_M.gguf',
-  },
-  {
-    id: 'mistral-7b',
-    name: 'Mistral 7B IT',
-    description:
-      'Calitate maximă disponibilă local. Context 16K tokeni. Necesită iPhone 15 Pro+ și ~4GB spațiu liber.',
-    sizeBytes: 4100 * 1024 * 1024,
-    sizeLabel: '~4.1GB',
-    minRamBytes: 7 * 1024 * 1024 * 1024,
-    minIphoneGen: 15,
-    qualityStars: 5,
-    nCtx: 16384,
-    downloadUrl:
-      'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
-  },
   // ── Gemma 4, tiered pe capacitatea device-ului ──────────────────────────────
   // head_dim 512 pe layerele globale → KV cache + compute buffers cresc rapid.
   // Pe A15/6GB, Q4_K_M (3.1GB) trecea plafonul de memorie la inferență (OOM Metal
@@ -125,6 +124,53 @@ export const LOCAL_MODEL_CATALOG: LocalModelEntry[] = [
     nCtx: 8192,
     downloadUrl:
       'https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
+  },
+  // ── Generația 2026: alternative mai rapide la Gemma 4 pe device-uri de 6GB ──
+  // Gemma 4 E2B e structural nepotrivit pentru A15: head_dim 512 pe layerele
+  // globale → KV cache disproporționat, de unde compromisul Q3_K_S + batch mic.
+  // Qwen 3.5 e mai ușor la aceeași clasă de parametri, deci încape la Q4 (nu Q3)
+  // și suportă batch de prefill mai mare.
+  //
+  // RESPINS aici: LiquidAI LFM2.5-2.6B. Deși e cel mai rapid și mai mic candidat,
+  // a picat testarea din 2026-09-03 pe trei motive independente:
+  //   1. chat template-ul lui NU expune `enable_thinking` → `enable_thinking:false`
+  //      din `runLocalInferenceExclusive` e un no-op, iar modelul emite blocuri
+  //      `[Start thinking]` în engleză care consumă tot bugetul de tokeni;
+  //   2. `stripReasoning` acoperă doar formatul Gemma `<|channel>`, nu `[Start
+  //      thinking]` → raționamentul s-ar scurge în UI;
+  //   3. cel mai grav: citește interdicția „INTERZIS să inventezi valori" ca pe o
+  //      permisiune și fabrică cilindree/putere/an marcate „(tipic pentru...)".
+  // Nu-l readăuga fără să retreci testele din `docs/` pe promptul de task RCA.
+  {
+    id: 'qwen35-2b',
+    name: 'Qwen 3.5 2B',
+    description:
+      'Qwen 3.5 — cel mai mic model din listă (~1.2GB) și cel mai bun la limba română dintre modelele rapide. Context 16K. iPhone 13+. Doar text.',
+    sizeBytes: 1280835840,
+    sizeLabel: '~1.2GB',
+    minRamBytes: 5 * 1024 * 1024 * 1024,
+    minIphoneGen: 13,
+    qualityStars: 4,
+    nCtx: 16384,
+    nBatch: 512,
+    downloadUrl:
+      'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf',
+  },
+  {
+    id: 'qwen35-4b',
+    name: 'Qwen 3.5 4B',
+    description:
+      'Qwen 3.5 la 4B parametri, cuantizare Q4_K_M — echilibru între viteza Qwen și precizia dată de mai mulți parametri. Mai lent decât varianta 2B. Context 8K. iPhone 14+. ~2.7GB. Doar text.',
+    sizeBytes: 2740937888,
+    sizeLabel: '~2.7GB',
+    minRamBytes: 5 * 1024 * 1024 * 1024,
+    minIphoneGen: 14,
+    qualityStars: 5,
+    // 2.7GB rezidenți lasă mai puțină marjă decât variantele 2B → context redus
+    // la 8192 și batch la valoarea implicită, nu 512.
+    nCtx: 8192,
+    downloadUrl:
+      'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
   },
 ];
 
@@ -180,6 +226,18 @@ export function getAllModels(): (LocalModelEntry & { incompatibilityReason: stri
     ...m,
     incompatibilityReason: getIncompatibilityReason(m, ramBytes, iphoneGen),
   }));
+}
+
+/**
+ * Fereastra de context (tokeni) a modelului local selectat, sau null dacă nu e
+ * niciunul. Folosită de `chatbot.ts` ca să dimensioneze contextul trimis: un
+ * plafon fix ar irosi 10K tokeni pe un model cu nCtx 16384 și ar depăși pe unul
+ * cu 8192.
+ */
+export async function getSelectedModelContextSize(): Promise<number | null> {
+  const id = await getSelectedModelId();
+  if (!id) return null;
+  return LOCAL_MODEL_CATALOG.find(m => m.id === id)?.nCtx ?? null;
 }
 
 /**
@@ -392,19 +450,33 @@ export async function initLocalModel(modelId: string): Promise<void> {
     throw new Error(`Modelul "${modelId}" nu este descărcat. Descarcă-l din Setări → Asistent AI.`);
   }
 
-  // Verifică că fișierul nu e gol/corupt (minim 100MB)
-  const MIN_VALID_SIZE = 100 * 1024 * 1024;
-  if (
-    (info as { size?: number }).size !== undefined &&
-    (info as { size: number }).size < MIN_VALID_SIZE
-  ) {
-    throw new Error(
-      'Fișierul modelului pare corupt sau incomplet. Șterge modelul din Setări → Asistent AI și descarcă-l din nou.'
-    );
+  const modelEntry = LOCAL_MODEL_CATALOG.find(m => m.id === modelId);
+
+  // Verifică integritatea descărcării RAPORTAT LA dimensiunea așteptată, nu la un
+  // prag fix. Un prag de 100MB lăsa să treacă orice descărcare întreruptă (un
+  // fișier de 1.5GB dintr-unul de 2.3GB îl trecea lejer), iar eroarea apărea abia
+  // la initLlama, ca „memorie insuficientă sau format incompatibil" — cauză
+  // greșită, pe care userul nu are cum s-o lege de o descărcare ruptă.
+  // Verificat în practică 2026-09-04: exact acest scenariu, cu Gemma 4 E2B Q3.
+  //
+  // Toleranță 10%: `sizeBytes` din catalog e aproximativ pentru unele intrări.
+  const actualSize = (info as { size?: number }).size;
+  const expectedSize = modelEntry?.sizeBytes;
+  if (actualSize !== undefined) {
+    const minValid = expectedSize ? expectedSize * 0.9 : 100 * 1024 * 1024;
+    if (actualSize < minValid) {
+      const gotMb = Math.round(actualSize / (1024 * 1024));
+      const wantMb = expectedSize ? Math.round(expectedSize / (1024 * 1024)) : null;
+      throw new Error(
+        wantMb
+          ? `Descărcarea modelului e incompletă (${gotMb}MB din ${wantMb}MB). Șterge modelul din Setări → Asistent AI și descarcă-l din nou, pe o conexiune stabilă.`
+          : 'Fișierul modelului pare corupt sau incomplet. Șterge modelul din Setări → Asistent AI și descarcă-l din nou.'
+      );
+    }
   }
 
-  const modelEntry = LOCAL_MODEL_CATALOG.find(m => m.id === modelId);
   const nCtx = modelEntry?.nCtx ?? 32768;
+  const nBatch = modelEntry?.nBatch ?? PREFILL_BATCH_DEFAULT;
 
   // ctx_shift = true: la depășirea n_ctx, llama trunchiază automat tokeni vechi
   // în loc să arunce „Context is full". Acceptabil pentru aplicație: la fiecare
@@ -420,14 +492,30 @@ export async function initLocalModel(modelId: string): Promise<void> {
         n_ctx: nCtx,
         n_gpu_layers: 99,
         ctx_shift: true,
+        // Flash attention: calculează attention fără a materializa matricea
+        // completă → scade semnificativ vârful buffer-ului de compute. E exact
+        // bugetul de memorie pentru care prefill-ul fusese coborât la 128, deci
+        // îl activăm ÎNAINTE de a urca n_batch. 'auto' = pornit unde backend-ul
+        // (Metal) îl suportă, altfel cade elegant pe calea clasică.
+        flash_attn_type: 'auto',
+        // KV cache cuantizat q8_0 în loc de f16 → jumătate din memoria cache-ului,
+        // cu pierdere de calitate neglijabilă. Contează dublu pe Gemma 4, unde
+        // head_dim 512 pe layerele globale umflă KV-ul (vezi nota din catalog).
+        // Necesită flash attention pentru cache_type_v — de aceea merg împreună.
+        cache_type_k: 'q8_0',
+        cache_type_v: 'q8_0',
         // Prefill-ul în bucăți mici reduce vârful de memorie al buffer-ului de
         // compute → evită jetsam pe device-uri de 6GB (modelul de ~2-3GB e deja la
         // limită). Compromis: prefill mai lent. Vezi crash jetsam 2026-06-30/07-01.
-        n_batch: 128,
-        n_ubatch: 128,
+        // Cu flash attention + KV q8_0 active, marja recâștigată permite un batch
+        // mai mare decât 128 — vezi PREFILL_BATCH_DEFAULT.
+        n_batch: nBatch,
+        n_ubatch: nBatch,
       });
     } catch {
       // GPU (Metal) a eșuat → reîncearcă pe CPU (mai lent, dar fără OOM Metal).
+      // Calea asta rămâne deliberat conservatoare: fără flash attention nu putem
+      // cuantiza cache_type_v, iar batch-ul mic e plasa de siguranță finală.
       _llamaContext = await initLlama({
         model: path,
         use_mlock: false,
@@ -457,7 +545,7 @@ export async function initLocalModel(modelId: string): Promise<void> {
 
 /**
  * Forțează alternarea user/assistant în array-ul de mesaje. Template-urile Jinja
- * ale modelelor locale (ex. Mistral 7B Instruct) refuză cu excepție explicită
+ * ale modelelor locale (ex. Qwen 3.5 Instruct) refuză cu excepție explicită
  * mesaje consecutive cu același rol. Această normalizare:
  * - păstrează `system` ca atare;
  * - îmbină perechi consecutive de același rol într-un singur mesaj.
@@ -485,6 +573,14 @@ export function normalizeMessagesForLocal(messages: AiMessage[]): AiMessage[] {
  */
 export function stripReasoning(text: string): string {
   let t = text;
+  // Format `[Start thinking] ... [End thinking]{răspuns}` — emis de Gemma 4 și de
+  // LFM2.5 (verificat pe GGUF, 2026-09-04), în ENGLEZĂ, indiferent de limba
+  // promptului. În aplicație `enable_thinking: false` îl previne pentru modelele
+  // al căror chat template expune comutatorul — dar nu toate îl expun (LFM2.5 nu),
+  // deci plasa de rezervă trebuie să acopere și marcajul ăsta.
+  t = t.replace(/\[Start thinking\][\s\S]*?\[End thinking\]/g, '');
+  // Bloc deschis fără închidere (răspuns trunchiat de n_predict)
+  t = t.replace(/\[Start thinking\][\s\S]*$/g, '');
   // Bloc complet thinking → răspuns: păstrează ce e după <channel|>
   t = t.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
   // Markeri reziduali de canal (deschideri fără pereche, format trunchiat)
@@ -550,6 +646,13 @@ async function runLocalInferenceExclusive(
       messages: normalized,
       n_predict: maxTokens,
       temperature: 0.3,
+      // Penalizare de repetiție. Default-ul llama.cpp e 1.0 = DEZACTIVAT, iar
+      // fără ea modelele mici cuantizate intră în bucle degenerative: la testul
+      // „date pentru RCA", Qwen 3.5 2B Q4 a emis „10101010..." până la epuizarea
+      // bugetului de tokeni. Cu 1.1 (valoarea recomandată de model card-urile
+      // Qwen și LFM) răspunsul a devenit corect și complet. Măsurat 2026-09-03.
+      penalty_repeat: 1.1,
+      penalty_last_n: 64,
       stop: ['</s>', '<|end|>', '<|eot_id|>', '<end_of_turn>'],
       // Modele cu „thinking" (ex. Gemma 4) emit un lanț de raționament în canale
       // separate. Cerem llama.cpp să-l parseze și să nu-l genereze deloc.
@@ -575,9 +678,11 @@ async function runLocalInferenceExclusive(
       // Fire-and-forget: caller-ul dispose-ului n-a așteptat oricum (a primit
       // return imediat); eșecul release-ului e doar logat, nu propagat.
       for (const ctx of toRelease) {
-        void ctx.release().catch(e =>
-          console.warn('[localModel] dispose amânat a eșuat:', e instanceof Error ? e.message : e)
-        );
+        void ctx
+          .release()
+          .catch(e =>
+            console.warn('[localModel] dispose amânat a eșuat:', e instanceof Error ? e.message : e)
+          );
       }
     }
   }

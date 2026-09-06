@@ -19,10 +19,12 @@ import { db, generateId } from './db';
 import { analyzeQuery, normalizeName, buildFtsMatchExpression } from './medicalQueryAnalysis';
 import { searchChunks, type FtsHit } from './medicalFts';
 import { listObservationsByRecord } from './medicalObservations';
+import { getMedicalRecord } from './medicalRecord';
 import { getDocumentById } from './documents';
 import { sendAiRequest } from './aiProvider';
 import { emit } from './events';
 import { getDocumentLabel } from '@/types';
+import type { MedicalRecord } from '@/types';
 import { getCustomTypes } from './customTypes';
 import type { CustomDocumentType } from '@/types';
 import type {
@@ -195,6 +197,38 @@ export interface RetrievedDocChunk {
 export interface RetrievedContext {
   observations: MedicalObservation[];
   documentChunks: RetrievedDocChunk[];
+  /**
+   * Datele de profil ale dosarului (grupă sanguină, alergii, contact de urgență).
+   *
+   * Lipseau complet din context: chat-ul primea doar observațiile din analize și
+   * extrasele din documente, deci la „ce grupă sanguină am?" răspundea „nu găsesc
+   * această informație" — deși aplicația o AFIȘA în antetul aceluiași ecran.
+   * Raportat pe device 2026-09-04.
+   */
+  record: MedicalRecord | null;
+  /**
+   * Documentele dosarului, cele mai recente întâi — INDEPENDENT de căutarea FTS.
+   *
+   * `analyzeQuery` extrage termeni doar dintr-o listă fixă de rădăcini medicale
+   * (HDL, TSH, feritină…). O întrebare ca „ultima analiză când am făcut-o?" nu
+   * conține niciuna, deci FTS-ul era sărit complet și secțiunea de documente
+   * rămânea goală → modelul răspundea „nu găsesc această informație". Ironic,
+   * exact asta e una dintre întrebările sugerate de aplicație în ecranul gol.
+   * Raportat pe device 2026-09-04.
+   */
+  recentDocuments: { id: string; label: string; date: string | null }[];
+  /**
+   * Ultima valoare pentru FIECARE parametru din dosar — inclusă mereu, indiferent
+   * de întrebare.
+   *
+   * Potrivirea pe termeni nu poate acoperi sinonimele: la „ce nivel de fier am?"
+   * termenul extras e „fier", dar observația se numește „FERITINA", care nu
+   * conține șirul „fier" → zero potriviri → „nu găsesc". Orice listă de sinonime
+   * ar fi incompletă; e mai sigur să trimitem pur și simplu ultima valoare a
+   * fiecărui parametru. Un dosar real are zeci de parametri, nu mii.
+   * Raportat pe device 2026-09-04.
+   */
+  latestPerParameter: MedicalObservation[];
 }
 
 function docLabel(
@@ -207,10 +241,11 @@ function docLabel(
 export async function retrieveContext(recordId: string, query: string): Promise<RetrievedContext> {
   const a = analyzeQuery(query);
 
-  // Set A: structured lookup pe observații
-  const [allObs, customTypes] = await Promise.all([
+  // Set A: structured lookup pe observații + profilul dosarului
+  const [allObs, customTypes, record] = await Promise.all([
     listObservationsByRecord(recordId),
     getCustomTypes(),
+    getMedicalRecord(recordId),
   ]);
   const normTerms = a.searchTerms.map(t => normalizeName(t));
   const matched = allObs.filter(o => {
@@ -238,7 +273,12 @@ export async function retrieveContext(recordId: string, query: string): Promise<
     }
     observations = Array.from(byMonth.values()).flatMap(arr => arr.slice(0, 2));
   } else if (a.intent === 'latest') {
-    observations = filtered.slice(0, 5);
+    // Sortare explicită: `listObservationsByRecord` nu garantează o ordine, iar
+    // un `slice(0, 5)` pe o listă nesortată întorcea 5 observații ARBITRARE la o
+    // întrebare care cere explicit ultimele. Cele fără dată merg la coadă.
+    observations = [...filtered]
+      .sort((x, y) => (y.observed_at ?? '').localeCompare(x.observed_at ?? ''))
+      .slice(0, 5);
   } else {
     observations = filtered.slice(0, 30);
   }
@@ -284,7 +324,48 @@ export async function retrieveContext(recordId: string, query: string): Promise<
     charCount += h.chunk_text.length;
   }
 
-  return { observations, documentChunks: docChunks };
+  // Documentele dosarului, ordonate descrescător după dată. Sunt incluse mereu,
+  // nu doar când FTS-ul găsește ceva: întrebările despre CÂND s-a făcut ceva sunt
+  // despre metadate, nu despre conținut, iar căutarea în text nu le acoperă.
+  const MAX_RECENT_DOCS = 12;
+  const recentRows = await db.getAllAsync<{
+    id: string;
+    type: string;
+    custom_type_id: string | null;
+    issue_date: string | null;
+    created_at: string;
+  }>(
+    `SELECT d.id, d.type, d.custom_type_id, d.issue_date, d.created_at
+     FROM documents d
+     JOIN document_entities de ON de.document_id = d.id AND de.entity_type = 'medical_record'
+     WHERE de.entity_id = ?
+     ORDER BY CASE WHEN d.issue_date IS NULL OR d.issue_date = '' THEN 1 ELSE 0 END,
+              d.issue_date DESC, d.created_at DESC
+     LIMIT ?`,
+    [recordId, MAX_RECENT_DOCS]
+  );
+  const recentDocuments = recentRows.map(r => ({
+    id: r.id,
+    label: getDocumentLabel(
+      { type: r.type as DocumentType, custom_type_id: r.custom_type_id ?? undefined },
+      customTypes
+    ),
+    date: r.issue_date && r.issue_date.trim() ? r.issue_date : null,
+  }));
+
+  // Ultima valoare per parametru, din TOATE observațiile (nu doar cele potrivite).
+  const MAX_PARAMS = 40;
+  const bestByName = new Map<string, MedicalObservation>();
+  for (const o of allObs) {
+    const key = normalizeName(o.name);
+    const prev = bestByName.get(key);
+    if (!prev || (o.observed_at ?? '') > (prev.observed_at ?? '')) bestByName.set(key, o);
+  }
+  const latestPerParameter = Array.from(bestByName.values())
+    .sort((x, y) => (y.observed_at ?? '').localeCompare(x.observed_at ?? ''))
+    .slice(0, MAX_PARAMS);
+
+  return { observations, documentChunks: docChunks, record, recentDocuments, latestPerParameter };
 }
 
 // ── Prompt + sendMessage ─────────────────────────────────────────────────────
@@ -304,10 +385,35 @@ REGULI ABSOLUTE:
 6. NU folosi cunoștințe medicale generale. Doar ce e în context.
 7. Răspunde în română.`;
 
+export { buildContextString as buildContextStringForTest };
+
 function buildContextString(ctx: RetrievedContext): string {
   const lines: string[] = [];
-  if (ctx.observations.length > 0) {
-    lines.push('=== OBSERVAȚII STRUCTURATE ===');
+  // Profilul dosarului primul: sunt date pe care userul le-a completat manual și
+  // le vede în antetul ecranului. Fără ele, întrebări simple („ce grupă sanguină
+  // am?") primeau „nu găsesc această informație".
+  if (ctx.record) {
+    const profile: string[] = [];
+    if (ctx.record.blood_group) profile.push(`- Grupă sanguină: ${ctx.record.blood_group}`);
+    if (ctx.record.allergies) profile.push(`- Alergii cunoscute: ${ctx.record.allergies}`);
+    if (ctx.record.emergency_contact_name || ctx.record.emergency_contact_phone) {
+      const nume = ctx.record.emergency_contact_name ?? '?';
+      const tel = ctx.record.emergency_contact_phone ?? '?';
+      profile.push(`- Contact de urgență: ${nume}, ${tel}`);
+    }
+    if (profile.length > 0) {
+      lines.push('=== PROFIL DOSAR ===');
+      lines.push(...profile);
+    }
+  }
+  // Când întrebarea n-a produs termeni de căutare, `observations` conține toate
+  // observațiile — adică exact ce e deja în „ultima valoare per parametru", dar
+  // cu toate măsurătorile istorice. Dublarea umfla contextul degeaba și îngropa
+  // valorile relevante. Le emitem doar când chiar sunt o selecție.
+  const obsAreASelection =
+    ctx.observations.length > 0 && ctx.observations.length < ctx.latestPerParameter.length * 2;
+  if (obsAreASelection || (ctx.observations.length > 0 && ctx.latestPerParameter.length === 0)) {
+    lines.push('=== MĂSURĂTORI RELEVANTE PENTRU ÎNTREBARE ===');
     for (const o of ctx.observations) {
       const ref =
         o.ref_min || o.ref_max ? ` (interval ${o.ref_min ?? '?'}-${o.ref_max ?? '?'})` : '';
@@ -316,6 +422,22 @@ function buildContextString(ctx: RetrievedContext): string {
       const value = o.value ?? '';
       const unit = o.unit ?? '';
       lines.push(`- ${o.name}: ${value} ${unit}${ref}, ${date} [OBS:${o.id}]${review}`);
+    }
+  }
+  if (ctx.latestPerParameter.length > 0) {
+    lines.push('=== ULTIMA VALOARE PENTRU FIECARE ANALIZĂ ===');
+    for (const o of ctx.latestPerParameter) {
+      const ref =
+        o.ref_min || o.ref_max ? ` (interval ${o.ref_min ?? '?'}-${o.ref_max ?? '?'})` : '';
+      lines.push(
+        `- ${o.name}: ${o.value ?? ''} ${o.unit ?? ''}${ref}, ${o.observed_at ?? 'dată necunoscută'} [OBS:${o.id}]`
+      );
+    }
+  }
+  if (ctx.recentDocuments.length > 0) {
+    lines.push('=== DOCUMENTE ÎN DOSAR (cele mai recente întâi) ===');
+    for (const d of ctx.recentDocuments) {
+      lines.push(`- [DOC:${d.label}|${d.id}] — ${d.date ?? 'fără dată'}`);
     }
   }
   if (ctx.documentChunks.length > 0) {
@@ -375,6 +497,18 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
 
   const ctx = await retrieveContext(args.recordId, args.question);
   const ctxStr = buildContextString(ctx);
+
+  // Diagnostic: în build-uri de dezvoltare, tipărește CE a primit modelul.
+  // Fără asta, un „nu găsesc" intermitent nu poate fi distins între „datele n-au
+  // ajuns în context" și „modelul le-a ignorat" — exact ambiguitatea în care ne-am
+  // învârtit pe 2026-09-04. Nu conține date în plus față de ce se trimite oricum.
+  if (__DEV__) {
+    console.log(
+      `[medicalChat] context ${ctxStr.length} car | ` +
+        `${ctx.latestPerParameter.length} parametri, ${ctx.observations.length} măsurători, ` +
+        `${ctx.recentDocuments.length} documente, ${ctx.documentChunks.length} extrase\n${ctxStr}`
+    );
+  }
 
   const history = await listMessages(args.threadId);
   // Excludem mesajul user pe care tocmai l-am salvat — îl avem deja ca prompt.

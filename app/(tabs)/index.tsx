@@ -39,6 +39,7 @@ import { isStaleExpired } from '@/services/expiry';
 import { useCloudRestoreDetector } from '@/hooks/useCloudRestoreDetector';
 import { CloudBackupBanner } from '@/components/CloudBackupBanner';
 import { CloudDriveOffBanner } from '@/components/cloud/CloudDriveOffBanner';
+import { ModelDownloadBanner } from '@/components/ModelDownloadBanner';
 import { useCloudDriveWarning } from '@/hooks/useCloudDriveWarning';
 import { findPersonsWithOrphanMedicalDocs } from '@/services/medicalRecord';
 import { MigrateOrphansWizard } from '@/components/medical/MigrateOrphansWizard';
@@ -233,6 +234,9 @@ export default function HomeScreen() {
             onDismiss={cloud.dismiss}
           />
         )}
+
+        {/* ── Status descărcare model AI local (pornită din onboarding sau Setări) ── */}
+        <ModelDownloadBanner onPress={() => router.push('/(tabs)/setari?openAi=1')} />
 
         {/* ── Banner iCloud Drive oprit din iOS (backup activat, dar mut) ── */}
         {cloudDrive.show && <CloudDriveOffBanner onPress={() => router.push('/cloud-backup')} />}

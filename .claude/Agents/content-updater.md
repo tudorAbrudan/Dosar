@@ -23,7 +23,7 @@ Agent specializat în menținerea coerenței textelor informative din aplicație
   - Chat cu documentele tale (întrebări în limbaj natural)
   - Completare automată câmpuri la scanare (OCR + AI analiză text)
   - Identificare tip document și entitate asociată
-  - **20 interogări/zi** cu cheia built-in Dosar AI (chatbot + OCR = același contor)
+  - **10 interogări/zi** cu cheia built-in Dosar AI (chatbot + OCR = același contor)
   - **Nelimitat** cu cheie proprie gratuită de pe mistral.ai
   - Datele trimise: text OCR, liste entități (nume, tip). Fotografiile și PIN-ul NU sunt trimise
   - Opțional — poate fi dezactivat oricând din Setări → Date și confidențialitate
@@ -48,8 +48,8 @@ R: Când folosești AI-ul (chat sau scanare OCR), textul extras și lista entit�
    Dacă dorești mai multă confidențialitate, poți folosi propria cheie API Mistral (gratuită)
    — astfel știi exact ce provider procesează datele tale.
 
-Î: Care e limita de 20 interogări/zi?
-R: Cu cheia built-in Dosar AI, ai 20 interogări gratuite/zi (se resetează la miezul nopții).
+Î: Care e limita de 10 interogări/zi?
+R: Cu cheia built-in Dosar AI, ai 10 interogări gratuite/zi (se resetează la miezul nopții). Nelimitat cu model local sau cheie API proprie — ghid pe support.html#cheie-api.
    Chatul și scanarea OCR cu AI folosesc același contor. Cu propria cheie API (gratuită de pe
    mistral.ai) nu ai nicio limită.
 
