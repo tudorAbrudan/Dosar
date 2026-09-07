@@ -25,4 +25,5 @@ ignores:
   - __mocks__/**
   - docs/**.html
   - scripts/**.js
+  - ai-proxy/**
   - app/+not-found.tsx

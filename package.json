@@ -58,7 +58,8 @@
         "testPathIgnorePatterns": [
           "/node_modules/",
           "/.worktrees/",
-          "<rootDir>/__tests__/characterization/"
+          "<rootDir>/__tests__/characterization/",
+          "<rootDir>/ai-proxy/"
         ]
       },
       {
@@ -85,7 +86,8 @@
         ],
         "testPathIgnorePatterns": [
           "/node_modules/",
-          "/.worktrees/"
+          "/.worktrees/",
+          "<rootDir>/ai-proxy/"
         ]
       }
     ]

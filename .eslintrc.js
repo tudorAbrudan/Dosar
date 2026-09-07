@@ -17,5 +17,8 @@ module.exports = {
     'build/',
     '.worktrees/',
     'eslint-local-rules/',
+    // Serviciu Node standalone (proxy AI). Alt runtime, alte reguli —
+    // are propriile teste (`node --test`) rulate din ai-proxy/.
+    'ai-proxy/',
   ],
 };
