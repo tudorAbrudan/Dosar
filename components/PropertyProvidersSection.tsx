@@ -22,6 +22,7 @@ import {
   deleteServiceProvider,
 } from '@/services/serviceProviders';
 import { extractText } from '@/services/ocr';
+import { compressImageToBase64ForAi } from '@/services/imageProcessing';
 import { mapUtilityInvoiceWithAi } from '@/services/aiOcrMapper';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { ALL_UTILITY_TYPES, UTILITY_TYPE_LABELS, UTILITY_TYPE_EMOJI } from '@/types';
@@ -127,11 +128,19 @@ export function PropertyProvidersSection({ propertyId, readOnly = false }: Props
       mediaTypes: ['images'],
       allowsEditing: false,
       quality: 0.9,
-      base64: true,
     });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
     const asset = result.assets[0];
-    await processInvoiceUri(asset.uri, asset.base64 ?? undefined);
+    // Fără `base64: true`: base64-ul brut al pozei de 12 MP e de ordinul
+    // megabaiților la upload. Factura e print laser curat — profilul default
+    // (1280px) e suficient pentru vision.
+    let jpegBase64: string | undefined;
+    try {
+      jpegBase64 = await compressImageToBase64ForAi(asset.uri);
+    } catch (err) {
+      console.warn('[providers] JPEG normalize failed:', err);
+    }
+    await processInvoiceUri(asset.uri, jpegBase64);
   }
 
   function handleScanInvoice() {

@@ -12,7 +12,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showAiErrorAlert } from '@/services/aiErrorAlert';
 import { extractTextFromPdf, isPdfFile } from '@/services/pdfExtractor';
-import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
+import { loadPageBase64ForAi } from '@/services/pdfOcr';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -69,7 +69,7 @@ import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
 import { AI_CONSENT_KEY, canDoVision, getAiConfig, humanizeAiError } from '@/services/aiProvider';
 import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
-import { classifyDocument } from '@/services/aiClassifier';
+import { classifyDocument, MIN_OCR_CHARS_FOR_TEXT_CLASSIFY } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
 import { ClassifyConfirmSheet } from '@/components/ClassifyConfirmSheet';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
@@ -92,6 +92,14 @@ function isValidEntityType(v: string | undefined): v is EntityType {
 
 /** Prag confidence pentru auto-set tip după AI classify. Sub valoare → întrebăm userul. */
 const CLASSIFY_CONFIDENCE_AUTO_THRESHOLD = 0.75;
+
+/** De la câte caractere de OCR on-device o pagină secundară (2, 3, …) poate fi
+ *  procesată text-only, fără să mai plătim imaginea la AI vision. */
+const AI_MIN_OCR_CHARS_FOR_TEXT_ONLY_PAGE = 200;
+
+/** Tipuri unde detaliul vizual decide corectitudinea (ștampilă ITP scrisă de
+ *  mână) — acolo trimitem imaginea pentru TOATE paginile. */
+const VISUAL_DETAIL_DOC_TYPES: DocumentType[] = ['talon', 'itp'];
 
 // Build universe of types ONCE at module load. Filtered later prin
 // useFilteredDocTypes() la randare; aici e legitim să iterăm peste sursă.
@@ -537,18 +545,7 @@ export default function AddDocumentScreen() {
       let firstImageBase64: string | undefined;
       const firstPage = pages[0];
       if (firstPage) {
-        try {
-          if (isPdfFile(firstPage.localPath)) {
-            firstImageBase64 =
-              (await renderPdfFirstPageForVision(firstPage.localPath)) ?? undefined;
-          } else {
-            firstImageBase64 = await FileSystem.readAsStringAsync(firstPage.localPath, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-          }
-        } catch {
-          /* ignoră dacă fișierul nu poate fi citit */
-        }
+        firstImageBase64 = await loadPageBase64ForAi(firstPage.localPath, type);
       }
 
       const result = await mapOcrWithAi(combinedOcrText, availableEntities, firstImageBase64);
@@ -652,17 +649,12 @@ export default function AddDocumentScreen() {
       if (!userManuallySetTypeRef.current) {
         const firstPage = pages[0];
         const firstOcrText = ocrTextsRef.current.get(firstPage.localPath) ?? '';
-        let firstImageBase64: string | undefined;
-        try {
-          if (isPdfFile(firstPage.localPath)) {
-            firstImageBase64 =
-              (await renderPdfFirstPageForVision(firstPage.localPath)) ?? undefined;
-          } else {
-            firstImageBase64 = await FileSystem.readAsStringAsync(firstPage.localPath, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-          }
-        } catch {}
+        // `classifyDocument` folosește imaginea DOAR dacă textul OCR e prea
+        // scurt ca să fie concludent — nu o încărcăm degeaba altfel.
+        const firstImageBase64 =
+          firstOcrText.trim().length < MIN_OCR_CHARS_FOR_TEXT_CLASSIFY
+            ? await loadPageBase64ForAi(firstPage.localPath, type)
+            : undefined;
 
         const entityType = isValidEntityType(params.entityType) ? params.entityType : undefined;
         const baseCandidates = entityType ? ENTITY_DOCUMENT_TYPES[entityType] : undefined;
@@ -722,18 +714,20 @@ export default function AddDocumentScreen() {
 
       const fileNotes: string[] = [];
       const pagesToProcess = pages.slice(0, 5); // max 5 fișiere per analiză AI
-      for (const page of pagesToProcess) {
+      for (let i = 0; i < pagesToProcess.length; i++) {
+        const page = pagesToProcess[i];
         const ocrText = ocrTextsRef.current.get(page.localPath) ?? '';
-        let imageBase64: string | undefined;
-        try {
-          if (isPdfFile(page.localPath)) {
-            imageBase64 = (await renderPdfFirstPageForVision(page.localPath)) ?? undefined;
-          } else {
-            imageBase64 = await FileSystem.readAsStringAsync(page.localPath, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-          }
-        } catch {}
+        // Prima pagină pleacă mereu cu imaginea (acolo stau antetul, ștampilele
+        // și 90% din câmpurile structurate). Pentru paginile următoare trimitem
+        // imaginea doar dacă OCR-ul on-device e slab sau tipul are detalii
+        // vizuale critice (talon/ITP) — altfel plătim degeaba încă o imagine.
+        const needsImage =
+          i === 0 ||
+          ocrText.trim().length < AI_MIN_OCR_CHARS_FOR_TEXT_ONLY_PAGE ||
+          VISUAL_DETAIL_DOC_TYPES.includes(resolvedType);
+        const imageBase64 = needsImage
+          ? await loadPageBase64ForAi(page.localPath, resolvedType)
+          : undefined;
 
         const extracted = await extractFieldsWithLlm(resolvedType, ocrText, imageBase64);
 

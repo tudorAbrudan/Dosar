@@ -11,7 +11,12 @@
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
 import { extractPlateNumber, extractUtilityInvoiceInfo } from './ocr';
 import type { DocumentType, EntityType, UtilityType } from '@/types';
-import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES, ALL_ENTITY_TYPES, STANDARD_DOC_TYPES } from '@/types';
+import {
+  DOCUMENT_TYPE_LABELS,
+  NO_EXPIRY_DOC_TYPES,
+  ALL_ENTITY_TYPES,
+  STANDARD_DOC_TYPES,
+} from '@/types';
 import { buildClassifierCatalog } from './aiTypeRegistry';
 
 // ─── Tipuri rezultat ──────────────────────────────────────────────────────────
@@ -255,12 +260,15 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
 
   let rawResponse: string;
   if (imageBase64) {
+    // `high`: bonul termic e printul cel mai prost din aplicație, iar cifrele
+    // trebuie să iasă la verificarea aritmetică — merită modelul greu.
     rawResponse = await sendAiRequestWithImage(
       systemMessage,
       prompt,
       imageBase64,
       'image/jpeg',
-      400
+      400,
+      'high'
     );
   } else {
     rawResponse = await sendAiRequest(
@@ -547,12 +555,15 @@ Răspunde DOAR cu JSON, fără text suplimentar.`;
 
   let rawResponse: string;
   if (imageBase64) {
+    // `light`: promptul conține deja textul OCR, imaginea e doar context
+    // vizual pentru mapare — nu justifică modelul vision greu.
     rawResponse = await sendAiRequestWithImage(
       systemMessage,
       prompt,
       imageBase64,
       'image/jpeg',
-      MAPPER_MAX_TOKENS
+      MAPPER_MAX_TOKENS,
+      'light'
     );
   } else {
     rawResponse = await sendAiRequest(
@@ -618,12 +629,15 @@ export async function mapUtilityInvoiceWithAi(
   try {
     let rawResponse: string;
     if (imageBase64) {
+      // `light`: factura de utilități e print laser curat + textul OCR e deja
+      // în prompt.
       rawResponse = await sendAiRequestWithImage(
         systemMessage,
         prompt,
         imageBase64,
         'image/jpeg',
-        400
+        400,
+        'light'
       );
     } else {
       rawResponse = await sendAiRequest(

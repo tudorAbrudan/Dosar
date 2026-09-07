@@ -301,18 +301,12 @@ async function ocrFromDocument(doc: Document): Promise<string> {
   if (text.trim().length === 0) {
     try {
       const { extractFieldsWithLlm } = await import('./ocrLlmExtractor');
-      const { renderPdfFirstPageForVision } = await import('./pdfOcr');
+      const { loadPageBase64ForAi } = await import('./pdfOcr');
       const { toFileUri } = await import('./fileUtils');
-      const FileSystem = await import('expo-file-system/legacy');
 
-      let imageBase64: string | undefined;
-      if (isPdfFile(path)) {
-        imageBase64 = (await renderPdfFirstPageForVision(toFileUri(path))) ?? undefined;
-      } else {
-        imageBase64 = await FileSystem.readAsStringAsync(toFileUri(path), {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-      }
+      // Aici OCR-ul on-device a întors gol, deci extractorul va cere oricum
+      // transcriere completă — dar imaginea pleacă comprimată, nu brută.
+      const imageBase64 = await loadPageBase64ForAi(toFileUri(path), doc.type);
       if (imageBase64) {
         const extracted = await extractFieldsWithLlm(doc.type, '', imageBase64);
         if (extracted.ocr_text && extracted.ocr_text.trim().length > 0) {
@@ -550,9 +544,7 @@ export async function extractFromDocument(
       if (!freshDoc.medical_reminders_prompted_at) {
         await setPendingReminders(
           documentId,
-          aiResult.actionable_items.length > 0
-            ? JSON.stringify(aiResult.actionable_items)
-            : null
+          aiResult.actionable_items.length > 0 ? JSON.stringify(aiResult.actionable_items) : null
         );
       }
     }

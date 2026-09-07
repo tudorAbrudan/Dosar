@@ -53,7 +53,7 @@ import { extractFieldsForType } from '@/services/ocrExtractors';
 import { toFileUri } from '@/services/fileUtils';
 import { cropImage } from '@/services/cropperBridge';
 import { isPdfFile, extractTextFromPdf } from '@/services/pdfExtractor';
-import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
+import { loadPageBase64ForAi } from '@/services/pdfOcr';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument } from '@/services/aiClassifier';
 import { scanDocumentPages } from '@/services/documentScanner';
@@ -346,14 +346,7 @@ export default function EditDocumentScreen() {
 
       const firstPage = allPages[0];
       const pageUri = rotatedUris[firstPage.file_path] ?? toFileUri(firstPage.file_path);
-      let imageBase64: string | undefined;
-      if (isPdfFile(firstPage.file_path)) {
-        imageBase64 = (await renderPdfFirstPageForVision(pageUri)) ?? undefined;
-      } else {
-        imageBase64 = await FileSystem.readAsStringAsync(pageUri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-      }
+      let imageBase64 = await loadPageBase64ForAi(pageUri, type);
 
       // Re-classify documentul cu AI vision + textul OCR existent (dacă există).
       // Trimitem și textul ca semnal suplimentar — pixtral-large bias spre
@@ -420,6 +413,11 @@ export default function EditDocumentScreen() {
       }
 
       const ocrText = doc?.ocr_text ?? '';
+      // Reclasificarea poate aduce un tip „high detail" (talon/ITP): reîncarcă
+      // imaginea la profilul lui, ștampila ITP nu se citește la 1280px.
+      if (resolvedType !== type) {
+        imageBase64 = (await loadPageBase64ForAi(pageUri, resolvedType)) ?? imageBase64;
+      }
       const extracted = await extractFieldsWithLlm(resolvedType, ocrText, imageBase64);
       if (Object.keys(extracted.metadata).length > 0)
         setMetadata(prev => ({ ...extracted.metadata, ...prev }));

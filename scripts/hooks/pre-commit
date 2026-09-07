@@ -89,6 +89,9 @@ node scripts/medical-ai-guard-audit.js --strict
 echo "▸ Silent AI catch audit (no console.warn-only on AI errors)..."
 node scripts/silent-ai-catch-audit.js --strict
 
+echo "▸ AI vision payload audit (imagini necomprimate trimise la AI)..."
+node scripts/ai-vision-payload-audit.js --strict
+
 echo "▸ Classifier divergence audit (regex vs AI fixture sync)..."
 node scripts/classifier-divergence-audit.js --strict
 

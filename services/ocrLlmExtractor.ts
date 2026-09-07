@@ -1,9 +1,29 @@
+import * as Crypto from 'expo-crypto';
 import { sendAiRequest, sendAiRequestWithImage } from './aiProvider';
+import type { VisionTier } from './aiProvider';
 import type { ExtractResult } from './ocrExtractors';
 import type { DocumentType } from '@/types';
 import { DOCUMENT_TYPE_LABELS, NO_EXPIRY_DOC_TYPES } from '@/types';
 
 const MAX_OCR_CHARS = 3000;
+
+/**
+ * De la câte caractere considerăm transcrierea on-device (Vision / ML Kit)
+ * suficientă cât să NU mai cerem AI-ului secțiunea ===OCR===.
+ *
+ * Re-transcrierea e cea mai scumpă parte a apelului: până la 3500 tokeni de
+ * OUTPUT (de ~3x prețul input-ului) pentru un text pe care îl avem deja gratis
+ * de pe device. Peste prag trimitem textul ca referință + imaginea pentru
+ * dezambiguizare vizuală și cerem doar ===META=== (~600 tokeni output).
+ */
+const MIN_OCR_CHARS_FOR_META_ONLY = 200;
+
+/** Tipuri cu scris de mână / ștampile — merită modelul vision „greu". */
+const HIGH_VISION_TIER_TYPES: DocumentType[] = ['talon', 'itp'];
+
+function visionTierForType(type: DocumentType): VisionTier {
+  return HIGH_VISION_TIER_TYPES.includes(type) ? 'high' : 'light';
+}
 
 interface TypeConfig {
   fieldsHint: string;
@@ -102,7 +122,8 @@ function buildPrompt(
   config: TypeConfig | undefined,
   ocrText: string,
   hasImage: boolean,
-  docType: DocumentType
+  docType: DocumentType,
+  metaOnly: boolean
 ): string {
   const fieldsInstruction = config?.fieldsHint
     ? `Câmpuri specifice pentru „${typeLabel}": ${config.fieldsHint}`
@@ -112,11 +133,14 @@ function buildPrompt(
     config?.noteInstruction ??
     'Rezumat structurat cu informațiile cheie: identificatori (nr. document, serie, cod, poliță, VIN etc.), date importante, sume, nume și firme relevante. Format "Câmp: Valoare", câte un câmp pe rând. Max 15 rânduri. Omite informații administrative sau redundante.';
 
-  // Când avem imagine (AI vision), NU mai injectăm OCR-ul existent — altfel AI
-  // crede că OCR-ul e deja făcut și sare peste transcrierea în secțiunea OCR.
-  // Pentru text-only (fallback fără vision), păstrăm referința.
+  // Textul OCR se injectează în două situații:
+  // - text-only (fără vision) → e singura sursă;
+  // - metaOnly (avem deja transcriere on-device bună) → e sursa primară, iar
+  //   imaginea rămâne doar pentru dezambiguizare vizuală.
+  // Când cerem transcriere de la AI (hasImage && !metaOnly) NU îl injectăm —
+  // altfel AI crede că OCR-ul e deja făcut și sare peste secțiunea ===OCR===.
   const textSection =
-    !hasImage && ocrText.trim()
+    (!hasImage || metaOnly) && ocrText.trim()
       ? `\nText OCR (referință primară — sursa pe care lucrezi):\n---\n${ocrText.slice(0, MAX_OCR_CHARS)}\n---`
       : '';
 
@@ -131,12 +155,44 @@ function buildPrompt(
     ? `\n\n━━━ REGULĂ SPECIALĂ EXPIRY ━━━\n${config.expiryRule}`
     : noExpiryRule;
 
-  const visionInstruction = hasImage
-    ? `\n\nIMPORTANT: documentul îți este furnizat ca IMAGINE. Trebuie să CITEȘTI imaginea direct prin vision și să produci O TRANSCRIERE PROPRIE (secțiunea ===OCR===). NU presupune că ai deja OCR — citește pixel cu pixel din imagine. Acoperă tot conținutul vizibil al documentului, nu doar un rezumat.`
-    : '';
+  const visionInstruction =
+    hasImage && !metaOnly
+      ? `\n\nIMPORTANT: documentul îți este furnizat ca IMAGINE. Trebuie să CITEȘTI imaginea direct prin vision și să produci O TRANSCRIERE PROPRIE (secțiunea ===OCR===). NU presupune că ai deja OCR — citește pixel cu pixel din imagine. Acoperă tot conținutul vizibil al documentului, nu doar un rezumat.`
+      : '';
 
-  return `Procesează acest document românesc.
-Tip document: ${typeLabel}${textSection}${expirySection}${visionInstruction}
+  const header = `Procesează acest document românesc.
+Tip document: ${typeLabel}${textSection}${expirySection}${visionInstruction}`;
+
+  const metaRules = `REGULI META:
+- JSON strict valid, toate cele 4 chei (issue_date, expiry_date, note, metadata) prezente.
+- ${fieldsInstruction}
+- note: ${noteInstruction}
+- Nu inventa valori. Dacă nu găsești o informație, pune null sau omite cheia din metadata.
+- Datele în format YYYY-MM-DD.
+- amount cu punct zecimal (ex: "123.45").`;
+
+  // Mod economic: transcrierea există deja (OCR on-device) și e injectată mai
+  // sus ca text de referință — cerem DOAR JSON-ul cu câmpuri, fără secțiunea
+  // ===OCR===. Elimină până la ~3000 tokeni de output per pagină.
+  if (metaOnly) {
+    return `${header}
+
+Ai PRIMIT deja transcrierea documentului în „Text OCR" de mai sus${hasImage ? ', plus imaginea documentului pentru verificare vizuală (ștampile, casete bifate, scris de mână)' : ''}.
+NU retranscrie documentul. Răspunde EXCLUSIV cu JSON-ul de mai jos, fără marker-i, fără text în plus:
+
+{
+  "issue_date": "2024-03-15",
+  "expiry_date": null,
+  "note": "rezumat scurt structurat",
+  "metadata": { "lab": "Synevo" }
+}
+
+(exemplul de mai sus e doar formatul — înlocuiește cu datele reale din documentul curent)
+
+${metaRules}`;
+  }
+
+  return `${header}
 
 Răspunsul TĂU trebuie să conțină AMBELE secțiuni de mai jos, în această ORDINE EXACTĂ. Folosește marker-ii pe linii separate, fără indentare:
 
@@ -173,13 +229,7 @@ REGULI OCR (după ===OCR===, ÎNAINTE de ===META===):
 - Dacă documentul e gol/ilegibil complet → scrie doar: „[document gol sau ilegibil]".
 - Fără markdown (**bold**, # heading). Doar text simplu cu marker-i "[Secțiune]".
 
-REGULI META (după ===META===, până la sfârșit):
-- JSON strict valid, toate cele 4 chei (issue_date, expiry_date, note, metadata) prezente.
-- ${fieldsInstruction}
-- note: ${noteInstruction}
-- Nu inventa valori. Dacă nu găsești o informație, pune null sau omite cheia din metadata.
-- Datele în format YYYY-MM-DD.
-- amount cu punct zecimal (ex: "123.45").`;
+${metaRules.replace('REGULI META:', 'REGULI META (după ===META===, până la sfârșit):')}`;
 }
 
 /**
@@ -300,7 +350,9 @@ function findAllMarkers(response: string): MarkerMatch[] {
  *   2. Niciun marker, dar JSON pur cu cheie `ocr_text` inline (compat vechi).
  *   3. JSON parțial + regex extracție pentru ocr_text/note (response truncat).
  */
-function parseResponse(response: string): ExtractResult {
+/** Exportat pentru teste — parsează răspunsul AI în ambele moduri (cu marker-i
+ *  ===OCR===/===META===, sau JSON pur în modul metaOnly). */
+export function parseResponse(response: string, ocrFallback?: string): ExtractResult {
   const markers = findAllMarkers(response);
 
   if (markers.length >= 2) {
@@ -324,14 +376,14 @@ function parseResponse(response: string): ExtractResult {
     const ocrPart = sections.OCR ?? '';
     const parsed = tryParseJson(metaPart);
     if (parsed) {
-      return buildResultFromParsed(parsed, ocrPart);
+      return buildResultFromParsed(parsed, ocrPart || ocrFallback);
     }
     const issueDate = extractJsonStringField(metaPart, 'issue_date');
     const expiryDate = extractJsonStringField(metaPart, 'expiry_date');
     const note = extractJsonStringField(metaPart, 'note');
     return {
       metadata: {},
-      ocr_text: ocrPart || undefined,
+      ocr_text: ocrPart || ocrFallback || undefined,
       note: note && note.trim() ? note.trim() : undefined,
       issue_date: issueDate || undefined,
       expiry_date: expiryDate || undefined,
@@ -351,22 +403,23 @@ function parseResponse(response: string): ExtractResult {
       .trim();
     if (m.name === 'OCR') {
       const parsed = tryParseJson(before);
-      if (parsed) return buildResultFromParsed(parsed, after);
-      return { metadata: {}, ocr_text: after || undefined };
+      if (parsed) return buildResultFromParsed(parsed, after || ocrFallback);
+      return { metadata: {}, ocr_text: after || ocrFallback || undefined };
     }
     // META primary
     const parsed = tryParseJson(after) ?? tryParseJson(before);
-    return buildResultFromParsed(parsed ?? { metadata: {} }, before || after);
+    return buildResultFromParsed(parsed ?? { metadata: {} }, before || after || ocrFallback);
   }
 
-  // Niciun marker — compatibilitate cu format vechi (JSON pur).
+  // Niciun marker — răspuns JSON pur: modul metaOnly (transcrierea o avem deja
+  // pe device, o punem din `ocrFallback`) sau formatul vechi.
   const parsed = tryParseJson(response);
-  if (parsed) return buildResultFromParsed(parsed);
+  if (parsed) return buildResultFromParsed(parsed, ocrFallback);
 
   // JSON truncat — extragere regex best-effort.
   const jsonMatch = response.match(/\{[\s\S]*/);
   const rawText = jsonMatch ? jsonMatch[0] : response;
-  const ocrText = extractJsonStringField(rawText, 'ocr_text');
+  const ocrText = extractJsonStringField(rawText, 'ocr_text') ?? ocrFallback;
   const noteField = extractJsonStringField(rawText, 'note');
   const issueDate = extractJsonStringField(rawText, 'issue_date');
   const expiryDate = extractJsonStringField(rawText, 'expiry_date');
@@ -380,37 +433,107 @@ function parseResponse(response: string): ExtractResult {
 }
 
 /**
+ * Cache de sesiune pentru extracțiile AI: cheia e (tip + conținutul exact al
+ * imaginii/textului trimis). Acoperă cazul real „rulez AI din nou pe același
+ * document" (edit → «Trimite la AI» a doua oară, sau add cu aceleași pagini) —
+ * apelul devine gratuit. Deliberat NEpersistat: un tabel nou ar trebui propagat
+ * în backup + cloudSync, iar valoarea e strict intra-sesiune.
+ */
+const MAX_CACHE_ENTRIES = 20;
+const extractionCache = new Map<string, ExtractResult>();
+
+async function buildCacheKey(
+  type: DocumentType,
+  ocrText: string,
+  imageBase64?: string
+): Promise<string | null> {
+  try {
+    const payload = `${type}|${ocrText}|${imageBase64 ?? ''}`;
+    const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, payload);
+    return digest;
+  } catch {
+    return null;
+  }
+}
+
+function cacheGet(key: string | null): ExtractResult | undefined {
+  if (!key) return undefined;
+  return extractionCache.get(key);
+}
+
+function cacheSet(key: string | null, value: ExtractResult): void {
+  if (!key) return;
+  if (extractionCache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = extractionCache.keys().next().value;
+    if (oldest !== undefined) extractionCache.delete(oldest);
+  }
+  extractionCache.set(key, value);
+}
+
+/** Golește cache-ul de extracții (util în teste sau la schimbarea providerului). */
+export function clearExtractionCache(): void {
+  extractionCache.clear();
+}
+
+/**
  * Extrage câmpuri structurate din document.
  * Când imageBase64 e furnizat, trimite imaginea la AI (vision) pentru rezultate mai bune.
  * Fallback automat la text-only dacă imaginea lipsește sau modelul nu suportă vision.
+ *
+ * Optimizări de cost (vezi constantele din capul fișierului):
+ * - dacă `ocrText` e deja o transcriere bună (≥ `MIN_OCR_CHARS_FOR_META_ONLY`),
+ *   nu mai cerem AI-ului secțiunea ===OCR===, ci doar JSON-ul de câmpuri;
+ * - modelul vision „greu" (pixtral-large) se folosește doar pentru tipurile cu
+ *   scris de mână / ștampile (`HIGH_VISION_TIER_TYPES`);
+ * - rezultatele se memorează pe durata sesiunii (cache pe hash-ul payload-ului).
  */
 export async function extractFieldsWithLlm(
   type: DocumentType,
   ocrText: string,
   imageBase64?: string
 ): Promise<ExtractResult> {
+  const cacheKey = await buildCacheKey(type, ocrText, imageBase64);
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    console.warn('[ocrLlmExtractor] rezultat din cache (apel AI evitat)');
+    return cached;
+  }
+
   const typeLabel = DOCUMENT_TYPE_LABELS[type] ?? type;
   const config = TYPE_CONFIG[type];
   const hasImage = !!imageBase64;
-  const prompt = buildPrompt(typeLabel, config, ocrText, hasImage, type);
+  const metaOnly = ocrText.trim().length >= MIN_OCR_CHARS_FOR_META_ONLY;
+  const prompt = buildPrompt(typeLabel, config, ocrText, hasImage, type, metaOnly);
 
-  const systemPrompt = `Ești un expert care procesează documente românești. Răspunzi EXACT în formatul cerut, cu marker-ii ===OCR=== și ===META=== pe linii separate. Secțiunea OCR este OBLIGATORIE și trebuie să conțină transcrierea completă a documentului în plain text (fără JSON). Secțiunea META conține JSON-ul cu câmpurile structurate.`;
+  const systemPrompt = metaOnly
+    ? `Ești un expert care procesează documente românești. Răspunzi EXCLUSIV cu JSON valid (issue_date, expiry_date, note, metadata), fără text în plus și fără să retranscrii documentul.`
+    : `Ești un expert care procesează documente românești. Răspunzi EXACT în formatul cerut, cu marker-ii ===OCR=== și ===META=== pe linii separate. Secțiunea OCR este OBLIGATORIE și trebuie să conțină transcrierea completă a documentului în plain text (fără JSON). Secțiunea META conține JSON-ul cu câmpurile structurate.`;
+
+  // Fără secțiunea OCR, output-ul e doar JSON-ul de câmpuri → ~600 tokeni ajung.
+  const maxTokens = metaOnly ? 700 : 3500;
 
   let response: string;
   if (imageBase64) {
-    response = await sendAiRequestWithImage(systemPrompt, prompt, imageBase64, 'image/jpeg', 3500);
+    response = await sendAiRequestWithImage(
+      systemPrompt,
+      prompt,
+      imageBase64,
+      'image/jpeg',
+      maxTokens,
+      visionTierForType(type)
+    );
   } else {
     response = await sendAiRequest(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
       ],
-      3000,
+      metaOnly ? 700 : 3000,
       'extraction'
     );
   }
 
-  const result = parseResponse(response);
+  const result = parseResponse(response, metaOnly ? ocrText : undefined);
   // Safety net: dacă tipul nu are expirare, ignorăm orice expiry_date pe care
   // AI l-ar fi returnat (în ciuda instrucțiunilor din prompt).
   if (NO_EXPIRY_DOC_TYPES.has(type)) {
@@ -422,8 +545,9 @@ export async function extractFieldsWithLlm(
     );
   } else {
     console.warn(
-      `[ocrLlmExtractor] AI a returnat ocr_text (${result.ocr_text.length} char), note=${result.note?.length ?? 0} char, response.length=${response.length}`
+      `[ocrLlmExtractor] AI a returnat ocr_text (${result.ocr_text.length} char), note=${result.note?.length ?? 0} char, response.length=${response.length}, metaOnly=${metaOnly}`
     );
   }
+  cacheSet(cacheKey, result);
   return result;
 }

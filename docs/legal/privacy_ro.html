@@ -56,9 +56,10 @@ Contact: <a href="mailto:apps.tudor@gmail.com">apps.tudor@gmail.com</a></p>
 </ul>
 
 <h2 id="ai-ocr">6. Procesare AI OCR (opțional)</h2>
-<p>Atunci când utilizați funcția „Completare automată" la adăugarea documentelor, textul extras din imagini este trimis serviciului <strong>Mistral AI</strong> pentru identificarea automată a tipului de document și extracției câmpurilor relevante (ex: număr document, dată expirare).</p>
+<p>Atunci când utilizați funcția „Completare automată" la adăugarea documentelor sau asistentul AI, datele documentului sunt trimise unui serviciu AI pentru identificarea automată a tipului de document și extragerea câmpurilor relevante (ex: număr document, dată expirare).</p>
 <ul>
-  <li>Trimitem doar textul OCR (nu imaginea completă)</li>
+  <li>În funcție de document, trimitem fie textul extras prin OCR, fie imaginea documentului (redimensionată) atunci când recunoașterea necesită analiza vizuală — de exemplu pentru scris de mână sau formulare tipizate</li>
+  <li>Cu configurația implicită („Dosar AI"), cererea trece printr-un server intermediar operat de noi, găzduit în Uniunea Europeană (Falkenstein, Germania), care o transmite mai departe către <strong>Mistral AI</strong>. Serverul nu stochează documentele, textul sau răspunsurile, și nu păstrează jurnale ale conținutului</li>
   <li>Mistral AI acționează ca <strong>procesor de date</strong> conform GDPR</li>
   <li>Data Mistral este guvernată de <a href="https://legal.mistral.ai/terms/privacy-policy" target="_blank">politica lor de confidențialitate</a> și <a href="https://legal.mistral.ai/terms/data-processing-addendum" target="_blank">DPA (Data Processing Agreement)</a></li>
   <li>Puteți renunța oricând la AI OCR – aplicația funcționează complet fără această caracteristică</li>

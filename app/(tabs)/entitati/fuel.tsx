@@ -19,7 +19,10 @@ import {
   computeFuelStats,
 } from '@/services/fuel';
 import { extractText, extractFuelInfo } from '@/services/ocr';
-import { compressImageToBase64ForAi } from '@/services/imageProcessing';
+import {
+  compressImageToBase64ForAi,
+  AI_IMAGE_PROFILE_HIGH_DETAIL,
+} from '@/services/imageProcessing';
 import { extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { mapFuelReceiptWithAi, mergeFuelResults, type FuelAiResult } from '@/services/aiOcrMapper';
@@ -230,9 +233,9 @@ export default function FuelScreen() {
       let base64: string | undefined = prefetchedBase64;
       if (!base64) {
         try {
-          base64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          // Comprimat, nu brut: poza de la cameră are 12 MP, iar base64-ul ei
+          // ajunge la câțiva MB de upload fără câștig de lizibilitate.
+          base64 = await compressImageToBase64ForAi(uri, AI_IMAGE_PROFILE_HIGH_DETAIL);
         } catch (err) {
           console.warn('[fuel] base64 read failed:', err);
         }
@@ -256,7 +259,7 @@ export default function FuelScreen() {
 
       let base64: string | undefined;
       try {
-        const rendered = await renderPdfFirstPageForVision(uri);
+        const rendered = await renderPdfFirstPageForVision(uri, AI_IMAGE_PROFILE_HIGH_DETAIL);
         base64 = rendered ?? undefined;
       } catch (err) {
         console.warn('[fuel-pdf] renderPdfFirstPageForVision failed:', err);
@@ -297,12 +300,13 @@ export default function FuelScreen() {
       mediaTypes: ['images'],
       allowsEditing: false,
       quality: 0.9,
-      base64: true,
       exif: true,
     });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
     const asset = result.assets[0];
-    await processReceiptUri(asset.uri, asset.base64 ?? undefined);
+    // Fără `base64: true` la picker — base64-ul brut al unei poze de 12 MP e de
+    // ordinul megabaiților; `processReceiptUri` îl produce comprimat din URI.
+    await processReceiptUri(asset.uri);
   }
 
   async function handleScanFromPdf() {
@@ -334,7 +338,9 @@ export default function FuelScreen() {
       // înainte, altfel AI vision primește bytes care nu corespund mime-ului.
       let jpegBase64: string | undefined;
       try {
-        jpegBase64 = await compressImageToBase64ForAi(asset.uri);
+        // Profil high-detail: bonul termic e printul cel mai slab din app,
+        // iar cifrele trebuie să treacă verificarea aritmetică din prompt.
+        jpegBase64 = await compressImageToBase64ForAi(asset.uri, AI_IMAGE_PROFILE_HIGH_DETAIL);
       } catch (err) {
         console.warn('[fuel-files] JPEG normalize failed:', err);
       }

@@ -117,8 +117,17 @@ Reguli:
 }
 
 /**
+ * Câți caractere de OCR on-device sunt suficienți ca să clasificăm fără imagine.
+ * Vision costă ~3–4k tokeni per apel; textul Vision/ML Kit conține deja antetul
+ * și titlul documentului, adică exact semnalul pe care se bazează clasificarea.
+ * Sub acest prag (poză neclară, document pur grafic) escaladăm la vision.
+ */
+export const MIN_OCR_CHARS_FOR_TEXT_CLASSIFY = 120;
+
+/**
  * Clasifică un document înainte de extragerea câmpurilor.
- * Folosește vision când `imageBase64` e furnizat, altfel text-only.
+ * Folosește vision DOAR când textul OCR lipsește sau e prea scurt ca să fie
+ * concludent (vezi `MIN_OCR_CHARS_FOR_TEXT_CLASSIFY`); altfel text-only.
  *
  * @throws Eroare de transport (rețea/AI provider) — apelantul afișează
  * fallback UI (ex. Alert + tip default) și continuă fluxul.
@@ -139,14 +148,19 @@ export async function classifyDocument(
     'Ești un expert în clasificarea documentelor românești. Returnezi EXCLUSIV JSON valid cu tipul și confidence-ul.';
   const userPrompt = buildPrompt(ocrText, candidates);
 
+  // Escaladăm la vision doar dacă textul on-device e insuficient.
+  const useVision = !!imageBase64 && ocrText.trim().length < MIN_OCR_CHARS_FOR_TEXT_CLASSIFY;
+
   let response: string;
-  if (imageBase64) {
+  if (useVision && imageBase64) {
+    // `light`: clasificarea e o sarcină ușoară — nu justifică pixtral-large.
     response = await sendAiRequestWithImage(
       systemPrompt,
       userPrompt,
       imageBase64,
       'image/jpeg',
-      500
+      500,
+      'light'
     );
   } else {
     response = await sendAiRequest(

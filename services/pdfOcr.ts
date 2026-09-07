@@ -9,7 +9,13 @@
 import { extractText } from '@/services/ocr';
 import * as FileSystem from 'expo-file-system/legacy';
 import { EncodingType } from 'expo-file-system/legacy';
-import { compressImageToBase64ForAi } from '@/services/imageProcessing';
+import {
+  compressImageToBase64ForAi,
+  getAiImageProfile,
+  type AiImageProfile,
+} from '@/services/imageProcessing';
+import { isPdfFile } from '@/services/pdfExtractor';
+import type { DocumentType } from '@/types';
 
 // Import lazy pentru a evita crash dacă modulul nativ nu e disponibil în build
 let _getPdfPageCount: ((filePath: string) => Promise<number>) | null = null;
@@ -118,7 +124,10 @@ export async function renderAllPdfPagesAsBase64(fileUri: string): Promise<string
  * Randează prima pagină din PDF ca JPEG și returnează base64 (pentru vision AI).
  * Returnează null dacă modulul nativ nu e disponibil sau dacă randarea eșuează.
  */
-export async function renderPdfFirstPageForVision(fileUri: string): Promise<string | null> {
+export async function renderPdfFirstPageForVision(
+  fileUri: string,
+  profile?: AiImageProfile
+): Promise<string | null> {
   if (!_renderPdfPage) return null;
 
   const uri = fileUri.startsWith('file://') ? fileUri : `file://${fileUri}`;
@@ -129,7 +138,7 @@ export async function renderPdfFirstPageForVision(fileUri: string): Promise<stri
     // resize-uiește la 2048px width + q=0.8 → payload <1 MB. Necesar pentru
     // iOS NSURLSession care respinge upload-uri mari cu „Network request failed".
     imageUri = await _renderPdfPage(uri, 0, 2.0);
-    return await compressImageToBase64ForAi(imageUri);
+    return await compressImageToBase64ForAi(imageUri, profile);
   } catch (e) {
     console.log('[pdfOcr] renderForVision eroare:', e instanceof Error ? e.message : String(e));
     return null;
@@ -138,5 +147,31 @@ export async function renderPdfFirstPageForVision(fileUri: string): Promise<stri
       const path = imageUri.startsWith('file://') ? imageUri.slice(7) : imageUri;
       FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});
     }
+  }
+}
+
+/**
+ * Încarcă o pagină (imagine sau PDF) ca base64 gata de trimis la AI vision.
+ *
+ * Punct unic de intrare pentru TOATE fluxurile care trimit o pagină la AI —
+ * garantează că imaginea trece prin compresie înainte de upload. Citirea brută
+ * cu `readAsStringAsync` a fișierului salvat (2048–3072px) triplează payload-ul
+ * și tokenii de imagine fără câștig de acuratețe.
+ *
+ * Returnează `undefined` dacă fișierul nu poate fi citit/randat.
+ */
+export async function loadPageBase64ForAi(
+  filePathOrUri: string,
+  docType?: DocumentType
+): Promise<string | undefined> {
+  const profile = getAiImageProfile(docType);
+  try {
+    if (isPdfFile(filePathOrUri)) {
+      return (await renderPdfFirstPageForVision(filePathOrUri, profile)) ?? undefined;
+    }
+    return await compressImageToBase64ForAi(filePathOrUri, profile);
+  } catch (e) {
+    console.log('[pdfOcr] loadPageBase64ForAi eroare:', e instanceof Error ? e.message : String(e));
+    return undefined;
   }
 }
