@@ -817,9 +817,7 @@ export default function SetariScreen() {
           ? aiProvider.PROVIDER_DEFAULTS.builtin.model
           : aiProviderModel.trim();
       const chatKey =
-        aiProviderType === 'builtin'
-          ? (process.env.EXPO_PUBLIC_MISTRAL_API_KEY ?? '')
-          : aiApiKey.trim();
+        aiProviderType === 'builtin' ? aiProvider.getBuiltinAiToken() : aiApiKey.trim();
 
       if (aiProviderType === 'builtin' && !chatKey) {
         setAiTestStatus('error');

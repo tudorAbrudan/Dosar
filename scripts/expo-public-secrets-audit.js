@@ -35,10 +35,10 @@ const CONFIG_FILES = ['app.config.ts', 'app.config.js', 'app.json'];
  *   3. Nu poate fi abuzată ca să acceseze date altor utilizatori.
  */
 const ALLOWED_NAMES = new Set([
-  // Decis 2026-05-24: chei Mistral rămân în bundle deocamdată; quota pe cont
-  // controlată din dashboard, fără date utilizator expuse prin endpoint.
-  // Re-evaluare la următoarea revizie de securitate.
-  'EXPO_PUBLIC_MISTRAL_API_KEY',
+  // Token de acces la proxy-ul propriu (ai-proxy/), NU o cheie de provider.
+  // Extras din bundle nu dă acces la contul Mistral: proxy-ul ține cheia
+  // server-side, acceptă doar 3 modele și are cotă zilnică. Vezi ai-proxy/README.md.
+  'EXPO_PUBLIC_DOSAR_AI_TOKEN',
 ]);
 
 function detectTrigger(name) {

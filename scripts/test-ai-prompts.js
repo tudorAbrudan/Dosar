@@ -11,16 +11,16 @@
  * fără ca acest harness să returneze ✅ pe fixture-urile relevante.
  *
  * Cerințe:
- *   .env conține EXPO_PUBLIC_MISTRAL_API_KEY (chei built-in folosită
- *   pentru extracție).
+ *   .env conține EXPO_PUBLIC_DOSAR_AI_URL + EXPO_PUBLIC_DOSAR_AI_TOKEN
+ *   (proxy-ul propriu — cheia Mistral stă server-side, vezi ai-proxy/).
  *
  * Utilizare:
  *   node scripts/test-ai-prompts.js                # rulează toate
  *   node scripts/test-ai-prompts.js <fixture-name> # un singur fixture
  *   node scripts/test-ai-prompts.js --strict       # exit 1 la primul fail
  *
- * NOTĂ: scriptul face apeluri REALE către Mistral (consumă din cota
- * zilnică). Pentru runs frecvente, configurează propria cheie sau
+ * NOTĂ: scriptul face apeluri REALE prin proxy (consumă din cota zilnică
+ * și intră în limita per-device a proxy-ului). Pentru runs frecvente,
  * cache-uiește răspunsurile (TODO faza 2).
  */
 const fs = require('fs');
@@ -37,15 +37,18 @@ const SINGLE_FIXTURE = args[0] ?? null;
 // ── .env loader (fără dep externă) ────────────────────────────────────────────
 const envPath = path.resolve(ROOT, '.env');
 let API_KEY = '';
+let API_URL = '';
 try {
   const envContent = fs.readFileSync(envPath, 'utf8');
-  const m = envContent.match(/EXPO_PUBLIC_MISTRAL_API_KEY=(.+)/);
-  if (m) API_KEY = m[1].trim();
+  const token = envContent.match(/EXPO_PUBLIC_DOSAR_AI_TOKEN=(.+)/);
+  const url = envContent.match(/EXPO_PUBLIC_DOSAR_AI_URL=(.+)/);
+  if (token) API_KEY = token[1].trim();
+  if (url) API_URL = url[1].trim().replace(/\/$/, '');
 } catch {
   // pass
 }
-if (!API_KEY) {
-  console.error('❌ EXPO_PUBLIC_MISTRAL_API_KEY missing in .env');
+if (!API_KEY || !API_URL) {
+  console.error('❌ EXPO_PUBLIC_DOSAR_AI_URL / EXPO_PUBLIC_DOSAR_AI_TOKEN missing in .env');
   process.exit(2);
 }
 
@@ -176,11 +179,12 @@ function buildSummaryUserMsg(ocrText, documentDate) {
 
 // ── Apel Mistral ──────────────────────────────────────────────────────────────
 async function callMistral(systemPrompt, userPrompt, maxTokens = 1000) {
-  const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
+  const resp = await fetch(`${API_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${API_KEY}`,
+      'X-Dosar-Device': 'harness-test-ai-prompts',
     },
     body: JSON.stringify({
       model: 'mistral-large-latest',

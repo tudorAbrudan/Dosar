@@ -33,12 +33,12 @@ describe('expo-public-secrets-audit', () => {
     expect(v.some((x: { name: string }) => x.name === 'EXPO_PUBLIC_GH_TOKEN')).toBe(true);
   });
 
-  it('skips allowlisted EXPO_PUBLIC_MISTRAL_API_KEY in env', () => {
-    expect(auditEnvLine('EXPO_PUBLIC_MISTRAL_API_KEY=sk-xxx', 1, '.env')).toBeNull();
+  it('skips allowlisted EXPO_PUBLIC_DOSAR_AI_TOKEN in env', () => {
+    expect(auditEnvLine('EXPO_PUBLIC_DOSAR_AI_TOKEN=abc123', 1, '.env')).toBeNull();
   });
 
-  it('skips allowlisted EXPO_PUBLIC_MISTRAL_API_KEY in config', () => {
-    const src = `extra: { EXPO_PUBLIC_MISTRAL_API_KEY: process.env.MISTRAL_API_KEY }`;
+  it('skips allowlisted EXPO_PUBLIC_DOSAR_AI_TOKEN in config', () => {
+    const src = `extra: { EXPO_PUBLIC_DOSAR_AI_TOKEN: process.env.DOSAR_AI_TOKEN }`;
     expect(auditConfigSource(src, 'app.config.ts')).toEqual([]);
   });
 

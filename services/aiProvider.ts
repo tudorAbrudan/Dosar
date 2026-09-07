@@ -83,16 +83,81 @@ export interface AiProviderConfig {
 
 // ─── Cheie inclusă în aplicație ───────────────────────────────────────────────
 
-const BUILTIN_API_KEY = process.env.EXPO_PUBLIC_MISTRAL_API_KEY ?? '';
-const BUILTIN_URL = 'https://api.mistral.ai/v1';
+/**
+ * „Dosar AI" NU mai vorbește direct cu Mistral. Trece printr-un proxy propriu
+ * (ai-proxy/, deployat pe Danube Rapids), care ține cheia Mistral pe server.
+ *
+ * Motivul: orice `EXPO_PUBLIC_*` ajunge compilat în bundle-ul din App Store,
+ * deci cheia era extractibilă și folosibilă de oricine — exact ce s-a și
+ * întâmplat (rate limit permanent pe cheia veche, 2026-09-07).
+ *
+ * Ce e mai jos NU e o cheie API: e un token de aplicație care doar deschide
+ * poarta proxy-ului. Extras din bundle, nu dă acces la contul Mistral, e limitat
+ * la 3 modele din whitelist și la o cotă zilnică, iar accesul poate fi tăiat
+ * server-side fără release nou. Vezi ai-proxy/README.md.
+ */
+const BUILTIN_API_KEY = process.env.EXPO_PUBLIC_DOSAR_AI_TOKEN ?? '';
+const BUILTIN_URL = process.env.EXPO_PUBLIC_DOSAR_AI_URL ?? '';
 // Pe canalul Dosar AI rulăm 3 modele Mistral, alese după sarcină:
 // - chat conversațional (chatbot) → small (rapid, ieftin, suficient)
 // - extracție de date din text (OCR JSON, fallback fără imagine) → large (precizie pe câmpuri/date)
-// - extracție vision (document scanat / poză) → pixtral large (text + scris de mână)
+// - extracție vision pe scris de mână / print termic (talon, ITP, bon carburant)
+//   → pixtral large (singurul care citește ștampile scrise de mână)
+// - extracție vision pe documente tipărite (majoritatea) → mistral small, care
+//   are vision și costă un ordin de mărime mai puțin. Vezi `VisionTier`.
 // Userii cu cheie proprie (`external`) sau model local folosesc modelul ales de ei.
+/**
+ * Identificator anonim de device, folosit DOAR ca găleată de contorizare în
+ * proxy (limita zilnică per device). Nu pleacă nicăieri altundeva și nu conține
+ * nimic despre user sau despre documentele lui.
+ *
+ * Fără el, proxy-ul cade pe IP — iar pe mobil operatorii pun mii de abonați în
+ * spatele aceluiași IP prin CGNAT, deci userii legitimi și-ar consuma reciproc
+ * cota și ar primi 429 pe nedrept.
+ */
+const KEY_AI_DEVICE_ID = 'ai_device_id';
+let cachedDeviceId: string | null = null;
+
+async function getAiDeviceId(): Promise<string> {
+  if (cachedDeviceId) return cachedDeviceId;
+  let id = await AsyncStorage.getItem(KEY_AI_DEVICE_ID);
+  if (!id) {
+    id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}${Math.random()
+      .toString(36)
+      .slice(2, 12)}`;
+    await AsyncStorage.setItem(KEY_AI_DEVICE_ID, id);
+  }
+  cachedDeviceId = id;
+  return id;
+}
+
+/**
+ * Header-ele suplimentare pentru provider-ul `builtin`. Pentru `external`
+ * (cheia userului, direct la providerul lui) nu trimitem nimic în plus.
+ */
+async function builtinHeaders(type: AiProviderType): Promise<Record<string, string>> {
+  if (type !== 'builtin') return {};
+  return { 'X-Dosar-Device': await getAiDeviceId() };
+}
+
+/** Token-ul de acces la Dosar AI, pentru testul de conexiune din Setări. */
+export function getBuiltinAiToken(): string {
+  return BUILTIN_API_KEY;
+}
+
 const BUILTIN_MODEL = 'mistral-small-latest';
 const BUILTIN_EXTRACTION_MODEL = 'mistral-large-latest';
 const BUILTIN_VISION_MODEL = 'pixtral-large-latest';
+const BUILTIN_VISION_MODEL_LIGHT = 'mistral-small-latest';
+
+/**
+ * Cât de „greu" trebuie să fie modelul vision pentru cererea curentă.
+ * - `high` — scris de mână, ștampile, bonuri termice, serii minuscule.
+ * - `light` — document tipărit clar (clasificare, facturi, analize, contracte).
+ * Se aplică DOAR canalului `builtin` (Dosar AI); pe cheie proprie folosim modelul
+ * configurat de user, indiferent de tier.
+ */
+export type VisionTier = 'light' | 'high';
 
 // ─── Default-uri per provider ─────────────────────────────────────────────────
 
@@ -318,8 +383,8 @@ export function validateConfig(config: AiProviderConfig): string | null {
       return 'Modelul AI nu este setat. Verifică Setări → Asistent AI.';
     }
   }
-  if (config.type === 'builtin' && !BUILTIN_API_KEY) {
-    return 'Cheia Dosar AI nu este disponibilă în această versiune. Setează propria cheie API din Setări → Asistent AI.';
+  if (config.type === 'builtin' && (!BUILTIN_API_KEY || !BUILTIN_URL)) {
+    return 'Dosar AI nu este disponibil în această versiune. Setează propria cheie API din Setări → Asistent AI.';
   }
   if (config.type === 'local' && !config.model.trim()) {
     return 'Modelul local nu este selectat. Verifică Setări → Asistent AI.';
@@ -357,7 +422,7 @@ export async function canDoVision(): Promise<boolean> {
     config.visionModel.trim() !== '';
   if (hasSeparateVision) return true;
 
-  if (config.type === 'builtin') return !!BUILTIN_API_KEY;
+  if (config.type === 'builtin') return !!BUILTIN_API_KEY && !!BUILTIN_URL;
 
   if (config.type === 'external' && config.chatModelSupportsVision) {
     return config.url.trim() !== '' && config.apiKey.trim() !== '' && config.model.trim() !== '';
@@ -520,7 +585,8 @@ export async function sendAiRequestWithImage(
   userText: string,
   imageBase64: string | string[],
   imageMimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
-  maxTokens = 600
+  maxTokens = 600,
+  visionTier: VisionTier = 'high'
 ): Promise<string> {
   const config = await getAiConfig();
 
@@ -591,7 +657,9 @@ export async function sendAiRequestWithImage(
 
   const model =
     config.type === 'builtin'
-      ? BUILTIN_VISION_MODEL
+      ? visionTier === 'light'
+        ? BUILTIN_VISION_MODEL_LIGHT
+        : BUILTIN_VISION_MODEL
       : useSeparateVisionProvider
         ? config.visionModel
         : config.model;
@@ -610,6 +678,7 @@ export async function sendAiRequestWithImage(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
+        ...(await builtinHeaders(config.type)),
       },
       body: JSON.stringify({
         model,
@@ -697,6 +766,7 @@ export async function sendAiRequest(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
+    ...(await builtinHeaders(config.type)),
   };
 
   const response = await fetchWithTimeout(endpoint, {
