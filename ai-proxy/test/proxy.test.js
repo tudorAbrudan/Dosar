@@ -11,6 +11,7 @@ process.env.MAX_TOKENS_CAP = '1000';
 
 let upstream;
 let upstreamCalls = [];
+let upstreamStatus = 200;
 let proxy;
 let base;
 
@@ -21,6 +22,11 @@ before(async () => {
     req.on('data', c => (raw += c));
     req.on('end', () => {
       upstreamCalls.push({ auth: req.headers.authorization, body: JSON.parse(raw) });
+      if (upstreamStatus !== 200) {
+        res.writeHead(upstreamStatus, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ message: 'Unauthorized' }));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message: { content: 'salut' } }] }));
     });
@@ -40,6 +46,7 @@ after(() => {
 
 beforeEach(async () => {
   upstreamCalls = [];
+  upstreamStatus = 200;
   const { __reset } = await import('../limits.js');
   __reset();
 });
@@ -156,6 +163,25 @@ test('mesaje vision (content ca lista de blocuri) trec', async () => {
   });
   assert.equal(res.status, 200);
   assert.equal(upstreamCalls[0].body.messages.length, 2);
+});
+
+test('401 de la provider devine 503 (problema noastra, nu a userului)', async () => {
+  upstreamStatus = 401;
+  const res = await call(valid);
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error.message, /indisponibil/i);
+});
+
+test('403 de la provider devine tot 503', async () => {
+  upstreamStatus = 403;
+  const res = await call(valid);
+  assert.equal(res.status, 503);
+});
+
+test('429 de la provider ramane 429 (mesajul din app e corect)', async () => {
+  upstreamStatus = 429;
+  const res = await call(valid);
+  assert.equal(res.status, 429);
 });
 
 test('JSON invalid => 400', async () => {

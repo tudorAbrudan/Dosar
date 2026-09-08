@@ -115,6 +115,19 @@ async function handleCompletions(req, res) {
     console.log(
       `[ai] model=${built.payload.model} status=${upstream.status} ms=${Date.now() - started}`
     );
+
+    // Un 401/403 de la provider înseamnă că NOI avem o problemă de cont: cheia
+    // de pe container e ștearsă, expirată sau fără drepturi. Transmis ca atare,
+    // aplicația îl traduce în „Cheie API invalidă — verifică în Setări", ceea ce
+    // trimite userul să repare o cheie care nu e a lui și pe care n-o poate
+    // vedea. (Cine își folosește propria cheie nu trece pe aici — merge direct
+    // la providerul lui și primește pe bună dreptate mesajul despre cheie.)
+    // Îl raportăm ca 503, pe care aplicația îl arată ca indisponibilitate
+    // temporară. Statusul real rămâne în loguri, mai sus.
+    if (upstream.status === 401 || upstream.status === 403) {
+      return send(res, 503, errorBody('Serviciul AI inclus e indisponibil momentan.'));
+    }
+
     res.writeHead(upstream.status, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
