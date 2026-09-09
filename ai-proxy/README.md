@@ -16,6 +16,7 @@ formă pe care `services/aiProvider.ts` o trimite deja către Mistral.
 |---|---|---|
 | Cheia doar în env server | `config.js` | extragerea cheii din bundle |
 | Whitelist de modele | `validate.js` | rularea de modele scumpe pe contul tău |
+| Mapare de modele | `validate.js` | schimbarea providerului fără release în App Store |
 | Payload reconstruit, nu releat | `validate.js` | parametri strecurați (`n`, `tools`, `stream`) |
 | Plafon `max_tokens` | `validate.js` | cereri uriașe |
 | Limită/zi per device + globală | `limits.js` | abuz repetat |
@@ -24,6 +25,29 @@ formă pe care `services/aiProvider.ts` o trimite deja către Mistral.
 
 **Nu logăm prompturi, mesaje sau răspunsuri.** Prin serviciu trec date
 personale și medicale. Logurile conțin doar model, status și durată.
+
+## Schimbarea providerului
+
+Proxy-ul vorbește OpenAI-compatible, deci orice provider cu acest format se
+configurează din variabile de mediu — fără release în App Store.
+
+Aplicația publicată trimite numele Mistral (sunt compilate în bundle), așa că
+`MODEL_MAP` le traduce spre numele providerului curent. Numele „mistral-*"
+devin practic etichete pentru ROLURI — chat, extracție, vision — nu pentru
+furnizor. Urât, dar stabil; se curăță la un release normal.
+
+Pe Gemini (endpoint OpenAI-compatible, acceptă `image_url` cu `data:` base64,
+deci vision merge nemodificat):
+
+```bash
+danube rapids update dosar-ai-proxy \
+  --env AI_UPSTREAM_URL=https://generativelanguage.googleapis.com/v1beta/openai \
+        AI_UPSTREAM_API_KEY=<cheia Gemini> \
+        MODEL_MAP='{"mistral-small-latest":"gemini-3.8-flash","mistral-large-latest":"gemini-3.8-flash","pixtral-large-latest":"gemini-3.8-flash"}'
+```
+
+Whitelist-ul rămâne aplicat pe numele PRIMIT de la aplicație, nu pe cel tradus —
+altfel o schimbare de provider ar putea deschide modele neaprobate.
 
 ## Limitele oneste ale acestui design
 

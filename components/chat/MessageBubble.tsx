@@ -5,6 +5,11 @@ import { SelectTextModal } from './SelectTextModal';
 
 export interface ConversationMessage extends ChatMessage {
   id?: string;
+  /**
+   * Mesaj de eroare afișat în conversație. Se randează normal, dar e exclus din
+   * istoricul trimis modelului — vezi comentariul din `chat.tsx` la trimitere.
+   */
+  isError?: boolean;
 }
 
 const LINK_REGEX = /\[ID:([^\]]+)\]|\[DOC:([^|]+)\|([^\]]+)\]|\[ENT:([^|]+)\|([^|]+)\|([^\]]+)\]/g;

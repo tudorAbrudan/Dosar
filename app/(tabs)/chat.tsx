@@ -44,10 +44,6 @@ const MENTION_ICONS = ENTITY_TYPE_EMOJI;
 const WELCOME_CONTENT =
   'Bună! Pot răspunde la întrebări despre documentele tale. Ex: «Când expiră buletinul?», «Arată RCA-urile», «Ce documente am pentru Dacia Logan?»';
 
-
-
-
-
 // ─── Screen principal ──────────────────────────────────────────────────────────
 
 export default function ChatScreen() {
@@ -205,7 +201,12 @@ export default function ChatScreen() {
       setMessages([{ role: 'assistant', content: WELCOME_CONTENT }]);
     } else {
       setMessages(
-        stored.map((m: StoredMessage) => ({ role: m.role, content: m.content, id: m.id }))
+        stored.map((m: StoredMessage) => ({
+          role: m.role,
+          content: m.content,
+          id: m.id,
+          isError: m.is_error,
+        }))
       );
     }
   }
@@ -235,7 +236,8 @@ export default function ChatScreen() {
     setMessages(prev => [...prev, userMsg]);
     setSendLoading(true);
 
-    // Istoricul pentru AI (fără welcome message)
+    // Istoricul pentru AI (fără welcome message). Mesajele marcate `isError`
+    // pleacă de aici ca atare — `sendMessage` le scoate prin `stripErrorTurns`.
     const history = messages
       .filter(m => m.content !== WELCOME_CONTENT)
       .concat(userMsg)
@@ -272,10 +274,13 @@ export default function ChatScreen() {
       // două mesaje user consecutive → template-ele LLM stricte (ex. Mistral)
       // resping cu „Conversation roles must alternate".
       try {
-        const savedErr = await saveMessage(activeThread.id, 'assistant', errContent);
-        setMessages(prev => [...prev, { role: 'assistant', content: errContent, id: savedErr.id }]);
+        const savedErr = await saveMessage(activeThread.id, 'assistant', errContent, true);
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: errContent, id: savedErr.id, isError: true },
+        ]);
       } catch {
-        setMessages(prev => [...prev, { role: 'assistant', content: errContent }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: errContent, isError: true }]);
       }
     } finally {
       setSendLoading(false);

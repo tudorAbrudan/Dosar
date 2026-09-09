@@ -8,6 +8,13 @@ process.env.PROXY_APP_TOKEN = 'app-token';
 process.env.PER_DEVICE_DAILY_LIMIT = '2';
 process.env.GLOBAL_DAILY_LIMIT = '3';
 process.env.MAX_TOKENS_CAP = '1000';
+process.env.UPSTREAM_REASONING_EFFORT = 'none';
+// Providerul din spate e Gemini: aplicatia trimite nume Mistral, proxy-ul traduce.
+process.env.MODEL_MAP = JSON.stringify({
+  'mistral-small-latest': 'gemini-3.8-flash',
+  'mistral-large-latest': 'gemini-3.8-flash',
+  'pixtral-large-latest': 'gemini-3.8-flash',
+});
 
 let upstream;
 let upstreamCalls = [];
@@ -182,6 +189,26 @@ test('429 de la provider ramane 429 (mesajul din app e corect)', async () => {
   upstreamStatus = 429;
   const res = await call(valid);
   assert.equal(res.status, 429);
+});
+
+test('traduce numele modelului spre provider', async () => {
+  const res = await call(valid);
+  assert.equal(res.status, 200);
+  // clientul a cerut mistral-small-latest, providerul a primit modelul Gemini
+  assert.equal(upstreamCalls[0].body.model, 'gemini-3.8-flash');
+});
+
+test('whitelist-ul se aplica pe numele primit, nu pe cel tradus', async () => {
+  // un nume Gemini trimis direct de client NU e in whitelist => 403
+  const res = await call({ ...valid, model: 'gemini-3.8-flash' });
+  assert.equal(res.status, 403);
+  assert.equal(upstreamCalls.length, 0);
+});
+
+test('trimite reasoning_effort cand e configurat', async () => {
+  await call(valid);
+  // fara asta, gandirea modelului consuma din max_tokens si raspunsul vine gol
+  assert.equal(upstreamCalls[0].body.reasoning_effort, 'none');
 });
 
 test('JSON invalid => 400', async () => {

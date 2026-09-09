@@ -26,6 +26,42 @@ import {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /**
+   * Mesajul e o eroare afișată userului, nu o replică a modelului. Se afișează
+   * în conversație, dar `stripErrorTurns` îl scoate înainte de a trimite
+   * istoricul modelului.
+   */
+  isError?: boolean;
+}
+
+/**
+ * Scoate din istoric mesajele de eroare și întrebarea care le-a provocat.
+ *
+ * Erorile se persistă ca mesaje `assistant` (altfel istoricul ar avea două
+ * mesaje `user` consecutive, pe care template-ele stricte le resping cu
+ * „Conversation roles must alternate"). Dar trimise înapoi modelului, le
+ * citește ca pe propriile replici și continuă în registrul lor: întrebat orice,
+ * fabrica variațiuni pe „serviciul AI e indisponibil" în loc să răspundă.
+ * Raportat pe device 2026-09-09.
+ *
+ * Scoatem și mesajul `user` dinaintea erorii — e o întrebare care n-a primit
+ * niciodată răspuns, iar rămasă singură ar strica exact alternarea pentru care
+ * eroarea fusese persistată.
+ *
+ * Exportat pentru teste; în producție e aplicat automat de `sendMessage`.
+ */
+export function stripErrorTurns(history: ChatMessage[]): ChatMessage[] {
+  const drop = new Set<number>();
+  history.forEach((m, i) => {
+    if (!m.isError) return;
+    drop.add(i);
+    for (let j = i - 1; j >= 0; j--) {
+      if (drop.has(j)) continue;
+      if (history[j].role === 'user') drop.add(j);
+      break;
+    }
+  });
+  return history.filter((_, i) => !drop.has(i));
 }
 
 /**
@@ -1170,7 +1206,10 @@ async function answerExpiryQuery(
   return `Documente care expiră în următoarele ${query.days} de zile (${upcoming.length}):\n\n${shown.map(fmt).join('\n')}${more}`;
 }
 
-export async function sendMessage(userMessage: string, history: ChatMessage[]): Promise<string> {
+export async function sendMessage(userMessage: string, rawHistory: ChatMessage[]): Promise<string> {
+  // Sanitizarea stă aici, la graniță, nu în ecran: orice apelant viitor o
+  // primește automat. Vezi `stripErrorTurns`.
+  const history = stripErrorTurns(rawHistory);
   // Detectăm provider-ul ca să comprimăm contextul pentru modele locale
   // (modelele locale au context 8–16K — un system prompt cu 80 docs ×
   // 1000 chars OCR ar depăși ~20K tokeni și ar arunca „Context is full").

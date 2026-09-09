@@ -18,9 +18,41 @@ const num = (name, fallback) => {
 export const config = {
   port: num('PORT', 8080),
 
-  /** Cheia Mistral. Setată ca secret în Rapids, NU în cod. */
-  apiKey: process.env.MISTRAL_API_KEY ?? '',
-  upstreamUrl: (process.env.MISTRAL_URL ?? 'https://api.mistral.ai/v1').replace(/\/$/, ''),
+  /**
+   * Cheia providerului din spate. Numele `MISTRAL_*` sunt păstrate ca alias ca
+   * să nu pice serviciul la o redenumire de variabile în timpul unui incident.
+   */
+  apiKey: process.env.AI_UPSTREAM_API_KEY ?? process.env.MISTRAL_API_KEY ?? '',
+  upstreamUrl: (
+    process.env.AI_UPSTREAM_URL ??
+    process.env.MISTRAL_URL ??
+    'https://api.mistral.ai/v1'
+  ).replace(/\/$/, ''),
+
+  /**
+   * Traducere nume de model: ce trimite aplicația → ce cere providerul.
+   *
+   * Aplicația publicată în App Store trimite numele Mistral, compilate în
+   * bundle. Maparea aici înseamnă că putem schimba providerul fără release și
+   * fără ca userii să actualizeze ceva. Numele „mistral-*" devin astfel
+   * etichete pentru ROLURI (chat / extracție / vision), nu pentru furnizor —
+   * urâte, dar stabile. Se curăță la un release normal.
+   *
+   * Gol = fără traducere (numele merg ca atare la provider).
+   */
+  modelMap: (() => {
+    const raw = process.env.MODEL_MAP;
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('nu e obiect');
+      }
+      return parsed;
+    } catch (e) {
+      throw new Error(`MODEL_MAP nu e JSON valid: ${e instanceof Error ? e.message : e}`);
+    }
+  })(),
 
   /**
    * Token partajat cu aplicația (header X-Dosar-Key). Obfuscare, NU securitate:
@@ -41,6 +73,20 @@ export const config = {
       .map(s => s.trim())
       .filter(Boolean)
   ),
+
+  /**
+   * `reasoning_effort` trimis providerului. Gol = parametrul nu se trimite.
+   *
+   * De ce contează: modelele care gândesc (Gemini 3.x) consumă raționamentul
+   * din ACELAȘI `max_tokens`. Aplicația publicată trimite 500-1500, crezând că
+   * tot bugetul e pentru răspuns — măsurat, o extracție simplă cheltuie ~280
+   * pe gândire, iar la prompturi OCR reale ar trunchia JSON-ul sau ar întoarce
+   * răspuns gol (`finish_reason: length`, `completion_tokens: 0`).
+   *
+   * Cu `none`, gândirea e 0 și `max_tokens` redevine ce crede aplicația că e.
+   * Dacă scade calitatea la extracție, `low` e treapta următoare.
+   */
+  reasoningEffort: process.env.UPSTREAM_REASONING_EFFORT ?? '',
 
   /** Plafon dur pe max_tokens, indiferent ce cere clientul. */
   maxTokensCap: num('MAX_TOKENS_CAP', 4000),

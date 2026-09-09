@@ -860,6 +860,40 @@ safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_display_name TEXT')
 // eticheta de tip („Vehicul"), niciodată numele entității.
 safeAlterTable('ALTER TABLE shared_entities ADD COLUMN share_title TEXT');
 
+// Migrare: marchează mesajele care sunt de fapt erori afișate în conversație.
+// Erorile se persistă ca mesaje `assistant` (ca să nu rămână două mesaje `user`
+// consecutive, pe care template-ele stricte le resping), dar NU trebuie trimise
+// înapoi modelului: le vede ca pe propriile replici și continuă în registrul lor
+// — la o întrebare ulterioară inventa variațiuni pe „serviciul e indisponibil"
+// în loc să răspundă. Raportat pe device 2026-09-09.
+safeAlterTable('ALTER TABLE chat_messages ADD COLUMN is_error INTEGER NOT NULL DEFAULT 0');
+
+// Backfill unic: erorile salvate ÎNAINTE de migrare au is_error = 0 (default-ul
+// coloanei), deci ar continua să fie trimise modelului ca replici proprii —
+// exact bug-ul pe care coloana îl repară. Marcăm după prefixele produse de
+// `humanizeAiError`; sunt propoziții fixe, generate de noi, nu text de la model.
+// Fals-pozitiv posibil doar dacă modelul a început un răspuns cu exact aceeași
+// frază — caz în care efectul e că mesajul nu mai intră în context. Inofensiv.
+try {
+  db.runSync(
+    `UPDATE chat_messages SET is_error = 1
+     WHERE role = 'assistant' AND is_error = 0 AND (
+       content LIKE 'Serviciul AI e temporar indisponibil.%' OR
+       content LIKE 'Serviciul AI inclus e ocupat acum%' OR
+       content LIKE 'Cheie API invalidă sau expirată.%' OR
+       content LIKE 'Contul de la providerul AI nu mai are credit.%' OR
+       content LIKE 'Providerul AI a refuzat cererea%' OR
+       content LIKE 'Ai atins limita de%' OR
+       content LIKE 'Fără conexiune la internet.%' OR
+       content LIKE 'Dosar AI nu este disponibil%' OR
+       content LIKE 'Întrebarea depășește cât poate ține minte%' OR
+       content LIKE 'Fișierul imaginii nu se găsește%'
+     )`
+  );
+} catch {
+  // Tabelul poate lipsi la prima pornire — migrarea rulează oricum la următoarea.
+}
+
 // Tabelul reminders — sursă unică pentru toate reminderele (documente, medical, expirări).
 // document_id: FK cu CASCADE DELETE (reminder dispare la ștergerea documentului sursă).
 // origin: 'ai' | 'derived' | 'manual' — pentru filtrare și audit.

@@ -81,6 +81,13 @@ async function handleCompletions(req, res) {
   const built = buildUpstreamPayload(body, config);
   if (!built.ok) return send(res, built.status, errorBody(built.message));
 
+  // Rolul cerut de aplicație (numele din bundle) vs modelul chemat efectiv.
+  // Când sunt diferite, logăm ambele — altfel maparea e invizibilă la debug.
+  const modelLabel =
+    built.payload.model === body.model
+      ? built.payload.model
+      : `${body.model}->${built.payload.model}`;
+
   const gate = checkAndCount(deviceIdFrom(req), config);
   if (!gate.ok) {
     // 429 e statusul pe care aplicația îl tratează deja ca „limită atinsă" și
@@ -113,7 +120,7 @@ async function handleCompletions(req, res) {
 
     const text = await upstream.text();
     console.log(
-      `[ai] model=${built.payload.model} status=${upstream.status} ms=${Date.now() - started}`
+      `[ai] model=${modelLabel} status=${upstream.status} ms=${Date.now() - started}`
     );
 
     // Un 401/403 de la provider înseamnă că NOI avem o problemă de cont: cheia
@@ -135,7 +142,7 @@ async function handleCompletions(req, res) {
     res.end(text);
   } catch (e) {
     const aborted = e instanceof Error && e.name === 'AbortError';
-    console.log(`[ai] model=${built.payload.model} status=err ms=${Date.now() - started}`);
+    console.log(`[ai] model=${modelLabel} status=err ms=${Date.now() - started}`);
     send(
       res,
       aborted ? 504 : 502,

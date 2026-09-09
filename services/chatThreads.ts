@@ -24,6 +24,11 @@ export interface StoredMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  /**
+   * true = mesajul e o eroare afișată userului, nu un răspuns al modelului.
+   * Se afișează în conversație, dar NU se trimite înapoi modelului ca istoric.
+   */
+  is_error: boolean;
 }
 
 // ─── Threads ──────────────────────────────────────────────────────────────────
@@ -93,6 +98,7 @@ export async function getThreadMessages(threadId: string): Promise<StoredMessage
     role: string;
     content: string;
     created_at: string;
+    is_error: number | null;
   }>('SELECT * FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC', [threadId]);
   return rows.map(r => ({
     id: r.id,
@@ -100,23 +106,25 @@ export async function getThreadMessages(threadId: string): Promise<StoredMessage
     role: r.role as 'user' | 'assistant',
     content: r.content,
     created_at: r.created_at,
+    is_error: r.is_error === 1,
   }));
 }
 
 export async function saveMessage(
   threadId: string,
   role: 'user' | 'assistant',
-  content: string
+  content: string,
+  isError = false
 ): Promise<StoredMessage> {
   const id = generateId();
   const now = new Date().toISOString();
   await db.runAsync(
-    'INSERT INTO chat_messages (id, thread_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
-    [id, threadId, role, content, now]
+    'INSERT INTO chat_messages (id, thread_id, role, content, created_at, is_error) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, threadId, role, content, now, isError ? 1 : 0]
   );
   // Actualizăm updated_at pe thread
   await db.runAsync('UPDATE chat_threads SET updated_at = ? WHERE id = ?', [now, threadId]);
-  return { id, thread_id: threadId, role, content, created_at: now };
+  return { id, thread_id: threadId, role, content, created_at: now, is_error: isError };
 }
 
 export async function deleteMessage(messageId: string): Promise<void> {

@@ -43,14 +43,20 @@ export function buildUpstreamPayload(body, config) {
     config.maxTokensCap
   );
 
+  // Whitelist-ul se aplică pe numele primit de la aplicație; traducerea spre
+  // numele providerului se face DUPĂ, ca schimbarea de provider să nu deschidă
+  // accidental modele neaprobate.
   const payload = {
-    model,
+    model: config.modelMap[model] ?? model,
     messages,
     max_tokens: cappedTokens,
     stream: false,
   };
   if (Number.isFinite(temperature) && temperature >= 0 && temperature <= 2) {
     payload.temperature = temperature;
+  }
+  if (config.reasoningEffort) {
+    payload.reasoning_effort = config.reasoningEffort;
   }
 
   return { ok: true, payload };
