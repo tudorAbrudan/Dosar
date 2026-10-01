@@ -108,6 +108,7 @@ const ENTRIES = {
     pdfExtractor: { required: false },
     reviewPrompt: { required: false },
     shareIntentIngest: { required: false },
+    shareIntentFallback: { required: false },
     vehicleDocChecks: { required: false },
   },
   screens: {

@@ -1,6 +1,6 @@
 import { ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -12,7 +12,7 @@ import {
   useColorScheme as useColorSchemeNative,
 } from 'react-native';
 import 'react-native-reanimated';
-import { ShareIntentProvider } from 'expo-share-intent';
+import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 
 import AppLockScreen from '@/components/AppLockScreen';
 import OnboardingWizard from '@/components/OnboardingWizard';
@@ -29,6 +29,7 @@ import { useReviewPrompt } from '@/hooks/useReviewPrompt';
 import { useCloudBackup } from '@/hooks/useCloudBackup';
 import { useSharingSync } from '@/hooks/useSharingSync';
 import { releaseModelForBackground } from '@/services/localModel';
+import { pullPendingShareIntent } from '@/services/shareIntentFallback';
 import { db } from '@/services/db';
 import * as settings from '@/services/settings';
 
@@ -78,6 +79,8 @@ function RootLayoutNav() {
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('auto');
   const appLock = useAppLock();
   const router = useRouter();
+  const pathname = usePathname();
+  const { isReady: shareReady, hasShareIntent } = useShareIntentContext();
   const notifListener = useRef<Notifications.EventSubscription | null>(null);
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -101,6 +104,27 @@ function RootLayoutNav() {
       notifListener.current?.remove();
     };
   }, []);
+
+  // Share din alte aplicații: iOS 27 nu mai livrează URL-ul cu cheia (vezi
+  // shareIntentFallback) → cerem datele extensiei direct la pornire și la fiecare
+  // revenire în prim-plan.
+  useEffect(() => {
+    if (!shareReady) return;
+    void pullPendingShareIntent();
+    const sub = AppState.addEventListener('change', s => {
+      if (s === 'active') void pullPendingShareIntent();
+    });
+    return () => sub.remove();
+  }, [shareReady]);
+
+  // Share primit → ecranul „Adaugă document" (preia fișierele și resetează intentul).
+  // Așteaptă onboarding-ul și deblocarea aplicației.
+  useEffect(() => {
+    if (!hasShareIntent || onboardingDone !== true || appLock.locked) return;
+    if (pathname.endsWith('/documente/add')) return;
+    router.push('/(tabs)/documente/add');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasShareIntent, onboardingDone, appLock.locked, pathname]);
 
   // Deep link handler: acte:///documente/{id} → deschide documentul
   useEffect(() => {
