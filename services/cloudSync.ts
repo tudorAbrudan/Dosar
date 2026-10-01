@@ -93,18 +93,27 @@ interface ManifestPayload {
  * atât de `buildManifestPayload` (cu override real) cât și de `processQueue` (ca țintă de upload).
  */
 async function buildStructuredFileMap(): Promise<Record<string, string>> {
-  const [persons, vehicles, properties, cards, animals, companies, customTypes, documents, allPages] =
-    await Promise.all([
-      entities.getPersons(),
-      entities.getVehicles(),
-      entities.getProperties(),
-      entities.getCards(),
-      entities.getAnimals(),
-      entities.getCompanies(),
-      getCustomTypes(),
-      docs.getDocuments(),
-      docs.getAllDocumentPages(),
-    ]);
+  const [
+    persons,
+    vehicles,
+    properties,
+    cards,
+    animals,
+    companies,
+    customTypes,
+    documents,
+    allPages,
+  ] = await Promise.all([
+    entities.getPersons(),
+    entities.getVehicles(),
+    entities.getProperties(),
+    entities.getCards(),
+    entities.getAnimals(),
+    entities.getCompanies(),
+    getCustomTypes(),
+    docs.getDocuments(),
+    docs.getAllDocumentPages(),
+  ]);
   const nameMaps: EntityNameMaps = {
     personNames: new Map(persons.map(p => [p.id, p.name])),
     vehicleNames: new Map(vehicles.map(v => [v.id, v.name])),
@@ -249,6 +258,43 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
  *   sau când scrierea/serializarea eșuează. Apelantul (Task 11) este responsabil
  *   să prindă și să decidă retry vs. logging.
  */
+/** Câte copii `pre-shrink_*.json` păstrăm în `snapshots/`. */
+const PRE_SHRINK_KEEP = 3;
+
+/**
+ * True dacă manifestul nou e semnificativ mai mic decât cel din cloud: dispar toate
+ * dosarele medicale, scad persoanele sau documentele cu >30%. Regresia 2026-10-01:
+ * o stare redusă (restore parțial / reinstalare) se încărca peste singurul backup bun.
+ * Doar semnalează — apelantul păstrează manifestul vechi înainte să-l suprascrie.
+ */
+export function detectManifestShrink(
+  prev: Pick<CloudManifestMeta, 'documentCount' | 'personCount' | 'medicalRecordCount'> | null,
+  next: { documents: number; persons: number; medicalRecords: number }
+): boolean {
+  if (!prev) return false;
+  if (prev.medicalRecordCount != null && prev.medicalRecordCount > 0 && next.medicalRecords === 0) {
+    return true;
+  }
+  if (prev.personCount != null && next.persons < prev.personCount) return true;
+  if (prev.documentCount >= 5 && next.documents < prev.documentCount * 0.7) return true;
+  return false;
+}
+
+/** Copiază manifestul curent din cloud în `snapshots/pre-shrink_<ts>.json` (text brut,
+ *  deci merge și criptat) și păstrează ultimele {@link PRE_SHRINK_KEEP}. */
+async function preserveManifestBeforeShrink(): Promise<void> {
+  if (!(await cloudStorage.exists(MANIFEST_PATH))) return;
+  const text = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  await cloudStorage.writeFile(`${SNAPSHOTS_PREFIX}pre-shrink_${stamp}.json`, text, 'utf8');
+  const files = (await cloudStorage.listDir(SNAPSHOTS_PREFIX))
+    .filter(f => f.startsWith('pre-shrink_') && f.endsWith('.json'))
+    .sort();
+  for (const name of files.slice(0, Math.max(0, files.length - PRE_SHRINK_KEEP))) {
+    await cloudStorage.deleteFile(`${SNAPSHOTS_PREFIX}${name}`);
+  }
+}
+
 export async function uploadManifestIfChanged(): Promise<boolean> {
   if (!(await cloudStorage.isAvailable())) return false;
 
@@ -285,10 +331,25 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
     encrypted,
     documentCount,
     fileCount,
+    personCount: payload.persons.length,
+    medicalRecordCount: payload.medicalRecords.length,
   };
 
   // Snapshot al meta-ului anterior pentru rollback dacă manifestul eșuează după meta.
   const previousMeta = await readCloudMeta();
+
+  // Guard anti-pierdere: dacă starea locală e mult mai mică decât backup-ul din cloud,
+  // păstrăm manifestul vechi ÎNAINTE să-l suprascriem. Dacă păstrarea eșuează, NU
+  // suprascriem (mai bine un backup întârziat decât unul pierdut).
+  if (
+    detectManifestShrink(previousMeta, {
+      documents: documentCount,
+      persons: payload.persons.length,
+      medicalRecords: payload.medicalRecords.length,
+    })
+  ) {
+    await preserveManifestBeforeShrink();
+  }
 
   // Scriem META PRIMUL — mic, rapid, mai puțin probabil să eșueze. Dacă manifestul
   // eșuează după, alt device care citește în interval vede meta cu hash nou + manifest
@@ -743,7 +804,8 @@ export async function processQueue(onProgress?: (p: BackupProgress) => void): Pr
         }
         base64 = await encryptBase64(base64, key);
       }
-      const targetRel = structuredMap[toRelativePath(row.file_path)] ?? fileNameFromPath(row.file_path);
+      const targetRel =
+        structuredMap[toRelativePath(row.file_path)] ?? fileNameFromPath(row.file_path);
       const remote = remotePathForRel(targetRel);
       await cloudStorage.writeFile(remote, base64, 'base64');
       // Move-on-rename: dacă fișierul era la altă cale remote, programează ștergerea celei vechi.
@@ -913,9 +975,7 @@ async function writePreRestoreSnapshot(): Promise<void> {
       { encoding: FileSystem.EncodingType.UTF8 }
     );
     const files = await FileSystem.readDirectoryAsync(PRE_RESTORE_DIR);
-    const snapshots = files
-      .filter(f => f.startsWith('pre-restore-') && f.endsWith('.json'))
-      .sort(); // ISO timestamp în nume → ordine cronologică
+    const snapshots = files.filter(f => f.startsWith('pre-restore-') && f.endsWith('.json')).sort(); // ISO timestamp în nume → ordine cronologică
     const toDelete = snapshots.slice(0, Math.max(0, snapshots.length - PRE_RESTORE_KEEP));
     for (const name of toDelete) {
       try {

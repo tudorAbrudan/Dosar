@@ -20,6 +20,20 @@ async function ensureDocumentsDir(): Promise<void> {
   await FileSystem.makeDirectoryAsync(DOCUMENTS_DIR, { intermediates: true });
 }
 
+let fileSeq = 0;
+
+/**
+ * Nume UNIC pentru un fișier din `documents/`. `Date.now()` singur dă același nume
+ * pentru două pagini salvate în aceeași milisecundă → a doua suprascrie prima și ambele
+ * rânduri din `document_pages` pointează la același fișier (permis, 2026-05: ștergi/rotești
+ * una, se întâmplă și la cealaltă). Contorul + sufixul aleator elimină coliziunea.
+ */
+export function uniqueDocFilename(ext: 'jpg' | 'pdf'): string {
+  fileSeq = (fileSeq + 1) % 1000;
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `doc_${Date.now()}_${fileSeq}${rand}.${ext}`;
+}
+
 export interface SavedPage {
   /** URI absolut (`file://.../documents/<file>`) — pentru randare. */
   localPath: string;
@@ -42,7 +56,7 @@ export async function saveImageAsPage(
 ): Promise<SavedPage> {
   const processedUri = await processDocumentImage(srcUri, docType, exifOrientation);
   await ensureDocumentsDir();
-  const filename = `doc_${Date.now()}.jpg`;
+  const filename = uniqueDocFilename('jpg');
   const relativePath = `documents/${filename}`;
   const localPath = `${FileSystem.documentDirectory}${relativePath}`;
   await FileSystem.copyAsync({ from: processedUri, to: localPath });
@@ -80,7 +94,7 @@ export async function savePdfAsPage(
   srcUri: string
 ): Promise<Pick<SavedPage, 'localPath' | 'relativePath'>> {
   await ensureDocumentsDir();
-  const filename = `doc_${Date.now()}.pdf`;
+  const filename = uniqueDocFilename('pdf');
   const relativePath = `documents/${filename}`;
   const localPath = `${FileSystem.documentDirectory}${relativePath}`;
   await FileSystem.copyAsync({ from: srcUri, to: localPath });

@@ -279,7 +279,50 @@ export async function getDocumentsForAI(): Promise<Document[]> {
     .map(d => sanitizeDocumentForAI({ ...d, entity_links: linksByDoc.get(d.id) ?? [] }));
 }
 
+/**
+ * Pagini care împart ACELAȘI fișier (între ele sau cu pagina principală) = coliziune de
+ * nume la salvare (permis, 2026-05). Rotirea/ștergerea uneia o afectează pe cealaltă.
+ * Autoreparare: fiecare pagină în plus primește propria copie a fișierului. Best-effort
+ * — un eșec nu blochează afișarea documentului. Imaginea suprascrisă inițial nu se mai
+ * poate recupera de aici; utilizatorul poate șterge pagina redundantă.
+ */
+async function splitSharedPageFiles(documentId: string): Promise<void> {
+  const main = await db.getFirstAsync<{ file_path: string | null }>(
+    'SELECT file_path FROM documents WHERE id = ?',
+    [documentId]
+  );
+  const rows = await db.getAllAsync<{ id: string; file_path: string | null }>(
+    'SELECT id, file_path FROM document_pages WHERE document_id = ? ORDER BY page_order ASC',
+    [documentId]
+  );
+  const seen = new Set<string>();
+  if (main?.file_path) seen.add(main.file_path);
+  for (const row of rows) {
+    const fp = row.file_path;
+    if (!fp) continue;
+    if (!seen.has(fp)) {
+      seen.add(fp);
+      continue;
+    }
+    const dot = fp.lastIndexOf('.');
+    const ext = dot >= 0 ? fp.slice(dot) : '';
+    const dir = fp.includes('/') ? fp.slice(0, fp.lastIndexOf('/') + 1) : '';
+    const newPath = `${dir}doc_${Date.now()}_${generateId().slice(0, 8)}${ext}`;
+    await FileSystem.copyAsync({ from: toFileUri(fp), to: toFileUri(newPath) });
+    await db.runAsync('UPDATE document_pages SET file_path = ? WHERE id = ?', [newPath, row.id]);
+    seen.add(newPath);
+    if ((await getCloudBackupEnabled()) && !isImportInProgress()) {
+      await cloudSync.enqueueFileUpload(newPath);
+    }
+  }
+}
+
 async function loadPages(documentId: string): Promise<DocumentPage[]> {
+  try {
+    await splitSharedPageFiles(documentId);
+  } catch (e) {
+    console.warn('[documents] splitSharedPageFiles failed:', e instanceof Error ? e.message : e);
+  }
   const rows = await db.getAllAsync<PageRow>(
     'SELECT * FROM document_pages WHERE document_id = ? ORDER BY page_order ASC',
     [documentId]
@@ -881,6 +924,14 @@ export async function getDocumentEntityLinks(documentId: string): Promise<Docume
 }
 
 export async function addDocumentPage(documentId: string, filePath: string): Promise<string> {
+  // Același fișier nu poate fi două pagini (ar fi rotit/șters împreună) → idempotent.
+  if (filePath) {
+    const existing = await db.getFirstAsync<{ id: string }>(
+      'SELECT id FROM document_pages WHERE document_id = ? AND file_path = ?',
+      [documentId, filePath]
+    );
+    if (existing) return existing.id;
+  }
   const maxOrder = await db.getFirstAsync<{ max: number | null }>(
     'SELECT MAX(page_order) as max FROM document_pages WHERE document_id = ?',
     [documentId]
@@ -919,7 +970,18 @@ export async function removeDocumentPage(pageId: string): Promise<void> {
   await db.runAsync('DELETE FROM document_pages WHERE id = ?', [pageId]);
 
   const filePath = row?.file_path ?? null;
-  if (filePath) {
+  // Fișier încă referit de altă pagină / de un document (date vechi cu coliziune de
+  // nume) → NU îl ștergem de pe disc, altfel cealaltă pagină rămâne fără imagine.
+  const stillReferenced = filePath
+    ? ((
+        await db.getFirstAsync<{ n: number }>(
+          `SELECT (SELECT COUNT(*) FROM document_pages WHERE file_path = ?)
+              + (SELECT COUNT(*) FROM documents WHERE file_path = ?) AS n`,
+          [filePath, filePath]
+        )
+      )?.n ?? 0)
+    : 0;
+  if (filePath && stillReferenced === 0) {
     const cloudEnabled = await getCloudBackupEnabled();
     if (cloudEnabled) {
       await cloudSync.dequeueFileDelete(filePath);

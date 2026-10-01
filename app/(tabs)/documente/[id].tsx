@@ -69,7 +69,7 @@ import { FullscreenPdfModal } from '@/components/document/FullscreenPdfModal';
 import { DocumentPdfViewer } from '@/components/document/DocumentPdfViewer';
 import { DuplicateGroupsCard } from '@/components/document/DuplicateGroupsCard';
 import { scanDocumentPages } from '@/services/documentScanner';
-import { saveImageAsPage } from '@/services/documentPageStorage';
+import { saveImageAsPage, uniqueDocFilename } from '@/services/documentPageStorage';
 import { cropImage } from '@/services/cropperBridge';
 import {
   getDocumentLabel,
@@ -587,7 +587,7 @@ export default function DocumentDetailScreen() {
   async function saveAndAddPdf(sourceUri: string) {
     if (!doc) return;
     try {
-      const filename = `doc_${Date.now()}.pdf`;
+      const filename = uniqueDocFilename('pdf');
       const relativePath = `documents/${filename}`;
       const dest = `${FileSystem.documentDirectory}documents/${filename}`;
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}documents`, {

@@ -64,6 +64,8 @@ node scripts/double-modal-audit.js
 
 echo "▸ Alert→Modal race audit (strict — flag Alert.alert onPress care deschide Modal direct)..."
 node scripts/alert-modal-race-audit.js --strict
+node scripts/manifest-shrink-guard-audit.js --strict
+node scripts/unique-filename-audit.js --strict
 
 echo "▸ Cropper flow audit (strict — imagine aleasă din galerie/fișiere fără pas de decupare)..."
 node scripts/cropper-flow-audit.js --strict

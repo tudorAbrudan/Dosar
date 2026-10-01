@@ -885,6 +885,9 @@ export interface CloudManifestMeta {
   encrypted: boolean;
   documentCount: number;
   fileCount: number;
+  /** Opționale: lipsesc din meta scrise de versiuni vechi (guard-ul de scădere le ignoră). */
+  personCount?: number;
+  medicalRecordCount?: number;
 }
 
 export interface PendingUpload {

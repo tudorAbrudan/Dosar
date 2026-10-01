@@ -737,11 +737,18 @@ async function applyManifestBody(
   for (const p of (payload.serviceProviders as AnyRecord[]) ?? []) {
     try {
       const oldPropertyId = p.property_id as string | undefined;
-      const newPropertyId = oldPropertyId ? (propertyMap.get(oldPropertyId) ?? oldPropertyId) : null;
+      const newPropertyId = oldPropertyId
+        ? (propertyMap.get(oldPropertyId) ?? oldPropertyId)
+        : null;
       // Skip dacă există deja un furnizor identic pe aceeași proprietate
       const existingRows = await db.getAllAsync<{ id: string }>(
         `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
-        [newPropertyId, p.type as string, (p.provider_name as string | null) ?? null, (p.customer_code as string | null) ?? null]
+        [
+          newPropertyId,
+          p.type as string,
+          (p.provider_name as string | null) ?? null,
+          (p.customer_code as string | null) ?? null,
+        ]
       );
       if (existingRows.length > 0) {
         skipped++;
@@ -881,7 +888,23 @@ async function applyManifestBody(
   for (const r of (payload.medicalRecords as AnyRecord[]) ?? []) {
     try {
       const oldPersonId = r.person_id as string;
-      const newPersonId = personMap.get(oldPersonId) ?? oldPersonId;
+      let newPersonId = personMap.get(oldPersonId) ?? oldPersonId;
+      // Persoana dosarului poate lipsi din manifest (restore pe cod vechi, 2026-09-24).
+      // Cu FK ON, INSERT-ul ar pica și dosarul ar fi sărit TĂCUT, apoi starea redusă
+      // s-ar încărca peste backup-ul bun. Reparăm: persoană existentă cu același nume,
+      // altfel una nouă — datele medicale nu se pierd niciodată la restore.
+      const personExists = await db.getFirstAsync<{ id: string }>(
+        'SELECT id FROM persons WHERE id = ?',
+        [newPersonId]
+      );
+      if (!personExists) {
+        const recordName = ((r.name as string) || 'Persoană').trim();
+        const byName = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM persons WHERE LOWER(TRIM(name)) = ? AND id NOT IN (SELECT person_id FROM medical_record)',
+          [recordName.toLowerCase()]
+        );
+        newPersonId = byName?.id ?? (await entities.createPerson(recordName)).id;
+      }
       // UPSERT (nu INSERT OR REPLACE): cu FK ON, REPLACE = DELETE + INSERT, iar
       // DELETE-ul ar cascada pe medical_observations/threads/messages/shares. La
       // import ADITIV peste un dosar existent (același id) asta ar șterge copiii
@@ -1117,7 +1140,9 @@ async function applyManifestBody(
         const dismissedAt = (r.dismissed_at as string | null) ?? null;
         const newPerson = r.person_id ? (personMap.get(r.person_id as string) ?? null) : null;
         const newVehicle = r.vehicle_id ? (vehicleMap.get(r.vehicle_id as string) ?? null) : null;
-        const newProperty = r.property_id ? (propertyMap.get(r.property_id as string) ?? null) : null;
+        const newProperty = r.property_id
+          ? (propertyMap.get(r.property_id as string) ?? null)
+          : null;
         const newAnimal = r.animal_id ? (animalMap.get(r.animal_id as string) ?? null) : null;
         const newCard = r.card_id ? (cardMap.get(r.card_id as string) ?? null) : null;
 
