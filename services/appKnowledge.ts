@@ -200,6 +200,11 @@ Pentru task-urile cu prag pe luni, utilizatorul poate activa toggle-ul „Adaug�
     body: `Pe o proprietate (locație) poți înregistra furnizorii de utilități aferenți: curent electric, gaz, apă & canal, internet & TV, telefonie și salubritate. Fiecare furnizor se salvează cu: numele furnizorului, codul de client, codul locului de consum (POD) și telefonul de relații clienți (tap-to-call direct din aplicație). Datele pot fi completate automat prin scanarea unei facturi (OCR + AI extrage codul client și POD-ul). Navigare: Entități → deschide o proprietate → secțiunea „Furnizori utilități" → „Adaugă furnizor".`,
   },
   {
+    title: `Ordonarea documentelor unei entități`,
+    keywords: ['ordon', 'reordon', 'ordine', 'trage', 'drag', 'mut', 'sort'],
+    body: `În dosarul unei entități (persoană, vehicul, proprietate, card, animal, firmă) poți alege ordinea în care apar documentele. Navigare: Entități → deschide entitatea → secțiunea „Documente legate" → „Ordonează" → ține apăsat pe un document și trage-l în noua poziție → „Salvează". Ordinea e personală pe fiecare entitate (același document poate avea poziții diferite în entități diferite) și se păstrează în backup. Documentele adăugate ulterior apar primele. Butonul „Ordonează" apare doar când sunt cel puțin 2 documente și entitatea nu e partajată doar pentru citire.`,
+  },
+  {
     title: `Backup automat în iCloud`,
     keywords: ['backup', 'icloud', 'restaur', 'salvez', 'copie', 'sincroniz', 'export'],
     body: `Aplicația poate salva automat copii ale documentelor în iCloud Drive-ul personal al utilizatorului (folderul „Dosar" vizibil și în Files app). Datele sunt în iCloud-ul lui, nu trec printr-un server al nostru.

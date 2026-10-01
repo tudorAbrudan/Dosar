@@ -149,7 +149,8 @@ export async function exportBackup(): Promise<void> {
       document_id: string;
       entity_type: EntityType;
       entity_id: string;
-    }>('SELECT id, document_id, entity_type, entity_id FROM document_entities'),
+      sort_order: number | null;
+    }>('SELECT id, document_id, entity_type, entity_id, sort_order FROM document_entities'),
   ]);
 
   const personNames = new Map(persons.map(p => [p.id, p.name]));
@@ -1098,9 +1099,19 @@ async function applyManifestBody(
         if (!newDocId) continue; // documentul nu a fost importat
         const newEntityId = remapLinkEntityId(entityType, oldEntityId);
         if (!newEntityId) continue; // entitatea nu a fost importată → link orfan sărit
+        // UPSERT: legătura poate exista deja (recreată din coloanele legacy de
+        // createDocument) — completăm ordinea manuală fără să dublăm legătura.
         await db.runAsync(
-          'INSERT OR IGNORE INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)',
-          [generateId(), newDocId, entityType, newEntityId]
+          `INSERT INTO document_entities (id, document_id, entity_type, entity_id, sort_order)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(document_id, entity_type, entity_id) DO UPDATE SET sort_order = excluded.sort_order`,
+          [
+            generateId(),
+            newDocId,
+            entityType,
+            newEntityId,
+            (link.sort_order as number | null) ?? null,
+          ]
         );
       } catch (e) {
         errors.push(`Legătură document: ${e instanceof Error ? e.message : 'eroare'}`);

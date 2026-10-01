@@ -802,6 +802,11 @@ safeAlterTable('ALTER TABLE documents ADD COLUMN calendar_event_id TEXT');
 // Migrare: ai_summary (rezumat AI per document medical — spec 2026-05-24)
 safeAlterTable('ALTER TABLE documents ADD COLUMN ai_summary TEXT');
 
+// Migrare: ordinea manuală a documentelor în dosarul unei entități (drag & drop).
+// NULL = nereordonat → ordinea implicită (data emiterii). Documentele noi rămân NULL și
+// apar primele în entitățile deja reordonate.
+safeAlterTable('ALTER TABLE document_entities ADD COLUMN sort_order INTEGER');
+
 // Migrare: medical_reminders_prompted_at (timestamp prima decizie reminder — spec 2026-05-24, D10)
 safeAlterTable('ALTER TABLE documents ADD COLUMN medical_reminders_prompted_at TEXT');
 

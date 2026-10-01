@@ -74,6 +74,8 @@ interface ManifestPayload {
     document_id: string;
     entity_type: EntityType;
     entity_id: string;
+    /** Ordinea manuală în dosarul entității (drag & drop); null = nereordonat. */
+    sort_order: number | null;
   }[];
   entityOrder: { entity_type: EntityType; entity_id: string; sort_order: number }[];
   medicalRecords: MedicalRecord[];
@@ -186,7 +188,8 @@ export async function buildManifestPayload(): Promise<ManifestPayload> {
       document_id: string;
       entity_type: EntityType;
       entity_id: string;
-    }>('SELECT id, document_id, entity_type, entity_id FROM document_entities'),
+      sort_order: number | null;
+    }>('SELECT id, document_id, entity_type, entity_id, sort_order FROM document_entities'),
   ]);
 
   // fileMap: disk relPath → remote relPath. Sursa primară = locația reală

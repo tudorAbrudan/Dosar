@@ -407,17 +407,50 @@ export async function getDocumentsByEntity(
   id: string
 ): Promise<Document[]> {
   const entityType = kind.slice(0, -'_id'.length);
+  // Ordinea manuală (document_entities.sort_order) are prioritate; documentele fără
+  // valoare (nereordonate / adăugate după) vin PRIMELE, apoi ordinea implicită.
   const rows = await db.getAllAsync<Row>(
-    `SELECT * FROM documents d
+    `SELECT d.*,
+            (SELECT de2.sort_order FROM document_entities de2
+              WHERE de2.document_id = d.id
+                AND de2.entity_type = ?
+                AND de2.entity_id = ?) AS entity_sort_order
+       FROM documents d
       WHERE d.${kind} = ?
          OR EXISTS (SELECT 1 FROM document_entities de
                      WHERE de.document_id = d.id
                        AND de.entity_type = ?
                        AND de.entity_id = ?)
-      ${DOCUMENTS_ORDER_BY}`,
-    [id, entityType, id]
+      ORDER BY (entity_sort_order IS NOT NULL), entity_sort_order ASC,
+               CASE WHEN d.issue_date IS NULL OR d.issue_date = '' THEN 1 ELSE 0 END,
+               d.issue_date DESC,
+               d.created_at DESC`,
+    [entityType, id, id, entityType, id]
   );
   return rows.map(r => mapRow(r));
+}
+
+/**
+ * Salvează ordinea manuală a documentelor dintr-o entitate (după drag & drop).
+ * Scrie în `document_entities` (creează legătura dacă documentul era legat doar prin
+ * coloana legacy), într-o singură tranzacție. Ordinea e locală: nu se partajează.
+ */
+export async function setEntityDocumentOrder(
+  entityType: EntityType,
+  entityId: string,
+  orderedDocumentIds: string[]
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (let i = 0; i < orderedDocumentIds.length; i++) {
+      await db.runAsync(
+        `INSERT INTO document_entities (id, document_id, entity_type, entity_id, sort_order)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(document_id, entity_type, entity_id) DO UPDATE SET sort_order = excluded.sort_order`,
+        [generateId(), orderedDocumentIds[i], entityType, entityId, (i + 1) * 1000]
+      );
+    }
+  });
+  emit('documents:changed');
 }
 
 /**

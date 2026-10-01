@@ -21,7 +21,7 @@ import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useDocuments } from '@/hooks/useDocuments';
-import { getDocuments, linkDocumentToEntity } from '@/services/documents';
+import { getDocuments, linkDocumentToEntity, setEntityDocumentOrder } from '@/services/documents';
 import { toFileUri, toRelativePath } from '@/services/fileUtils';
 import { DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import type { Document as DocType, DocumentType, EntityType } from '@/types';
@@ -37,6 +37,7 @@ import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParall
 import { PersonContactCard } from '@/components/entity/PersonContactCard';
 import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
 import { DocumentRow } from '@/components/entity/DocumentRow';
+import { ReorderDocumentsModal } from '@/components/entity/ReorderDocumentsModal';
 import { VehicleEditFields } from '@/components/entity/VehicleEditFields';
 import { PersonEditFields } from '@/components/entity/PersonEditFields';
 import { CompanyEditFields } from '@/components/entity/CompanyEditFields';
@@ -91,6 +92,8 @@ export default function EntityDetailScreen() {
   const { customTypes } = useCustomTypes();
 
   const [documents, setDocuments] = useState<DocType[]>([]);
+  const [reorderVisible, setReorderVisible] = useState(false);
+  const [reorderSaving, setReorderSaving] = useState(false);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [entityName, setEntityName] = useState('');
@@ -522,7 +525,18 @@ export default function EntityDetailScreen() {
           <PropertyProvidersSection propertyId={id as string} readOnly={isReadOnly} />
         )}
 
-        <RNText style={[styles.sectionTitle, { color: C.textSecondary }]}>DOCUMENTE LEGATE</RNText>
+        <RNView style={styles.sectionHeader}>
+          <RNText
+            style={[styles.sectionTitle, styles.sectionTitleInline, { color: C.textSecondary }]}
+          >
+            DOCUMENTE LEGATE
+          </RNText>
+          {documents.length >= 2 && !isReadOnly && (
+            <Pressable onPress={() => setReorderVisible(true)} hitSlop={10}>
+              <RNText style={[styles.reorderLink, { color: primary }]}>Ordonează</RNText>
+            </Pressable>
+          )}
+        </RNView>
 
         {showFilter && (
           <FlatList
@@ -576,6 +590,28 @@ export default function EntityDetailScreen() {
           />
         ))}
       </Animated.ScrollView>
+
+      <ReorderDocumentsModal
+        visible={reorderVisible}
+        documents={documents}
+        customTypes={customTypes}
+        scheme={scheme}
+        saving={reorderSaving}
+        onClose={() => setReorderVisible(false)}
+        onSave={async orderedIds => {
+          if (!id) return;
+          setReorderSaving(true);
+          try {
+            await setEntityDocumentOrder(ENTITY_KIND_TO_TYPE[entityKind], id, orderedIds);
+            await loadDocs(entityKind, id);
+            setReorderVisible(false);
+          } catch (e) {
+            Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
+          } finally {
+            setReorderSaving(false);
+          }
+        }}
+      />
 
       {/* ── Bottom actions ── */}
       <BottomActionBar
@@ -724,6 +760,14 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
   sectionTitle: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, marginBottom: 10 },
+  sectionTitleInline: { marginBottom: 0 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  reorderLink: { fontSize: 13, fontWeight: '600' },
   empty: { fontSize: 14, marginBottom: 16, opacity: 0.7 },
 
   // Filter chips
