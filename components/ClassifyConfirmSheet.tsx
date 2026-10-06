@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { SheetHeader } from '@/components/ui/SheetHeader';
 import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -47,25 +48,13 @@ export function ClassifyConfirmSheet({ visible, top3, allowedTypes, onCancel, on
       onRequestClose={onCancel}
     >
       <View style={[styles.flex, { backgroundColor: C.background }]}>
-        <View style={[styles.header, { borderBottomColor: C.border }]}>
-          <Pressable onPress={onCancel} hitSlop={12}>
-            <Text style={[styles.action, { color: C.textSecondary }]}>Anulează</Text>
-          </Pressable>
-          <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
-            Confirmă tipul
-          </Text>
-          <Pressable onPress={handleConfirm} disabled={!selected} hitSlop={12}>
-            <Text
-              style={[
-                styles.action,
-                { color: primary, fontWeight: '600' },
-                !selected && styles.actionDisabled,
-              ]}
-            >
-              Confirmă
-            </Text>
-          </Pressable>
-        </View>
+        <SheetHeader
+          title="Confirmă tipul"
+          onCancel={onCancel}
+          onSave={handleConfirm}
+          saveLabel="Confirmă"
+          saveDisabled={!selected}
+        />
 
         <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
           {!browseAll ? (
@@ -154,17 +143,6 @@ export function ClassifyConfirmSheet({ visible, top3, allowedTypes, onCancel, on
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  header: {
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  title: { fontSize: 16, fontWeight: '600' },
-  action: { fontSize: 16 },
-  actionDisabled: { opacity: 0.4 },
   content: { padding: 16, gap: 8 },
   intro: { fontSize: 14, marginBottom: 8 },
   empty: { fontSize: 14, fontStyle: 'italic', textAlign: 'center', marginVertical: 24 },

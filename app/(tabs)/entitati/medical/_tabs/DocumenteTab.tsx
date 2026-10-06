@@ -410,8 +410,13 @@ export function DocumenteTab({ record }: Props) {
           <Text style={[styles.batchText, { color: palette.text }]}>
             Procesez {batchState.done}/{batchState.total} documente…
           </Text>
-          <Pressable onPress={cancelBatch}>
-            <Text style={{ color: primary, fontWeight: '600' }}>Anulează</Text>
+          <Pressable
+            onPress={cancelBatch}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Anulează"
+          >
+            <Ionicons name="close-circle" size={28} color={primary} />
           </Pressable>
         </View>
       ) : null}

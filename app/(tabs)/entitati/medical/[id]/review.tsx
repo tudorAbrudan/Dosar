@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import { SheetHeader } from '@/components/ui/SheetHeader';
 import {
   View,
   FlatList,
@@ -201,17 +202,7 @@ function EditObservationSheet({ observation, onClose, onSaved }: EditSheetProps)
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.modalContainer, { backgroundColor: palette.background }]}
       >
-        <View style={[styles.modalHeader, { borderBottomColor: palette.border }]}>
-          <Pressable onPress={onClose} disabled={saving}>
-            <Text style={{ color: palette.textSecondary, fontSize: 15 }}>Anulează</Text>
-          </Pressable>
-          <Text style={[styles.modalTitle, { color: palette.text }]}>Corectează</Text>
-          <Pressable onPress={handleSave} disabled={saving}>
-            <Text style={{ color: primary, fontSize: 15, fontWeight: '600' }}>
-              {saving ? 'Salvez...' : 'Salvează'}
-            </Text>
-          </Pressable>
-        </View>
+        <SheetHeader title="Corectează" onCancel={onClose} onSave={handleSave} saving={saving} />
 
         <View style={{ padding: 16, gap: 12 }}>
           <Field label="Nume" value={name} onChange={setName} palette={palette} />
@@ -303,15 +294,6 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', marginTop: 80, paddingHorizontal: 24 },
   emptyText: { fontSize: 15, marginTop: 12, textAlign: 'center' },
   modalContainer: { flex: 1 },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  modalTitle: { fontSize: 15, fontWeight: '600' },
   fieldLabel: { fontSize: 13, marginBottom: 4 },
   fieldInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 15 },
 });

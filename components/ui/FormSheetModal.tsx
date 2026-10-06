@@ -1,16 +1,8 @@
 import { ReactNode } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  KeyboardAvoidingView,
-  StyleSheet,
-} from 'react-native';
+import { Modal, ScrollView, KeyboardAvoidingView, StyleSheet } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { primary } from '@/theme/colors';
+import { SheetHeader } from '@/components/ui/SheetHeader';
 
 type Props = {
   visible: boolean;
@@ -54,29 +46,15 @@ export function FormSheetModal({
         behavior={undefined}
         style={[styles.flex, { backgroundColor: C.background }]}
       >
-        <View style={[styles.header, { borderBottomColor: C.border }]}>
-          <Pressable onPress={onClose} disabled={saving} hitSlop={12}>
-            <Text
-              style={[styles.action, { color: C.textSecondary }, saving && styles.actionDisabled]}
-            >
-              {cancelLabel}
-            </Text>
-          </Pressable>
-          <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
-            {title}
-          </Text>
-          <Pressable onPress={onSave} disabled={saving || saveDisabled} hitSlop={12}>
-            <Text
-              style={[
-                styles.action,
-                { color: primary, fontWeight: '600' },
-                (saving || saveDisabled) && styles.actionDisabled,
-              ]}
-            >
-              {saving ? 'Salvez...' : saveLabel}
-            </Text>
-          </Pressable>
-        </View>
+        <SheetHeader
+          title={title}
+          onCancel={onClose}
+          onSave={onSave}
+          cancelLabel={cancelLabel}
+          saveLabel={saveLabel}
+          saving={saving}
+          saveDisabled={saveDisabled}
+        />
 
         <ScrollView
           style={styles.flex}
@@ -94,16 +72,5 @@ export function FormSheetModal({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  title: { fontSize: 15, fontWeight: '600', flex: 1, textAlign: 'center', marginHorizontal: 8 },
-  action: { fontSize: 15 },
-  actionDisabled: { opacity: 0.5 },
   content: { padding: 16, gap: 16 },
 });

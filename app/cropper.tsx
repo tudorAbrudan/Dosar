@@ -17,16 +17,9 @@
  *   const croppedUri = await awaitCropper(requestId);
  */
 
+import { SheetHeader } from '@/components/ui/SheetHeader';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Image as RNImage,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Image as RNImage, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { cropPerspective, detectCorners } from '@/modules/expo-perspective-crop/src';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -145,34 +138,16 @@ export default function CropperScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: palette.background }]}>
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: palette.card, borderBottomColor: palette.border },
-        ]}
-      >
-        <Pressable onPress={handleCancel} hitSlop={12} disabled={busy}>
-          <Text style={[styles.action, { color: busy ? palette.textSecondary : palette.text }]}>
-            Anulează
-          </Text>
-        </Pressable>
-        <Text style={[styles.title, { color: palette.text }]}>
-          {progress ? `Decupează pagina ${progress}` : 'Decupează documentul'}
-        </Text>
-        <Pressable onPress={handleApply} hitSlop={12} disabled={busy || !ready}>
-          <Text
-            style={[
-              styles.action,
-              {
-                color: !ready ? palette.textSecondary : palette.primary,
-                fontWeight: '600',
-              },
-            ]}
-          >
-            Aplică
-          </Text>
-        </Pressable>
-      </View>
+      <SheetHeader
+        title={progress ? `Decupează pagina ${progress}` : 'Decupează documentul'}
+        onCancel={handleCancel}
+        onSave={handleApply}
+        cancelDisabled={busy}
+        saveLabel="Aplică"
+        saveDisabled={busy || !ready}
+        backgroundColor={palette.card}
+        paddingTop={56}
+      />
 
       <View style={styles.body}>
         {ready && imageSize && uri && initialCorners ? (
@@ -220,17 +195,6 @@ function clampCornersToImage(q: Quadrilateral, size: Size): Quadrilateral {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 56,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  title: { fontSize: 16, fontWeight: '600' },
-  action: { fontSize: 16 },
   body: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   detectingText: { fontSize: 13 },
