@@ -41,3 +41,11 @@ yarn-error.*
 /ios
 /android
 .worktrees/
+
+# Claude Code — setări personale + worktree-uri de agent (nu se comit)
+.claude/settings.local.json
+.claude/worktrees/
+
+# XcodeBuildMCP — doar config-ul de proiect e versionat
+.xcodebuildmcp/*
+!.xcodebuildmcp/config.yaml

@@ -4,6 +4,7 @@ Cronologic, descrescător. Front-matter pe fiecare fișier: `date`, `tags`, `tri
 
 | Data | Subiect | Tags |
 |---|---|---|
+| 2026-10-13 | [Hook-urile Claude Code citesc `tool_input`, nu rădăcina JSON-ului](2026-10-13-claude-hooks-tool-input.md) | claude-code, hooks, tooling, regression |
 | 2026-07-30 | [Date primite din exterior: scrie pe toate căile pe care UI-ul citește](2026-07-30-shared-docs-legacy-column.md) | sqlite, sharing, cloudkit, junction-table, regression |
 | 2026-07-30 | [`{succeeded, failed}` — `failed` nu se ignoră](2026-07-30-per-record-failures-swallowed.md) | cloudkit, error-handling, batch, diagnostics |
 | 2026-07-13 | [`UIGraphicsImageRenderer` folosește scala ecranului, nu 1×](2026-07-13-uigraphics-renderer-scale.md) | ios, swift, native-module, exif, coreimage, crop |
@@ -11,6 +12,7 @@ Cronologic, descrescător. Front-matter pe fiecare fișier: `date`, `tags`, `tri
 | 2026-04-22 | [iOS linker / pcm errors](2026-04-22-ios-linker-pcm.md) | ios, build, pods, xcode, linker |
 | 2026-04-20 | [Checklist modificări fișiere mari](2026-04-20-checklist-fisiere-mari.md) | refactoring, large-files, ai-development |
 | 2026-04-20 | [Image rerender alb după navigare](2026-04-20-image-rerender.md) | react-native, ios, navigation, image |
+| 2026-05-11 | [Lecții consolidate (refresh la focus, enum din DB, PIN hashed, propagare schemă)](2026-05-11-consolidated-root-lessons.md) | expo, navigation, typescript, security, sqlite |
 | 2026-04-20 | [`router.push` din Alert → ecran alb](2026-04-20-navigation-from-alert.md) | react-native, ios, navigation, alert |
 | 2026-03-23 | [`expo prebuild` + deployment target](2026-03-23-expo-build-properties.md) | expo, prebuild, ios, podfile |
 | 2026-03-15 | [Union types nu există la runtime](2026-03-15-union-types-runtime.md) | typescript, types, runtime |

@@ -1,3 +1,10 @@
+---
+paths:
+  - "services/**"
+  - "hooks/**"
+  - "ai-proxy/**"
+---
+
 # AI Privacy — câmpul `private_notes`
 
 ## Regulă critică

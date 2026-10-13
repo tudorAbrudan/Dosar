@@ -1,0 +1,12 @@
+# XcodeBuildMCP — config de proiect (versionat). Server-ul e declarat în .mcp.json.
+# Workflows minime: build/run/screenshot în simulator + tap/type/snapshot UI.
+# Pentru build pe device fizic adaugă "device" (vezi skill-ul run-ios).
+schemaVersion: 1
+enabledWorkflows: ["simulator", "ui-automation"]
+sentryDisabled: true
+sessionDefaults:
+  workspacePath: ./ios/Dosar.xcworkspace
+  scheme: Dosar
+  configuration: Debug
+  simulatorName: iPhone 17 Pro
+  bundleId: com.ax.documente

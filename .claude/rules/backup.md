@@ -1,22 +1,119 @@
-# Backup & restore
+---
+paths:
+  - "services/backup.ts"
+  - "services/cloudSync.ts"
+  - "services/db.ts"
+  - "app/(tabs)/setari.tsx"
+  - "hooks/**"
+---
+
+# Backup & Restore Patterns
 
 ## Arhitectură
-- **Format backup:** JSON cu toate entitățile (persons, properties, vehicles, cards, documents) + referințe la fișiere.
-- **Fișiere:** copiate din DocumentsDirectory în arhiva de backup.
-- **Trigger:** manual din Setări → Backup.
-- **Destinație iOS:** iCloud Drive via `expo-sharing` → Files app.
-- **Destinație Android:** Google Drive (Faza 2) sau download local.
 
-## Implementare
-- Serviciu: `services/backup.ts`.
-- Ecran: `app/(tabs)/setari.tsx` – secțiunea Backup & Restore.
-- Restaurare: picker fișier `.json` → import entități + copiere fișiere.
+| Component | Stocare | Note |
+|-----------|---------|------|
+| Fișiere documente | Device local (`expo-file-system` DocumentsDirectory) | Sursă primară |
+| Metadate (DB) | SQLite local (`expo-sqlite`) | Sursă primară |
+| Backup | ZIP manual + iCloud Drive (`cloudSync.ts`) | Copie externă (Apple-only) |
+| Format backup | **ZIP** (fișier `.zip`) conținând manifest JSON + fișiere organizate | Version 5 |
 
-## Reguli
-- Backup include TOATE entitățile și documentele (fără CVV, fără date sensibile din DB).
-- Versioning: include `version` și `exported_at` în JSON.
-- Restore: validează schema JSON înainte de import; nu suprascrie date existente fără confirmare.
-- Nu salva în cloud automat (privacy-first); doar la acțiunea explicită a utilizatorului.
+**Nu există backend pentru date.** Tot ce nu e pe device sau în iCloud e pierdut.
+
+## Format export (version 5 — curent)
+
+Fișier: `acte_backup_YYYY-MM-DD.zip`
+
+Structura ZIP:
+```
+acte_backup_2024-01-15.zip
+├── backup.json           ← manifest complet
+└── files/
+    ├── <NumeEntitate>/
+    │   └── <TipDocument>/
+    │       └── <fisier.jpg|pdf>
+    └── General/
+        └── <TipDocument>/
+            └── <fisier>
+```
+
+`backup.json` — structura completă:
+```json
+{
+  "version": 5,
+  "exportDate": "ISO string",
+  "persons": [...],
+  "properties": [...],
+  "vehicles": [...],
+  "cards": [...],
+  "animals": [...],
+  "companies": [...],
+  "customTypes": [...],
+  "documents": [...],
+  "documentPages": [...],
+  "fileMap": {
+    "documents/relativ/pe/disk.jpg": "NumeEntitate/TipDocument/fisier.jpg"
+  }
+}
+```
+
+`fileMap` este un obiect `diskRelativePath → zipRelativePath` (în interiorul `files/`).
+
+### Organizarea fișierelor în ZIP
+
+- Fiecare fișier merge în `files/<NumeEntitate>/<TipDocument>/<filename>`
+- Entitatea = persoana / vehiculul / proprietatea / animalul / firma / cardul asociat documentului; fallback: `General`
+- Cardurile: folderul e `<nickname> ····<last4>` sau `Card ····<last4>`
+- Caractere speciale din nume (`/ \ ? % * : | " < >`) → înlocuite cu `_`
+
+## Export (`exportBackup()`)
+
+1. Colectează în paralel: persons, properties, vehicles, cards, animals, companies, documents, documentPages, customTypes
+2. Construiește `fileMap` (disk → zip path) pentru documente și pagini
+3. Creează manifest JSON (`backup.json`)
+4. Adaugă fișierele ca base64 în ZIP sub `files/<zipRelPath>`
+5. Scrie ZIP în cache, îl deschide cu `expo-sharing` (Files/iCloud)
+
+## Import (`importBackup()`)
+
+Acceptă:
+- **ZIP** (`application/zip`) — format curent (version 5) și version 4
+- **JSON** (`application/json`) — format vechi (version 1–3), fișiere din câmpul `images`
+
+Pași:
+1. Picker fișier (ZIP sau JSON)
+2. Pentru ZIP: extrage `backup.json` + fișiere pe disk (folosind `fileMap` din manifest pentru reverse-map zip→disk)
+3. Import entități cu deduplicare:
+   - Persoane/Proprietăți/Vehicule/Animale: by `name` (case-insensitive)
+   - Carduri: by `last4 + nickname`
+   - Firme: by `cui` (primar) sau `name` (fallback)
+   - CustomTypes: by `name`
+   - Documente: by `type + issue_date + expiry_date`
+4. Remapare ID-uri vechi → noi pentru foreign keys
+5. Import documentPages cu noul `document_id`
+
+## Reguli de implementare
+
+- **Câmpuri noi în DB:** orice tabel sau coloană nouă se adaugă în `exportBackup()` (în manifest) și în `importBackup()` (în import loop)
+- **Entitate nouă:** adaugă în manifest, în `buildFileMap()`, în deduplicare import și în `fileMap` reverse
+- **Fișiere lipsă la export:** `readFileBase64` returnează `null` → fișierul e sărit, metadatele rămân în manifest
+- **Version bump:** la orice modificare incompatibilă de schemă, incrementează `version` în `exportBackup()` și adaugă branch de compatibilitate în `importBackup()`
+- **Progress:** UI cu ActivityIndicator pentru backup/restore (nu blocant)
+
+## Istoricul versiunilor
+
+| Version | Format | Schimbări |
+|---------|--------|-----------|
+| 1–3 | JSON | Fișiere în câmpul `images` |
+| 4 | ZIP | `files/` cu cale relativă din disk |
+| 5 | ZIP | `fileMap` explicit disk→zip; fișiere organizate pe entitate/tip; animals, companies, customTypes, documentPages |
+
+## Testare manuală
+
+1. Export complet → deschide ZIP → verifică structura `files/` și `backup.json`
+2. Dezinstalare app → reinstalare → import ZIP → verifică toate entitățile + fișierele
+3. Import cu fișier lipsă din ZIP → documentul apare, fără fișier atașat
+4. Import ZIP version 4 (fără `fileMap`) → fișierele se restaurează corect
 
 ## Cloud backup în iCloud (Faza 2 — implementat)
 

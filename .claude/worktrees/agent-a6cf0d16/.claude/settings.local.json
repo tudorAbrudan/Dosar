@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(ls \"/Users/ax/work/documents/app/app/\\(tabs\\)/documente/\" && ls \"/Users/ax/work/documents/app/app/\\(tabs\\)/entitati/\")",
-      "Bash(npx expo:*)",
-      "Read(//Users/ax/work/documents/**)"
-    ]
-  }
-}

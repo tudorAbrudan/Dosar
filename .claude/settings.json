@@ -2,6 +2,16 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
+  "permissions": {
+    "ask": [
+      "Bash(git reset --hard:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git clean:*)",
+      "Bash(git branch -D:*)",
+      "Bash(rm -rf:*)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -9,7 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"\nimport sys, json, re\ninput_data = json.load(sys.stdin)\ncmd = input_data.get('command', '')\ndangerous = ['rm -rf', 'git push --force', 'git reset --hard', 'git push -f', 'drop table', 'DROP TABLE']\nfor d in dangerous:\n    if d in cmd:\n        print(f'BLOCKED: Dangerous command detected: {d}')\n        sys.exit(2)\n\""
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-destructive.sh",
+            "timeout": 10
           }
         ]
       },
@@ -18,7 +29,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"\nimport sys, json\ninput_data = json.load(sys.stdin)\npath = input_data.get('file_path', '') or input_data.get('path', '')\nif '.env' in path and 'env.d.ts' not in path:\n    print('WARNING: Editing .env file - make sure no secrets are committed')\n\""
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/env-warn.sh",
+            "timeout": 10
           }
         ]
       }
@@ -29,19 +41,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/ax/work/documents/app/.claude/hooks/format-ts.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-ts.sh",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"\nimport sys, json\ndata = json.load(sys.stdin)\npath = data.get('file_path', '') or data.get('path', '')\ntriggers = [\n  ('types/index.ts', 'DOCUMENT_TYPE_LABELS sau tipuri de entități modificate → verifică: services/appKnowledge.ts (categorii DOC_CATEGORIES)'),\n  ('services/appKnowledge.ts', 'Cunoștințele aplicației modificate → testează chatbot-ul cu întrebări despre funcționalități'),\n]\nfor file_trigger, msg in triggers:\n  if file_trigger in path:\n    print(f'[SYNC REMINDER] {msg}')\n\""
-          },
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/backup-audit-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
           {
             "type": "command",
-            "command": "echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"\nimport sys, json, subprocess, os\ndata = json.load(sys.stdin)\npath = data.get('file_path', '') or data.get('path', '')\nif 'types/index.ts' in path or 'services/appKnowledge.ts' in path:\n    script = os.path.join(os.path.dirname(path.split('types')[0].split('services')[0].rstrip('/')), 'scripts/update-site.js')\n    # Găsim root-ul proiectului\n    parts = path.replace('\\\\\\\\', '/').split('/')\n    for i, p in enumerate(parts):\n        if p in ('types', 'services'):\n            root = '/'.join(parts[:i])\n            script_path = root + '/scripts/update-site.js'\n            if os.path.exists(script_path):\n                result = subprocess.run(['node', script_path], capture_output=True, text=True, cwd=root)\n                if result.returncode == 0:\n                    print('[AUTO-SYNC] docs/ actualizat cu succes')\n                else:\n                    print(f'[AUTO-SYNC] Eroare update-site: {result.stderr[:200]}')\n            break\n\""
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-gate.sh",
+            "timeout": 90,
+            "statusMessage": "Poarta DoD: type-check + backup-audit…"
           }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true
   }
 }

@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+/**
+ * reminder-consistency-audit.js
+ *
+ * Flag funcții din `services/documents.ts` care modifică `expiry_date` fără a apela
+ * `syncDocumentExpiryReminder` / `removeDocumentExpiryReminder` (reminder-ul rămâne pe data
+ * veche sau orfan). Origine: feature reminders unificate, 2026-06-01.
+ *
+ * Rulare: node scripts/reminder-consistency-audit.js   (warning-only)
+ */
 
 const fs = require('fs');
 const path = require('path');

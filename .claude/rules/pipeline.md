@@ -1,20 +1,32 @@
+---
+paths:
+  - ".github/**"
+  - ".env*"
+  - "app.json"
+  - "app.config.*"
+  - "eas.json"
+  - "package.json"
+  - "scripts/hooks/**"
+  - "ai-proxy/**"
+---
+
 # Pipeline și mediu
 
-## Comenzi de build
+## Comenzi
 - Dev: `npm start` (expo start --clear)
-- iOS: `npm run ios` (expo run:ios)
-- Android: `npm run android`
-- Prebuild: `npm run prebuild` (expo prebuild --clean)
+- iOS pe device: `npm run ios` (expo run:ios --device …); simulator: XcodeBuildMCP (vezi skill-ul `run-ios`)
+- Prebuild: `npm run prebuild` (expo prebuild --clean + `scripts/patch-*.js`) — regenerează `ios/` (gitignored)
+- Release: skill-ul `/release` (bump în app.json + package.json + `ios/Dosar/Info.plist` + pbxproj)
 
-## Calitate cod (înainte de commit)
-- `npm run type-check` – TypeScript fără erori
-- `npm run lint` – ESLint fără erori
-- `npm run format` – Prettier
+## Calitate cod
+- `npm run audit` — type-check + toate audit scripts + characterization tests + ast-grep (lista: `scripts/AUDITS.md`)
+- Pre-commit: `scripts/hooks/pre-commit` (activ prin `npm run setup-hooks`)
+- CI: `.github/workflows/audit.yml` (type-check, audituri principale, docs sincronizate, lint) + `test.yml` (jest)
 
 ## Secrets și .env
-- App nu are backend → nu există secrets sensibile.
-- Nu comite fișiere `.env` dacă există (ex. variabile de build).
-- `app.json` – configurare Expo; nu include informații sensibile.
+- Repo-ul e **public**. `.env` nu se comite niciodată.
+- `EXPO_PUBLIC_*` ajunge în bundle-ul App Store → niciodată chei API acolo. Cheile AI stau doar pe `ai-proxy/` (setate cu `danube rapids update … --env K=V`).
+- `EXPO_PUBLIC_DOSAR_AI_TOKEN` nu e cheie API (doar deschide poarta proxy-ului) — e allowlist-at în `expo-public-secrets-audit.js`.
 
 ## Structura de foldere
-- Nu crea foldere noi fără motiv. Structura curentă: `app/`, `components/`, `hooks/`, `services/`, `types/`, `theme/`, `constants/`, `assets/`.
+- Nu crea foldere noi fără motiv. Structura curentă: `app/`, `components/`, `hooks/`, `services/`, `types/`, `theme/`, `constants/`, `assets/`, `modules/`, `scripts/`, `ai-proxy/`.

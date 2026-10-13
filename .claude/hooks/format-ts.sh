@@ -1,38 +1,24 @@
-#!/bin/bash
-# Auto-format TypeScript/TSX files after Edit/Write tool use
-# Reads CLAUDE_TOOL_RESULT env var to determine which file was edited
+#!/usr/bin/env bash
+# PostToolUse (Edit|Write): prettier + eslint --fix pe fișierul .ts/.tsx editat.
+#
+# Stdin: JSON-ul hook-ului — calea e în .tool_input.file_path (NU la rădăcina JSON-ului).
+# Exit: mereu 0 (formatare, nu blocare). Type-check-ul rulează o dată pe tură, în stop-gate.sh.
 
-set -euo pipefail
+set -u
 
-# Get the file path from the tool input
-FILE=$(echo "$CLAUDE_TOOL_INPUT" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    path = data.get('file_path', '') or data.get('path', '')
-    print(path)
-except:
-    print('')
-" 2>/dev/null || echo "")
+file=$(jq -r '.tool_input.file_path // empty' 2>/dev/null)
+case "$file" in
+  *.ts|*.tsx) ;;
+  *) exit 0 ;;
+esac
+case "$file" in
+  */node_modules/*|*/ios/*|*/android/*|*/.worktrees/*) exit 0 ;;
+esac
+[ -f "$file" ] || exit 0
 
-# Only process TypeScript files
-if [[ -z "$FILE" ]] || [[ ! "$FILE" =~ \.(ts|tsx)$ ]]; then
-    exit 0
-fi
+app="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+cd "$app" || exit 0
 
-# Must exist
-if [[ ! -f "$FILE" ]]; then
-    exit 0
-fi
-
-APP_DIR="/Users/ax/work/documents/app"
-
-# Run prettier
-if command -v npx &>/dev/null; then
-    npx --prefix "$APP_DIR" prettier --write --log-level silent "$FILE" 2>/dev/null || true
-fi
-
-# Run eslint fix
-if command -v npx &>/dev/null; then
-    npx --prefix "$APP_DIR" eslint --fix --quiet "$FILE" 2>/dev/null || true
-fi
+node_modules/.bin/prettier --write --log-level silent "$file" >/dev/null 2>&1 || true
+node_modules/.bin/eslint --fix --quiet "$file" >/dev/null 2>&1 || true
+exit 0

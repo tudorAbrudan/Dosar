@@ -1,3 +1,13 @@
+---
+paths:
+  - "app/(tabs)/**"
+  - "components/**"
+  - "hooks/**"
+  - "types/index.ts"
+  - "services/entities.ts"
+  - "services/documents.ts"
+---
+
 # Tipuri și entități — sursă unică, niciodată hardcodate
 
 ## Regulă critică
