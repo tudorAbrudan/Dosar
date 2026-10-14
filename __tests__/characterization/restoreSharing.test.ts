@@ -43,6 +43,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let backup: typeof import('@/services/backup');
 let cloudShare: typeof import('@/services/cloudShare');
+let sharing: typeof import('@/services/sharing');
 
 beforeAll(() => {
   jest.resetModules();
@@ -51,6 +52,7 @@ beforeAll(() => {
     testDb = db as unknown as TestDb;
     backup = require('@/services/backup');
     cloudShare = require('@/services/cloudShare');
+    sharing = require('@/services/sharing');
   });
 });
 
@@ -129,5 +131,107 @@ describe('restaurare și partajare', () => {
     await restore;
     expect(restored).toBe(true);
     expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(1);
+  });
+});
+
+describe('restaurare — starea registrului de partajare', () => {
+  async function registerShare(
+    zone: string,
+    role: 'owner' | 'participant',
+    entityType: string,
+    entityId: string
+  ): Promise<void> {
+    await db.runAsync(
+      `INSERT INTO shared_entities (id, entity_type, entity_id, zone_name, role, created_at, change_token)
+       VALUES (?, ?, ?, ?, ?, ?, 'tok')`,
+      [`se-${zone}`, entityType, entityId, zone, role, TS]
+    );
+    await db.runAsync(
+      `INSERT INTO cloud_records (id, zone_name, record_name, record_type, local_table, local_id, change_tag)
+       VALUES (?, ?, ?, 'document', 'documents', ?, 'tag-1')`,
+      [`cr-${zone}`, zone, 'd-rca', 'd-rca']
+    );
+  }
+
+  async function queuePush(zone: string, record: string, op: string, kind: string): Promise<void> {
+    await db.runAsync(
+      `INSERT INTO pending_share_pushes (zone_name, record_name, op, scope, kind, attempt_count, created_at)
+       VALUES (?, ?, ?, 'private', ?, 0, 0)`,
+      [zone, record, op, kind]
+    );
+  }
+
+  it('proprietarul își regăsește partajarea pe entitatea restaurată, fără reset', async () => {
+    await registerShare('entity_vehicle_v-dacia', 'owner', 'vehicle', 'v-dacia');
+
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+
+    const share = await sharing.getShareForEntity('vehicle', 'v-dacia');
+    expect(share).not.toBeNull();
+    expect(share!.last_sync_error).toBeFalsy();
+    const row = testDb._raw
+      .prepare('SELECT change_token FROM shared_entities WHERE zone_name = ?')
+      .get('entity_vehicle_v-dacia') as { change_token: string | null };
+    expect(row.change_token).toBe('tok');
+    expect(
+      testDb._raw.prepare('SELECT COUNT(*) AS n FROM cloud_records').get() as { n: number }
+    ).toEqual({ n: 1 });
+  });
+
+  it('participantul primește un fetch complet la următorul sync', async () => {
+    await registerShare('entity_vehicle_v-dacia', 'participant', 'vehicle', 'v-dacia');
+
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+
+    const row = testDb._raw
+      .prepare('SELECT change_token FROM shared_entities WHERE zone_name = ?')
+      .get('entity_vehicle_v-dacia') as { change_token: string | null };
+    expect(row.change_token).toBeNull();
+    expect(
+      testDb._raw.prepare('SELECT COUNT(*) AS n FROM cloud_records').get() as { n: number }
+    ).toEqual({ n: 0 });
+  });
+
+  it('partajarea proprie a unei entități absente din backup e semnalată, nu revocată', async () => {
+    await registerShare('entity_vehicle_v-vanduta', 'owner', 'vehicle', 'v-vanduta');
+
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+
+    const row = testDb._raw
+      .prepare('SELECT revoked_at, last_sync_error FROM shared_entities WHERE zone_name = ?')
+      .get('entity_vehicle_v-vanduta') as { revoked_at: string | null; last_sync_error: string };
+    expect(row.revoked_at).toBeNull();
+    expect(row.last_sync_error).toMatch(/nu mai există/);
+  });
+
+  it('coada de push păstrează doar ce mai corespunde datelor restaurate', async () => {
+    const zone = 'entity_vehicle_v-dacia';
+    await registerShare(zone, 'owner', 'vehicle', 'v-dacia');
+    await queuePush(zone, 'd-rca', 'upsert', 'document'); // există → rămâne
+    await queuePush(zone, 'd-nou-dupa-backup', 'upsert', 'document'); // lipsește → ar fi tombstone, scos
+    await queuePush(zone, 'd-sters', 'delete', 'document'); // lipsește → ștergere legitimă, rămâne
+    await queuePush(zone, 'v-dacia', 'upsert', 'entity'); // există → rămâne
+
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+
+    const left = testDb._raw
+      .prepare('SELECT record_name, op FROM pending_share_pushes ORDER BY record_name')
+      .all() as { record_name: string; op: string }[];
+    expect(left).toEqual([
+      { record_name: 'd-rca', op: 'upsert' },
+      { record_name: 'd-sters', op: 'delete' },
+      { record_name: 'v-dacia', op: 'upsert' },
+    ]);
+  });
+
+  it('un delete în coadă pentru un rând readus de restaurare e scos', async () => {
+    await registerShare('entity_vehicle_v-dacia', 'owner', 'vehicle', 'v-dacia');
+    await queuePush('entity_vehicle_v-dacia', 'd-rca', 'delete', 'document');
+
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+
+    expect(
+      testDb._raw.prepare('SELECT COUNT(*) AS n FROM pending_share_pushes').get() as { n: number }
+    ).toEqual({ n: 0 });
   });
 });

@@ -22,6 +22,7 @@ import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
 import { waitForShareSyncIdle } from './cloudShare';
+import { resetShareStateAfterRestore } from './sharing';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
 import { createRestoreIdAllocator, rememberId } from './restoreIds';
@@ -347,6 +348,9 @@ export async function applyManifest(
         await wipeUserData();
       }
       result = await applyManifestBody(payload, options.wipeFirst === true);
+      if (options.wipeFirst) {
+        await resetShareStateAfterRestore();
+      }
     });
     return result;
   } finally {
