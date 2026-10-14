@@ -62,7 +62,7 @@ export interface Person {
   name: string;
   phone?: string;
   email?: string;
-  date_of_birth?: string;  // ISO date YYYY-MM-DD
+  date_of_birth?: string; // ISO date YYYY-MM-DD
   createdAt: string;
 }
 
@@ -110,7 +110,7 @@ export interface Company {
 
 export interface MedicalRecord {
   id: string;
-  person_id: string;          // FK la persons; 1:1 strict
+  person_id: string; // FK la persons; 1:1 strict
   name: string;
   ai_consent_at: string | null;
   ai_consent_version: number;
@@ -173,11 +173,11 @@ export interface MedicalObservation {
   id: string;
   medical_record_id: string;
   source_document_id: string | null;
-  name: string;              // decriptat
-  value: string | null;      // decriptat; string ca să accepte "pozitiv"/"negativ" + numeric
-  unit: string | null;       // plaintext
-  ref_min: string | null;    // decriptat
-  ref_max: string | null;    // decriptat
+  name: string; // decriptat
+  value: string | null; // decriptat; string ca să accepte "pozitiv"/"negativ" + numeric
+  unit: string | null; // plaintext
+  ref_min: string | null; // decriptat
+  ref_max: string | null; // decriptat
   observed_at: string | null; // plaintext (sortare)
   category: ObservationCategory;
   confidence: number;
@@ -217,7 +217,7 @@ export interface MedicalChatMessage {
   id: string;
   thread_id: string;
   role: MedicalChatRole;
-  content: string;          // decriptat
+  content: string; // decriptat
   citations: MedicalChatCitation[];
   created_at: string;
 }
@@ -877,6 +877,12 @@ export interface CloudSettings {
   ignoredCloudUploadedAt: number | null;
 }
 
+/** Salt-ul PBKDF2 și verificatorul parolei (base64), aceleași ca în SecureStore. */
+export interface CloudEncryptionParams {
+  salt: string;
+  verify: string;
+}
+
 export interface CloudManifestMeta {
   version: number;
   uploadedAt: number; // unix ms
@@ -888,6 +894,11 @@ export interface CloudManifestMeta {
   /** Opționale: lipsesc din meta scrise de versiuni vechi (guard-ul de scădere le ignoră). */
   personCount?: number;
   medicalRecordCount?: number;
+  /**
+   * Prezent când `encrypted`: permite deblocarea pe un telefon fără setup local
+   * (telefon nou, reinstalare). Lipsește din meta scrise de versiunile mai vechi.
+   */
+  encryption?: CloudEncryptionParams;
 }
 
 export interface PendingUpload {
@@ -916,7 +927,7 @@ export interface Reminder {
   animal_id: string | null;
   card_id: string | null;
   label: string;
-  reminder_date: string;          // YYYY-MM-DD
+  reminder_date: string; // YYYY-MM-DD
   calendar_event_id: string | null;
   origin: ReminderOrigin;
   created_at: string;

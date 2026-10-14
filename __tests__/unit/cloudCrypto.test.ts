@@ -49,6 +49,7 @@ jest.mock('expo-secure-store', () => {
 // eslint-disable-next-line import/first -- jest.mock factories must precede imports.
 import {
   PasswordRequiredError,
+  adoptEncryptionParams,
   clearPassword,
   decryptString,
   decryptToBase64,
@@ -56,10 +57,12 @@ import {
   encryptBase64,
   encryptString,
   generateSalt,
+  getEncryptionParams,
   isConfigured,
   isSessionUnlocked,
   setSessionKey,
   setupPassword,
+  unlockWithParams,
   unlockWithPassword,
 } from '@/services/cloudCrypto';
 
@@ -160,6 +163,54 @@ describe('cloudCrypto — setup/unlock with SecureStore', () => {
 
   it('setupPassword rejects too-short passwords', async () => {
     await expect(setupPassword('ab')).rejects.toThrow(/cel puțin 6/);
+  });
+});
+
+describe('cloudCrypto — parametri exportabili (restaurare pe telefon nou)', () => {
+  function wipeSecureStore(): void {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    (require('expo-secure-store') as { __reset: () => void }).__reset();
+    setSessionKey(null);
+  }
+
+  it('getEncryptionParams is null without setup and returns salt + verifier after it', async () => {
+    expect(await getEncryptionParams()).toBeNull();
+    await setupPassword('parola-buna');
+    const params = await getEncryptionParams();
+    expect(params?.salt).toEqual(expect.any(String));
+    expect(params?.verify).toEqual(expect.any(String));
+  });
+
+  it('unlockWithParams opens a backup on a phone with an empty SecureStore', async () => {
+    const original = await setupPassword('parola-buna');
+    const params = (await getEncryptionParams())!;
+    wipeSecureStore();
+
+    // Fără parametri locali, calea veche nu are cum să deblocheze.
+    await expect(unlockWithPassword('parola-buna')).rejects.toThrow(
+      'Criptarea nu este configurată'
+    );
+    const key = await unlockWithParams('parola-buna', params);
+    expect(Buffer.from(key).toString('hex')).toBe(Buffer.from(original).toString('hex'));
+    // Verificarea nu are efecte secundare: nimic persistat, sesiunea rămâne blocată.
+    expect(await isConfigured()).toBe(false);
+    expect(isSessionUnlocked()).toBe(false);
+  });
+
+  it('unlockWithParams rejects a wrong password with "Parolă incorectă"', async () => {
+    await setupPassword('parola-buna');
+    const params = (await getEncryptionParams())!;
+    wipeSecureStore();
+    await expect(unlockWithParams('parola-rea', params)).rejects.toThrow('Parolă incorectă');
+  });
+
+  it('adoptEncryptionParams lets the local unlock open the restored backup', async () => {
+    await setupPassword('parola-buna');
+    const params = (await getEncryptionParams())!;
+    wipeSecureStore();
+    await adoptEncryptionParams(params);
+    expect(await getEncryptionParams()).toEqual(params);
+    await expect(unlockWithPassword('parola-buna')).resolves.toHaveLength(32);
   });
 });
 

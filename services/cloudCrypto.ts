@@ -7,6 +7,11 @@
  *   parola corectă re-decriptează acel payload, parola greșită aruncă.
  * - **Persistă** doar `salt` și `verify_ciphertext` în SecureStore. Parola nu e
  *   stocată niciodată — doar cheia derivată trăiește în memorie pe durata sesiunii.
+ * - **Telefon nou:** aceiași doi parametri merg și în `manifest.meta.json`
+ *   (`CloudManifestMeta.encryption`), altfel backup-ul nu se poate debloca fără
+ *   SecureStore-ul telefonului vechi. Nu sunt secrete: salt-ul e public prin
+ *   definiție, iar verificatorul nu permite nimic în plus față de manifestul
+ *   criptat (oricine are manifestul poate deja încerca parole pe tag-ul GCM).
  *
  * IV-ul (12B) e prefixat în fiecare ciphertext: layout `iv || cipher_with_tag`,
  * apoi base64. Decriptarea reextrage IV-ul. Aceeași schemă pentru toate API-urile
@@ -18,6 +23,7 @@ import * as SecureStore from 'expo-secure-store';
 import { gcm } from '@noble/ciphers/aes.js';
 import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import type { CloudEncryptionParams } from '@/types';
 
 const PBKDF2_ITERATIONS = 100_000;
 const KEY_LEN = 32; // AES-256
@@ -288,30 +294,43 @@ export async function setupPassword(password: string): Promise<Uint8Array> {
   const salt = generateSalt();
   const key = await deriveKey(password, salt);
   const verifyCipher = await encryptString(VERIFY_PAYLOAD, key);
-  await SecureStore.setItemAsync(SALT_KEY, bytesToBase64(salt));
-  await SecureStore.setItemAsync(VERIFY_KEY, verifyCipher);
+  await adoptEncryptionParams({ salt: bytesToBase64(salt), verify: verifyCipher });
   return key;
 }
 
+/** Parametrii de criptare persistați pe acest telefon, sau null dacă nu există setup. */
+export async function getEncryptionParams(): Promise<CloudEncryptionParams | null> {
+  const salt = await SecureStore.getItemAsync(SALT_KEY);
+  const verify = await SecureStore.getItemAsync(VERIFY_KEY);
+  return salt && verify ? { salt, verify } : null;
+}
+
 /**
- * Verifică o parolă contra setup-ului persistat. Re-derivă cheia, încearcă să
- * decripteze `VERIFY_PAYLOAD` salvat. Match → returnează cheia (apelantul o setează
- * ca session key). Mismatch / tag invalid → aruncă cu mesaj românesc.
+ * Persistă parametrii unui backup (ex. după restaurarea pe un telefon nou) ca
+ * parola lui să deblocheze și backup-urile următoare de pe acest telefon.
  *
- * @throws cu „Parolă incorectă" la tag mismatch, „Criptarea nu este configurată"
- *   dacă `setupPassword` n-a fost apelat, sau citire SecureStore eșuează.
+ * @throws când scrierea în SecureStore eșuează.
  */
-export async function unlockWithPassword(password: string): Promise<Uint8Array> {
-  const saltB64 = await SecureStore.getItemAsync(SALT_KEY);
-  const verifyCipher = await SecureStore.getItemAsync(VERIFY_KEY);
-  if (!saltB64 || !verifyCipher) {
-    throw new Error('Criptarea nu este configurată');
-  }
-  const salt = base64ToBytes(saltB64);
-  const key = await deriveKey(password, salt);
+export async function adoptEncryptionParams(params: CloudEncryptionParams): Promise<void> {
+  await SecureStore.setItemAsync(SALT_KEY, params.salt);
+  await SecureStore.setItemAsync(VERIFY_KEY, params.verify);
+}
+
+/**
+ * Verifică o parolă contra unor parametri dați (locali sau din meta-ul backup-ului).
+ * Re-derivă cheia și decriptează verificatorul. Nu persistă nimic și nu setează
+ * cheia de sesiune — apelantul decide ce face cu ea.
+ *
+ * @throws „Parolă incorectă" la tag mismatch sau verificator diferit.
+ */
+export async function unlockWithParams(
+  password: string,
+  params: CloudEncryptionParams
+): Promise<Uint8Array> {
+  const key = await deriveKey(password, base64ToBytes(params.salt));
   let plain: string;
   try {
-    plain = await decryptString(verifyCipher, key);
+    plain = await decryptString(params.verify, key);
   } catch {
     throw new Error('Parolă incorectă');
   }
@@ -319,6 +338,21 @@ export async function unlockWithPassword(password: string): Promise<Uint8Array> 
     throw new Error('Parolă incorectă');
   }
   return key;
+}
+
+/**
+ * Verifică o parolă contra setup-ului persistat pe acest telefon. Match → returnează
+ * cheia (apelantul o setează ca session key). Mismatch / tag invalid → aruncă.
+ *
+ * @throws cu „Parolă incorectă" la tag mismatch, „Criptarea nu este configurată"
+ *   dacă `setupPassword` n-a fost apelat, sau citire SecureStore eșuează.
+ */
+export async function unlockWithPassword(password: string): Promise<Uint8Array> {
+  const params = await getEncryptionParams();
+  if (!params) {
+    throw new Error('Criptarea nu este configurată');
+  }
+  return unlockWithParams(password, params);
 }
 
 /**
@@ -342,7 +376,5 @@ export async function clearPassword(): Promise<void> {
  * curentă e deblocată sau nu).
  */
 export async function isConfigured(): Promise<boolean> {
-  const saltB64 = await SecureStore.getItemAsync(SALT_KEY);
-  const verifyCipher = await SecureStore.getItemAsync(VERIFY_KEY);
-  return !!(saltB64 && verifyCipher);
+  return (await getEncryptionParams()) !== null;
 }
