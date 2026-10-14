@@ -113,6 +113,7 @@ describe('runBackupNow', () => {
 
     expect(result).toEqual({
       ok: true,
+      changed: true,
       failedFiles: 0,
       error: null,
       passwordRequired: false,
@@ -120,6 +121,16 @@ describe('runBackupNow', () => {
     });
     expect(cloud.__files.has(MANIFEST)).toBe(true);
     expect(cloud.__files.has(META)).toBe(true);
+  });
+
+  it('a doua rulare fără modificări: reușită, dar nimic nou de urcat', async () => {
+    await addDocument('d-1', ON_DISK);
+    expect((await runBackupNow()).changed).toBe(true);
+
+    const result = await runBackupNow();
+
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(false);
   });
 
   it('un fișier care nu a putut fi urcat face backup-ul incomplet, nu reușit', async () => {
@@ -192,5 +203,24 @@ describe('uploadManifestIfChanged — dedup după conținut', () => {
       TS,
     ]);
     expect(await uploadManifestIfChanged()).toBe(true);
+  });
+
+  it('un manifest șters din iCloud se re-urcă, deși datele locale nu s-au schimbat', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    cloud.__files.delete(MANIFEST);
+
+    expect(await uploadManifestIfChanged()).toBe(true);
+    expect(cloud.__files.has(MANIFEST)).toBe(true);
+  });
+
+  it('un manifest suprascris de alt telefon se re-urcă', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    const other = { ...JSON.parse(cloud.__files.get(META) as string), hash: 'alt-hash' };
+    cloud.__files.set(META, JSON.stringify({ ...other, deviceId: 'device-B' }));
+
+    expect(await uploadManifestIfChanged()).toBe(true);
+    expect(JSON.parse(cloud.__files.get(META) as string).deviceId).toBe('device-A');
   });
 });

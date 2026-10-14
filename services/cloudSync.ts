@@ -322,7 +322,16 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   const hash = await hashManifestAsync(canonical);
 
   const state = await getCloudState();
-  if (state.last_manifest_hash === hash) {
+  // Snapshot al meta-ului din cloud: comparat cu hash-ul local și folosit la rollback.
+  const previousMeta = await readCloudMeta();
+  // Sărim upload-ul doar dacă iCloud are deja exact starea asta. Un manifest șters din
+  // iCloud sau suprascris de alt telefon se re-urcă, chiar dacă datele locale nu s-au
+  // schimbat de la ultimul upload.
+  if (
+    state.last_manifest_hash === hash &&
+    previousMeta?.hash === hash &&
+    (await cloudStorage.exists(MANIFEST_PATH))
+  ) {
     return false;
   }
 
@@ -354,9 +363,6 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
     medicalRecordCount: payload.medicalRecords.length,
     ...(encryption ? { encryption } : {}),
   };
-
-  // Snapshot al meta-ului anterior pentru rollback dacă manifestul eșuează după meta.
-  const previousMeta = await readCloudMeta();
 
   // Guard anti-pierdere: dacă starea locală e mult mai mică decât backup-ul din cloud,
   // păstrăm manifestul vechi ÎNAINTE să-l suprascriem. Dacă păstrarea eșuează, NU

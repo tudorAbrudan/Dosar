@@ -22,6 +22,8 @@ import { getFailedCount, getPendingCount } from './stats';
 export interface BackupNowResult {
   /** Tot ce era de urcat a ajuns în iCloud, inclusiv manifestul. */
   ok: boolean;
+  /** S-a urcat ceva (fișiere sau manifest); false = iCloud era deja la zi. */
+  changed: boolean;
   /** Fișiere rămase neurcate după rulare (eșuate acum sau blocate definitiv). */
   failedFiles: number;
   /** Motivul eșecului, pentru afișare; null când backup-ul a rulat până la capăt. */
@@ -43,6 +45,7 @@ export async function runBackupNow(
 ): Promise<BackupNowResult> {
   const result: BackupNowResult = {
     ok: false,
+    changed: false,
     failedFiles: 0,
     error: null,
     passwordRequired: false,
@@ -67,8 +70,9 @@ export async function runBackupNow(
       last = p;
       onProgress?.(p);
     });
+    result.changed = last.total > 0;
     onProgress?.({ ...last, phase: 'manifest' });
-    await uploadManifestIfChanged();
+    if (await uploadManifestIfChanged()) result.changed = true;
     onProgress?.({ ...last, phase: 'snapshot' });
     await maybeSnapshot(await getCloudSnapshotFrequency(), await getCloudSnapshotRetention());
   } catch (e) {

@@ -221,15 +221,12 @@ describe('backup criptat — meta vechi, fără parametri', () => {
   }
 
   /**
-   * Aplicația repornită (sesiune blocată) intră în fundal. Fără modificări upload-ul
-   * se oprește la hash; cu modificări cere parola — completarea meta-ului rulează
-   * înaintea ambelor.
+   * Aplicația repornită (sesiune blocată) intră în fundal fără modificări: upload-ul
+   * se oprește la hash, după ce a completat meta-ul.
    */
   async function backgroundWithLockedSession(): Promise<void> {
     crypto.setSessionKey(null);
-    await cloudSync.uploadManifestIfChanged().catch(e => {
-      expect(e).toBeInstanceOf(crypto.PasswordRequiredError);
-    });
+    await expect(cloudSync.uploadManifestIfChanged()).resolves.toBe(false);
   }
 
   it('telefonul care a făcut backup-ul completează meta fără să ceară parola', async () => {
@@ -238,6 +235,24 @@ describe('backup criptat — meta vechi, fără parametri', () => {
     await stripEncryptionFromMeta();
 
     await backgroundWithLockedSession();
+
+    expect(cloudMeta().encryption).toEqual(params);
+  });
+
+  it('completează meta și când datele s-au schimbat și upload-ul cere parola', async () => {
+    await backupFromPhoneA('parola-buna');
+    const params = await crypto.getEncryptionParams();
+    await stripEncryptionFromMeta();
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-2',
+      'Dacia',
+      TS,
+    ]);
+    crypto.setSessionKey(null);
+
+    await expect(cloudSync.uploadManifestIfChanged()).rejects.toBeInstanceOf(
+      crypto.PasswordRequiredError
+    );
 
     expect(cloudMeta().encryption).toEqual(params);
   });

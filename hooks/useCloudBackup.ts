@@ -50,6 +50,7 @@ interface State {
 
 const BACKUP_ALREADY_RUNNING: BackupNowResult = {
   ok: false,
+  changed: false,
   failedFiles: 0,
   error: 'Un backup rulează deja.',
   passwordRequired: false,

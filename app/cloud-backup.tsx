@@ -127,6 +127,8 @@ export default function CloudBackupScreen() {
         'Backup incomplet',
         `${n} ${n === 1 ? 'fișier nu a putut fi urcat' : 'fișiere nu au putut fi urcate'} în iCloud. Restul backup-ului e salvat.`
       );
+    } else if (!result.changed) {
+      Alert.alert('Backup', 'Backup-ul din iCloud era deja la zi. Nu a fost nimic nou de urcat.');
     } else {
       Alert.alert('Backup', 'Backup finalizat.');
     }
