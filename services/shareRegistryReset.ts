@@ -20,11 +20,13 @@ export const SHARE_ENTITY_MISSING_ERROR =
  * 1. Zonele primite (participant): token și `cloud_records` șterse → următorul sync
  *    face un fetch complet, idempotent pe ID-urile păstrate (readuce ce lipsește din
  *    backup, fără duplicate).
- * 2. Coada de push: un `upsert` al cărui rând local lipsește ar ajunge tombstone la
- *    flush (ștergere la participanți), iar un `delete` al cărui rând a reapărut ar
- *    șterge din zonă ceva ce există local — ambele se scot.
+ * 2. Coada de push: orice `upsert` se scoate — payload-ul se reconstruiește din DB la
+ *    flush, deci ar trimite starea din backup (mai veche) peste zonă, sau un tombstone
+ *    dacă rândul lipsește. Un `delete` al cărui rând a reapărut ar șterge din zonă ceva
+ *    ce există local — se scoate și el. Rămân doar ștergerile rândurilor care lipsesc.
  * 3. Partajările proprii a căror entitate lipsește primesc o eroare vizibilă; nu se
- *    revocă automat (restaurarea nu face nimic ireversibil în rețea).
+ *    revocă automat (restaurarea nu face nimic ireversibil în rețea). Când entitatea
+ *    e din nou pe telefon (restaurare după „Șterge toate datele"), eroarea dispare.
  *
  * Zonele proprii NU se resetează: fără `cloud_records`, un pull ar rescrie
  * `file_path` la documentele proprii spre copii din `shared/…`.
@@ -57,6 +59,11 @@ export async function resetShareStateAfterWipe(): Promise<void> {
         SHARE_ENTITY_MISSING_ERROR,
         s.zone_name,
       ]);
+    } else {
+      await db.runAsync(
+        'UPDATE shared_entities SET last_sync_error = NULL WHERE zone_name = ? AND last_sync_error = ?',
+        [s.zone_name, SHARE_ENTITY_MISSING_ERROR]
+      );
     }
   }
 
@@ -68,6 +75,10 @@ export async function resetShareStateAfterWipe(): Promise<void> {
     kind: string;
   }>('SELECT id, zone_name, record_name, op, kind FROM pending_share_pushes');
   for (const row of pending) {
+    if (row.op !== 'delete') {
+      await db.runAsync('DELETE FROM pending_share_pushes WHERE id = ?', [row.id]);
+      continue;
+    }
     let table: string | undefined = 'documents';
     if (row.kind === 'entity') {
       const parsed = parseZoneName(row.zone_name);
@@ -77,8 +88,7 @@ export async function resetShareStateAfterWipe(): Promise<void> {
     const exists = await db.getFirstAsync<{ id: string }>(`SELECT id FROM ${table} WHERE id = ?`, [
       row.record_name,
     ]);
-    const stale = row.op === 'delete' ? !!exists : !exists;
-    if (stale) await db.runAsync('DELETE FROM pending_share_pushes WHERE id = ?', [row.id]);
+    if (exists) await db.runAsync('DELETE FROM pending_share_pushes WHERE id = ?', [row.id]);
   }
   emit('sharing:changed');
 }
