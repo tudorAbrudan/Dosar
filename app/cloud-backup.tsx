@@ -180,7 +180,10 @@ export default function CloudBackupScreen() {
         Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
         await cloudRefresh();
       } catch (e) {
-        if (e instanceof PasswordRequiredError) {
+        // Fără cheie: cere parola. Cu o cheie deja introdusă, eroarea spune de ce nu
+        // merge (ex. parola nu decriptează manifestul) — redeschiderea modalului ar
+        // repeta la infinit, fără explicație.
+        if (e instanceof PasswordRequiredError && !key) {
           askPasswordAfterProgressRef.current = true;
         } else {
           const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
@@ -199,7 +202,7 @@ export default function CloudBackupScreen() {
       try {
         estimate = await estimateRestoreSize(key);
       } catch (e) {
-        if (e instanceof PasswordRequiredError) {
+        if (e instanceof PasswordRequiredError && !key) {
           setPendingAfterUnlock('restore');
           setPwModalMode('unlock');
           return;
