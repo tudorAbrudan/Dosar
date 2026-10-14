@@ -37,6 +37,7 @@ let applyManifest: typeof import('@/services/backup').applyManifest;
 let buildManifestPayload: typeof import('@/services/cloudSync').buildManifestPayload;
 let getMedicalRecordByPersonId: typeof import('@/services/medicalRecord').getMedicalRecordByPersonId;
 let getDocumentEntityLinks: typeof import('@/services/documents').getDocumentEntityLinks;
+let fs: { getInfoAsync: jest.Mock; copyAsync: jest.Mock };
 
 beforeAll(() => {
   jest.resetModules();
@@ -47,6 +48,7 @@ beforeAll(() => {
     buildManifestPayload = require('@/services/cloudSync').buildManifestPayload;
     getMedicalRecordByPersonId = require('@/services/medicalRecord').getMedicalRecordByPersonId;
     getDocumentEntityLinks = require('@/services/documents').getDocumentEntityLinks;
+    fs = require('expo-file-system/legacy');
   });
 });
 
@@ -409,5 +411,82 @@ describe('restaurarea păstrează entitățile distincte cu același nume', () =
     expect(persons).toHaveLength(3);
     expect(persons.find(p => p.name === 'Ana')!.id).toBe('p-dup');
     expect(persons.find(p => p.name === 'Bob')!.id).not.toBe('p-dup');
+  });
+});
+
+describe('restaurarea păstrează ID-urile documentelor, paginilor și pozelor', () => {
+  it('documentele își păstrează ID-ul, iar tot ce le referă arată spre el', async () => {
+    await roundTrip();
+
+    const docIds = (
+      testDb._raw.prepare('SELECT id FROM documents ORDER BY id').all() as { id: string }[]
+    ).map(r => r.id);
+    expect(docIds).toEqual([D_ALT_A, D_ALT_B, D_MED, D_RCA].sort());
+    const obs = testDb._raw
+      .prepare('SELECT DISTINCT source_document_id AS d FROM medical_observations')
+      .all() as { d: string }[];
+    expect(obs).toEqual([{ d: D_MED }]);
+    const summary = testDb._raw
+      .prepare('SELECT document_id AS d FROM medical_document_summaries')
+      .get() as { d: string };
+    expect(summary.d).toBe(D_MED);
+    const medAi = testDb._raw
+      .prepare("SELECT document_id AS d FROM reminders WHERE source_type = 'medical_ai'")
+      .get() as { d: string };
+    expect(medAi.d).toBe(D_MED);
+    const altLinks = (await getDocumentEntityLinks(D_ALT_A))
+      .filter(l => l.entityType === 'person')
+      .map(l => l.entityId)
+      .sort();
+    expect(altLinks).toEqual([P1, P2].sort());
+  });
+
+  it('paginile își păstrează ID-ul, inclusiv formatul de participant `<doc>__p__<pagină>`', async () => {
+    await db.runAsync(
+      `INSERT INTO documents (id, type, file_path, created_at) VALUES ('d-x', 'altul', 'documents/x.jpg', ?)`,
+      [TS]
+    );
+    await db.runAsync(
+      `INSERT INTO document_pages (id, document_id, page_order, file_path, created_at)
+       VALUES ('pg-1', 'd-x', 0, 'documents/x-p1.jpg', ?), ('d-x__p__pg-2', 'd-x', 1, 'shared/z/x-p2.jpg', ?)`,
+      [TS, TS]
+    );
+    const payload = await buildManifestPayload();
+
+    await applyManifest(payload as unknown as Record<string, unknown>, { wipeFirst: true });
+
+    const pages = testDb._raw
+      .prepare('SELECT id, page_order FROM document_pages ORDER BY page_order')
+      .all() as { id: string; page_order: number }[];
+    expect(pages).toEqual([
+      { id: 'pg-1', page_order: 0 },
+      { id: 'd-x__p__pg-2', page_order: 1 },
+    ]);
+  });
+
+  it('poza vehiculului rămâne la calea ei, fără o copie nouă', async () => {
+    await db.runAsync(
+      `INSERT INTO vehicles (id, name, photo_uri, created_at) VALUES ('v-foto', 'Logan', 'vehicles/v-foto.jpg', ?)`,
+      [TS]
+    );
+    const payload = await buildManifestPayload();
+    fs.getInfoAsync.mockImplementation(async (uri: string) => ({
+      exists: uri.endsWith('vehicles/v-foto.jpg'),
+      isDirectory: false,
+    }));
+    fs.copyAsync.mockClear();
+
+    try {
+      await applyManifest(payload as unknown as Record<string, unknown>, { wipeFirst: true });
+    } finally {
+      fs.getInfoAsync.mockResolvedValue({ exists: false, isDirectory: false });
+    }
+
+    const v = testDb._raw.prepare('SELECT id, photo_uri FROM vehicles').get() as {
+      id: string;
+      photo_uri: string | null;
+    };
+    expect(v).toEqual({ id: 'v-foto', photo_uri: 'vehicles/v-foto.jpg' });
+    expect(fs.copyAsync).not.toHaveBeenCalled();
   });
 });

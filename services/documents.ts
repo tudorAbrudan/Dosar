@@ -14,7 +14,14 @@ import {
   removeDocumentExpiryReminder,
   deleteRemindersByDocument,
 } from './reminders';
-import type { Document, DocumentPage, DocumentType, DocumentEntityLink, EntityType } from '@/types';
+import type {
+  CreateRowOptions,
+  Document,
+  DocumentPage,
+  DocumentType,
+  DocumentEntityLink,
+  EntityType,
+} from '@/types';
 import { ALL_ENTITY_TYPES, MEDICAL_DOC_TYPES, NO_EXPIRY_DOC_TYPES } from '@/types';
 
 // Detecția de duplicat folosește prefixul OCR normalizat. Sub acest prag în
@@ -546,8 +553,11 @@ async function triggerMedicalExtraction(
   }
 }
 
-export async function createDocument(input: CreateDocumentInput): Promise<Document> {
-  const id = generateId();
+export async function createDocument(
+  input: CreateDocumentInput,
+  opts: CreateRowOptions = {}
+): Promise<Document> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
 
   let file_hash: string | null = null;
@@ -971,7 +981,11 @@ export async function getDocumentEntityLinks(documentId: string): Promise<Docume
   return getEntityLinks(documentId);
 }
 
-export async function addDocumentPage(documentId: string, filePath: string): Promise<string> {
+export async function addDocumentPage(
+  documentId: string,
+  filePath: string,
+  opts: CreateRowOptions = {}
+): Promise<string> {
   // Același fișier nu poate fi două pagini (ar fi rotit/șters împreună) → idempotent.
   if (filePath) {
     const existing = await db.getFirstAsync<{ id: string }>(
@@ -985,7 +999,7 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
     [documentId]
   );
   const nextOrder = (maxOrder?.max ?? -1) + 1;
-  const pageId = generateId();
+  const pageId = opts.id ?? generateId();
   await db.runAsync(
     'INSERT INTO document_pages (id, document_id, page_order, file_path, created_at) VALUES (?, ?, ?, ?, ?)',
     [pageId, documentId, nextOrder, filePath, new Date().toISOString()]

@@ -827,37 +827,40 @@ async function applyManifestBody(
       if (!wipeFirst) {
         const existingDocId = existingDocByKey.get(docKey);
         if (existingDocId) {
-          if (d.id) docIdMap.set(d.id as string, existingDocId);
+          rememberId(docIdMap, d.id, existingDocId);
           skipped++;
           continue;
         }
       }
       const filePath = d.file_path ? toRelativePath(d.file_path as string) : undefined;
-      const created = await docs.createDocument({
-        type: d.type as DocumentType,
-        custom_type_id: d.custom_type_id
-          ? (customTypeMap.get(d.custom_type_id as string) ?? undefined)
-          : undefined,
-        issue_date: (d.issue_date as string) || undefined,
-        expiry_date: (d.expiry_date as string) || undefined,
-        note: (d.note as string) || undefined,
-        file_path: filePath || undefined,
-        ocr_text: (d.ocr_text as string) || undefined,
-        auto_delete: (d.auto_delete as string) || undefined,
-        private_notes: (d.private_notes as string) || undefined,
-        metadata: d.metadata
-          ? typeof d.metadata === 'string'
-            ? (JSON.parse(d.metadata) as Record<string, string>)
-            : (d.metadata as Record<string, string>)
-          : undefined,
-        person_id: d.person_id ? personMap.get(d.person_id as string) : undefined,
-        property_id: d.property_id ? propertyMap.get(d.property_id as string) : undefined,
-        vehicle_id: d.vehicle_id ? vehicleMap.get(d.vehicle_id as string) : undefined,
-        card_id: d.card_id ? cardMap.get(d.card_id as string) : undefined,
-        animal_id: d.animal_id ? animalMap.get(d.animal_id as string) : undefined,
-        company_id: d.company_id ? companyMap.get(d.company_id as string) : undefined,
-      });
-      if (d.id) docIdMap.set(d.id as string, created.id);
+      const created = await docs.createDocument(
+        {
+          type: d.type as DocumentType,
+          custom_type_id: d.custom_type_id
+            ? (customTypeMap.get(d.custom_type_id as string) ?? undefined)
+            : undefined,
+          issue_date: (d.issue_date as string) || undefined,
+          expiry_date: (d.expiry_date as string) || undefined,
+          note: (d.note as string) || undefined,
+          file_path: filePath || undefined,
+          ocr_text: (d.ocr_text as string) || undefined,
+          auto_delete: (d.auto_delete as string) || undefined,
+          private_notes: (d.private_notes as string) || undefined,
+          metadata: d.metadata
+            ? typeof d.metadata === 'string'
+              ? (JSON.parse(d.metadata) as Record<string, string>)
+              : (d.metadata as Record<string, string>)
+            : undefined,
+          person_id: d.person_id ? personMap.get(d.person_id as string) : undefined,
+          property_id: d.property_id ? propertyMap.get(d.property_id as string) : undefined,
+          vehicle_id: d.vehicle_id ? vehicleMap.get(d.vehicle_id as string) : undefined,
+          card_id: d.card_id ? cardMap.get(d.card_id as string) : undefined,
+          animal_id: d.animal_id ? animalMap.get(d.animal_id as string) : undefined,
+          company_id: d.company_id ? companyMap.get(d.company_id as string) : undefined,
+        },
+        { id: await ids.claim('documents', d.id) }
+      );
+      rememberId(docIdMap, d.id, created.id);
       // NU adăugăm docKey în existingDocByKey: documentele din același manifest nu
       // se dedupe între ele (vezi comentariul de mai sus). Harta rămâne snapshot-ul
       // rândurilor preexistente în DB.
@@ -910,7 +913,11 @@ async function applyManifestBody(
       const newDocId = docIdMap.get(page.document_id as string);
       if (!newDocId) continue;
       const filePath = toRelativePath(page.file_path as string);
-      const newPageId = await docs.addDocumentPage(newDocId, filePath);
+      // ID-ul paginii păstrat contează la partajare: recordul CloudKit al paginii
+      // se numește după el (`<doc>__p__<pagină>`), iar la participant e chiar ID-ul.
+      const newPageId = await docs.addDocumentPage(newDocId, filePath, {
+        id: await ids.claim('document_pages', page.id),
+      });
       if (page.orientation_locked === true || page.orientation_locked === 1) {
         await docs.lockPageOrientation(newPageId);
       }
