@@ -16,6 +16,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, statusColors } from '@/theme/colors';
 import { db } from '@/services/db';
 import { batchReExtract, estimateBatch, type BatchDocReport } from '@/services/medicalExtractor';
+import { DAILY_AI_LIMIT } from '@/services/aiProvider';
 import {
   getObservationCountsByDocument,
   type DocumentObservationStats,
@@ -213,9 +214,14 @@ export function DocumenteTab({ record }: Props) {
         e.already_extracted > 0
           ? `\n(${e.already_extracted} documente cu observații deja extrase vor fi sărite.)`
           : '';
+      // Pe Dosar AI (limită zilnică) lotul poate depăși cererile rămase azi —
+      // spunem dinainte, nu după ce jumătate din documente au eșuat.
+      const limitNote = e.blocked_by_limit
+        ? `\n\nAzi mai ai ${e.remaining_today} din ${DAILY_AI_LIMIT} cereri Dosar AI, deci doar o parte din documente vor fi procesate. Restul le poți relua mâine.`
+        : '';
       Alert.alert(
         'Extrage observații',
-        `Vor fi procesate ${e.to_process} documente (~${e.estimated_calls} apeluri AI).${skipNote}\n\nContinui?`,
+        `Vor fi procesate ${e.to_process} documente (~${e.estimated_calls} cereri AI).${skipNote}${limitNote}\n\nContinui?`,
         [
           { text: 'Anulează', style: 'cancel' },
           {
@@ -308,8 +314,7 @@ export function DocumenteTab({ record }: Props) {
           const dateLabel = item.issue_date ?? 'Fără dată';
           // Când nu există un emitent distinct, identifier === eticheta tipului →
           // afișăm doar data în subtitlu ca să nu repetăm tipul de două ori.
-          const subtitle =
-            identifier === typeLabel ? dateLabel : `${typeLabel} · ${dateLabel}`;
+          const subtitle = identifier === typeLabel ? dateLabel : `${typeLabel} · ${dateLabel}`;
           return (
             <Pressable
               style={[styles.row, { backgroundColor: palette.card, borderColor: palette.border }]}
@@ -340,10 +345,7 @@ export function DocumenteTab({ record }: Props) {
                 accessibilityLabel={badge.a11y}
               >
                 <Ionicons name={badge.icon} size={12} color={badge.fg} />
-                <Text
-                  style={[styles.extractBadgeText, { color: badge.fg }]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.extractBadgeText, { color: badge.fg }]} numberOfLines={1}>
                   {badge.label}
                 </Text>
               </View>

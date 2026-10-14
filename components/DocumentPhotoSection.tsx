@@ -88,11 +88,11 @@ export function DocumentPhotoSection({
               {ocrLoading ? (
                 <View style={styles.ocrLoadingRow}>
                   <ActivityIndicator size="small" color={primary} />
-                  <Text style={styles.ocrLoadingText}> OCR...</Text>
+                  <Text style={styles.ocrLoadingText}> Citesc textul...</Text>
                 </View>
               ) : (
                 <Text style={styles.actionBtnText}>
-                  🔍 OCR{pages.length > 1 ? ` (${pages.length})` : ''}
+                  🔍 Citește textul{pages.length > 1 ? ` (${pages.length})` : ''}
                 </Text>
               )}
             </Pressable>

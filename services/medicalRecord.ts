@@ -6,8 +6,10 @@
  * cu tabelul `persons` (UNIQUE constraint pe person_id).
  *
  * Consent AI:
- * - `ai_consent_at` = ISO timestamp setat la primul accept din modalul de consent.
- * - `ai_consent_version` permite re-prompt la schimbarea textului legal.
+ * - `ai_consent_at` = ISO timestamp setat la accept în modalul de consent.
+ * - `ai_consent_version` = versiunea textului acceptat. Un acord pe un text mai
+ *   vechi decât `MEDICAL_AI_CONSENT_VERSION` nu mai e valid → dosarul cere din
+ *   nou acordul. Verificarea se face DOAR prin `isMedicalAiConsentValid`.
  *
  * Decryption note: niciun câmp din `medical_record` nu e criptat. Datele
  * sensibile sunt în `medical_observations` și `medical_chat_messages`.
@@ -16,7 +18,25 @@ import { db, generateId } from './db';
 import { assignNextOrder, removeOrder } from './entityOrder';
 import { emit } from './events';
 import { getPendingReminders, type ActionableItem } from './documents';
+import { setAiMedicalAllowed } from './settings';
 import type { MedicalRecord, Person } from '@/types';
+
+/**
+ * Versiunea curentă a textului de consimțământ AI medical (MedicalConsentModal).
+ *
+ * v2 (2026-10-13): textul spune că „Dosar AI" trece prin serverul aplicației
+ * (v1 afirma „fără server intermediar", fals de la 3.15.0) și că, pe modelul
+ * local, pozele pleacă în cloud dacă userul a activat citirea imaginilor acolo.
+ */
+export const MEDICAL_AI_CONSENT_VERSION = 2;
+
+/** Acordul AI al dosarului e dat ȘI pe textul curent de consimțământ. */
+export function isMedicalAiConsentValid(rec: {
+  ai_consent_at: string | null;
+  ai_consent_version?: number | null;
+}): boolean {
+  return !!rec.ai_consent_at && (rec.ai_consent_version ?? 1) >= MEDICAL_AI_CONSENT_VERSION;
+}
 
 // Coloana `encryption_key_ref` rămâne în schemă (NOT NULL) dar nu mai referă o cheie reală.
 const MEDICAL_ENCRYPTION_REF = 'plaintext-v2';
@@ -184,17 +204,18 @@ export async function updateMedicalRecord(
 }
 
 /**
- * Acceptă consimțământul AI medical pentru un dosar. Setează `ai_consent_at`
- * la timestamp-ul curent. `ai_consent_version` rămâne (e setat la create cu
- * versiunea curentă a textului legal).
+ * Acceptă consimțământul AI medical pentru un dosar, pe textul curent
+ * (`MEDICAL_AI_CONSENT_VERSION`). Pornește și întrerupătorul general din Setări:
+ * cine acceptă explicit pe un dosar vrea să-l folosească — altfel acordul ar
+ * rămâne blocat tăcut de un comutator oprit (indiferent de unde s-a acceptat).
  */
 export async function setAiConsent(id: string): Promise<void> {
   const now = new Date().toISOString();
-  await db.runAsync('UPDATE medical_record SET ai_consent_at = ?, updated_at = ? WHERE id = ?', [
-    now,
-    now,
-    id,
-  ]);
+  await db.runAsync(
+    'UPDATE medical_record SET ai_consent_at = ?, ai_consent_version = ?, updated_at = ? WHERE id = ?',
+    [now, MEDICAL_AI_CONSENT_VERSION, now, id]
+  );
+  await setAiMedicalAllowed(true);
   emit('entities:changed');
 }
 
@@ -270,15 +291,15 @@ export async function getMedicalRecordStats(id: string): Promise<MedicalRecordSt
 }
 
 /**
- * True dacă dosarul are AI consent activ. False altfel (consent revocat sau
- * niciodată acordat).
+ * True dacă dosarul are AI consent valid. False altfel (consent revocat,
+ * niciodată acordat sau dat pe un text de consimțământ mai vechi).
  */
 export async function hasActiveAiConsent(id: string): Promise<boolean> {
-  const row = await db.getFirstAsync<{ ai_consent_at: string | null }>(
-    'SELECT ai_consent_at FROM medical_record WHERE id = ?',
-    [id]
-  );
-  return row?.ai_consent_at != null;
+  const row = await db.getFirstAsync<{
+    ai_consent_at: string | null;
+    ai_consent_version: number | null;
+  }>('SELECT ai_consent_at, ai_consent_version FROM medical_record WHERE id = ?', [id]);
+  return !!row && isMedicalAiConsentValid(row);
 }
 
 /**

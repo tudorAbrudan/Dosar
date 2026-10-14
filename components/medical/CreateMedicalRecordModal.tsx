@@ -226,7 +226,8 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
                 Activează asistent AI
               </Text>
               <Text style={[styles.toggleHint, { color: palette.textSecondary }]}>
-                Extracție automată din documente + chat specializat. Necesită consimțământ GDPR.
+                Extracție automată din documente + chat al dosarului. Îți cerem acordul explicit
+                (GDPR Art. 9).
               </Text>
             </View>
             <Switch

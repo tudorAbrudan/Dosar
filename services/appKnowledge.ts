@@ -148,7 +148,7 @@ const KNOWLEDGE_SECTIONS: { title: string; keywords: string[]; body: string }[] 
 - **„Adaugă PDF"** — atașează un PDF din file picker.
 - **Share din altă aplicație** — în Photos, Files sau Safari selectezi o poză (sau mai multe) ori un PDF → Share → Dosar. Aplicația se deschide direct pe ecranul Adaugă document cu fișierele preîncărcate; mai multe poze devin pagini ale aceluiași document, fiecare trecând prin decupare.
 
-După atașarea fișierului, OCR-ul rulează automat și AI-ul propune tipul documentului (clasificare automată) plus completează câmpurile detectate (date, numere, entități). Utilizatorul poate confirma sau modifica tipul propus înainte de salvare.`,
+După atașarea fișierului, textul se citește pe telefon (OCR) și câmpurile se completează din el. Cu un AI în cloud (Dosar AI sau cheie proprie), textul citit se trimite automat la AI ca să propună tipul documentului (clasificare automată) și să completeze câmpurile — actele de identitate cer întâi acordul per tip, iar documentele medicale pleacă doar cu acordul dat pe dosar. Poza documentului pleacă la AI doar la butonul „Trimite documentul la AI". Utilizatorul poate modifica tipul și câmpurile înainte de salvare.`,
   },
   {
     title: `Gestiune auto`,
@@ -242,9 +242,11 @@ Tap pe item navighează direct la edit-ul documentului sau la detaliul entităț
   {
     title: `Asistent AI`,
     keywords: ['ai', 'model', 'asistent', 'chatbot', 'local', 'cloud', 'api', 'descarc'],
-    body: `Din Setări → Asistent AI, utilizatorul alege provider-ul: Model local (rulează pe device, offline, nelimitat, datele nu pleacă de pe telefon — opțiunea recomandată), Dosar AI (cloud built-in, 10 interogări/zi gratuit; la depășire, aplicația îndrumă spre model local sau cheie API proprie, ambele nelimitate), Cheie API proprie (orice provider compatibil OpenAI — Mistral, OpenAI etc.) sau Fără AI. Acordul GDPR pentru transmiterea datelor către provider e cerut explicit la prima activare cloud și e revocabil oricând.
+    body: `Din Setări → Asistent AI („Unde rulează asistentul"), utilizatorul alege unul din 4 moduri, cu aceleași texte ca la onboarding: Model local (rulează pe telefon, offline, nelimitat, nimic nu pleacă de pe dispozitiv — recomandat), Dosar AI (în cloud, 10 cereri/zi gratuit, prin serverul aplicației către Mistral AI; la depășire, aplicația îndrumă spre model local sau cheie API proprie), Cheie API proprie (orice provider compatibil OpenAI — Mistral, OpenAI, Anthropic; datele pleacă direct la provider) sau Fără AI. Fiecare mod arată „Ce pleacă de pe telefon". Acordul pentru cloud e cerut explicit la activare și e revocabil oricând.
 
-Modelul local se poate descărca direct din onboarding (pasul „Asistent AI" → alegi „Model local (recomandat)" → butonul „Descarcă modelul"), cu bară de progres și posibilitatea de a anula. Se propune automat cel mai mic model compatibil cu telefonul; catalogul complet, cu modele mai mari și mai capabile, rămâne în Setări → Asistent AI. Dacă utilizatorul sare peste descărcare la onboarding, o poate face oricând ulterior din Setări.`,
+Model local: Setări propune modelul recomandat pentru telefon (cel mai mare compatibil) cu un buton „Descarcă modelul"; restul catalogului e sub „Alte modele". Modelul local citește doar text; în „Avansat" se poate activa citirea pozelor în cloud (cu acord). Cheie API proprie: „Testează" verifică automat dacă modelul citește și poze. Deasupra ambelor chat-uri, rândul „Răspunde: …" spune ce model răspunde și dacă întrebarea pleacă de pe telefon.
+
+Chat-uri: tab-ul „Asistent" răspunde despre documentele non-medicale; fiecare Dosar medical are chat-ul lui (tab Chat), singurul cu acces la analize/rețete. La o întrebare medicală în chat-ul general, sub răspuns apare link direct spre chat-ul dosarului.`,
   },
   {
     title: `Actualizări aplicație`,
@@ -264,7 +266,7 @@ Tap pe orice reminder din Expirări te duce la documentul sursă. Pentru a anula
     title: `Dosar medical`,
     keywords: ['medical', 'analiz', 'doctor', 'reteta', 'sanatate'],
     body: `- Entitate "Dosar medical" 1:1 cu o persoană. Stochează observații extrase din analize, vaccinuri, rețete, scrisori medicale, imagistică.
-- Datele medicale sunt stocate local pe device, protejate de App Lock (PIN/biometric) și de criptarea sistemului iOS; backup-ul în cloud poate fi criptat opțional cu parolă. Datele nu pleacă la AI fără consimțământul utilizatorului (per dosar + global din Setări → Asistent AI).
+- Datele medicale sunt stocate local pe device, protejate de App Lock (PIN/biometric) și de criptarea sistemului iOS; backup-ul în cloud poate fi criptat opțional cu parolă. Datele nu ajung la AI fără acordul explicit dat pe fiecare dosar (tab Chat → „Activează AI pentru acest dosar"). Setări → Asistent AI → „Asistent AI pe dosarele medicale" oprește AI-ul pe toate dosarele dintr-un loc.
 - Timeline: grupare după parametru (HDL, TSH etc.), evoluție în timp cu sparkline, drill-down la documentul sursă.
 - Chat AI scoped pe dosar: răspunde cu citații obligatorii ([OBS:id] sau [DOC:tip|id]), niciodată diagnostic clinic.
 - Adăugare document medical: Entități → Dosar medical → tap pe dosar → tab Documente → "+". Picker tipuri restrâns la analize/rețete/etc.`,

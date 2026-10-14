@@ -3,9 +3,14 @@ import { Modal, View, Text, Pressable, ScrollView, StyleSheet, Platform } from '
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, onPrimary } from '@/theme/colors';
 
-const CONSENT_TEXT = `Pentru asistentul AI și extragerea automată a datelor din documentele medicale, unele date sunt trimise la furnizorul AI configurat (Mistral, OpenAI sau cel ales de tine).
+const CONSENT_TEXT = `Pentru asistentul AI și extragerea automată a datelor din documentele medicale, unele date pot fi trimise la serviciul AI ales în Setări → Asistent AI.
 
-Ce trimitem la un furnizor AI extern:
+Unde ajung datele, după modul ales:
+• Model local — totul rulează pe telefon; nimic nu pleacă de pe dispozitiv. Excepție: dacă ai activat citirea imaginilor în cloud, pozele documentelor pleacă la providerul configurat acolo.
+• Dosar AI — cererile trec printr-un server intermediar operat de noi, în Uniunea Europeană, care le transmite către Mistral AI. Serverul nu păstrează conținutul cererilor.
+• Cheie API proprie — cererile pleacă prin HTTPS direct de pe telefon la providerul ales de tine.
+
+Ce trimitem la un serviciu AI din cloud:
 • Textul extras din documentele medicale (OCR)
 • Întrebările tale și răspunsurile asistentului
 • Valori extrase (nume analiză, valori, date) pentru context
@@ -15,13 +20,11 @@ Ce NU trimitem niciodată:
 • Notițele tale private (câmpul „Notă privată")
 • Date ale altor persoane sau dosare medicale, în afara celui analizat
 
-Pe un model local (rulat pe device) NIMIC nu părăsește dispozitivul — nici text, nici imagini.
-
-Datele rămân stocate pe device. Trimiterea la un furnizor extern se face prin HTTPS direct de pe device — fără server intermediar.
+Datele rămân stocate pe telefon.
 
 Conform GDPR (Art. 9), datele medicale sunt o categorie specială. Activarea acestui asistent constituie consimțământ explicit.
 
-Poți retrage consimțământul oricând din Setări → Asistent AI → Date medicale. Dezactivarea închide chat-ul și oprește extracția automată, dar păstrează datele deja extrase (le poți șterge separat).`;
+Poți opri oricând asistentul AI pe toate dosarele din Setări → Asistent AI → „Asistent AI pe dosarele medicale". Oprirea închide chat-ul și oprește extracția automată, dar păstrează datele deja extrase (le poți șterge separat).`;
 
 interface BodyProps {
   /** Callback când userul bifează/debifează — folosit de containerul exterior
@@ -46,11 +49,7 @@ interface BodyProps {
  * alt container (FormSheetModal în CreateMedicalRecordModal). Decuplarea
  * Modal-ului previne stacking-ul a două `<Modal>` simultane pe iOS.
  */
-export function MedicalConsentBody({
-  onCanAcceptChange,
-  resetKey,
-  scrollable = true,
-}: BodyProps) {
+export function MedicalConsentBody({ onCanAcceptChange, resetKey, scrollable = true }: BodyProps) {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
   const [c1, setC1] = useState(false);
@@ -65,9 +64,7 @@ export function MedicalConsentBody({
     onCanAcceptChange?.(c1 && c2);
   }, [c1, c2, onCanAcceptChange]);
 
-  const BodyText = (
-    <Text style={[styles.body, { color: palette.text }]}>{CONSENT_TEXT}</Text>
-  );
+  const BodyText = <Text style={[styles.body, { color: palette.text }]}>{CONSENT_TEXT}</Text>;
 
   return (
     <View>
@@ -142,11 +139,7 @@ export function MedicalConsentModal({ visible, onAccept, onReject }: Props) {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onReject}>
       <View style={styles.overlay}>
         <View style={[styles.card, { backgroundColor: palette.card }]}>
-          <MedicalConsentBody
-            onCanAcceptChange={setCanAccept}
-            resetKey={visible}
-            scrollable
-          />
+          <MedicalConsentBody onCanAcceptChange={setCanAccept} resetKey={visible} scrollable />
 
           <View style={styles.buttons}>
             <Pressable style={[styles.btn, { borderColor: palette.border }]} onPress={onReject}>

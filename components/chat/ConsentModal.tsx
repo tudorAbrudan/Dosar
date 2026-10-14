@@ -38,18 +38,19 @@ export function ConsentModal({ visible, colors, onAccept, onDecline }: ConsentMo
             </Text>
             <Text style={[styles.body, { color: colors.text }]}>
               <Text style={styles.bold}>Ce date sunt trimise:</Text> numele entităților (persoane,
-              vehicule, proprietăți, carduri, animale), tipurile documentelor, datele de expirare
-              și emitere, notele atașate documentelor, date de identificare ale documentelor (serie
+              vehicule, proprietăți, carduri, animale), tipurile documentelor, datele de expirare și
+              emitere, notele atașate documentelor, date de identificare ale documentelor (serie
               acte, CNP, nr. înmatriculare, nr. înregistrare și alte câmpuri completate).
             </Text>
             <Text style={[styles.body, { color: colors.text }]}>
-              <Text style={styles.bold}>Ce NU este trimis:</Text> fotografiile documentelor,
-              numărul CVV, PIN-ul aplicației.
+              <Text style={styles.bold}>Ce NU este trimis:</Text> fotografiile documentelor, „Nota
+              privată", documentele medicale (au chat-ul lor, în fiecare dosar), numărul CVV, PIN-ul
+              aplicației.
             </Text>
             <Text style={[styles.note, { color: colors.textSecondary }]}>
               Datele sunt procesate de providerul AI ales conform propriei politici de
-              confidențialitate. Consimțământul poate fi revocat oricând dezactivând providerul
-              din Setări → Asistent AI. Dacă nu dorești să partajezi aceste date, apasă „Nu accept".
+              confidențialitate. Consimțământul poate fi revocat oricând dezactivând providerul din
+              Setări → Asistent AI. Dacă nu dorești să partajezi aceste date, apasă „Nu accept".
             </Text>
           </ScrollView>
           <View style={styles.buttons}>
@@ -59,10 +60,7 @@ export function ConsentModal({ visible, colors, onAccept, onDecline }: ConsentMo
             >
               <Text style={[styles.btnText, { color: colors.text }]}>Nu accept</Text>
             </Pressable>
-            <Pressable
-              style={[styles.btn, { backgroundColor: colors.primary }]}
-              onPress={onAccept}
-            >
+            <Pressable style={[styles.btn, { backgroundColor: colors.primary }]} onPress={onAccept}>
               <Text style={[styles.btnText, { color: '#ffffff' }]}>Accept</Text>
             </Pressable>
           </View>
@@ -88,7 +86,9 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     gap: 12,
   },
-  scroll: { flex: 1 },
+  // NU `flex: 1`: într-un părinte doar cu `maxHeight`, ScrollView-ul se strângea
+  // la 0 și modalul arăta doar butoanele — userul accepta fără să vadă textul.
+  scroll: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { gap: 12, paddingBottom: 4 },
   title: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
   body: { fontSize: 14, lineHeight: 21 },

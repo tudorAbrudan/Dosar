@@ -15,7 +15,13 @@
  * la 0.7 by default, marcând observațiile ca needs_review.
  */
 import type { Document, DocumentType, ObservationCategory } from '@/types';
-import { sendAiRequest, AiContextOverflowError } from './aiProvider';
+import {
+  sendAiRequest,
+  AiContextOverflowError,
+  DAILY_AI_LIMIT,
+  getAiConfig,
+  getAiUsageToday,
+} from './aiProvider';
 import { db } from './db';
 import { extractTextFromPdfViaOcr } from './pdfOcr';
 import { extractText as ocrImage } from './ocr';
@@ -28,6 +34,7 @@ import {
   setPendingReminders,
 } from './documents';
 import { getAiMedicalAllowed } from './settings';
+import { isMedicalAiConsentValid } from './medicalRecord';
 import { insertObservation, deleteObservationsBySourceDocument } from './medicalObservations';
 import { insertChunks, deleteChunksByDocument, chunkText } from './medicalFts';
 import { generateAiSummary } from './medicalAiSummary';
@@ -339,7 +346,7 @@ async function ocrFromDocument(doc: Document): Promise<string> {
  *
  * Pre-condiții pentru status='ok':
  * - Document există și e atașat la un medical_record prin entity_links.
- * - `medical_record.ai_consent_at != null`.
+ * - acord AI valid pe dosar (`isMedicalAiConsentValid`).
  * - Tipul documentului are prompt mapat.
  * - OCR-ul a returnat text.
  */
@@ -362,15 +369,13 @@ export async function extractFromDocument(
   // Strategie rezolvare medical_record:
   //   1. Hint (din batch caller) — sigur că dosarul există.
   //   2. entity_links → medical_record direct.
-  let rec: {
-    id: string;
-    ai_consent_at: string | null;
-  } | null = null;
+  type ConsentRow = { id: string; ai_consent_at: string | null; ai_consent_version: number | null };
+  let rec: ConsentRow | null = null;
   if (hintRecordId) {
-    rec = await db.getFirstAsync<{
-      id: string;
-      ai_consent_at: string | null;
-    }>('SELECT id, ai_consent_at FROM medical_record WHERE id = ?', [hintRecordId]);
+    rec = await db.getFirstAsync<ConsentRow>(
+      'SELECT id, ai_consent_at, ai_consent_version FROM medical_record WHERE id = ?',
+      [hintRecordId]
+    );
   }
   if (!rec) {
     // entity_links direct la medical_record
@@ -382,14 +387,14 @@ export async function extractFromDocument(
       [documentId]
     );
     if (linkedMr) {
-      rec = await db.getFirstAsync<{
-        id: string;
-        ai_consent_at: string | null;
-      }>('SELECT id, ai_consent_at FROM medical_record WHERE id = ?', [linkedMr.entity_id]);
+      rec = await db.getFirstAsync<ConsentRow>(
+        'SELECT id, ai_consent_at, ai_consent_version FROM medical_record WHERE id = ?',
+        [linkedMr.entity_id]
+      );
     }
   }
   if (!rec) return { status: 'no_record', inserted: 0, needs_review: 0 };
-  if (!rec.ai_consent_at) return { status: 'no_consent', inserted: 0, needs_review: 0 };
+  if (!isMedicalAiConsentValid(rec)) return { status: 'no_consent', inserted: 0, needs_review: 0 };
 
   // Override global: dacă userul a dezactivat AI medical din Setări, sărim
   // extracția chiar dacă dosarul are consent acordat.
@@ -573,10 +578,14 @@ export async function extractFromDocument(
 /**
  * Fire-and-forget. Folosit din `addDocument` post-insert: extracția nu trebuie
  * să blocheze UX-ul de salvare. Erorile sunt logate, nu propagate.
+ *
+ * `recordId` = dosarul deja rezolvat de apelant (ex. prin persoana legată).
+ * Fără el, un document legat doar de persoană (nu direct de dosar) ieșea
+ * tăcut cu `no_record`.
  */
-export function extractAsync(documentId: string): void {
+export function extractAsync(documentId: string, recordId?: string): void {
   setTimeout(() => {
-    extractFromDocument(documentId).catch(e => {
+    extractFromDocument(documentId, recordId).catch(e => {
       console.warn('[medicalExtractor] background extraction failed:', e);
     });
   }, 0);
@@ -591,9 +600,9 @@ export interface BatchEstimate {
   already_extracted: number;
   /** Câte documente vor fi efectiv procesate după filtrarea opts. */
   to_process: number;
-  /** Păstrat pentru compat UI — întotdeauna null (fără limită zilnică). */
+  /** Cereri Dosar AI rămase azi; null când providerul nu are limită (local / cheie proprie). */
   remaining_today: number | null;
-  /** Întotdeauna false: nu mai există provider builtin cu limită zilnică. */
+  /** Dosar AI nu are destule cereri rămase azi pentru tot lotul. */
   blocked_by_limit: boolean;
 }
 
@@ -701,17 +710,21 @@ export async function estimateBatch(
     docsWithoutOcr = row?.n ?? 0;
   }
 
-  // 1 apel/doc pentru extracție medicală + 1 apel suplimentar pentru fiecare
-  // doc fără OCR (fallback vision care produce textul OCR).
-  const estimated = idsToProcess.length + docsWithoutOcr;
+  // 2 apeluri/doc (extracție observații + rezumat AI) + 1 apel suplimentar
+  // pentru fiecare doc fără OCR (fallback vision care produce textul OCR).
+  const estimated = idsToProcess.length * 2 + docsWithoutOcr;
+
+  const config = await getAiConfig();
+  const remaining =
+    config.type === 'builtin' ? Math.max(0, DAILY_AI_LIMIT - (await getAiUsageToday())) : null;
 
   return {
     total_documents: total,
     estimated_calls: estimated,
     already_extracted: alreadyExtracted,
     to_process: idsToProcess.length,
-    remaining_today: null,
-    blocked_by_limit: false,
+    remaining_today: remaining,
+    blocked_by_limit: remaining !== null && remaining < estimated,
   };
 }
 

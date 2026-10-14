@@ -21,10 +21,10 @@
 <body>
 
 <h1>Dosar – Politică de Confidențialitate</h1>
-<p class="meta">Ultima actualizare: Martie 2025</p>
+<p class="meta">Ultima actualizare: Octombrie 2026</p>
 
 <div class="highlight">
-  <strong>Rezumat:</strong> Aplicația Dosar stochează toate datele exclusiv local, pe dispozitivul tău. Nu există server, nu există cont de utilizator, nu trimitem nicio informație pe internet.
+  <strong>Rezumat:</strong> Aplicația Dosar stochează toate datele exclusiv local, pe dispozitivul tău. Nu există cont de utilizator și niciun server nu stochează datele tale. Date pleacă de pe telefon doar dacă alegi un asistent AI în cloud și îți dai acordul explicit (vezi secțiunea 6).
 </div>
 
 <h2>1. Identitatea operatorului</h2>
@@ -38,7 +38,7 @@ Contact: <a href="mailto:apps.tudor@gmail.com">apps.tudor@gmail.com</a></p>
   <li>Date structurate: numere de documente, date de expirare, note personale</li>
   <li>Informații despre entități (persoane, vehicule, proprietăți, carduri bancare)</li>
 </ul>
-<p><strong>Nu colectăm, nu transmitem și nu stocăm date pe servere externe.</strong> Nu există analiză de trafic, nu există reclame, nu există trackere de niciun fel.</p>
+<p><strong>Nu colectăm și nu stocăm date pe servere.</strong> Singura transmitere posibilă este cea către asistentul AI din cloud, opțională și doar cu acordul tău (secțiunea 6). Nu există analiză de trafic, nu există reclame, nu există trackere de niciun fel.</p>
 
 <h2>3. Temeiul juridic (GDPR)</h2>
 <p>Procesăm datele în baza consimțământului dumneavoastră explicit (art. 6 alin. 1 lit. a GDPR), dat prin instalarea și utilizarea aplicației.</p>
@@ -56,9 +56,19 @@ Contact: <a href="mailto:apps.tudor@gmail.com">apps.tudor@gmail.com</a></p>
 </ul>
 
 <h2 id="ai-ocr">6. Procesare AI OCR (opțional)</h2>
-<p>Atunci când utilizați funcția „Completare automată" la adăugarea documentelor sau asistentul AI, datele documentului sunt trimise unui serviciu AI pentru identificarea automată a tipului de document și extragerea câmpurilor relevante (ex: număr document, dată expirare).</p>
+<p>Asistentul AI (chat și completarea câmpurilor din documente) este opțional. Îl alegeți din Setări → Asistent AI:</p>
 <ul>
-  <li>În funcție de document, trimitem fie textul extras prin OCR, fie imaginea documentului (redimensionată) atunci când recunoașterea necesită analiza vizuală — de exemplu pentru scris de mână sau formulare tipizate</li>
+  <li><strong>Model local</strong> – rulează pe telefon; nimic nu pleacă de pe dispozitiv. Opțional, puteți activa citirea pozelor într-un serviciu din cloud — atunci doar pozele trimise explicit pleacă la acel serviciu</li>
+  <li><strong>Dosar AI</strong> – serviciul inclus, descris mai jos</li>
+  <li><strong>Cheie API proprie</strong> – cererile pleacă direct de pe telefon la providerul ales de dumneavoastră, conform politicii acestuia</li>
+  <li><strong>Fără AI</strong> – nu se trimite nimic</li>
+</ul>
+<p>În modurile din cloud, după acordul dumneavoastră explicit:</p>
+<ul>
+  <li>La atașarea unui document se trimite automat <strong>textul</strong> recunoscut pe telefon (OCR), pentru identificarea tipului și completarea câmpurilor. Pentru actele de identitate vi se cere întâi acordul per tip de document</li>
+  <li><strong>Imaginea</strong> documentului (redimensionată) se trimite doar când o cereți explicit: butonul „Trimite documentul la AI" sau scanarea unui bon de carburant / a unei facturi de utilități</li>
+  <li>Documentele medicale (date de categorie specială, art. 9 GDPR) se folosesc cu AI doar cu acordul explicit dat separat pe fiecare dosar medical</li>
+  <li>Nu se trimit niciodată: câmpul „Notă privată", PIN-ul aplicației, numărul CVV al cardurilor</li>
   <li>Cu configurația implicită („Dosar AI"), cererea trece printr-un server intermediar operat de noi, găzduit în Uniunea Europeană (Falkenstein, Germania), care o transmite mai departe către <strong>Mistral AI</strong>. Serverul nu stochează documentele, textul sau răspunsurile, și nu păstrează jurnale ale conținutului</li>
   <li>Mistral AI acționează ca <strong>procesor de date</strong> conform GDPR</li>
   <li>Data Mistral este guvernată de <a href="https://legal.mistral.ai/terms/privacy-policy" target="_blank">politica lor de confidențialitate</a> și <a href="https://legal.mistral.ai/terms/data-processing-addendum" target="_blank">DPA (Data Processing Agreement)</a></li>
@@ -89,7 +99,7 @@ Contact: <a href="mailto:apps.tudor@gmail.com">apps.tudor@gmail.com</a></p>
 <p>Aplicația nu este destinată copiilor sub 13 ani și nu colectează în mod intenționat date de la aceștia.</p>
 
 <h2>11. Transferuri internaționale</h2>
-<p>Nicio dată nu este transferată pe servere; nu operăm servicii backend pentru această aplicație.</p>
+<p>Singurul serviciu backend operat de noi este intermediarul pentru „Dosar AI", găzduit în Uniunea Europeană (Falkenstein, Germania), care nu stochează conținutul cererilor. Mistral AI procesează cererile conform DPA-ului său. Cu o cheie API proprie, transferul se face direct către providerul ales de dumneavoastră.</p>
 
 <h2>12. Modificări ale politicii</h2>
 <p>Putem actualiza această politică din timp în timp. Versiunea actualizată va fi disponibilă la această adresă și în aplicație.</p>

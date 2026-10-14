@@ -88,8 +88,8 @@ export function DocumentOcrTextSection({
             <Text style={[styles.empty, { color: C.textSecondary }]}>
               Niciun text OCR.{' '}
               {pageCount > 0
-                ? 'Apasă 🔍 OCR de mai sus pentru a extrage textul din imagini.'
-                : 'Adaugă un fișier și rulează OCR pentru a extrage textul.'}
+                ? 'Apasă „🔍 Citește textul" de mai sus ca să extragi textul din imagini, pe telefon.'
+                : 'Adaugă un fișier și apasă „🔍 Citește textul" ca să extragi textul.'}
             </Text>
           )}
         </ScrollView>

@@ -64,6 +64,57 @@ export function stripErrorTurns(history: ChatMessage[]): ChatMessage[] {
   return history.filter((_, i) => !drop.has(i));
 }
 
+// ─── Legătura spre chat-ul medical ───────────────────────────────────────────
+
+/**
+ * Prefixul blocului adăugat local sub răspuns pentru întrebările medicale.
+ * Marchează conținut generat de aplicație, nu de model: e scos din istoric
+ * înainte de a fi retrimis (`stripMedicalLinks`), ca numele dosarelor medicale
+ * să nu ajungă niciodată la AI-ul general.
+ */
+export const MEDICAL_LINK_PREFIX = '📋 Date medicale:';
+
+const MEDICAL_QUESTION_RE =
+  /\b(?:analiz|hemoleucogram|colesterol|glicemi|tensiun|re[tț]et|medicament|diagnostic|alergi|tratament|spital|externare|bilet de trimitere|ecografi|radiografi|rmn\b|tsh\b|hdl\b|ldl\b|medic|doctor)/i;
+
+/** Întrebare despre date medicale (analize, rețete, diagnostice…). */
+export function isMedicalQuestion(text: string): boolean {
+  return MEDICAL_QUESTION_RE.test(text);
+}
+
+/**
+ * Bloc cu link-uri reale spre chat-ul fiecărui dosar medical. Înainte, redirect-ul
+ * era doar o frază în prompt („deschide Dosarul medical"), fără nimic de apăsat,
+ * iar modelele mici o ignorau. Tag-ul ENT cu tipul `medical_record` deschide
+ * direct tab-ul Chat al dosarului (vezi ConversationView).
+ */
+export function buildMedicalLinkBlock(records: { id: string; name: string }[]): string {
+  if (records.length === 0) {
+    return `${MEDICAL_LINK_PREFIX} creează un Dosar medical din Entități → Dosare medicale; are chat-ul lui, cu acces la analize și rețete.`;
+  }
+  const links = records
+    .slice(0, 3)
+    .map(r => `[ENT:Chat ${r.name}|medical_record|${r.id}]`)
+    .join('  ·  ');
+  return `${MEDICAL_LINK_PREFIX} ${links}`;
+}
+
+/** Scoate din istoric blocurile adăugate de `buildMedicalLinkBlock`. */
+export function stripMedicalLinks(history: ChatMessage[]): ChatMessage[] {
+  return history.map(m =>
+    m.role === 'assistant' && m.content.includes(MEDICAL_LINK_PREFIX)
+      ? {
+          ...m,
+          content: m.content
+            .split('\n')
+            .filter(line => !line.startsWith(MEDICAL_LINK_PREFIX))
+            .join('\n')
+            .trim(),
+        }
+      : m
+  );
+}
+
 /**
  * Regulă statică injectată în system prompt-ul chatbot-ului GENERAL. Datele
  * medicale sunt deja excluse din context (getDocumentsForAI). Aici instruim
@@ -1209,7 +1260,7 @@ async function answerExpiryQuery(
 export async function sendMessage(userMessage: string, rawHistory: ChatMessage[]): Promise<string> {
   // Sanitizarea stă aici, la graniță, nu în ecran: orice apelant viitor o
   // primește automat. Vezi `stripErrorTurns`.
-  const history = stripErrorTurns(rawHistory);
+  const history = stripMedicalLinks(stripErrorTurns(rawHistory));
   // Detectăm provider-ul ca să comprimăm contextul pentru modele locale
   // (modelele locale au context 8–16K — un system prompt cu 80 docs ×
   // 1000 chars OCR ar depăși ~20K tokeni și ar arunca „Context is full").
@@ -1315,7 +1366,15 @@ Răspunde DIRECT din „Datele utilizatorului" de mai sus — NU întreba userul
     return label ? `[DOC:${label}|${id}]` : _match;
   });
 
-  return appendSourceIfUnambiguous(reply, docMap);
+  reply = appendSourceIfUnambiguous(reply, docMap);
+
+  if (isMedicalQuestion(cleanForIntent)) {
+    const { listMedicalRecords } = await import('./medicalRecord');
+    const records = await listMedicalRecords();
+    reply = `${reply.trim()}\n\n${buildMedicalLinkBlock(records)}`;
+  }
+
+  return reply;
 }
 
 /**

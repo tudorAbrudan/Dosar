@@ -67,7 +67,11 @@ import { mapOcrWithAi } from '@/services/aiOcrMapper';
 import type { AvailableEntities } from '@/services/aiOcrMapper';
 import { matchEntityInOcr } from '@/services/entityFuzzyMatch';
 import { AI_CONSENT_KEY, canDoVision, getAiConfig, humanizeAiError } from '@/services/aiProvider';
-import { ensureAiAnalysisAllowed, filterMedicalCandidatesForAi } from '@/services/aiGuard';
+import {
+  ensureAiAnalysisAllowed,
+  ensureAutoAiAllowed,
+  filterMedicalCandidatesForAi,
+} from '@/services/aiGuard';
 import { extractFieldsWithLlm } from '@/services/ocrLlmExtractor';
 import { classifyDocument, MIN_OCR_CHARS_FOR_TEXT_CLASSIFY } from '@/services/aiClassifier';
 import type { ClassifyCandidate } from '@/services/aiClassifier';
@@ -190,6 +194,12 @@ export default function AddDocumentScreen() {
   const [aiOcrApplied, setAiOcrApplied] = useState(false);
   const [llmFieldLoading, setLlmFieldLoading] = useState(false);
   const lastAiTextLengthRef = useRef(0);
+  // Completarea automată refuzată o dată (fără acord, medical, „Nu acum" la
+  // tipul sensibil) nu se mai reîncearcă la paginile următoare — fără alerte repetate.
+  const autoAiBlockedRef = useRef(false);
+  // Pe Dosar AI (10 cereri/zi) completarea automată rulează o singură dată pe
+  // document, nu la fiecare pagină — altfel limita se consuma pe ascuns.
+  const autoAiRanRef = useRef(false);
   const [textAiConsentAvailable, setTextAiConsentAvailable] = useState(false);
   const [visionAvailable, setVisionAvailable] = useState(false);
   const [duplicateDoc, setDuplicateDoc] = useState<Document | null>(null);
@@ -491,7 +501,7 @@ export default function AddDocumentScreen() {
       const trimmedLen = combinedText.trim().length;
       if (trimmedLen > 20 && trimmedLen > lastAiTextLengthRef.current + 80) {
         lastAiTextLengthRef.current = trimmedLen;
-        void runAiOcrMapper(structuredCombined);
+        void runAiOcrMapper(structuredCombined, autoAiDocType(text));
       } else {
         tryLocalEntityMatch(combinedText);
       }
@@ -504,25 +514,41 @@ export default function AddDocumentScreen() {
     }
   }
 
-  async function runAiOcrMapper(combinedOcrText: string) {
-    const consent = await AsyncStorage.getItem(AI_CONSENT_KEY);
-    if (consent !== 'true') return;
+  /**
+   * Tipul pe care îl vede gate-ul completării automate. În dosarul medical tipul
+   * e fixat la unul medical; tipul detectat din text poate fi altul (nevizibil
+   * acolo), iar gate-ul trebuie să trateze documentul ca medical.
+   */
+  function autoAiDocType(text: string): DocumentType {
+    if (params.restrict_to === 'medical') return type;
+    return detectDocumentType(text) ?? type;
+  }
 
-    // Model local fără provider de vision cloud separat: auto-maparea ar încărca
-    // silențios modelul GGUF (~2-3GB) în timpul OCR-ului — exact când memoria e deja
-    // sub presiune de la bitmap-urile full-res. Pe device-uri de 6GB → jetsam (app-ul
-    // „crapă" la OCR pe talon; vezi analiza 2026-07). Modelul e oricum text-only, deci
-    // nici n-ar vedea poza. Sărim auto-AI: detecția tipului rămâne pe euristica offline
-    // (detectDocumentType), iar legarea entităților pe tryLocalEntityMatch.
-    const cfg = await getAiConfig();
-    const hasCloudVision =
-      cfg.visionUrl.trim() !== '' &&
-      cfg.visionApiKey.trim() !== '' &&
-      cfg.visionModel.trim() !== '';
-    if (cfg.type === 'local' && !hasCloudVision) {
+  async function runAiOcrMapper(combinedOcrText: string, docType: DocumentType) {
+    if (autoAiBlockedRef.current) {
       tryLocalEntityMatch(combinedOcrText);
       return;
     }
+    const cfg = await getAiConfig();
+    if (cfg.type === 'builtin' && autoAiRanRef.current) {
+      tryLocalEntityMatch(combinedOcrText);
+      return;
+    }
+    // Același gate ca butonul manual (services/aiGuard.ts): doar când textul
+    // ajunge în cloud (pe modelul local, GGUF-ul încărcat în timpul OCR-ului ducea
+    // la jetsam pe 6GB), cu acordul AI, fără documente medicale neconsimțite și
+    // cu întrebarea per tip pentru actele sensibile.
+    const gate = await ensureAutoAiAllowed({
+      docType,
+      entityLinks,
+      recordIdHint: params.medical_record_id ?? null,
+    });
+    if (!gate.allowed) {
+      autoAiBlockedRef.current = true;
+      tryLocalEntityMatch(combinedOcrText);
+      return;
+    }
+    autoAiRanRef.current = true;
 
     setAiOcrLoading(true);
     try {
@@ -541,14 +567,8 @@ export default function AddDocumentScreen() {
         companies: companies.map(c => ({ id: c.id, name: c.name })),
       };
 
-      // Trimite și imaginea primului fișier pentru context vizual (vision)
-      let firstImageBase64: string | undefined;
-      const firstPage = pages[0];
-      if (firstPage) {
-        firstImageBase64 = await loadPageBase64ForAi(firstPage.localPath, type);
-      }
-
-      const result = await mapOcrWithAi(combinedOcrText, availableEntities, firstImageBase64);
+      // DOAR text: poza pleacă la AI numai când userul apasă „Trimite documentul la AI".
+      const result = await mapOcrWithAi(combinedOcrText, availableEntities);
 
       // Aplică tipul documentului dacă AI-ul l-a detectat
       if (
@@ -781,6 +801,9 @@ export default function AddDocumentScreen() {
     if (pages.length === 0) return;
     setAiOcrApplied(false);
     lastAiTextLengthRef.current = 0;
+    // Recitire cerută explicit → completarea automată are voie să ruleze din nou.
+    autoAiBlockedRef.current = false;
+    autoAiRanRef.current = false;
     setOcrLoading(true);
     try {
       for (const page of pages) {
@@ -801,7 +824,7 @@ export default function AddDocumentScreen() {
       );
       setLiveOcrText(structuredCombined);
       if (combined.trim().length > 20) {
-        void runAiOcrMapper(structuredCombined);
+        void runAiOcrMapper(structuredCombined, autoAiDocType(combined));
       }
     } finally {
       setOcrLoading(false);
@@ -924,7 +947,7 @@ export default function AddDocumentScreen() {
             '\n\n---\n\n'
           );
           if (allStructured.trim().length > 20) {
-            void runAiOcrMapper(allStructured);
+            void runAiOcrMapper(allStructured, autoAiDocType(pdfText));
           }
         }
       } catch {
@@ -1395,7 +1418,9 @@ export default function AddDocumentScreen() {
         )}
         <AiActionsRow
           busy={aiOcrLoading || llmFieldLoading}
-          busyLabel={llmFieldLoading ? 'Analizez documentul cu AI...' : 'Analizez cu AI...'}
+          busyLabel={
+            llmFieldLoading ? 'Analizez documentul cu AI...' : 'Completez câmpurile cu AI...'
+          }
           showAction={
             textAiConsentAvailable && visionAvailable && pages.length > 0 && !llmFieldLoading
           }

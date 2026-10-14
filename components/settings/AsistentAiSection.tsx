@@ -3,14 +3,12 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
-import * as aiProvider from '@/services/aiProvider';
-import type { AiProviderType } from '@/services/aiProvider';
 import { iconColors } from '@/theme/iconColors';
 import { primary } from '@/theme/colors';
 
 interface AsistentAiSectionProps {
-  aiProviderType: AiProviderType;
-  aiConsentGiven: boolean;
+  /** Cine răspunde și unde, ex. „Model local, pe telefon · Qwen 3.5 2B" (describeAiAnswerer). */
+  answererLabel: string;
   aiMedicalAllowed: boolean;
   scheme: 'light' | 'dark';
   onOpenAiModal: () => void;
@@ -18,17 +16,13 @@ interface AsistentAiSectionProps {
 }
 
 export function AsistentAiSection({
-  aiProviderType,
-  aiConsentGiven,
+  answererLabel,
   aiMedicalAllowed,
   scheme,
   onOpenAiModal,
   onToggleAiMedical,
 }: AsistentAiSectionProps) {
   const C = Colors[scheme];
-  const providerLabel = aiProvider.PROVIDER_DEFAULTS[aiProviderType].label;
-  const showConsentBadge =
-    aiConsentGiven && (aiProviderType === 'builtin' || aiProviderType === 'external');
 
   return (
     <SectionCard title="Asistent AI" scheme={scheme}>
@@ -36,25 +30,23 @@ export function AsistentAiSection({
         icon="sparkles-outline"
         iconBg={iconColors.aiPurple.bg}
         iconColor={iconColors.aiPurple.fg}
-        label="Provider AI"
-        sub={providerLabel + (showConsentBadge ? ' · Acord acordat' : '')}
+        label="Unde rulează asistentul"
+        sub={answererLabel}
         onPress={onOpenAiModal}
         scheme={scheme}
       />
       <View style={styles.row}>
         <View style={styles.rowLeft}>
           <View style={[styles.rowIcon, { backgroundColor: iconColors.pink.bg }]}>
-            <Ionicons
-              name="medkit-outline"
-              size={18}
-              color={iconColors.pink.fg}
-            />
+            <Ionicons name="medkit-outline" size={18} color={iconColors.pink.fg} />
           </View>
           <View style={styles.rowLabelWrap}>
-            <Text style={[styles.rowLabel, { color: C.text }]}>Date medicale (Art. 9 GDPR)</Text>
+            <Text style={[styles.rowLabel, { color: C.text }]}>
+              Asistent AI pe dosarele medicale
+            </Text>
             <Text style={[styles.rowSub, { color: C.textSecondary }]}>
-              Permite asistentului AI să acceseze observațiile și documentele medicale. Datele se
-              criptează local cu AES-256-GCM. Poți dezactiva oricând.
+              Acordul se dă separat, în fiecare dosar medical (Art. 9 GDPR). Oprit: niciun dosar nu
+              mai folosește AI — nici chat, nici extragere automată.
             </Text>
           </View>
         </View>

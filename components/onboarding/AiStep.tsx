@@ -5,7 +5,7 @@
  *
  * Extras din OnboardingWizard.tsx ca să spargem god file-ul (~175 linii JSX).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,17 +17,8 @@ import { AI_INFO_URL } from '@/constants/AppLinks';
 import * as localModel from '@/services/localModel';
 import { useModelDownload } from '@/hooks/useModelDownload';
 import type { AiProviderType } from '@/services/aiProvider';
-import { LOCAL_MODEL_CATALOG } from '@/services/localModel';
 import type { LocalModelEntry } from '@/services/localModel';
-
-// Range afișat derivat din catalog (nu hardcodat) — rămâne corect când se
-// adaugă/schimbă modele în LOCAL_MODEL_CATALOG (ex: tiering Gemma 4).
-const localModelSizeRange = (() => {
-  const bySize = [...LOCAL_MODEL_CATALOG].sort((a, b) => a.sizeBytes - b.sizeBytes);
-  const min = bySize[0].sizeLabel.replace('~', '');
-  const max = bySize[bySize.length - 1].sizeLabel.replace('~', '');
-  return `~${min}–${max}`;
-})();
+import { AiModeCards } from '@/components/settings/AiModeCards';
 
 interface AiStepProps {
   scheme: 'light' | 'dark';
@@ -41,47 +32,6 @@ interface AiStepProps {
   onChangeApiKey: (value: string) => void;
   onChangeModel: (value: string) => void;
   onToggleConsent: () => void;
-}
-
-// Modelul local e PRIMA opțiune și cea recomandată: datele nu părăsesc telefonul,
-// nu există limită de interogări și merge fără internet — potrivit pentru o
-// aplicație de documente personale. Descărcarea se poate porni chiar de aici
-// (vezi blocul de download de mai jos), nu doar din Setări.
-const PROVIDER_OPTIONS: { type: AiProviderType; title: string; desc: string }[] = [
-  {
-    type: 'local',
-    title: 'Model local (recomandat)',
-    desc: `Pe device · Privat · Nelimitat · Offline · Descarci ${localModelSizeRange} acum`,
-  },
-  {
-    type: 'builtin',
-    title: 'Dosar AI',
-    desc: 'Cloud · 10 interogări/zi gratuit · Pornești imediat, fără descărcare',
-  },
-  {
-    type: 'external',
-    title: 'Cheie API proprie',
-    desc: 'Cloud · Nelimitat · Orice provider compatibil OpenAI (Mistral, OpenAI etc.)',
-  },
-  {
-    type: 'none',
-    title: 'Fără AI',
-    desc: 'Aplicația funcționează complet offline, fără asistent',
-  },
-];
-
-/**
- * Modelul propus la onboarding: cel mai MARE compatibil cu device-ul.
- *
- * Mai mult spațiu înseamnă în general mai multă precizie, iar descărcarea nu mai
- * blochează onboarding-ul (continuă în fundal cât timp userul folosește aplicația
- * — vezi services/modelDownload.ts). Compromisul viteză/precizie e scris în
- * descrierea fiecărui model, iar catalogul complet rămâne în Setări → Asistent AI.
- */
-function pickRecommendedModel(): LocalModelEntry | null {
-  const compatible = localModel.getCompatibleModels();
-  if (compatible.length === 0) return null;
-  return [...compatible].sort((a, b) => b.sizeBytes - a.sizeBytes)[0];
 }
 
 export function AiStep({
@@ -103,7 +53,7 @@ export function AiStep({
   // Starea vine din singleton (services/modelDownload.ts), nu din componentă:
   // userul poate apăsa „Continuă" iar descărcarea merge mai departe, urmărită
   // apoi de banner-ul de pe Acasă.
-  const [recommended] = useState<LocalModelEntry | null>(() => pickRecommendedModel());
+  const [recommended] = useState<LocalModelEntry | null>(() => localModel.getRecommendedModel());
   const download = useModelDownload();
   const [installed, setInstalled] = useState(false);
 
@@ -127,34 +77,12 @@ export function AiStep({
 
   return (
     <View style={styles.aiBlock}>
-      {PROVIDER_OPTIONS.map(option => (
-        <Pressable
-          key={option.type}
-          style={[
-            styles.aiToggleCard,
-            {
-              backgroundColor: C.card,
-              borderColor: aiProviderChoice === option.type ? C.primary : C.border,
-            },
-          ]}
-          onPress={() => onChangeProvider(option.type)}
-        >
-          <View style={styles.aiToggleText}>
-            <Text style={[styles.aiToggleLabel, { color: C.text }]}>{option.title}</Text>
-            <Text style={[styles.aiToggleSub, { color: C.textSecondary }]}>{option.desc}</Text>
-          </View>
-          <View
-            style={[
-              styles.aiRadioDot,
-              { borderColor: aiProviderChoice === option.type ? C.primary : C.border },
-            ]}
-          >
-            {aiProviderChoice === option.type && (
-              <View style={[styles.aiRadioDotInner, { backgroundColor: C.primary }]} />
-            )}
-          </View>
-        </Pressable>
-      ))}
+      <AiModeCards
+        selected={aiProviderChoice}
+        scheme={scheme}
+        localRecommended={recommended !== null}
+        onSelect={onChangeProvider}
+      />
 
       {aiProviderChoice === 'local' && (
         <View style={[styles.localBox, { backgroundColor: C.card, borderColor: C.border }]}>
@@ -293,22 +221,24 @@ export function AiStep({
                 : 'Sunt de acord cu trimiterea datelor la serviciul AI configurat'}
             </Text>
             <Text style={[styles.aiToggleSub, { color: C.textSecondary }]}>
-              Textul extras, numele entităților și detaliile documentelor sunt trimise pentru
-              procesare. Fotografiile și PIN-ul NU sunt trimise.
+              Textul citit din documente, întrebările din chat, numele entităților și detaliile
+              documentelor pot fi trimise pentru procesare. Poza unui document pleacă doar când o
+              trimiți tu. PIN-ul și „Nota privată" nu pleacă niciodată.
             </Text>
           </View>
         </Pressable>
       )}
 
-      {aiProviderChoice !== 'none' && (
+      {(aiProviderChoice === 'builtin' || aiProviderChoice === 'external') && (
         <View style={[styles.card, { backgroundColor: C.card, marginTop: spacing.gap }]}>
           <View style={styles.cardRow}>
             <Ionicons name="image-outline" size={20} color={iconColors.amber.fg} />
             <View style={{ flex: 1, marginLeft: spacing.gap }}>
-              <Text style={[styles.cardTitle, { color: C.text }]}>Extracție AI din documente</Text>
+              <Text style={[styles.cardTitle, { color: C.text }]}>Completare din documente</Text>
               <Text style={[styles.cardSubtitle, { color: C.textSecondary }]}>
-                Textul OCR e trimis automat (dacă e activat). Imaginile se trimit doar la apăsarea
-                butonului „Trimite documentul la AI" din formular — niciodată automat.
+                La atașarea unui document, textul citit pe telefon se trimite la AI ca să completeze
+                câmpurile. Actele de identitate te întreabă întâi; documentele medicale pleacă doar
+                cu acordul dat pe dosar. Poza pleacă doar când apeși „Trimite documentul la AI".
               </Text>
             </View>
           </View>

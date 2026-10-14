@@ -2,79 +2,116 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { primary, statusColors } from '@/theme/colors';
+import type { AiRoute } from '@/services/aiProvider';
 
 interface AiPrivacyInfoCardProps {
+  /** Ruta configurației din formular (încă nesalvată) — vezi `getAiRoute`. */
+  route: AiRoute;
   scheme: 'light' | 'dark';
 }
 
+interface Row {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  title: string;
+  sub: string;
+}
+
 /**
- * Card informativ în modalul de configurare AI care reamintește:
- * 1. Imaginile pleacă la AI doar la apăsare manuală — niciodată automat.
- * 2. Câmpul „Notă privată" NU pleacă niciodată la AI (sigur pentru CVV/PIN/parole).
- *
- * Mirror al onboarding-ului OCR_PRIVACY. Afișat doar pentru builtin/external (la `none`
- * și `local` informația nu se aplică).
+ * „Ce pleacă de pe telefon" pentru modul ales în formular — aceleași reguli pe
+ * care le aplică gate-urile din services/aiGuard.ts. Rândul despre „Notă
+ * privată" apare mereu: e garanția care nu depinde de mod.
  */
-export function AiPrivacyInfoCard({ scheme }: AiPrivacyInfoCardProps) {
+function rowsFor(route: AiRoute): Row[] {
+  const privateNote: Row = {
+    icon: 'lock-closed-outline',
+    color: statusColors.ok,
+    title: 'Niciodată: „Notă privată", PIN-ul aplicației, CVV',
+    sub: 'Folosește „Notă privată" pentru date strict sensibile (PIN-uri, parole).',
+  };
+
+  if (route.text === 'off') {
+    return [
+      {
+        icon: 'shield-checkmark-outline',
+        color: statusColors.ok,
+        title: 'Nimic nu se trimite nicăieri',
+        sub: 'Câmpurile se completează doar din textul citit pe telefon.',
+      },
+    ];
+  }
+
+  if (route.text === 'device') {
+    const rows: Row[] = [
+      {
+        icon: 'phone-portrait-outline',
+        color: statusColors.ok,
+        title: 'Chat-ul și textul rămân pe telefon',
+        sub: 'Modelul rulează local; întrebările și documentele nu pleacă nicăieri.',
+      },
+    ];
+    if (route.images === 'cloud') {
+      rows.push({
+        icon: 'image-outline',
+        color: primary,
+        title: 'Pozele documentelor: doar când apeși „Trimite documentul la AI"',
+        sub: 'Pleacă la providerul de imagini configurat în „Avansat".',
+      });
+    }
+    rows.push(privateNote);
+    return rows;
+  }
+
+  const rows: Row[] = [
+    {
+      icon: 'document-text-outline',
+      color: primary,
+      title: 'Automat, la atașare: textul citit din document',
+      sub: 'Ca AI-ul să completeze câmpurile. Actele de identitate te întreabă întâi; documentele medicale pleacă doar cu acordul dat pe dosar.',
+    },
+    {
+      icon: 'chatbubble-outline',
+      color: primary,
+      title: 'În chat: întrebarea și datele relevante din documente',
+      sub: 'Documentele medicale nu ajung în chat-ul general; au chat-ul lor, în fiecare dosar.',
+    },
+  ];
+  if (route.images === 'cloud') {
+    rows.push({
+      icon: 'image-outline',
+      color: primary,
+      title: 'Poza documentului: doar când apeși „Trimite documentul la AI"',
+      sub: 'Și la scanarea unui bon de carburant sau a unei facturi de utilități.',
+    });
+  }
+  rows.push(privateNote);
+  return rows;
+}
+
+export function AiPrivacyInfoCard({ route, scheme }: AiPrivacyInfoCardProps) {
   const C = Colors[scheme];
   return (
     <View style={[styles.card, { backgroundColor: C.card, borderColor: C.border }]}>
-      <View style={styles.row}>
-        <Ionicons
-          name="image-outline"
-          size={18}
-          color={statusColors.warning}
-          style={styles.icon}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: C.text }]}>Trimitere imagine/document la AI</Text>
-          <Text style={[styles.sub, { color: C.textSecondary }]}>
-            Doar la apăsarea butonului „Trimite documentul la AI" din formularul documentului —
-            niciodată automat.
-          </Text>
+      <Text style={[styles.heading, { color: C.textSecondary }]}>Ce pleacă de pe telefon</Text>
+      {rowsFor(route).map(row => (
+        <View key={row.title} style={styles.row}>
+          <Ionicons name={row.icon} size={18} color={row.color} style={styles.icon} />
+          <View style={styles.text}>
+            <Text style={[styles.title, { color: C.text }]}>{row.title}</Text>
+            <Text style={[styles.sub, { color: C.textSecondary }]}>{row.sub}</Text>
+          </View>
         </View>
-      </View>
-      <View style={styles.row}>
-        <Ionicons
-          name="lock-closed-outline"
-          size={18}
-          color={primary}
-          style={styles.icon}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: C.text }]}>
-            Câmpul „Notă privată" nu pleacă niciodată la AI
-          </Text>
-          <Text style={[styles.sub, { color: C.textSecondary }]}>
-            Folosește-l pentru date strict sensibile (CVV, PIN, parole). E separat de câmpul
-            „Notă" normal.
-          </Text>
-        </View>
-      </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 14,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
+  card: { borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },
+  heading: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
+  row: { flexDirection: 'row', gap: 8 },
   icon: { marginTop: 2 },
-  title: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  sub: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
-  },
+  text: { flex: 1 },
+  title: { fontSize: 13, fontWeight: '600' },
+  sub: { fontSize: 12, lineHeight: 17, marginTop: 2 },
 });

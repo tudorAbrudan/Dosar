@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -27,7 +27,8 @@ import {
   type ChatThread,
   type StoredMessage,
 } from '@/services/chatThreads';
-import { AI_CONSENT_KEY, isAiAvailable, humanizeAiError } from '@/services/aiProvider';
+import { AI_CONSENT_KEY, humanizeAiError } from '@/services/aiProvider';
+import { useAiStatus } from '@/hooks/useAiStatus';
 import { ConsentModal } from '@/components/chat/ConsentModal';
 import { RenameModal } from '@/components/chat/RenameModal';
 import { ThreadList } from '@/components/chat/ThreadList';
@@ -74,24 +75,7 @@ export default function ChatScreen() {
   const threadInitialized = useRef(false);
 
   // AI availability (banner)
-  const [aiUnavailableReason, setAiUnavailableReason] = useState<string | null>(null);
-
-  const checkAiAvailability = useCallback(async () => {
-    try {
-      const { ok, reason } = await isAiAvailable();
-      setAiUnavailableReason(ok ? null : (reason ?? 'AI indisponibil.'));
-    } catch {
-      setAiUnavailableReason(
-        'Nu s-a putut verifica configurația AI. Deschide Setări → Asistent AI.'
-      );
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void checkAiAvailability();
-    }, [checkAiAvailability])
-  );
+  const aiStatus = useAiStatus();
 
   // ── Inițializare ────────────────────────────────────────────────────────────
 
@@ -284,6 +268,8 @@ export default function ChatScreen() {
       }
     } finally {
       setSendLoading(false);
+      // Contorul Dosar AI din eticheta „Răspunde: …" s-a schimbat.
+      void aiStatus.refresh();
     }
   }
 
@@ -420,7 +406,7 @@ export default function ChatScreen() {
           colors={colors}
           insets={insets}
           mentionItems={mentionItems}
-          aiUnavailableReason={aiUnavailableReason}
+          aiStatus={aiStatus}
           onBack={() => setActiveThread(null)}
           onRename={() => setRenameTarget(activeThread)}
           onClear={handleClearMessages}

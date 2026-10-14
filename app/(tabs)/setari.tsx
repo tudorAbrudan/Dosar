@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as localModel from '@/services/localModel';
 import type { LocalModelEntry } from '@/services/localModel';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -41,14 +41,6 @@ import { VizibilitateEntitatiSection } from '@/components/settings/VizibilitateE
 import { VizibilitateDocTypesSection } from '@/components/settings/VizibilitateDocTypesSection';
 import { BackupSection } from '@/components/settings/BackupSection';
 import { SharingBetaSection } from '@/components/settings/SharingBetaSection';
-import { LocalModelWarningBanner } from '@/components/settings/LocalModelWarningBanner';
-import { LocalModelCatalog } from '@/components/settings/LocalModelCatalog';
-import { OrphanModelsBanner } from '@/components/settings/OrphanModelsBanner';
-import { AiProviderSelector } from '@/components/settings/AiProviderSelector';
-import { AiExternalProviderConfig } from '@/components/settings/AiExternalProviderConfig';
-import { LocalModelSelector } from '@/components/settings/LocalModelSelector';
-import { AiConsentBar } from '@/components/settings/AiConsentBar';
-import { AiPrivacyInfoCard } from '@/components/settings/AiPrivacyInfoCard';
 import { AiConfigModal } from '@/components/settings/AiConfigModal';
 import { useModelDownload } from '@/hooks/useModelDownload';
 import AppLockPinModal from '@/components/AppLockPinModal';
@@ -57,6 +49,7 @@ import * as settings from '@/services/settings';
 import * as aiProvider from '@/services/aiProvider';
 import type { AiProviderType } from '@/services/aiProvider';
 import { AI_CONSENT_KEY } from '@/services/aiProvider';
+import { clearAllPerTypeConsents, hasAnyPerTypeConsent } from '@/services/ocrConsent';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import {
   exportBackup,
@@ -91,6 +84,10 @@ import {
 } from '@/types';
 import type { EntityType, DocumentType } from '@/types';
 type ModelWithCompat = LocalModelEntry & { incompatibilityReason: string | null };
+
+/** PNG 1×1 px (roșu) — sonda de citire imagini din „Testează" (Setări → Asistent AI). */
+const PROBE_PNG_1PX =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
 
 const ENTITY_LABELS = ENTITY_TYPE_LABELS;
 const ENTITY_ICONS = ENTITY_TYPE_EMOJI;
@@ -162,6 +159,22 @@ export default function SetariScreen() {
   const [compatibleModels, setCompatibleModels] = useState<ModelWithCompat[]>([]);
   const [downloadedModelIds, setDownloadedModelIds] = useState<string[]>([]);
   const [selectedLocalModelId, setSelectedLocalModelId] = useState<string | null>(null);
+  const [recommendedModel] = useState(() => localModel.getRecommendedModel());
+  const [builtinUsedToday, setBuiltinUsedToday] = useState(0);
+  const [hasSensitiveChoices, setHasSensitiveChoices] = useState(false);
+  // Rândul din secțiunea „Asistent AI": cine răspunde și unde (ex. „Dosar AI, în cloud · …").
+  const [aiAnswererLabel, setAiAnswererLabel] = useState('');
+  const refreshAiAnswerer = useCallback(() => {
+    aiProvider
+      .describeAiAnswerer()
+      .then(st =>
+        setAiAnswererLabel(st.unavailableReason ? `${st.label} · indisponibil` : st.label)
+      )
+      .catch(() => setAiAnswererLabel(''));
+  }, []);
+  useEffect(() => {
+    refreshAiAnswerer();
+  }, [refreshAiAnswerer]);
   // Descărcarea trăiește în singleton, nu aici: continuă când ieși din Setări și
   // e aceeași pe care o vede onboarding-ul și banner-ul de pe Acasă.
   const modelDownload = useModelDownload();
@@ -188,15 +201,11 @@ export default function SetariScreen() {
   const [lastCrash, setLastCrash] = useState<NativeCrashReport | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    settings.getNotificationDays().then(setNotifDays);
-    settings.getPushEnabled().then(setPushEnabled);
-    settings.getShowOrphansOnHome().then(setShowOrphans);
-    settings.getAppLockEnabled().then(setAppLockEnabled);
-    settings.getAiMedicalAllowed().then(setAiMedicalAllowedState);
-    settings.getMedicalAppLockEnabled().then(setMedicalAppLockEnabledState);
-    AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setAiConsentGiven(v === 'true'));
-    aiProvider.getAiConfig().then(cfg => {
+  // Formularul din modalul AI pornește mereu din configurația SALVATĂ: altfel,
+  // după „Închide" fără „Salvează", la redeschidere apărea modul ales nesalvat
+  // deși activ era altul.
+  const loadAiForm = useCallback(() => {
+    void aiProvider.getAiConfig().then(cfg => {
       setAiProviderType(cfg.type);
       setAiProviderUrl(cfg.url);
       setAiProviderModel(cfg.model);
@@ -213,6 +222,30 @@ export default function SetariScreen() {
         cfg.visionApiKey.trim() !== '';
       setAiSeparateVision(hasSeparate);
     });
+    localModel.getSelectedModelId().then(setSelectedLocalModelId);
+    setAiTestStatus('idle');
+    setAiTestMessage('');
+  }, []);
+
+  // La fiecare deschidere a modalului: formularul din config salvat, contorul Dosar AI
+  // și alegerile per tip sensibil.
+  useEffect(() => {
+    if (!aiModalVisible) return;
+    loadAiForm();
+    setAiModalConsentChecked(aiConsentGiven);
+    aiProvider.getAiUsageToday().then(setBuiltinUsedToday);
+    hasAnyPerTypeConsent().then(setHasSensitiveChoices);
+  }, [aiModalVisible, aiConsentGiven, loadAiForm]);
+
+  useEffect(() => {
+    settings.getNotificationDays().then(setNotifDays);
+    settings.getPushEnabled().then(setPushEnabled);
+    settings.getShowOrphansOnHome().then(setShowOrphans);
+    settings.getAppLockEnabled().then(setAppLockEnabled);
+    settings.getAiMedicalAllowed().then(setAiMedicalAllowedState);
+    settings.getMedicalAppLockEnabled().then(setMedicalAppLockEnabledState);
+    AsyncStorage.getItem(AI_CONSENT_KEY).then(v => setAiConsentGiven(v === 'true'));
+    loadAiForm();
     // Snapshot „Cheie proprie" — persistat în AsyncStorage + SecureStore, deci
     // populat indiferent de tipul activ. Astfel, comutarea spre „Dosar AI" și
     // înapoi nu pierde URL/model/cheia API setate anterior.
@@ -237,7 +270,7 @@ export default function SetariScreen() {
       }
     })();
     getLastCrash().then(setLastCrash);
-  }, []);
+  }, [loadAiForm]);
 
   // ── Diagnostic / crash report ────────────────────────────────────────────────
   const handleCopyCrash = async () => {
@@ -482,6 +515,13 @@ export default function SetariScreen() {
       await localModel.disposeLocalModel().catch(() => {});
     }
     setAiProviderType(type);
+    if (
+      type === 'local' &&
+      (!selectedLocalModelId || !downloadedModelIds.includes(selectedLocalModelId)) &&
+      downloadedModelIds.length > 0
+    ) {
+      setSelectedLocalModelId(downloadedModelIds[0]);
+    }
     if (type === 'external') {
       setAiProviderUrl(savedExternalRef.current.url);
       setAiProviderModel(savedExternalRef.current.model);
@@ -551,6 +591,7 @@ export default function SetariScreen() {
               visionModel: '',
               chatModelSupportsVision: false,
             });
+            refreshAiAnswerer();
           },
         },
       ]
@@ -573,19 +614,33 @@ export default function SetariScreen() {
           style: 'destructive',
           onPress: async () => {
             await localModel.deleteModel(modelId);
-            setDownloadedModelIds(prev => prev.filter(id => id !== modelId));
+            const remaining = downloadedModelIds.filter(id => id !== modelId);
+            setDownloadedModelIds(remaining);
             const selected = await localModel.getSelectedModelId();
             if (selected === modelId) {
               await localModel.disposeLocalModel().catch(() => {});
-              setAiProviderType('builtin');
+              // Rămânem pe telefon dacă mai e un model instalat. Altfel „Fără AI" —
+              // NU „Dosar AI": acordul era cel implicit al modelului local, iar
+              // trecerea tăcută pe cloud ar trimite date fără acord explicit.
+              const fallback = remaining[0] ?? null;
+              if (fallback) {
+                await localModel.setSelectedModelId(fallback);
+                setSelectedLocalModelId(fallback);
+              } else {
+                await localModel.clearSelectedModelId();
+                setSelectedLocalModelId(null);
+              }
+              const type: AiProviderType = fallback ? 'local' : 'none';
+              setAiProviderType(type);
               await aiProvider.saveAiConfig({
-                type: 'builtin',
-                url: aiProvider.PROVIDER_DEFAULTS.builtin.url,
-                model: aiProvider.PROVIDER_DEFAULTS.builtin.model,
+                type,
+                url: '',
+                model: fallback ?? '',
                 visionUrl: '',
                 visionModel: '',
                 chatModelSupportsVision: false,
               });
+              refreshAiAnswerer();
             }
           },
         },
@@ -593,18 +648,28 @@ export default function SetariScreen() {
     );
   };
 
-  const handleSelectLocalModel = async (modelId: string) => {
-    await localModel.setSelectedModelId(modelId);
+  // Doar în formular — se salvează la „Salvează", ca orice altă alegere din modal.
+  // (Excepție: o descărcare terminată activează direct modelul, vezi handleDownloadModel.)
+  const handleSelectLocalModel = (modelId: string) => {
     setSelectedLocalModelId(modelId);
     setAiProviderType('local');
-    await aiProvider.saveAiConfig({
-      type: 'local',
-      url: '',
-      model: modelId,
-      visionUrl: '',
-      visionModel: '',
-      chatModelSupportsVision: false,
-    });
+  };
+
+  const handleResetSensitiveChoices = () => {
+    Alert.alert(
+      'Resetează alegerile',
+      'La următoarea trimitere a unui buletin, pașaport, talon etc. la AI te vom întreba din nou.',
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Resetează',
+          onPress: async () => {
+            await clearAllPerTypeConsents();
+            setHasSensitiveChoices(false);
+          },
+        },
+      ]
+    );
   };
 
   const handleDeleteOrphanModels = () => {
@@ -638,20 +703,43 @@ export default function SetariScreen() {
 
   const handleSaveAiConfig = async () => {
     try {
-      const isRemote = aiProviderType === 'builtin' || aiProviderType === 'external';
-      if (isRemote && !aiModalConsentChecked) {
-        Alert.alert('Acord necesar', 'Bifează acordul de utilizare AI pentru a continua.');
-        return;
-      }
       // Vision provider separat e valid și pentru `local` (chat local + OCR remote),
       // nu doar pentru `external`. Pentru `builtin`/`none` nu are sens (Pixtral
       // built-in are vision implicit; `none` nu rulează nimic).
       const usesSeparateVision =
         (aiProviderType === 'external' || aiProviderType === 'local') && aiSeparateVision;
+      // Acordul se cere când ceva pleacă de pe telefon — decis din aceeași rută ca
+      // la runtime (getAiRoute), deci și pentru modelul local cu poze în cloud.
+      const leavesDevice = aiProvider.aiRouteLeavesDevice(
+        aiProvider.getAiRoute({
+          type: aiProviderType,
+          url: aiProviderUrl,
+          apiKey: aiApiKey,
+          model: aiProviderModel,
+          visionUrl: usesSeparateVision ? aiVisionUrl.trim() : '',
+          visionApiKey: usesSeparateVision ? aiVisionApiKey.trim() : '',
+          visionModel: usesSeparateVision ? aiVisionModel.trim() : '',
+          chatModelSupportsVision: aiProviderType === 'external' && aiChatModelSupportsVision,
+        })
+      );
+      if (leavesDevice && !aiModalConsentChecked) {
+        Alert.alert('Acord necesar', 'Bifează acordul de utilizare AI pentru a continua.');
+        return;
+      }
+      if (aiProviderType === 'local') {
+        if (!selectedLocalModelId || !downloadedModelIds.includes(selectedLocalModelId)) {
+          Alert.alert(
+            'Niciun model instalat',
+            'Descarcă modelul recomandat (sau altul din „Alte modele") înainte să salvezi.'
+          );
+          return;
+        }
+        await localModel.setSelectedModelId(selectedLocalModelId);
+      }
       await aiProvider.saveAiConfig({
         type: aiProviderType,
         url: aiProviderUrl,
-        model: aiProviderModel,
+        model: aiProviderType === 'local' ? (selectedLocalModelId ?? '') : aiProviderModel,
         visionUrl: usesSeparateVision ? aiVisionUrl.trim() : '',
         visionModel: usesSeparateVision ? aiVisionModel.trim() : '',
         chatModelSupportsVision: aiProviderType === 'external' ? aiChatModelSupportsVision : false,
@@ -703,11 +791,11 @@ export default function SetariScreen() {
       if (aiProviderType !== 'local') {
         await localModel.disposeLocalModel().catch(() => {});
       }
-      if (isRemote && aiModalConsentChecked) {
+      if (leavesDevice && aiModalConsentChecked) {
         await AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
         setAiConsentGiven(true);
       } else if (aiProviderType === 'local') {
-        // Model local: fără transmitere externă, acord implicit
+        // Model local fără poze în cloud: nimic nu pleacă de pe telefon, acord implicit.
         await AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
         setAiConsentGiven(true);
       } else if (aiProviderType === 'none') {
@@ -722,6 +810,7 @@ export default function SetariScreen() {
         }
       }
       setAiModalVisible(false);
+      refreshAiAnswerer();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut salva configurația');
     }
@@ -775,6 +864,42 @@ export default function SetariScreen() {
     }
   };
 
+  /**
+   * Verifică dacă modelul citește imagini: trimite o imagine PNG de 1×1 px.
+   * Răspuns OK → citește imagini; refuz (400/422 etc.) → doar text. Înlocuiește
+   * bifa manuală „Modelul de chat suportă imagini", pe care userii n-aveau de
+   * unde s-o știe — și fără ea butonul „Trimite documentul la AI" lipsea.
+   */
+  const probeImageSupport = async (
+    url: string,
+    apiKey: string,
+    model: string
+  ): Promise<boolean> => {
+    const endpoint = `${url.replace(/\/$/, '')}/chat/completions`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: `data:image/png;base64,${PROBE_PNG_1PX}` } },
+                { type: 'text', text: 'Ce culoare are imaginea? Un cuvânt.' },
+              ],
+            },
+          ],
+          max_tokens: 5,
+        }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+
   const handleTestAiConnection = async () => {
     setAiTestStatus('loading');
     setAiTestMessage('');
@@ -790,18 +915,25 @@ export default function SetariScreen() {
           setAiTestMessage('Niciun model local selectat. Descarcă și selectează un model.');
           return;
         }
-        const lines: string[] = [`✓ Chat: model local „${selectedLocalModelId}" selectat.`];
+        const localName =
+          compatibleModels.find(m => m.id === selectedLocalModelId)?.name ?? selectedLocalModelId;
+        const installed = downloadedModelIds.includes(selectedLocalModelId);
+        const lines: string[] = [
+          installed
+            ? `✓ Chat: ${localName}, pe telefon.`
+            : `✗ Chat: ${localName} nu e descărcat încă.`,
+        ];
         if (aiSeparateVision) {
           const ocrResult = await probeOpenAiCompatible(
             aiVisionUrl.trim(),
             aiVisionApiKey.trim(),
             aiVisionModel.trim()
           );
-          lines.push(`${ocrResult.ok ? '✓' : '✗'} OCR remote: ${ocrResult.message}`);
-          setAiTestStatus(ocrResult.ok ? 'ok' : 'error');
+          lines.push(`${ocrResult.ok ? '✓' : '✗'} Poze în cloud: ${ocrResult.message}`);
+          setAiTestStatus(ocrResult.ok && installed ? 'ok' : 'error');
         } else {
-          lines.push('• OCR: indisponibil (modelele locale nu duc vision).');
-          setAiTestStatus('ok');
+          lines.push('• Poze: modelul local citește doar text (vezi „Avansat").');
+          setAiTestStatus(installed ? 'ok' : 'error');
         }
         setAiTestMessage(lines.join('\n'));
         return;
@@ -837,7 +969,7 @@ export default function SetariScreen() {
           aiVisionModel.trim()
         );
         ocrOk = ocrResult.ok;
-        lines.push(`${ocrResult.ok ? '✓' : '✗'} OCR: ${ocrResult.message}`);
+        lines.push(`${ocrResult.ok ? '✓' : '✗'} Poze (provider separat): ${ocrResult.message}`);
 
         // Hint specific Anthropic — endpoint-ul lor nativ nu e exact OpenAI-compat
         if (/anthropic\.com/i.test(aiVisionUrl)) {
@@ -846,8 +978,17 @@ export default function SetariScreen() {
               'Dacă OCR cade aici dar cheia e validă, încearcă alt model (claude-sonnet-4-6) sau alt provider.'
           );
         }
-      } else {
-        lines.push('• OCR: folosește același provider ca chat.');
+      } else if (aiProviderType === 'external' && chatResult.ok) {
+        // Cheie proprie, fără provider separat: detectăm dacă modelul de chat citește poze.
+        const reads = await probeImageSupport(chatUrl, chatKey, chatModel);
+        setAiChatModelSupportsVision(reads);
+        lines.push(
+          reads
+            ? '✓ Poze: modelul citește și imagini — butonul „Trimite documentul la AI" va fi disponibil.'
+            : '• Poze: modelul e doar text — documentele se completează din textul citit pe telefon.'
+        );
+      } else if (aiProviderType === 'builtin') {
+        lines.push('✓ Poze: Dosar AI citește și imagini.');
       }
 
       const allOk = chatResult.ok && ocrOk;
@@ -1082,8 +1223,7 @@ export default function SetariScreen() {
         <SharingBetaSection scheme={scheme} onOpenSharing={() => router.push('/partajare')} />
 
         <AsistentAiSection
-          aiProviderType={aiProviderType}
-          aiConsentGiven={aiConsentGiven}
+          answererLabel={aiAnswererLabel}
           aiMedicalAllowed={aiMedicalAllowed}
           scheme={scheme}
           onOpenAiModal={() => {
@@ -1162,7 +1302,9 @@ export default function SetariScreen() {
         testStatus={aiTestStatus}
         testMessage={aiTestMessage}
         consentChecked={aiModalConsentChecked}
+        builtinUsedToday={builtinUsedToday}
         compatibleModels={compatibleModels}
+        recommendedModel={recommendedModel}
         downloadedIds={downloadedModelIds}
         downloadingId={modelDownload.modelId}
         downloadProgress={modelDownload.progress}
@@ -1170,6 +1312,7 @@ export default function SetariScreen() {
         downloadTotalMb={modelDownload.totalMb}
         selectedLocalModelId={selectedLocalModelId}
         orphanModels={orphanModels}
+        hasSensitiveChoices={hasSensitiveChoices}
         onClose={() => setAiModalVisible(false)}
         onSave={handleSaveAiConfig}
         onTest={handleTestAiConnection}
@@ -1193,6 +1336,7 @@ export default function SetariScreen() {
         onDeleteModel={handleDeleteModel}
         onCancelDownload={handleCancelDownload}
         onDeleteOrphanModels={handleDeleteOrphanModels}
+        onResetSensitiveChoices={handleResetSensitiveChoices}
         onContactDeveloper={openEmail}
       />
 

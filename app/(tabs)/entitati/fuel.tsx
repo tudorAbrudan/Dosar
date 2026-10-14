@@ -26,6 +26,7 @@ import {
 import { extractTextFromPdf } from '@/services/pdfExtractor';
 import { renderPdfFirstPageForVision } from '@/services/pdfOcr';
 import { mapFuelReceiptWithAi, mergeFuelResults, type FuelAiResult } from '@/services/aiOcrMapper';
+import { getScanAiAccess } from '@/services/aiGuard';
 import { scanDocumentPages } from '@/services/documentScanner';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { FuelRecord, FuelStats } from '@/services/fuel';
@@ -132,9 +133,14 @@ export default function FuelScreen() {
       return;
     }
 
+    // AI doar dacă e configurat și, pentru cloud, cu acordul general; poza doar
+    // dacă configurația citește imagini. Altfel rămâne citirea de pe telefon (regex).
     let aiResult: FuelAiResult = {};
+    const access = await getScanAiAccess();
     try {
-      aiResult = await mapFuelReceiptWithAi(ocrText, imageBase64);
+      if (access.useAi) {
+        aiResult = await mapFuelReceiptWithAi(ocrText, access.withImage ? imageBase64 : undefined);
+      }
     } catch (err) {
       console.warn('[fuel-ai] failed:', err instanceof Error ? err.message : 'unknown error');
     }

@@ -255,9 +255,15 @@ const KEY_AI_MEDICAL_ALLOWED = 'ai_medical_allowed';
 const KEY_MEDICAL_FTS_VERSION = 'medical_fts_version';
 const KEY_MEDICAL_APP_LOCK_ENABLED = 'medical_app_lock_enabled';
 
+/**
+ * Întrerupătorul general „Asistent AI pe dosarele medicale". PORNIT implicit:
+ * acordul real (Art. 9 GDPR) se dă pe fiecare dosar; comutatorul doar oprește
+ * tot dintr-un loc. Până la 2026-10-13 era OPRIT implicit și bloca tăcut
+ * acordurile date în dosare, cu mesajul fals „Ai dezactivat…".
+ */
 export async function getAiMedicalAllowed(): Promise<boolean> {
   const v = await AsyncStorage.getItem(KEY_AI_MEDICAL_ALLOWED);
-  return v === 'true';
+  return v !== 'false';
 }
 
 export async function setAiMedicalAllowed(enabled: boolean): Promise<void> {
@@ -332,5 +338,8 @@ export async function setCloudKitDbSubscribed(
   scope: 'private' | 'shared',
   subscribed: boolean
 ): Promise<void> {
-  await AsyncStorage.setItem(`${KEY_CK_DB_SUBSCRIBED_PREFIX}${scope}`, subscribed ? 'true' : 'false');
+  await AsyncStorage.setItem(
+    `${KEY_CK_DB_SUBSCRIBED_PREFIX}${scope}`,
+    subscribed ? 'true' : 'false'
+  );
 }

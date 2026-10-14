@@ -51,16 +51,16 @@ export async function clearPerTypeConsent(type: DocumentType): Promise<void> {
   await AsyncStorage.removeItem(KEY_PER_TYPE_PREFIX + type);
 }
 
-const KEY_IMAGE_AI_CONSENT = 'ocr_image_ai_consent';
-
-// Consent global pentru trimiterea imaginilor la AI (null = nu a ales niciodată)
-export async function getImageAiConsent(): Promise<boolean | null> {
-  const v = await AsyncStorage.getItem(KEY_IMAGE_AI_CONSENT);
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  return null;
+/** Există măcar o alegere salvată („Permite" / „Nu întreba din nou") pe un tip sensibil. */
+export async function hasAnyPerTypeConsent(): Promise<boolean> {
+  const choices = await Promise.all(getSensitiveDocTypes().map(getPerTypeConsent));
+  return choices.some(c => c !== null);
 }
 
-export async function setImageAiConsent(value: boolean): Promise<void> {
-  await AsyncStorage.setItem(KEY_IMAGE_AI_CONSENT, value ? 'true' : 'false');
+/**
+ * Șterge toate alegerile per tip sensibil — la următoarea trimitere userul e
+ * întrebat din nou. Ținta textului „Poți schimba din Setări" din aiGuard.
+ */
+export async function clearAllPerTypeConsents(): Promise<void> {
+  await Promise.all(getSensitiveDocTypes().map(clearPerTypeConsent));
 }

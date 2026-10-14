@@ -2,7 +2,6 @@ import { View, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { light, dark, primary, onPrimary } from '@/theme/colors';
-import { setAiMedicalAllowed } from '@/services/settings';
 
 interface Props {
   onNext(): void;
@@ -15,30 +14,20 @@ export function MedicalAiStep({ onNext }: Props) {
   return (
     <View style={styles.container}>
       <Text style={[styles.body, { color: palette.text }]}>
-        Dosar are o secțiune dedicată pentru documente medicale: analize, rețete, scrisori medicale,
-        vaccinuri. Activează AI-ul medical ca să extragem automat valori (HDL, TSH etc.) și să poți
-        întreba „Cum a evoluat HDL-ul?".
+        Dosar are o secțiune separată pentru documente medicale: analize, rețete, scrisori medicale,
+        vaccinuri. Fiecare dosar medical are asistentul lui AI, care extrage valori (HDL, TSH etc.)
+        și răspunde la întrebări ca „Cum a evoluat HDL-ul?".
       </Text>
       <Text style={[styles.hint, { color: palette.textSecondary }]}>
-        Datele medicale (Art. 9 GDPR) se criptează local cu AES-256-GCM. Nu pleacă la AI fără
-        consimțământul tău per dosar. Poți activa/dezactiva oricând din Setări → Asistent AI.
+        Datele medicale (Art. 9 GDPR) nu ajung la AI fără acordul tău, pe care îl dai separat în
+        fiecare dosar. Asistentul general din tab-ul „Asistent" nu le vede niciodată.
       </Text>
       <Pressable
-        onPress={async () => {
-          await setAiMedicalAllowed(true);
-          onNext();
-        }}
+        onPress={onNext}
         style={[styles.btn, { backgroundColor: primary }]}
         accessibilityRole="button"
       >
-        <Text style={[styles.btnText, { color: onPrimary }]}>Activează</Text>
-      </Pressable>
-      <Pressable
-        onPress={onNext}
-        style={[styles.btnOutline, { borderColor: palette.border }]}
-        accessibilityRole="button"
-      >
-        <Text style={[styles.btnOutlineText, { color: palette.text }]}>Mai târziu</Text>
+        <Text style={[styles.btnText, { color: onPrimary }]}>Am înțeles</Text>
       </Pressable>
     </View>
   );
@@ -54,11 +43,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnText: { fontWeight: '600', fontSize: 16 },
-  btnOutline: {
-    borderWidth: 1,
-    padding: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  btnOutlineText: { fontSize: 16 },
 });
