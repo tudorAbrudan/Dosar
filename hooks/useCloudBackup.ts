@@ -12,6 +12,7 @@ import {
   CloudQuotaError,
   type BackupProgress,
 } from '@/services/cloudSync';
+import { runBackupNow, type BackupNowResult } from '@/services/cloud/backupNow';
 import { isAvailable } from '@/services/cloudStorage';
 import {
   getCloudBackupEnabled,
@@ -46,6 +47,14 @@ interface State {
   /** Progres viu cât rulează `backupNow` (null altfel). */
   backupProgress: BackupProgress | null;
 }
+
+const BACKUP_ALREADY_RUNNING: BackupNowResult = {
+  ok: false,
+  failedFiles: 0,
+  error: 'Un backup rulează deja.',
+  passwordRequired: false,
+  quotaExceeded: false,
+};
 
 const INITIAL: State = {
   status: 'idle',
@@ -206,62 +215,37 @@ export function useCloudBackup() {
     [refresh]
   );
 
-  const backupNow = useCallback(async () => {
-    if (inFlightBackupRef.current) return;
+  /**
+   * Rulează un backup complet și întoarce rezultatul. Apelantul decide ce afișează
+   * DIN rezultat — starea hook-ului citită imediat după `await` e cea din render-ul
+   * de dinainte (bug-ul „Backup finalizat." la eșec).
+   */
+  const backupNow = useCallback(async (): Promise<BackupNowResult> => {
+    if (inFlightBackupRef.current) return BACKUP_ALREADY_RUNNING;
     inFlightBackupRef.current = true;
     if (mountedRef.current) {
       setState(s => ({
         ...s,
         status: 'uploading',
-        // Resetăm banner-ul la noua încercare; va fi re-setat în catch dacă e tot quota plină.
+        // Resetăm banner-ul la noua încercare; revine dacă iCloud e tot plin.
         quotaExceeded: false,
         backupProgress: { phase: 'files', current: 0, total: 0, bytesDone: 0, bytesTotal: 0 },
       }));
     }
-    try {
-      await processQueue(p => {
-        if (mountedRef.current) {
-          setState(s => ({ ...s, backupProgress: p }));
-        }
-      });
-      if (mountedRef.current) {
-        setState(s => ({
-          ...s,
-          backupProgress: s.backupProgress
-            ? { ...s.backupProgress, phase: 'manifest' }
-            : { phase: 'manifest', current: 0, total: 1, bytesDone: 0, bytesTotal: 0 },
-        }));
-      }
-      await uploadManifestIfChanged();
-      const freq = await getCloudSnapshotFrequency();
-      const retention = await getCloudSnapshotRetention();
-      if (mountedRef.current) {
-        setState(s => ({
-          ...s,
-          backupProgress: s.backupProgress
-            ? { ...s.backupProgress, phase: 'snapshot' }
-            : { phase: 'snapshot', current: 0, total: 1, bytesDone: 0, bytesTotal: 0 },
-        }));
-      }
-      await maybeSnapshot(freq, retention);
-    } catch (e) {
-      if (mountedRef.current) {
-        setState(s => ({
-          ...s,
-          status: 'error',
-          error: e instanceof Error ? e.message : 'Eroare necunoscută',
-          quotaExceeded: e instanceof CloudQuotaError,
-          backupProgress: null,
-        }));
-      }
-      inFlightBackupRef.current = false;
-      return;
-    }
+    const result = await runBackupNow(p => {
+      if (mountedRef.current) setState(s => ({ ...s, backupProgress: p }));
+    });
     inFlightBackupRef.current = false;
     if (mountedRef.current) {
-      setState(s => ({ ...s, backupProgress: null }));
+      setState(s => ({ ...s, backupProgress: null, quotaExceeded: result.quotaExceeded }));
     }
-    await refresh();
+    // „Parolă necesară" vine din refresh (status needsPassword), nu ca eroare roșie.
+    if (result.error && !result.passwordRequired) {
+      if (mountedRef.current) setState(s => ({ ...s, status: 'error', error: result.error }));
+    } else {
+      await refresh();
+    }
+    return result;
   }, [refresh]);
 
   return { ...state, refresh, setEnabled, backupNow };
