@@ -5,7 +5,8 @@ import { computeFileHash } from './fileHash';
 import { onDocumentCreated, onDocumentRenewed } from './reviewPrompt';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
-import { isImportInProgress } from './backup';
+import { isImportInProgress, isRestoreInProgress } from './backup';
+import type { SharePushOp } from './sharing';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';
 import {
@@ -66,6 +67,15 @@ const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   company: 'company_id',
   medical_record: null,
 };
+
+/**
+ * Împinge documentul în zonele CloudKit ale entităților lui (no-op dacă niciuna
+ * nu e partajată). Sărit cât rulează o restaurare — vezi `isRestoreInProgress`.
+ */
+function pushDocumentToShare(documentId: string, op: SharePushOp): void {
+  if (isRestoreInProgress()) return;
+  void import('./cloudShare').then(m => m.afterDocumentMutation(documentId, op)).catch(() => {});
+}
 
 export interface CreateDocumentInput {
   type: DocumentType;
@@ -638,7 +648,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
     await syncDocumentExpiryReminder(doc);
   }
 
-  void import('./cloudShare').then(m => m.afterDocumentMutation(id, 'upsert')).catch(() => {});
+  pushDocumentToShare(id, 'upsert');
 
   return doc;
 }
@@ -721,7 +731,7 @@ export async function deleteDocument(id: string): Promise<void> {
 
   emit('documents:changed');
   emit('links:changed');
-  void import('./cloudShare').then(m => m.afterDocumentMutation(id, 'delete')).catch(() => {});
+  pushDocumentToShare(id, 'delete');
 }
 
 export interface UpdateDocumentInput {
@@ -837,7 +847,7 @@ export async function updateDocument(id: string, input: UpdateDocumentInput): Pr
   }
 
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterDocumentMutation(id, 'upsert')).catch(() => {});
+  pushDocumentToShare(id, 'upsert');
 }
 
 export async function linkDocumentToEntity(
@@ -915,9 +925,7 @@ export async function addEntityLinkToDocument(
   }
   emit('documents:changed');
   emit('links:changed');
-  void import('./cloudShare')
-    .then(m => m.afterDocumentMutation(documentId, 'upsert'))
-    .catch(() => {});
+  pushDocumentToShare(documentId, 'upsert');
 }
 
 export async function removeEntityLinkFromDocument(
@@ -952,7 +960,11 @@ export async function removeEntityLinkFromDocument(
   emit('links:changed');
   // NU afterDocumentMutation — are nevoie de zona SPECIFICĂ tocmai eliminată,
   // care nu mai apare în getZonesForDocument după unlink.
-  void import('./cloudShare').then(m => m.afterDocumentUnlinked(documentId, link)).catch(() => {});
+  if (!isRestoreInProgress()) {
+    void import('./cloudShare')
+      .then(m => m.afterDocumentUnlinked(documentId, link))
+      .catch(() => {});
+  }
 }
 
 export async function getDocumentEntityLinks(documentId: string): Promise<DocumentEntityLink[]> {
@@ -990,9 +1002,7 @@ export async function addDocumentPage(documentId: string, filePath: string): Pro
   }
 
   emit('documents:changed');
-  void import('./cloudShare')
-    .then(m => m.afterDocumentMutation(documentId, 'upsert'))
-    .catch(() => {});
+  pushDocumentToShare(documentId, 'upsert');
   return pageId;
 }
 
@@ -1031,9 +1041,7 @@ export async function removeDocumentPage(pageId: string): Promise<void> {
 
   emit('documents:changed');
   if (row?.document_id) {
-    void import('./cloudShare')
-      .then(m => m.afterDocumentMutation(row.document_id, 'upsert'))
-      .catch(() => {});
+    pushDocumentToShare(row.document_id, 'upsert');
   }
 }
 

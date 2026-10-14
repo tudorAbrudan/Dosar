@@ -34,6 +34,7 @@ Origini și detalii: header-ul fiecărui script. Regresie nouă → audit nou (v
 | `calendar-event-consistency-audit.js` | strict | strict | Audit — verifică că toate apelurile `createEventAsync` / `updateEventAsync` din `services/calendar.ts` includ câmpurile obligatorii pentru consistență (regulă din `docs/AI_FEATURE_CHECKLIST.md` §5): |
 | `model-background-release-audit.js` | strict | strict | Garantează că modelul LLM local (context llama.rn, câțiva GB rezidenți în RAM) este eliberat când app-ul intră în background. |
 | `manifest-shrink-guard-audit.js` | strict | strict | Orice cale care suprascrie `manifest.json` din iCloud (`writeFile(MANIFEST_PATH, …)`) trebuie să treacă prin `detectManifestShrink` + `preserveManifestBeforeShrink`. |
+| `restore-share-isolation-audit.js` | strict | strict | Orice push spre zonele CloudKit pornit din `services/` (un `import('./cloudShare')` dinamic, în afara lui cloudShare.ts) trebuie să stea într-o funcție care verifică SINCRON `isRestoreInProgress()` înainte de import. |
 | `unique-filename-audit.js` | strict | strict | Flag nume de fișier din `documents/` construite doar din `Date.now()` (`doc_${Date.now()}.jpg\|pdf`). |
 | `share-intent-fallback-audit.js` | strict | strict | iOS 27 livrează aplicației URL-ul extensiei de share ca `acte:///` (fără cheia `dataUrl=` și fără `#media\|#file`), deci doar `+native-intent.ts` / URL-ul din expo-share-intent nu mai pornesc „Adaugă document" (regresi… |
 | `claude-config-audit.js` | strict | strict | Verifică config-ul Claude Code din `.claude/` + CLAUDE.md: |

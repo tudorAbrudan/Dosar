@@ -6,13 +6,24 @@ import { assignNextOrder, removeOrder } from './entityOrder';
 import { emit } from './events';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
-import { isImportInProgress } from './backup';
+import { isImportInProgress, isRestoreInProgress } from './backup';
+import type { SharePushOp } from './sharing';
 import { deleteServiceProvidersForProperty } from './serviceProviders';
 
 // Fallback sort pentru entități care nu au rând în entity_order (edge case:
 // migrarea nu a rulat sau entitatea a fost creată în afara căii standard).
 // Valoarea mare le împinge la coada listei, tie-break pe created_at DESC.
 const ORDER_FALLBACK = 1e18;
+
+/**
+ * Împinge mutația în zona CloudKit a entității (no-op dacă nu e partajată).
+ * Sărit cât rulează o restaurare — verificarea e sincronă, aici: `import()` se
+ * rezolvă abia după ce restaurarea s-a terminat și flag-ul a fost resetat.
+ */
+function pushEntityToShare(entityType: EntityType, id: string, op: SharePushOp): void {
+  if (isRestoreInProgress()) return;
+  void import('./cloudShare').then(m => m.afterEntityMutation(entityType, id, op)).catch(() => {});
+}
 
 export async function getPersons(): Promise<Person[]> {
   const rows = await db.getAllAsync<{
@@ -112,7 +123,7 @@ export async function createPerson(
   );
   await assignNextOrder('person', id);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('person', id, 'upsert')).catch(() => {});
+  pushEntityToShare('person', id, 'upsert');
   return { id, name, phone, email, date_of_birth, createdAt: created_at };
 }
 
@@ -126,7 +137,7 @@ export async function createProperty(name: string): Promise<Property> {
   ]);
   await assignNextOrder('property', id);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('property', id, 'upsert')).catch(() => {});
+  pushEntityToShare('property', id, 'upsert');
   return { id, name, createdAt: created_at };
 }
 
@@ -140,7 +151,7 @@ export async function createVehicle(name: string): Promise<Vehicle> {
   ]);
   await assignNextOrder('vehicle', id);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('vehicle', id, 'upsert')).catch(() => {});
+  pushEntityToShare('vehicle', id, 'upsert');
   return { id, name, createdAt: created_at };
 }
 
@@ -168,13 +179,13 @@ export async function updatePerson(
     [name, phone ?? null, email ?? null, date_of_birth ?? null, id]
   );
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('person', id, 'upsert')).catch(() => {});
+  pushEntityToShare('person', id, 'upsert');
 }
 
 export async function updateProperty(id: string, name: string): Promise<void> {
   await db.runAsync('UPDATE properties SET name = ? WHERE id = ?', [name, id]);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('property', id, 'upsert')).catch(() => {});
+  pushEntityToShare('property', id, 'upsert');
 }
 
 export async function updateVehicle(
@@ -213,7 +224,7 @@ export async function updateVehicle(
   }
 
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('vehicle', id, 'upsert')).catch(() => {});
+  pushEntityToShare('vehicle', id, 'upsert');
 }
 
 export async function updateCard(
@@ -238,10 +249,10 @@ export async function updateCard(
  * legături orfan care apar în UI ca UUID-uri și nu pot fi rezolvate la nume.
  */
 async function cleanupEntityLinks(entityType: EntityType, entityId: string): Promise<void> {
-  await db.runAsync(
-    'DELETE FROM document_entities WHERE entity_type = ? AND entity_id = ?',
-    [entityType, entityId]
-  );
+  await db.runAsync('DELETE FROM document_entities WHERE entity_type = ? AND entity_id = ?', [
+    entityType,
+    entityId,
+  ]);
 }
 
 export async function deletePerson(id: string): Promise<void> {
@@ -251,7 +262,7 @@ export async function deletePerson(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('person', id, 'delete')).catch(() => {});
+  pushEntityToShare('person', id, 'delete');
 }
 
 export async function deleteProperty(id: string): Promise<void> {
@@ -262,7 +273,7 @@ export async function deleteProperty(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('property', id, 'delete')).catch(() => {});
+  pushEntityToShare('property', id, 'delete');
 }
 
 export async function deleteVehicle(id: string): Promise<void> {
@@ -298,7 +309,7 @@ export async function deleteVehicle(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('vehicle', id, 'delete')).catch(() => {});
+  pushEntityToShare('vehicle', id, 'delete');
 }
 
 export async function deleteCard(id: string): Promise<void> {
@@ -337,14 +348,14 @@ export async function createAnimal(name: string, species: string): Promise<Anima
   ]);
   await assignNextOrder('animal', id);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('animal', id, 'upsert')).catch(() => {});
+  pushEntityToShare('animal', id, 'upsert');
   return { id, name, species, createdAt: created_at };
 }
 
 export async function updateAnimal(id: string, name: string, species: string): Promise<void> {
   await db.runAsync('UPDATE animals SET name = ?, species = ? WHERE id = ?', [name, species, id]);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('animal', id, 'upsert')).catch(() => {});
+  pushEntityToShare('animal', id, 'upsert');
 }
 
 export async function deleteAnimal(id: string): Promise<void> {
@@ -354,7 +365,7 @@ export async function deleteAnimal(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('animal', id, 'delete')).catch(() => {});
+  pushEntityToShare('animal', id, 'delete');
 }
 
 export async function getCompanies(): Promise<Company[]> {
@@ -393,7 +404,7 @@ export async function createCompany(
   );
   await assignNextOrder('company', id);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('company', id, 'upsert')).catch(() => {});
+  pushEntityToShare('company', id, 'upsert');
   return { id, name, cui, reg_com, createdAt: created_at };
 }
 
@@ -410,7 +421,7 @@ export async function updateCompany(
     id,
   ]);
   emit('entities:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('company', id, 'upsert')).catch(() => {});
+  pushEntityToShare('company', id, 'upsert');
 }
 
 export async function deleteCompany(id: string): Promise<void> {
@@ -420,5 +431,5 @@ export async function deleteCompany(id: string): Promise<void> {
   emit('entities:changed');
   emit('links:changed');
   emit('documents:changed');
-  void import('./cloudShare').then(m => m.afterEntityMutation('company', id, 'delete')).catch(() => {});
+  pushEntityToShare('company', id, 'delete');
 }

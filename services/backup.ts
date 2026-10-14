@@ -21,6 +21,7 @@ import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
+import { waitForShareSyncIdle } from './cloudShare';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
 import { emit } from './events';
@@ -303,6 +304,16 @@ export function isImportInProgress(): boolean {
   return _importInProgress;
 }
 
+// True doar cât rulează o restaurare cu înlocuire (wipeFirst). Restaurarea păstrează
+// ID-urile originale, deci rândurile ei se potrivesc cu registrul de partajare: dacă
+// mutațiile ar fi împinse în zonele CloudKit, starea din backup ar suprascrie datele
+// mai noi din zonă (la participant: datele owner-ului). Hook-urile de partajare din
+// entities/documents verifică flag-ul SINCRON, la locul apelului.
+let _restoreInProgress = false;
+export function isRestoreInProgress(): boolean {
+  return _restoreInProgress;
+}
+
 /**
  * Aplică un manifest (payload JSON deja parsat) peste DB-ul curent.
  * Folosit atât de importBackup (după parse ZIP/JSON) cât și de cloudSync.restore().
@@ -322,7 +333,13 @@ export async function applyManifest(
   options: ApplyManifestOptions = {}
 ): Promise<ImportResult> {
   _importInProgress = true;
+  _restoreInProgress = options.wipeFirst === true;
   try {
+    if (_restoreInProgress) {
+      // Un pull CloudKit în curs ar scrie în tabele în timpul wipe-ului (tranzacția
+      // expo-sqlite nu e exclusivă). Sync-urile noi nu mai pornesc cât rulează importul.
+      await waitForShareSyncIdle();
+    }
     let result!: ImportResult;
     await db.withTransactionAsync(async () => {
       if (options.wipeFirst) {
@@ -333,6 +350,7 @@ export async function applyManifest(
     return result;
   } finally {
     _importInProgress = false;
+    _restoreInProgress = false;
     emit('documents:changed');
     emit('links:changed');
     emit('entities:changed');
