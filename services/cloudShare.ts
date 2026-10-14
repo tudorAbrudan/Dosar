@@ -44,15 +44,14 @@ import {
   getZonesForDocument,
   markZoneSyncError,
   markZoneSyncSuccess,
-  parseZoneName,
   recordShare,
   revokeShare,
   setCloudRecordFileHash,
   setZoneChangeToken,
   toShareableDocument,
   upsertCloudRecord,
-  zoneNameFor,
 } from './sharing';
+import { parseZoneName, zoneNameFor } from './shareZones';
 import type {
   PendingSharePush,
   PushScope,

@@ -72,6 +72,8 @@ const ENTRIES = {
     sharing: { required: false },
     // Reset intern al registrului de partajare după restaurare / ștergere totală.
     shareRegistryReset: { required: false },
+    // Tipuri partajabile + numele zonelor CloudKit (modul frunză).
+    shareZones: { required: false },
     taskRequirements: { required: true, keywords: ['DATE NECESARE', 'task'] },
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
     vehicleStatus: { required: true, keywords: ['vehicul'] },
@@ -239,11 +241,9 @@ function main() {
     for (const s of issues.unknownServices) {
       console.log(`  - services/${s}.ts`);
     }
-    console.log(
-      '  → Adaugă fiecare în ENTRIES.services din scripts/knowledge-audit.js:'
-    );
+    console.log('  → Adaugă fiecare în ENTRIES.services din scripts/knowledge-audit.js:');
     console.log("    { required: true, keywords: ['...'] }  // dacă user-visible");
-    console.log("    { required: false }                     // dacă internal");
+    console.log('    { required: false }                     // dacă internal');
     console.log('');
   }
 

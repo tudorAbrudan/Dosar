@@ -6,7 +6,7 @@
 import type { EntityType } from '@/types';
 import { db } from './db';
 import { emit } from './events';
-import { parseZoneName, shareEntityTable } from './sharing';
+import { parseZoneName, shareEntityTable } from './shareZones';
 
 /** Mesajul pus pe o partajare proprie a cărei entitate a dispărut la o restaurare / ștergere totală. */
 export const SHARE_ENTITY_MISSING_ERROR =
