@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { db } from './db';
 import { emit } from './events';
+import { beginImport } from './importState';
 import * as cloudStorage from './cloudStorage';
 import { applyManifest } from './backup';
 import { buildCanonicalManifest, hashManifestAsync } from './manifestHash';
@@ -1241,6 +1242,29 @@ export async function restoreFromCloud(
   onProgress?: (p: RestoreProgress) => void,
   key?: Uint8Array
 ): Promise<{ documentCount: number; fileCount: number }> {
+  // Toată restaurarea (descărcarea durează minute, apoi aplicarea și preluarea
+  // criptării) e o fereastră de import: upload-ul din fundal (`useCloudBackup`) și
+  // sync-ul de partajare nu pornesc. Altfel starea de dinainte de restaurare putea
+  // suprascrie backup-ul care se restaurează, iar pe un telefon nou un manifest
+  // necriptat putea ajunge peste unul criptat.
+  const endImport = beginImport({ restore: false });
+  let result: { documentCount: number; fileCount: number };
+  try {
+    result = await runRestoreFromCloud(onProgress, key);
+  } finally {
+    endImport();
+  }
+  // Zonele primite au pierdut token-ul la restaurare (resetShareStateAfterWipe):
+  // `useSharingSync` le re-descarcă acum, nu abia la următoarea revenire în aplicație.
+  // Prin eveniment, nu import: cloudSync → cloudShare → documents → cloudSync e ciclu.
+  emit('cloud:restored');
+  return result;
+}
+
+async function runRestoreFromCloud(
+  onProgress: ((p: RestoreProgress) => void) | undefined,
+  key: Uint8Array | undefined
+): Promise<{ documentCount: number; fileCount: number }> {
   if (!(await cloudStorage.isAvailable())) {
     throw new Error('iCloud nu este disponibil');
   }
@@ -1409,11 +1433,6 @@ export async function restoreFromCloud(
   }
 
   onProgress?.({ phase: 'done', current: 1, total: 1, bytesDone, bytesTotal });
-
-  // Zonele primite au pierdut token-ul la restaurare (resetShareStateAfterWipe):
-  // `useSharingSync` le re-descarcă acum, nu abia la următoarea revenire în aplicație.
-  // Prin eveniment, nu import: cloudSync → cloudShare → documents → cloudSync e ciclu.
-  emit('cloud:restored');
 
   return {
     documentCount: asArray(payload.documents).length,

@@ -36,6 +36,7 @@ let cloudSync: typeof import('@/services/cloudSync');
 let crypto: typeof import('@/services/cloudCrypto');
 let settings: typeof import('@/services/settings');
 let events: typeof import('@/services/events');
+let importState: typeof import('@/services/importState');
 let fs: {
   getInfoAsync: jest.Mock;
   readAsStringAsync: jest.Mock;
@@ -54,6 +55,7 @@ beforeAll(() => {
     crypto = require('@/services/cloudCrypto');
     settings = require('@/services/settings');
     events = require('@/services/events');
+    importState = require('@/services/importState');
     fs = require('expo-file-system/legacy');
     cloudFiles = require('@/services/cloudStorage').__files;
     resetSecureStore = require('expo-secure-store').__reset;
@@ -225,6 +227,21 @@ describe('backup criptat — restaurare pe telefon nou', () => {
     } finally {
       off();
     }
+  });
+
+  it('descărcarea fișierelor e în fereastra de import (fără upload din fundal)', async () => {
+    await backupFromPhoneA(null);
+    newPhone('device-B');
+    const duringDownload: boolean[] = [];
+    fs.writeAsStringAsync.mockImplementation(async () => {
+      duringDownload.push(importState.isImportInProgress());
+    });
+
+    await cloudSync.restoreFromCloud();
+
+    // Copia locală de dinainte de restaurare + fișierul descărcat.
+    expect(duringDownload).toEqual([true, true]);
+    expect(importState.isImportInProgress()).toBe(false);
   });
 
   it('un backup necriptat oprește flag-ul local de criptare', async () => {
