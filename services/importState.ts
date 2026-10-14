@@ -6,8 +6,10 @@
  * pentru un flag (fiecare astfel de import închidea un ciclu de require).
  */
 
-let importInProgress = false;
-let restoreInProgress = false;
+// Contoare, nu boolean: două importuri care se suprapun (restaurare + import ZIP) nu
+// închid flag-ul unul altuia — primul terminat lăsa restaurarea fără gardă.
+let importsRunning = 0;
+let restoresRunning = 0;
 let shareSyncInFlight: Promise<void> | null = null;
 
 /**
@@ -15,7 +17,7 @@ let shareSyncInFlight: Promise<void> | null = null;
  * de documente nu re-pun în coada de upload fișierele care vin din manifest.
  */
 export function isImportInProgress(): boolean {
-  return importInProgress;
+  return importsRunning > 0;
 }
 
 /**
@@ -26,17 +28,20 @@ export function isImportInProgress(): boolean {
  * entities/documents verifică flag-ul SINCRON, la locul apelului.
  */
 export function isRestoreInProgress(): boolean {
-  return restoreInProgress;
+  return restoresRunning > 0;
 }
 
-export function beginImport(options: { restore: boolean }): void {
-  importInProgress = true;
-  restoreInProgress = options.restore;
-}
-
-export function endImport(): void {
-  importInProgress = false;
-  restoreInProgress = false;
+/** Marchează începutul unui import; întoarce funcția care îl încheie (o singură dată). */
+export function beginImport(options: { restore: boolean }): () => void {
+  importsRunning++;
+  if (options.restore) restoresRunning++;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    importsRunning--;
+    if (options.restore) restoresRunning--;
+  };
 }
 
 /** Un singur sync de partajare odată: al doilea apelant primește rularea în curs. */

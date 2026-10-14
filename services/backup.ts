@@ -21,7 +21,7 @@ import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
-import { beginImport, endImport, waitForShareSyncIdle } from './importState';
+import { beginImport, waitForShareSyncIdle } from './importState';
 import { resetShareStateAfterWipe } from './shareRegistryReset';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
@@ -316,7 +316,7 @@ export async function applyManifest(
   payload: Record<string, unknown>,
   options: ApplyManifestOptions = {}
 ): Promise<ImportResult> {
-  beginImport({ restore: options.wipeFirst === true });
+  const endImport = beginImport({ restore: options.wipeFirst === true });
   try {
     if (options.wipeFirst) {
       // Un pull CloudKit în curs ar scrie în tabele în timpul wipe-ului (tranzacția
