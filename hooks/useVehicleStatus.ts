@@ -70,7 +70,10 @@ export function useVehicleStatus(vehicle: Vehicle | undefined): UseVehicleStatus
         return {
           ...raw,
           onPress: () => {
-            if (raw.docId) {
+            // Dată ITP neconfirmată → direct în editare, unde e bannerul de confirmare.
+            if (raw.docId && raw.needsReview) {
+              router.push(`/(tabs)/documente/edit?id=${raw.docId}`);
+            } else if (raw.docId) {
               router.push({
                 pathname: '/(tabs)/documente/[id]',
                 params: { id: raw.docId, from: 'entity', entityId: vehicleId },

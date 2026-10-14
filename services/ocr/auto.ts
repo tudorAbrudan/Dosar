@@ -51,12 +51,9 @@ export function extractTalonDoc(text: string): ExtractResult {
       allMmYyyy.push({ mm: m[1], yyyy: m[2] });
     }
 
-    if (allMmYyyy.length === 0) {
-      const standalone = [...text.matchAll(/(?<!\d\.)(0[1-9]|1[0-2])[.\/](20[2-9]\d)(?!\d)/g)];
-      for (const m of standalone) {
-        allMmYyyy.push({ mm: m[1], yyyy: m[2] });
-      }
-    }
+    // Fără fallback pe LL/AAAA „orfane" (fără ITP/RAR lângă): pe talon prindea
+    // orice dată, iar maximul ales devenea scadența ITP. Mai bine câmp gol +
+    // bannerul „Completează data ITP" decât o dată falsă.
 
     if (allMmYyyy.length > 0) {
       const best = allMmYyyy.reduce((prev, cur) =>

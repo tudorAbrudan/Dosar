@@ -73,7 +73,9 @@ const StatusCard = memo(function StatusCard({
       accessibilityRole="button"
       accessibilityLabel={`${item.label}, ${item.value}${
         item.unit ? ' ' + item.unit : ''
-      }${isCritical ? ', urgent' : item.severity === 'warning' ? ', atenție' : ''}`}
+      }${isCritical ? ', urgent' : item.severity === 'warning' ? ', atenție' : ''}${
+        item.needsReview ? ', dată de verificat' : ''
+      }`}
       hitSlop={8}
       style={({ pressed }) => [
         styles.card,
@@ -102,7 +104,14 @@ const StatusCard = memo(function StatusCard({
       {isFuel && item.sparkline && item.sparkline.length >= 2 ? (
         <Sparkline values={item.sparkline} />
       ) : item.subValue ? (
-        <Text style={[styles.subValue, { color: textSecondary }]} numberOfLines={1}>
+        <Text
+          style={[
+            styles.subValue,
+            { color: item.needsReview ? statusColors.warning : textSecondary },
+            item.needsReview && styles.subValueReview,
+          ]}
+          numberOfLines={1}
+        >
           {item.subValue}
         </Text>
       ) : null}
@@ -188,5 +197,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     lineHeight: 15,
+  },
+  subValueReview: {
+    fontWeight: '600',
   },
 });

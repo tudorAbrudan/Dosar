@@ -14,6 +14,8 @@ import { FormPageScreen } from '@/components/ui/FormPageScreen';
 import { primary, primaryMuted, statusColors, sensitiveBorder, sensitiveBg } from '@/theme/colors';
 import { iconColors, greys } from '@/theme/iconColors';
 import { DatePickerField } from '@/components/DatePickerField';
+import { ItpReviewBanner } from '@/components/document/ItpReviewBanner';
+import { ITP_REVIEW_KEY, applyItpReviewFlag, talonItpNeedsReview } from '@/services/vehicleStatus';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { FullscreenPhotoModal } from '@/components/document/FullscreenPhotoModal';
@@ -128,6 +130,9 @@ export default function EditDocumentScreen() {
   const [customTypeId, setCustomTypeId] = useState<string | null>(null);
   const [issueDate, setIssueDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
+  // Data ITP confirmată de user pe talon (vezi ITP_REVIEW_KEY). Orice dată pusă
+  // automat (OCR/AI) diferă de ea → banner „de verificat" + flag la salvare.
+  const [confirmedItpDate, setConfirmedItpDate] = useState('');
   const expiryDateRef = useRef('');
   const [note, setNote] = useState('');
   const [privateNotes, setPrivateNotes] = useState('');
@@ -141,9 +146,13 @@ export default function EditDocumentScreen() {
       .then(docs => {
         const talon = docs.find(d => d.type === 'talon');
         const itpDate = talon?.metadata?.itp_expiry_date;
-        if (itpDate) {
-          setExpiryDate(itpDate);
-          expiryDateRef.current = itpDate;
+        // Nu propaga o dată de pe ștampilă pe care userul n-a confirmat-o încă.
+        if (itpDate && !talonItpNeedsReview(talon)) {
+          // Convertim ZZ.LL.AAAA → AAAA-LL-ZZ pentru DatePickerField
+          const m = itpDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+          const isoDate = m ? `${m[3]}-${m[2]}-${m[1]}` : itpDate;
+          setExpiryDate(isoDate);
+          expiryDateRef.current = isoDate;
         }
       })
       .catch(() => {});
@@ -160,6 +169,7 @@ export default function EditDocumentScreen() {
         setIssueDate(d.issue_date ?? '');
         setExpiryDate(d.expiry_date ?? '');
         expiryDateRef.current = d.expiry_date ?? '';
+        setConfirmedItpDate(talonItpNeedsReview(d) ? '' : (d.expiry_date ?? ''));
         setNote(d.note ?? '');
         setPrivateNotes(d.private_notes ?? '');
         setMetadata(d.metadata ?? {});
@@ -609,6 +619,11 @@ export default function EditDocumentScreen() {
         file_path: currentDoc.file_path,
         auto_delete: currentDoc.auto_delete,
       };
+      // Data ITP citită acum de pe ștampilă se scrie direct în DB → marcheaz-o
+      // „de verificat" chiar dacă userul iese fără Salvează.
+      if (finalType === 'talon' && allowExpiry && info.expiry_date) {
+        updates.metadata = { ...(currentDoc.metadata ?? {}), [ITP_REVIEW_KEY]: '1' };
+      }
       await updateDocument(currentDoc.id, updates);
       const existingOcr = currentDoc.ocr_text ?? '';
       await setDocumentOcrText(
@@ -772,7 +787,12 @@ export default function EditDocumentScreen() {
         expiry_date: isNoExpiry ? undefined : expiryDateRef.current.trim() || undefined,
         note: note.trim() || undefined,
         file_path: doc.file_path,
-        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        metadata: applyItpReviewFlag(
+          metadata,
+          type,
+          isNoExpiry ? '' : expiryDateRef.current.trim(),
+          confirmedItpDate
+        ),
         auto_delete: autoDelete ?? undefined,
         private_notes: privateNotes.trim() || undefined,
       });
@@ -996,10 +1016,17 @@ export default function EditDocumentScreen() {
             onChange={v => {
               expiryDateRef.current = v;
               setExpiryDate(v);
+              setConfirmedItpDate(v);
             }}
             disabled={saving}
           />
         )}
+        {type === 'talon' && (expiryDate === '' || expiryDate !== confirmedItpDate) ? (
+          <ItpReviewBanner
+            expiryDate={expiryDate}
+            onConfirm={() => setConfirmedItpDate(expiryDate)}
+          />
+        ) : null}
 
         {/* 6. AUTO-ȘTERGERE */}
         <AutoDeletePicker

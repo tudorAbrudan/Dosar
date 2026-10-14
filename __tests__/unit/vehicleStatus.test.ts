@@ -1,4 +1,8 @@
-import { buildVehicleStatusItems } from '@/services/vehicleStatus';
+import {
+  ITP_REVIEW_KEY,
+  applyItpReviewFlag,
+  buildVehicleStatusItems,
+} from '@/services/vehicleStatus';
 import type { Document } from '@/types';
 import type { FuelStats } from '@/services/fuel';
 
@@ -278,5 +282,82 @@ describe('buildVehicleStatusItems', () => {
       today,
     });
     expect(items.map(i => i.key)).toEqual(['rca', 'casco', 'itp', 'fuel']);
+  });
+});
+
+describe('ITP de verificat (ștampilă scrisă de mână)', () => {
+  const today = new Date('2026-04-23T00:00:00.000Z');
+
+  it('marks the ITP slot "De verificat" when the talon date is unconfirmed', () => {
+    const items = buildVehicleStatusItems({
+      documents: [
+        doc({
+          id: 'tl1',
+          type: 'talon',
+          expiry_date: '2027-04-30',
+          metadata: { [ITP_REVIEW_KEY]: '1' },
+        }),
+      ],
+      fuelStats: emptyStats(),
+      notificationDays: 30,
+      today,
+    });
+    const itp = items.find(i => i.key === 'itp');
+    expect(itp?.needsReview).toBe(true);
+    expect(itp?.subValue).toBe('De verificat');
+  });
+
+  it('does not flag when the latest ITP comes from a dedicated ITP doc', () => {
+    const items = buildVehicleStatusItems({
+      documents: [
+        doc({
+          id: 'tl1',
+          type: 'talon',
+          expiry_date: '2026-05-30',
+          metadata: { [ITP_REVIEW_KEY]: '1' },
+        }),
+        doc({ id: 't1', type: 'itp', expiry_date: '2028-05-30' }),
+      ],
+      fuelStats: emptyStats(),
+      notificationDays: 30,
+      today,
+    });
+    const itp = items.find(i => i.key === 'itp');
+    expect(itp?.docId).toBe('t1');
+    expect(itp?.needsReview).toBeUndefined();
+    expect(itp?.subValue).toBe('30.05.2028');
+  });
+
+  describe('applyItpReviewFlag', () => {
+    it('flags a talon date the user has not confirmed', () => {
+      expect(applyItpReviewFlag({ plate: 'B 1 ABC' }, 'talon', '2027-04-30', '')).toEqual({
+        plate: 'B 1 ABC',
+        [ITP_REVIEW_KEY]: '1',
+      });
+    });
+
+    it('clears the flag once the user confirms or picks the date', () => {
+      expect(
+        applyItpReviewFlag(
+          { plate: 'B 1 ABC', [ITP_REVIEW_KEY]: '1' },
+          'talon',
+          '2027-04-30',
+          '2027-04-30'
+        )
+      ).toEqual({ plate: 'B 1 ABC' });
+    });
+
+    it('re-flags when OCR overwrites a confirmed date', () => {
+      expect(applyItpReviewFlag({}, 'talon', '2028-04-30', '2027-04-30')).toEqual({
+        [ITP_REVIEW_KEY]: '1',
+      });
+    });
+
+    it('never flags without a date or on other document types', () => {
+      expect(applyItpReviewFlag({ [ITP_REVIEW_KEY]: '1' }, 'talon', '', '')).toBeUndefined();
+      expect(
+        applyItpReviewFlag({ [ITP_REVIEW_KEY]: '1' }, 'rca', '2027-04-30', '')
+      ).toBeUndefined();
+    });
   });
 });

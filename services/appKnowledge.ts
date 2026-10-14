@@ -175,7 +175,7 @@ După atașarea fișierului, OCR-ul rulează automat și AI-ul propune tipul doc
     body: `La deschiderea unui vehicul, utilizatorul vede:
 - Poza vehiculului (dacă e setată) ca imagine hero parallax sus
 - Numărul de înmatriculare sub nume, în header
-- O bară orizontală de status rapid cu: RCA, CASCO, ITP, Vignetă, Consum mediu (L/100km cu sparkline). Data ITP e preluată din documentul ITP sau direct din ștampila de pe talon (metadata.itp_expiry_date) — cea mai târzie dintre ele.
+- O bară orizontală de status rapid cu: RCA, CASCO, ITP, Vignetă, Consum mediu (L/100km cu sparkline). Data ITP e preluată din documentul ITP sau direct din ștampila de pe talon (metadata.itp_expiry_date) — cea mai târzie dintre ele. Data citită automat de pe ștampila scrisă de mână a talonului e marcată „De verificat” (pe bara de status și în formularul talonului, cu butonul „Data e corectă”) până când utilizatorul o confirmă sau o corectează; dacă nu poate fi citită, formularul cere completarea manuală.
 - Slot-urile se ascund automat când nu există date
 - Cardurile roșii (critical) = expiră în ≤7 zile; galbene (warning) = în ≤N zile (N configurabil în Setări)
 

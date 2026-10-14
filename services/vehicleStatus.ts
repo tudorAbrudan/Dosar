@@ -14,6 +14,8 @@ export type StatusItemRaw = {
   sparkline?: number[];
   docId?: string;
   fuelType?: VehicleFuelType;
+  /** Data ITP vine de pe ștampila scrisă de mână a talonului și n-a fost confirmată. */
+  needsReview?: boolean;
 };
 
 type BuildArgs = {
@@ -49,6 +51,37 @@ function severityFromDays(days: number, notificationDays: number): StatusSeverit
   if (days <= CRITICAL_DAYS) return 'critical';
   if (days <= notificationDays) return 'warning';
   return 'ok';
+}
+
+/**
+ * Flag în `metadata` pe talon: data ITP a fost citită automat (OCR/AI) de pe
+ * ștampila RAR scrisă de mână și utilizatorul n-a confirmat-o încă. Scrisul de
+ * mână nu poate fi citit sigur, iar AI-ul greșește tocmai când e „convins" —
+ * deci orice dată nevăzută de om rămâne „de verificat".
+ */
+export const ITP_REVIEW_KEY = 'itp_needs_review';
+
+export function talonItpNeedsReview(doc: Pick<Document, 'type' | 'metadata'>): boolean {
+  return doc.type === 'talon' && doc.metadata?.[ITP_REVIEW_KEY] === '1';
+}
+
+/**
+ * Metadata gata de salvat (`undefined` dacă e goală): pune flag-ul de verificare
+ * dacă e talon cu dată ITP pe care userul n-a confirmat-o (`confirmedIso` = data
+ * pe care a ales-o/confirmat-o el), altfel îl scoate.
+ */
+export function applyItpReviewFlag(
+  metadata: Record<string, string>,
+  type: Document['type'],
+  expiryIso: string,
+  confirmedIso: string
+): Record<string, string> | undefined {
+  const next = { ...metadata };
+  delete next[ITP_REVIEW_KEY];
+  if (type === 'talon' && expiryIso && expiryIso !== confirmedIso) {
+    next[ITP_REVIEW_KEY] = '1';
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 function pickLatestDocWithExpiry(docs: Document[], type: Document['type']): Document | undefined {
@@ -117,13 +150,15 @@ function buildDocItem(
 ): StatusItemRaw {
   const iso = expiryIso ?? doc.expiry_date!;
   const days = daysBetween(iso, today);
+  const needsReview = talonItpNeedsReview(doc);
   return {
     key,
     label,
     value: formatDaysRemaining(days),
-    subValue: formatIsoDateRo(iso),
+    subValue: needsReview ? 'De verificat' : formatIsoDateRo(iso),
     severity: severityFromDays(days, notificationDays),
     docId: doc.id,
+    ...(needsReview ? { needsReview } : {}),
   };
 }
 

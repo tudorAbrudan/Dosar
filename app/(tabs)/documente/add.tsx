@@ -60,6 +60,8 @@ import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
 import { useAutoActivateDocType } from '@/hooks/useAutoActivateDocType';
 import { AutoActivatedBanner } from '@/components/document/AutoActivatedBanner';
 import { DuplicateBanner } from '@/components/document/DuplicateBanner';
+import { ItpReviewBanner } from '@/components/document/ItpReviewBanner';
+import { applyItpReviewFlag, talonItpNeedsReview } from '@/services/vehicleStatus';
 import { AiActionsRow } from '@/components/document/AiActionsRow';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
@@ -176,6 +178,9 @@ export default function AddDocumentScreen() {
   const [issueDate, setIssueDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const expiryDateRef = useRef('');
+  // Data ITP pe care userul a ales-o/confirmat-o pe talon. Orice dată pusă
+  // automat (OCR/AI) diferă de ea → banner „de verificat" + flag la salvare.
+  const [confirmedItpDate, setConfirmedItpDate] = useState('');
   const issueDateRef = useRef('');
   const [note, setNote] = useState('');
   const [privateNotes, setPrivateNotes] = useState('');
@@ -292,7 +297,8 @@ export default function AddDocumentScreen() {
       .then(docs => {
         const talon = docs.find(d => d.type === 'talon');
         const itpDate = talon?.metadata?.itp_expiry_date;
-        if (itpDate && !expiryDateRef.current) {
+        // Nu propaga o dată de pe ștampilă pe care userul n-a confirmat-o încă.
+        if (itpDate && !expiryDateRef.current && !talonItpNeedsReview(talon)) {
           // Convertim ZZ.LL.AAAA → AAAA-LL-ZZ pentru DatePickerField
           const m = itpDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
           const isoDate = m ? `${m[3]}-${m[2]}-${m[1]}` : itpDate;
@@ -1147,7 +1153,12 @@ export default function AddDocumentScreen() {
               pages.length > 0
                 ? toRelativePath(pages[0].localPath)
                 : (duplicateDoc.file_path ?? undefined),
-            metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+            metadata: applyItpReviewFlag(
+              metadata,
+              duplicateDoc.type,
+              expiryDate.trim() || duplicateDoc.expiry_date || '',
+              confirmedItpDate
+            ),
             auto_delete: autoDelete ?? duplicateDoc.auto_delete ?? undefined,
             ocr_text: newOcrText,
             private_notes: privateNotes.trim() || duplicateDoc.private_notes || undefined,
@@ -1217,7 +1228,12 @@ export default function AddDocumentScreen() {
         animal_id: entityLinks.find(l => l.entityType === 'animal')?.entityId,
         company_id: entityLinks.find(l => l.entityType === 'company')?.entityId,
         extra_entity_links: entityLinks.length > 0 ? entityLinks : undefined,
-        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        metadata: applyItpReviewFlag(
+          metadata,
+          type,
+          expiryDateRef.current.trim(),
+          confirmedItpDate
+        ),
         auto_delete: autoDelete ?? undefined,
         ocr_text:
           Array.from(ocrStructuredTextsRef.current.values()).filter(Boolean).join('\n\n---\n\n') ||
@@ -1475,10 +1491,19 @@ export default function AddDocumentScreen() {
             onChange={v => {
               expiryDateRef.current = v;
               setExpiryDate(v);
+              setConfirmedItpDate(v);
             }}
             disabled={loading}
           />
         )}
+        {type === 'talon' &&
+        pages.length > 0 &&
+        (expiryDate === '' || expiryDate !== confirmedItpDate) ? (
+          <ItpReviewBanner
+            expiryDate={expiryDate}
+            onConfirm={() => setConfirmedItpDate(expiryDate)}
+          />
+        ) : null}
         {expiryDate && !isNoExpiryType(type) ? (
           <Pressable
             style={styles.calendarInlineBtn}
