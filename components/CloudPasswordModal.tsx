@@ -18,6 +18,11 @@ interface Props {
   mode: CloudPasswordModalMode;
   onSubmit: (password: string) => Promise<void>;
   onCancel: () => void;
+  /**
+   * Apelat după ce modalul a dispărut complet (iOS). Orice Modal sau Alert care
+   * urmează parolei se deschide de aici, altfel UIKit refuză prezentarea.
+   */
+  onDismissed?: () => void;
 }
 
 const TITLES: Record<CloudPasswordModalMode, string> = {
@@ -46,7 +51,7 @@ const SUBMIT_LABELS: Record<CloudPasswordModalMode, string> = {
  * State-ul intern (parolă, confirmare, agreed, eroare) e resetat când `visible`
  * trece din `true` în `false` (modal închis).
  */
-export function CloudPasswordModal({ visible, mode, onSubmit, onCancel }: Props) {
+export function CloudPasswordModal({ visible, mode, onSubmit, onCancel, onDismissed }: Props) {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
 
@@ -107,6 +112,7 @@ export function CloudPasswordModal({ visible, mode, onSubmit, onCancel }: Props)
       onRequestClose={() => {
         if (!busy) onCancel();
       }}
+      onDismiss={onDismissed}
     >
       <View style={[styles.backdrop, { backgroundColor: `${palette.text}80` }]}>
         <View style={[styles.card, { backgroundColor: palette.card }]}>

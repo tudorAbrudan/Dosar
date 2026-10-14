@@ -16,9 +16,12 @@ import { isAvailable } from '@/services/cloudStorage';
 import {
   getCloudBackupEnabled,
   setCloudBackupEnabled,
+  getCloudEncryptionEnabled,
   getCloudSnapshotFrequency,
   getCloudSnapshotRetention,
 } from '@/services/settings';
+import { isSessionUnlocked } from '@/services/cloudCrypto';
+import { deriveCloudStatus } from '@/services/cloud/status';
 import { isImportInProgress } from '@/services/backup';
 import type { CloudStatus } from '@/types';
 
@@ -97,10 +100,14 @@ export function useCloudBackup() {
       const failedCount = enabled ? await getFailedCount() : 0;
       const pendingBytes = enabled ? await getPendingBytes() : 0;
       const dbSizeBytes = await getLocalDbSizeBytes();
-      let status: CloudStatus = 'idle';
-      if (!available) status = 'unavailable';
-      else if (!enabled) status = 'paused';
-      else if (pendingCount > 0) status = 'uploading';
+      const passwordRequired = (await getCloudEncryptionEnabled()) && !isSessionUnlocked();
+      const status = deriveCloudStatus({
+        available,
+        enabled,
+        passwordRequired,
+        pendingCount,
+        lastUploadedAt: meta?.uploadedAt ?? null,
+      });
 
       if (mountedRef.current) {
         setState(s => ({

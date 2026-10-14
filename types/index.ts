@@ -910,7 +910,17 @@ export interface PendingUpload {
   created_at: number;
 }
 
-export type CloudStatus = 'idle' | 'uploading' | 'restoring' | 'error' | 'paused' | 'unavailable';
+export type CloudStatus =
+  | 'idle'
+  | 'uploading'
+  | 'restoring'
+  | 'error'
+  | 'paused'
+  | 'unavailable'
+  /** Backup criptat, parola neintrodusă de la pornirea aplicației: nu se urcă nimic. */
+  | 'needsPassword'
+  /** Backup activ, dar în iCloud nu există încă un manifest (nimic de restaurat). */
+  | 'noBackup';
 
 // ============ REMINDERS ============
 
