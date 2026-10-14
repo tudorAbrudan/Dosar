@@ -312,7 +312,13 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   }
 
   const payload = await buildManifestPayload();
-  const canonical = buildCanonicalManifest(payload as unknown as Record<string, unknown>);
+  // `exportDate` e ora curentă: inclus în hash, orice două upload-uri difereau, deci
+  // „nimic schimbat → nu urca" nu funcționa (manifest re-urcat la fiecare ieșire din
+  // aplicație, iar celălalt telefon vedea mereu un „backup mai nou").
+  const canonical = buildCanonicalManifest({
+    ...(payload as unknown as Record<string, unknown>),
+    exportDate: null,
+  });
   const hash = await hashManifestAsync(canonical);
 
   const state = await getCloudState();

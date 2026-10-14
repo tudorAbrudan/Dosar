@@ -220,12 +220,16 @@ describe('backup criptat — meta vechi, fără parametri', () => {
     cloudFiles.set(META, JSON.stringify(legacy));
   }
 
-  /** Aplicația repornită (sesiune blocată) intră în fundal: upload-ul cere parola. */
+  /**
+   * Aplicația repornită (sesiune blocată) intră în fundal. Fără modificări upload-ul
+   * se oprește la hash; cu modificări cere parola — completarea meta-ului rulează
+   * înaintea ambelor.
+   */
   async function backgroundWithLockedSession(): Promise<void> {
     crypto.setSessionKey(null);
-    await expect(cloudSync.uploadManifestIfChanged()).rejects.toBeInstanceOf(
-      crypto.PasswordRequiredError
-    );
+    await cloudSync.uploadManifestIfChanged().catch(e => {
+      expect(e).toBeInstanceOf(crypto.PasswordRequiredError);
+    });
   }
 
   it('telefonul care a făcut backup-ul completează meta fără să ceară parola', async () => {

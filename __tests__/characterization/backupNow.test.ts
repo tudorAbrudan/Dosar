@@ -28,6 +28,7 @@ import type { TestDb } from '../helpers/testDb';
 let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let runBackupNow: typeof import('@/services/cloud/backupNow').runBackupNow;
+let cloudSyncModule: typeof import('@/services/cloudSync');
 let crypto: typeof import('@/services/cloudCrypto');
 let settings: typeof import('@/services/settings');
 let cloud: {
@@ -45,6 +46,7 @@ beforeAll(() => {
     db = require('@/services/db').db as typeof db;
     testDb = db as unknown as TestDb;
     runBackupNow = require('@/services/cloud/backupNow').runBackupNow;
+    cloudSyncModule = require('@/services/cloudSync');
     crypto = require('@/services/cloudCrypto');
     settings = require('@/services/settings');
     cloud = require('@/services/cloudStorage');
@@ -173,5 +175,22 @@ describe('runBackupNow', () => {
     expect(result.ok).toBe(false);
     expect(result.quotaExceeded).toBe(true);
     expect(result.error).toMatch(/spațiu/);
+  });
+});
+
+describe('uploadManifestIfChanged — dedup după conținut', () => {
+  it('un al doilea upload fără modificări nu re-urcă manifestul', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    await new Promise(r => setTimeout(r, 5)); // altă oră în exportDate
+
+    expect(await uploadManifestIfChanged()).toBe(false);
+
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-2',
+      'Dacia',
+      TS,
+    ]);
+    expect(await uploadManifestIfChanged()).toBe(true);
   });
 });
