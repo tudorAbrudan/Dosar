@@ -4,6 +4,7 @@ Cronologic, descrescător. Front-matter pe fiecare fișier: `date`, `tags`, `tri
 
 | Data | Subiect | Tags |
 |---|---|---|
+| 2026-10-14 | [Acțiunile din hook-uri întorc rezultatul; UI-ul nu citește starea după `await`](2026-10-14-hook-action-returns-result.md) | react, hooks, async, state, backup, regression |
 | 2026-10-13 | [Gate-ul AI pe funcție; „local" se decide din ruta datelor](2026-10-13-ai-gate-per-function.md) | ai, privacy, gdpr, audit, regression |
 | 2026-10-13 | [Hook-urile Claude Code citesc `tool_input`, nu rădăcina JSON-ului](2026-10-13-claude-hooks-tool-input.md) | claude-code, hooks, tooling, regression |
 | 2026-07-30 | [Date primite din exterior: scrie pe toate căile pe care UI-ul citește](2026-07-30-shared-docs-legacy-column.md) | sqlite, sharing, cloudkit, junction-table, regression |
