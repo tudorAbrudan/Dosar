@@ -114,6 +114,7 @@ describe('runBackupNow', () => {
     expect(result).toEqual({
       ok: true,
       changed: true,
+      otherDeviceBackup: false,
       failedFiles: 0,
       error: null,
       passwordRequired: false,
@@ -214,13 +215,38 @@ describe('uploadManifestIfChanged — dedup după conținut', () => {
     expect(cloud.__files.has(MANIFEST)).toBe(true);
   });
 
-  it('un manifest suprascris de alt telefon se re-urcă', async () => {
+  it('fără modificări locale nu suprascrie backup-ul făcut între timp de alt telefon', async () => {
     const { uploadManifestIfChanged } = cloudSyncModule;
     expect(await uploadManifestIfChanged()).toBe(true);
-    const other = { ...JSON.parse(cloud.__files.get(META) as string), hash: 'alt-hash' };
-    cloud.__files.set(META, JSON.stringify({ ...other, deviceId: 'device-B' }));
+    const fromB = {
+      ...JSON.parse(cloud.__files.get(META) as string),
+      hash: 'hash-B',
+      deviceId: 'device-B',
+    };
+    cloud.__files.set(META, JSON.stringify(fromB));
+    cloud.__files.set(MANIFEST, 'manifest-B');
 
+    expect(await uploadManifestIfChanged()).toBe(false);
+    expect(cloud.__files.get(MANIFEST)).toBe('manifest-B');
+    const result = await runBackupNow();
+    expect(result).toMatchObject({ ok: true, changed: false, otherDeviceBackup: true });
+
+    // O modificare locală se urcă (last-write-wins).
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-2',
+      'Dacia',
+      TS,
+    ]);
     expect(await uploadManifestIfChanged()).toBe(true);
     expect(JSON.parse(cloud.__files.get(META) as string).deviceId).toBe('device-A');
+  });
+
+  it('meta-ul propriu cu alt hash (copie veche) se re-urcă', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    const stale = { ...JSON.parse(cloud.__files.get(META) as string), hash: 'hash-vechi' };
+    cloud.__files.set(META, JSON.stringify(stale));
+
+    expect(await uploadManifestIfChanged()).toBe(true);
   });
 });

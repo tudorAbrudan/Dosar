@@ -303,6 +303,20 @@ async function preserveManifestBeforeShrink(): Promise<void> {
   }
 }
 
+function isFromOtherDevice(meta: CloudManifestMeta, deviceId: string): boolean {
+  return !!meta.deviceId && meta.deviceId !== deviceId;
+}
+
+/**
+ * Backup-ul din iCloud e de pe alt telefon și n-a fost înlocuit de pe acesta (vezi
+ * regula din `uploadManifestIfChanged`). Pentru mesajul de după „Backup acum".
+ */
+export async function isCloudBackupFromOtherDevice(): Promise<boolean> {
+  const meta = await readCloudMeta();
+  if (!meta) return false;
+  return isFromOtherDevice(meta, (await getCloudState()).device_id);
+}
+
 export async function uploadManifestIfChanged(): Promise<boolean> {
   if (!(await cloudStorage.isAvailable())) return false;
 
@@ -324,12 +338,14 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   const state = await getCloudState();
   // Snapshot al meta-ului din cloud: comparat cu hash-ul local și folosit la rollback.
   const previousMeta = await readCloudMeta();
-  // Sărim upload-ul doar dacă iCloud are deja exact starea asta. Un manifest șters din
-  // iCloud sau suprascris de alt telefon se re-urcă, chiar dacă datele locale nu s-au
-  // schimbat de la ultimul upload.
+  // Fără modificări locale de la ultimul upload nu urcăm dacă iCloud are deja starea
+  // asta SAU un backup făcut între timp de alt telefon (ar fi suprascris cu date mai
+  // vechi; telefonul acesta îl vede ca „backup mai nou"). Un manifest șters din iCloud
+  // se re-urcă. Cu modificări locale: last-write-wins, ca înainte.
   if (
     state.last_manifest_hash === hash &&
-    previousMeta?.hash === hash &&
+    previousMeta &&
+    (previousMeta.hash === hash || isFromOtherDevice(previousMeta, state.device_id)) &&
     (await cloudStorage.exists(MANIFEST_PATH))
   ) {
     return false;
