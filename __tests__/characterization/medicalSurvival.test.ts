@@ -91,6 +91,8 @@ describe('restore — dosar medical cu persoana lipsă din manifest', () => {
     expect(rec[0].blood_group).toBe('0 pozitiv');
     const person = testDb._raw.prepare('SELECT id FROM persons WHERE id = ?').get(rec[0].person_id);
     expect(person).toBeTruthy();
+    // La restaurare, persoana recreată primește ID-ul referit de dosar.
+    expect(rec[0].person_id).toBe('p-GONE');
     const obs = testDb._raw.prepare('SELECT COUNT(*) n FROM medical_observations').get() as any;
     expect(obs.n).toBe(1);
     expect(res.errors.filter(e => e.startsWith('Dosar medical'))).toEqual([]);

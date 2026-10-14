@@ -490,3 +490,28 @@ describe('restaurarea păstrează ID-urile documentelor, paginilor și pozelor',
     expect(fs.copyAsync).not.toHaveBeenCalled();
   });
 });
+
+describe('restaurarea nu contopește rândurile identice din backup', () => {
+  it('două alimentări identice rămân două, cu ID-urile lor', async () => {
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-1',
+      'Logan',
+      TS,
+    ]);
+    for (const id of ['f-1', 'f-2']) {
+      await db.runAsync(
+        `INSERT INTO fuel_records (id, vehicle_id, date, liters, currency, is_full, created_at)
+         VALUES (?, 'v-1', '2026-05-01', 40, 'RON', 1, ?)`,
+        [id, TS]
+      );
+    }
+    const payload = await buildManifestPayload();
+
+    await applyManifest(payload as unknown as Record<string, unknown>, { wipeFirst: true });
+
+    const rows = testDb._raw.prepare('SELECT id FROM fuel_records ORDER BY id').all() as {
+      id: string;
+    }[];
+    expect(rows.map(r => r.id)).toEqual(['f-1', 'f-2']);
+  });
+});

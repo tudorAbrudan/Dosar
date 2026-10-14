@@ -630,31 +630,6 @@ async function applyManifestBody(
     }
   }
 
-  // Restaurează ordinea globală a entităților, remappând ID-urile vechi la cele noi.
-  // Ordinea e nice-to-have: erorile individuale nu blochează restul importului.
-  for (const row of (payload.entityOrder as AnyRecord[]) ?? []) {
-    try {
-      const oldId = row.entity_id as string | undefined;
-      const entityType = row.entity_type as EntityType | undefined;
-      const sortOrder = row.sort_order as number | undefined;
-      if (!oldId || !entityType || typeof sortOrder !== 'number') continue;
-      let newId: string | undefined;
-      if (entityType === 'person') newId = personMap.get(oldId);
-      else if (entityType === 'property') newId = propertyMap.get(oldId);
-      else if (entityType === 'vehicle') newId = vehicleMap.get(oldId);
-      else if (entityType === 'card') newId = cardMap.get(oldId);
-      else if (entityType === 'animal') newId = animalMap.get(oldId);
-      else if (entityType === 'company') newId = companyMap.get(oldId);
-      if (!newId) continue;
-      await db.runAsync(
-        'INSERT OR REPLACE INTO entity_order (entity_type, entity_id, sort_order) VALUES (?, ?, ?)',
-        [entityType, newId, sortOrder]
-      );
-    } catch {
-      // ignorăm erori punctuale la restaurarea ordinii
-    }
-  }
-
   for (const ct of (payload.customTypes as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((ct.name as string) || '').toLowerCase().trim();
@@ -682,7 +657,9 @@ async function applyManifestBody(
       const newVehicleId = oldVehicleId ? vehicleMap.get(oldVehicleId) : undefined;
 
       const dedupeKey = `${newVehicleId ?? ''}|${f.date as string}|${f.liters ?? ''}|${f.km_total ?? ''}|${(f.station as string) ?? ''}`;
-      if (existingFuelByKey.has(dedupeKey)) {
+      // Dedupe doar la importul aditiv: la restaurare două alimentări identice din
+      // backup (aceeași zi, aceeași stație) sunt două alimentări reale.
+      if (!wipeFirst && existingFuelByKey.has(dedupeKey)) {
         skipped++;
         continue;
       }
@@ -699,13 +676,14 @@ async function applyManifestBody(
         pump_number: f.pump_number as string | undefined,
       };
 
+      const fuelOpts = { id: await ids.claim('fuel_records', f.id) };
       if (newVehicleId) {
-        await fuel.addFuelRecord(newVehicleId, input);
+        await fuel.addFuelRecord(newVehicleId, input, fuelOpts);
       } else {
-        await fuel.addCanisterFuelRecord(input);
+        await fuel.addCanisterFuelRecord(input, fuelOpts);
       }
 
-      existingFuelByKey.add(dedupeKey);
+      if (!wipeFirst) existingFuelByKey.add(dedupeKey);
       imported++;
     } catch (e) {
       errors.push(`Alimentare carburant: ${e instanceof Error ? e.message : 'eroare'}`);
@@ -737,11 +715,13 @@ async function applyManifestBody(
       const name = ((m.name as string) || '').trim();
       const presetKey = (m.preset_key as string | null | undefined) ?? null;
       const key = `${newVehicleId}|${name.toLowerCase()}|${presetKey ?? ''}`;
-      if (existingMaintenanceByKey.has(key)) {
+      if (!wipeFirst && existingMaintenanceByKey.has(key)) {
         skipped++;
         continue;
       }
-      const id = (m.id as string | undefined) || generateId();
+      const id = wipeFirst
+        ? await ids.claim('vehicle_maintenance_tasks', m.id)
+        : (m.id as string | undefined) || generateId();
       const createdAt =
         (m.createdAt as string) || (m.created_at as string) || new Date().toISOString();
       const updatedAt = (m.updatedAt as string) || (m.updated_at as string) || createdAt;
@@ -765,7 +745,7 @@ async function applyManifestBody(
           updatedAt,
         ]
       );
-      existingMaintenanceByKey.add(key);
+      if (!wipeFirst) existingMaintenanceByKey.add(key);
       imported++;
     } catch (e) {
       errors.push(`Mentenanță auto: ${e instanceof Error ? e.message : 'eroare'}`);
@@ -779,16 +759,19 @@ async function applyManifestBody(
       const newPropertyId = oldPropertyId
         ? (propertyMap.get(oldPropertyId) ?? oldPropertyId)
         : null;
-      // Skip dacă există deja un furnizor identic pe aceeași proprietate
-      const existingRows = await db.getAllAsync<{ id: string }>(
-        `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
-        [
-          newPropertyId,
-          p.type as string,
-          (p.provider_name as string | null) ?? null,
-          (p.customer_code as string | null) ?? null,
-        ]
-      );
+      // Import aditiv: skip dacă există deja un furnizor identic pe aceeași proprietate.
+      // La restaurare fiecare rând din backup e un furnizor distinct.
+      const existingRows = wipeFirst
+        ? []
+        : await db.getAllAsync<{ id: string }>(
+            `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
+            [
+              newPropertyId,
+              p.type as string,
+              (p.provider_name as string | null) ?? null,
+              (p.customer_code as string | null) ?? null,
+            ]
+          );
       if (existingRows.length > 0) {
         skipped++;
         continue;
@@ -799,7 +782,9 @@ async function applyManifestBody(
             consumption_point_code, support_phone, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          (p.id as string | undefined) || generateId(),
+          wipeFirst
+            ? await ids.claim('service_providers', p.id)
+            : (p.id as string | undefined) || generateId(),
           newPropertyId,
           p.type as string,
           (p.provider_name as string | null | undefined) ?? null,
@@ -949,7 +934,15 @@ async function applyManifestBody(
           'SELECT id FROM persons WHERE LOWER(TRIM(name)) = ? AND id NOT IN (SELECT person_id FROM medical_record)',
           [recordName.toLowerCase()]
         );
-        newPersonId = byName?.id ?? (await entities.createPerson(recordName)).id;
+        // Persoană nouă: la restaurare primește ID-ul referit de dosar (person_id
+        // rămâne cel din backup, la fel ca restul ID-urilor).
+        newPersonId =
+          byName?.id ??
+          (
+            await entities.createPerson(recordName, undefined, undefined, undefined, {
+              id: await ids.claim('persons', oldPersonId),
+            })
+          ).id;
       }
       // UPSERT (nu INSERT OR REPLACE): cu FK ON, REPLACE = DELETE + INSERT, iar
       // DELETE-ul ar cascada pe medical_observations/threads/messages/shares. La
@@ -1122,6 +1115,26 @@ async function applyManifestBody(
       );
     } catch (e) {
       errors.push(`Share medical: ${e instanceof Error ? e.message : 'eroare'}`);
+    }
+  }
+
+  // Ordinea globală a entităților (inclusiv dosarele medicale), prin aceleași hărți
+  // old→new ca restul FK-urilor. Rulează după dosarele medicale ca harta lor să fie
+  // populată. Ordinea e nice-to-have: erorile individuale nu blochează importul.
+  for (const row of (payload.entityOrder as AnyRecord[]) ?? []) {
+    try {
+      const oldId = row.entity_id as string | undefined;
+      const entityType = row.entity_type as EntityType | undefined;
+      const sortOrder = row.sort_order as number | undefined;
+      if (!oldId || !entityType || typeof sortOrder !== 'number') continue;
+      const newId = entityIdMaps.get(entityType)?.get(oldId);
+      if (!newId) continue;
+      await db.runAsync(
+        'INSERT OR REPLACE INTO entity_order (entity_type, entity_id, sort_order) VALUES (?, ?, ?)',
+        [entityType, newId, sortOrder]
+      );
+    } catch {
+      // ignorăm erori punctuale la restaurarea ordinii
     }
   }
 

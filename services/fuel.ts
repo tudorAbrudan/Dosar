@@ -1,5 +1,5 @@
 import { db, generateId } from './db';
-import type { FuelRecord, VehicleFuelType } from '@/types';
+import type { CreateRowOptions, FuelRecord, VehicleFuelType } from '@/types';
 
 export type { FuelRecord };
 
@@ -85,25 +85,29 @@ export interface AddFuelRecordInput {
  */
 export async function addFuelRecord(
   vehicleId: string,
-  record: AddFuelRecordInput
+  record: AddFuelRecordInput,
+  opts: CreateRowOptions = {}
 ): Promise<FuelRecord> {
-  return insertFuelRecord({ ...record, vehicle_id: vehicleId });
+  return insertFuelRecord({ ...record, vehicle_id: vehicleId }, opts);
 }
 
 /**
  * Înregistrare de alimentare fără vehicul (canistră, scop necunoscut).
  * NU intră în calculul de consum al niciunui vehicul.
  */
-export async function addCanisterFuelRecord(record: AddFuelRecordInput): Promise<FuelRecord> {
-  return insertFuelRecord({ ...record, vehicle_id: undefined });
+export async function addCanisterFuelRecord(
+  record: AddFuelRecordInput,
+  opts: CreateRowOptions = {}
+): Promise<FuelRecord> {
+  return insertFuelRecord({ ...record, vehicle_id: undefined }, opts);
 }
 
 interface InsertInput extends AddFuelRecordInput {
   vehicle_id?: string;
 }
 
-async function insertFuelRecord(input: InsertInput): Promise<FuelRecord> {
-  const id = generateId();
+async function insertFuelRecord(input: InsertInput, opts: CreateRowOptions): Promise<FuelRecord> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   const isFull = input.is_full ?? true;
   const station = input.station?.trim() || null;
