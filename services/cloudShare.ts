@@ -56,7 +56,7 @@ import {
   toShareableDocument,
   upsertCloudRecord,
 } from './sharing';
-import { parseZoneName, zoneNameFor } from './shareZones';
+import { SHAREABLE_ENTITY_TYPES, parseZoneName, shareEntityTable, zoneNameFor } from './shareZones';
 import type {
   PendingSharePush,
   PushScope,
@@ -88,29 +88,19 @@ function native(): typeof CloudKitShareModule {
   return nativeModule;
 }
 
-// Mapare service-layer entityType→tabel SQLite (nu label UI). Chei EntityType
-// legitime — nu există sursă unică pentru numele tabelului în types/index.ts.
-// check-hardcoded-entities-disable-next-cluster
-const ENTITY_TABLE: Record<string, string> = {
-  person: 'persons',
-  vehicle: 'vehicles',
-  property: 'properties',
-  animal: 'animals',
-  company: 'companies',
-};
-
+// Tabel SQLite → tip de entitate, inversul lui `shareEntityTable` (sursa unică: shareZones).
 const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = Object.fromEntries(
-  Object.entries(ENTITY_TABLE).map(([entityType, table]) => [table, entityType as EntityType])
+  SHAREABLE_ENTITY_TYPES.map(t => [shareEntityTable(t), t])
 );
 
 /**
  * Coloana legacy denormalizată din `documents` pentru un tip de entitate —
  * convenția `${entityType}_id` (sursa: `LEGACY_ENTITY_COLUMN` din
  * `services/documents.ts`). `null` pentru tipuri nepartajabile, ceea ce face
- * interpolarea în SQL sigură (cheia e validată prin `ENTITY_TABLE`).
+ * interpolarea în SQL sigură (cheia e validată prin `shareEntityTable`).
  */
 function legacyColumnFor(entityType: EntityType): string | null {
-  return ENTITY_TABLE[entityType] ? `${entityType}_id` : null;
+  return shareEntityTable(entityType) ? `${entityType}_id` : null;
 }
 
 export type LocalTable =
@@ -187,7 +177,7 @@ export async function shareEntity(
     zoneName,
     recordName: bundle.entityRecordName,
     recordType: entityType,
-    localTable: ENTITY_TABLE[entityType] ?? entityType,
+    localTable: shareEntityTable(entityType) ?? entityType,
     localId: entityId,
     changeTag: succeeded[bundle.entityRecordName],
   });
@@ -432,7 +422,7 @@ export async function takeReceivedShareNotices(): Promise<ReceivedShareNotice[]>
   const drained = receivedNotices.splice(0, receivedNotices.length);
   const out: ReceivedShareNotice[] = [];
   for (const n of drained) {
-    const table = ENTITY_TABLE[n.entityType];
+    const table = shareEntityTable(n.entityType);
     const row = table
       ? await db.getFirstAsync<{ name: string }>(`SELECT name FROM ${table} WHERE id = ?`, [
           n.entityId,
@@ -618,7 +608,7 @@ export function afterEntityMutation(
   entityId: string,
   op: SharePushOp
 ): Promise<void> {
-  const table = ENTITY_TABLE[entityType];
+  const table = shareEntityTable(entityType);
   // Importul dinamic din apelant lasă o fereastră în care poate începe o restaurare.
   if (!table || isRestoreInProgress()) return Promise.resolve();
   return trackShareWork(
@@ -803,7 +793,9 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
         recordName: row.record_name,
         recordType: row.kind === 'entity' ? (entityType ?? 'entity') : 'document',
         localTable:
-          row.kind === 'entity' ? (entityType ? ENTITY_TABLE[entityType] : 'unknown') : 'documents',
+          row.kind === 'entity'
+            ? ((entityType && shareEntityTable(entityType)) ?? 'unknown')
+            : 'documents',
         localId: row.record_name,
         changeTag,
       });
@@ -1013,7 +1005,7 @@ async function applyFetchedRecords(share: SharedEntity, records: FetchedRecord[]
       share.zone_name,
       entity.recordName,
       share.entity_type,
-      ENTITY_TABLE[share.entity_type] ?? 'unknown',
+      shareEntityTable(share.entity_type) ?? 'unknown',
       entity.changeTag
     );
   }
@@ -1084,7 +1076,7 @@ async function applyEntityRow(
   recordName: string,
   fields: Record<string, string>
 ): Promise<void> {
-  const table = ENTITY_TABLE[entityType];
+  const table = shareEntityTable(entityType);
   if (!table) return;
   if (!fields.name) return; // NOT NULL guard — record de sistem/payload incomplet
 
