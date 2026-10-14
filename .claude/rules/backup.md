@@ -97,7 +97,7 @@ Pași:
 
 Folosită de `restoreFromCloud`. Într-o tranzacție: `wipeUserData()` → reinserare cu **ID-urile originale** (fără dedupe după nume — două entități „Dacia" rămân două; `services/restoreIds.ts` tratează ID-uri lipsă/duplicate) → `resetShareStateAfterWipe()`.
 
-- **Izolată de partajarea CloudKit:** `isRestoreInProgress()` oprește push-urile spre zone (garda sincronă din `pushEntityToShare` / `pushDocumentToShare`, păzită de `restore-share-isolation-audit`); `syncSharedEntities` nu pornește cât rulează un import; restaurarea așteaptă sync-ul în curs.
+- **Izolată de partajarea CloudKit:** `isRestoreInProgress()` oprește push-urile spre zone (garda sincronă din `pushEntityToShare` / `pushDocumentToShare`, păzită de `restore-share-isolation-audit`); `syncSharedEntities` nu pornește cât rulează un import; restaurarea așteaptă sync-ul în curs. La final `restoreFromCloud` emite `cloud:restored`, iar `useSharingSync` re-descarcă zonele primite.
 - **Registrul de partajare** (`shared_entities`, `cloud_records`, `pending_share_pushes`) nu e în backup și nu se șterge: zonele primite pierd token-ul (fetch complet la sync), coada de push se curăță, partajările proprii fără entitate primesc o eroare vizibilă (Partajare → „Revocă").
 - **„Șterge toate datele"** (Setări) = `deleteAllUserData()`: aceeași ștergere + coada de upload, registrul rămâne.
 - Funcțiile `create*` din servicii primesc `{ id }` opțional DOAR pentru restaurare/import.
@@ -135,7 +135,9 @@ iCloud Drive / Dosar /
 ├── manifest.json                    ← state-ul curent (suprascris)
 ├── manifest.meta.json               ← { version, hash, uploadedAt, deviceId, encrypted, encryption?: { salt, verify }, ... }
 ├── snapshots/
-│   └── manifest_YYYY-MM-DD.json
+│   ├── manifest_YYYY-MM-DD.json
+│   ├── meta_YYYY-MM-DD.json         ← meta-ul de la momentul snapshot-ului (salt + verificator)
+│   └── pre-shrink_<ts>.json + pre-shrink-meta_<ts>.json
 └── files/
     └── <uuid>.{jpg,pdf}             ← imutabile
 ```

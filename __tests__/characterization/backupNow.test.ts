@@ -28,6 +28,7 @@ import type { TestDb } from '../helpers/testDb';
 let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let runBackupNow: typeof import('@/services/cloud/backupNow').runBackupNow;
+let cloudSyncModule: typeof import('@/services/cloudSync');
 let crypto: typeof import('@/services/cloudCrypto');
 let settings: typeof import('@/services/settings');
 let cloud: {
@@ -45,6 +46,7 @@ beforeAll(() => {
     db = require('@/services/db').db as typeof db;
     testDb = db as unknown as TestDb;
     runBackupNow = require('@/services/cloud/backupNow').runBackupNow;
+    cloudSyncModule = require('@/services/cloudSync');
     crypto = require('@/services/cloudCrypto');
     settings = require('@/services/settings');
     cloud = require('@/services/cloudStorage');
@@ -111,6 +113,8 @@ describe('runBackupNow', () => {
 
     expect(result).toEqual({
       ok: true,
+      changed: true,
+      otherDeviceBackup: false,
       failedFiles: 0,
       error: null,
       passwordRequired: false,
@@ -118,6 +122,16 @@ describe('runBackupNow', () => {
     });
     expect(cloud.__files.has(MANIFEST)).toBe(true);
     expect(cloud.__files.has(META)).toBe(true);
+  });
+
+  it('a doua rulare fără modificări: reușită, dar nimic nou de urcat', async () => {
+    await addDocument('d-1', ON_DISK);
+    expect((await runBackupNow()).changed).toBe(true);
+
+    const result = await runBackupNow();
+
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(false);
   });
 
   it('un fișier care nu a putut fi urcat face backup-ul incomplet, nu reușit', async () => {
@@ -173,5 +187,66 @@ describe('runBackupNow', () => {
     expect(result.ok).toBe(false);
     expect(result.quotaExceeded).toBe(true);
     expect(result.error).toMatch(/spațiu/);
+  });
+});
+
+describe('uploadManifestIfChanged — dedup după conținut', () => {
+  it('un al doilea upload fără modificări nu re-urcă manifestul', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    await new Promise(r => setTimeout(r, 5)); // altă oră în exportDate
+
+    expect(await uploadManifestIfChanged()).toBe(false);
+
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-2',
+      'Dacia',
+      TS,
+    ]);
+    expect(await uploadManifestIfChanged()).toBe(true);
+  });
+
+  it('un manifest șters din iCloud se re-urcă, deși datele locale nu s-au schimbat', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    cloud.__files.delete(MANIFEST);
+
+    expect(await uploadManifestIfChanged()).toBe(true);
+    expect(cloud.__files.has(MANIFEST)).toBe(true);
+  });
+
+  it('fără modificări locale nu suprascrie backup-ul făcut între timp de alt telefon', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    const fromB = {
+      ...JSON.parse(cloud.__files.get(META) as string),
+      hash: 'hash-B',
+      deviceId: 'device-B',
+    };
+    cloud.__files.set(META, JSON.stringify(fromB));
+    cloud.__files.set(MANIFEST, 'manifest-B');
+
+    expect(await uploadManifestIfChanged()).toBe(false);
+    expect(cloud.__files.get(MANIFEST)).toBe('manifest-B');
+    const result = await runBackupNow();
+    expect(result).toMatchObject({ ok: true, changed: false, otherDeviceBackup: true });
+
+    // O modificare locală se urcă (last-write-wins).
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-2',
+      'Dacia',
+      TS,
+    ]);
+    expect(await uploadManifestIfChanged()).toBe(true);
+    expect(JSON.parse(cloud.__files.get(META) as string).deviceId).toBe('device-A');
+  });
+
+  it('meta-ul propriu cu alt hash (copie veche) se re-urcă', async () => {
+    const { uploadManifestIfChanged } = cloudSyncModule;
+    expect(await uploadManifestIfChanged()).toBe(true);
+    const stale = { ...JSON.parse(cloud.__files.get(META) as string), hash: 'hash-vechi' };
+    cloud.__files.set(META, JSON.stringify(stale));
+
+    expect(await uploadManifestIfChanged()).toBe(true);
   });
 });

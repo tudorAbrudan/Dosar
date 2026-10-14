@@ -21,6 +21,7 @@ import type { Document } from '@/types';
 let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let sharing: typeof import('@/services/sharing');
+let zones: typeof import('@/services/shareZones');
 
 beforeAll(() => {
   jest.resetModules();
@@ -28,6 +29,7 @@ beforeAll(() => {
     db = require('@/services/db').db as typeof db;
     testDb = db as unknown as TestDb;
     sharing = require('@/services/sharing');
+    zones = require('@/services/shareZones');
   });
 });
 
@@ -184,32 +186,32 @@ describe('assertNoSensitiveLeak — plasă defense-in-depth', () => {
 
 describe('zoneNameFor ↔ parseZoneName', () => {
   it('round-trip pentru fiecare tip partajabil', () => {
-    for (const t of sharing.SHAREABLE_ENTITY_TYPES) {
-      const zone = sharing.zoneNameFor(t, 'abc-123');
-      expect(sharing.parseZoneName(zone)).toEqual({ entityType: t, entityId: 'abc-123' });
+    for (const t of zones.SHAREABLE_ENTITY_TYPES) {
+      const zone = zones.zoneNameFor(t, 'abc-123');
+      expect(zones.parseZoneName(zone)).toEqual({ entityType: t, entityId: 'abc-123' });
     }
   });
 
   it('păstrează underscore-urile din entityId', () => {
-    const zone = sharing.zoneNameFor('vehicle', 'id_with_underscores');
-    expect(sharing.parseZoneName(zone)).toEqual({
+    const zone = zones.zoneNameFor('vehicle', 'id_with_underscores');
+    expect(zones.parseZoneName(zone)).toEqual({
       entityType: 'vehicle',
       entityId: 'id_with_underscores',
     });
   });
 
   it('întoarce null pentru zone de sistem, tipuri necunoscute sau id lipsă', () => {
-    expect(sharing.parseZoneName('_defaultZone')).toBeNull();
-    expect(sharing.parseZoneName('cloudkit.share')).toBeNull();
-    expect(sharing.parseZoneName('entity_unknown_x')).toBeNull();
-    expect(sharing.parseZoneName('entity_vehicle_')).toBeNull(); // fără id
-    expect(sharing.parseZoneName('entity_medical_record_m1')).toBeNull(); // ne-partajabil
+    expect(zones.parseZoneName('_defaultZone')).toBeNull();
+    expect(zones.parseZoneName('cloudkit.share')).toBeNull();
+    expect(zones.parseZoneName('entity_unknown_x')).toBeNull();
+    expect(zones.parseZoneName('entity_vehicle_')).toBeNull(); // fără id
+    expect(zones.parseZoneName('entity_medical_record_m1')).toBeNull(); // ne-partajabil
   });
 });
 
 describe('store shared_entities', () => {
   it('recordShare + getShareForEntity + revoke', async () => {
-    const zone = sharing.zoneNameFor('vehicle', 'veh-1');
+    const zone = zones.zoneNameFor('vehicle', 'veh-1');
     await sharing.recordShare({
       entityType: 'vehicle',
       entityId: 'veh-1',
@@ -310,7 +312,7 @@ describe('getEntityShareFields — whitelist per tip (decizia 7)', () => {
 
 describe('get/setZoneChangeToken — round-trip', () => {
   it('null implicit, apoi persistă tokenul setat', async () => {
-    const zone = sharing.zoneNameFor('vehicle', 'veh-tok');
+    const zone = zones.zoneNameFor('vehicle', 'veh-tok');
     await sharing.recordShare({
       entityType: 'vehicle',
       entityId: 'veh-tok',
@@ -330,7 +332,7 @@ describe('get/setZoneChangeToken — round-trip', () => {
 
 describe('isEntityReadOnlyForMe — Faza 2 gating', () => {
   it('owner → false (control total local)', async () => {
-    const zone = sharing.zoneNameFor('vehicle', 'veh-owner');
+    const zone = zones.zoneNameFor('vehicle', 'veh-owner');
     await sharing.recordShare({
       entityType: 'vehicle',
       entityId: 'veh-owner',
@@ -342,7 +344,7 @@ describe('isEntityReadOnlyForMe — Faza 2 gating', () => {
   });
 
   it('participant + read → true', async () => {
-    const zone = sharing.zoneNameFor('vehicle', 'veh-p-read');
+    const zone = zones.zoneNameFor('vehicle', 'veh-p-read');
     await sharing.recordShare({
       entityType: 'vehicle',
       entityId: 'veh-p-read',
@@ -354,7 +356,7 @@ describe('isEntityReadOnlyForMe — Faza 2 gating', () => {
   });
 
   it('participant + readwrite → false', async () => {
-    const zone = sharing.zoneNameFor('vehicle', 'veh-p-rw');
+    const zone = zones.zoneNameFor('vehicle', 'veh-p-rw');
     await sharing.recordShare({
       entityType: 'vehicle',
       entityId: 'veh-p-rw',
@@ -388,7 +390,7 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
     insertPerson('pers-own', 'Ana');
     insertDoc({ id: 'doc-own', type: 'buletin', personId: 'pers-own' });
     linkDocToEntity('doc-own', 'person', 'pers-own');
-    const zone = sharing.zoneNameFor('person', 'pers-own');
+    const zone = zones.zoneNameFor('person', 'pers-own');
     await sharing.recordShare({
       entityType: 'person',
       entityId: 'pers-own',
@@ -402,7 +404,7 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
     insertPerson('pers-read', 'Ion');
     insertDoc({ id: 'doc-read', type: 'buletin', personId: 'pers-read' });
     linkDocToEntity('doc-read', 'person', 'pers-read');
-    const zone = sharing.zoneNameFor('person', 'pers-read');
+    const zone = zones.zoneNameFor('person', 'pers-read');
     await sharing.recordShare({
       entityType: 'person',
       entityId: 'pers-read',
@@ -417,7 +419,7 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
     insertPerson('pers-rw', 'Maria');
     insertDoc({ id: 'doc-rw', type: 'buletin', personId: 'pers-rw' });
     linkDocToEntity('doc-rw', 'person', 'pers-rw');
-    const zone = sharing.zoneNameFor('person', 'pers-rw');
+    const zone = zones.zoneNameFor('person', 'pers-rw');
     await sharing.recordShare({
       entityType: 'person',
       entityId: 'pers-rw',
@@ -435,7 +437,7 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
     linkDocToEntity('doc-mix', 'person', 'pers-mix1');
     linkDocToEntity('doc-mix', 'person', 'pers-mix2');
 
-    const zone1 = sharing.zoneNameFor('person', 'pers-mix1');
+    const zone1 = zones.zoneNameFor('person', 'pers-mix1');
     await sharing.recordShare({
       entityType: 'person',
       entityId: 'pers-mix1',
@@ -443,7 +445,7 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
       role: 'participant',
       permission: 'readwrite',
     });
-    const zone2 = sharing.zoneNameFor('person', 'pers-mix2');
+    const zone2 = zones.zoneNameFor('person', 'pers-mix2');
     await sharing.recordShare({
       entityType: 'person',
       entityId: 'pers-mix2',
@@ -458,7 +460,7 @@ describe('isDocumentReadOnlyForMe — Faza 2 gating (decizia 1, conservativ)', (
 
 describe('markZoneSyncSuccess / markZoneSyncError — diagnostics', () => {
   it('succes setează last_synced_at și curăță eroarea; eșecul păstrează ultimul sync reușit', async () => {
-    const zone = sharing.zoneNameFor('vehicle', 'veh-diag');
+    const zone = zones.zoneNameFor('vehicle', 'veh-diag');
     await sharing.recordShare({
       entityType: 'vehicle',
       entityId: 'veh-diag',

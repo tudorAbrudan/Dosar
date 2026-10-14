@@ -14,7 +14,12 @@ import {
   parseFetchedRecords,
 } from './cloudShareMapping';
 import type { FetchedRecord, PushRecord } from './cloudShareMapping';
-import { isImportInProgress } from './backup';
+import {
+  isImportInProgress,
+  isRestoreInProgress,
+  runShareSyncExclusive,
+  trackShareWork,
+} from './importState';
 import { db } from './db';
 import { getDocumentById } from './documents';
 import { assignNextOrder } from './entityOrder';
@@ -44,15 +49,14 @@ import {
   getZonesForDocument,
   markZoneSyncError,
   markZoneSyncSuccess,
-  parseZoneName,
   recordShare,
   revokeShare,
   setCloudRecordFileHash,
   setZoneChangeToken,
   toShareableDocument,
   upsertCloudRecord,
-  zoneNameFor,
 } from './sharing';
+import { SHAREABLE_ENTITY_TYPES, parseZoneName, shareEntityTable, zoneNameFor } from './shareZones';
 import type {
   PendingSharePush,
   PushScope,
@@ -84,29 +88,19 @@ function native(): typeof CloudKitShareModule {
   return nativeModule;
 }
 
-// Mapare service-layer entityType→tabel SQLite (nu label UI). Chei EntityType
-// legitime — nu există sursă unică pentru numele tabelului în types/index.ts.
-// check-hardcoded-entities-disable-next-cluster
-const ENTITY_TABLE: Record<string, string> = {
-  person: 'persons',
-  vehicle: 'vehicles',
-  property: 'properties',
-  animal: 'animals',
-  company: 'companies',
-};
-
+// Tabel SQLite → tip de entitate, inversul lui `shareEntityTable` (sursa unică: shareZones).
 const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = Object.fromEntries(
-  Object.entries(ENTITY_TABLE).map(([entityType, table]) => [table, entityType as EntityType])
+  SHAREABLE_ENTITY_TYPES.map(t => [shareEntityTable(t), t])
 );
 
 /**
  * Coloana legacy denormalizată din `documents` pentru un tip de entitate —
  * convenția `${entityType}_id` (sursa: `LEGACY_ENTITY_COLUMN` din
  * `services/documents.ts`). `null` pentru tipuri nepartajabile, ceea ce face
- * interpolarea în SQL sigură (cheia e validată prin `ENTITY_TABLE`).
+ * interpolarea în SQL sigură (cheia e validată prin `shareEntityTable`).
  */
 function legacyColumnFor(entityType: EntityType): string | null {
-  return ENTITY_TABLE[entityType] ? `${entityType}_id` : null;
+  return shareEntityTable(entityType) ? `${entityType}_id` : null;
 }
 
 export type LocalTable =
@@ -183,7 +177,7 @@ export async function shareEntity(
     zoneName,
     recordName: bundle.entityRecordName,
     recordType: entityType,
-    localTable: ENTITY_TABLE[entityType] ?? entityType,
+    localTable: shareEntityTable(entityType) ?? entityType,
     localId: entityId,
     changeTag: succeeded[bundle.entityRecordName],
   });
@@ -387,12 +381,15 @@ export async function acceptShareByURL(url: string): Promise<void> {
     // Trage ȚINTIT zona tocmai acceptată, fără să depindă de fereastra tokenului
     // DB-level și fără să aștepte un sync general care poate fi deja în curs
     // (trecut de faza de reconcile) — userul se așteaptă să vadă entitatea
-    // imediat după „Acceptă".
-    try {
-      await syncOneZone(share);
-      await markZoneSyncSuccess(share.zone_name);
-    } catch (e) {
-      await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+    // imediat după „Acceptă". Nu în timpul unei restaurări / ștergeri totale: zona se
+    // trage la sync-ul de după.
+    if (!isImportInProgress()) {
+      try {
+        await trackShareWork(syncOneZone(share));
+        await markZoneSyncSuccess(share.zone_name);
+      } catch (e) {
+        await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+      }
     }
   }
   await syncSharedEntities();
@@ -425,7 +422,7 @@ export async function takeReceivedShareNotices(): Promise<ReceivedShareNotice[]>
   const drained = receivedNotices.splice(0, receivedNotices.length);
   const out: ReceivedShareNotice[] = [];
   for (const n of drained) {
-    const table = ENTITY_TABLE[n.entityType];
+    const table = shareEntityTable(n.entityType);
     const row = table
       ? await db.getFirstAsync<{ name: string }>(`SELECT name FROM ${table} WHERE id = ?`, [
           n.entityId,
@@ -611,18 +608,24 @@ export function afterEntityMutation(
   entityId: string,
   op: SharePushOp
 ): Promise<void> {
-  const table = ENTITY_TABLE[entityType];
-  if (!table) return Promise.resolve();
-  return pushLocalChange(table as LocalTable, entityId, op).catch(e => {
-    console.warn('[cloudShare] afterEntityMutation eșuat:', e instanceof Error ? e.message : e);
-  });
+  const table = shareEntityTable(entityType);
+  // Importul dinamic din apelant lasă o fereastră în care poate începe o restaurare.
+  if (!table || isRestoreInProgress()) return Promise.resolve();
+  return trackShareWork(
+    pushLocalChange(table as LocalTable, entityId, op).catch(e => {
+      console.warn('[cloudShare] afterEntityMutation eșuat:', e instanceof Error ? e.message : e);
+    })
+  );
 }
 
 /** Hook thin apelat din `documents.ts` (dynamic import, fire-and-forget). */
 export function afterDocumentMutation(documentId: string, op: SharePushOp): Promise<void> {
-  return pushLocalChange('documents', documentId, op).catch(e => {
-    console.warn('[cloudShare] afterDocumentMutation eșuat:', e instanceof Error ? e.message : e);
-  });
+  if (isRestoreInProgress()) return Promise.resolve();
+  return trackShareWork(
+    pushLocalChange('documents', documentId, op).catch(e => {
+      console.warn('[cloudShare] afterDocumentMutation eșuat:', e instanceof Error ? e.message : e);
+    })
+  );
 }
 
 /**
@@ -630,10 +633,12 @@ export function afterDocumentMutation(documentId: string, op: SharePushOp): Prom
  * întoarce zona tocmai eliminată — trebuie țintită explicit cu link-ul primit
  * ca parametru, altfel documentul rămâne „fantomă" pe server în acea zonă.
  */
-export async function afterDocumentUnlinked(
-  documentId: string,
-  link: DocumentEntityLink
-): Promise<void> {
+export function afterDocumentUnlinked(documentId: string, link: DocumentEntityLink): Promise<void> {
+  if (isRestoreInProgress()) return Promise.resolve();
+  return trackShareWork(pushUnlinkedDocument(documentId, link));
+}
+
+async function pushUnlinkedDocument(documentId: string, link: DocumentEntityLink): Promise<void> {
   try {
     const share = await getShareForEntity(link.entityType, link.entityId);
     if (!share || share.role !== 'owner') return;
@@ -788,7 +793,9 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
         recordName: row.record_name,
         recordType: row.kind === 'entity' ? (entityType ?? 'entity') : 'document',
         localTable:
-          row.kind === 'entity' ? (entityType ? ENTITY_TABLE[entityType] : 'unknown') : 'documents',
+          row.kind === 'entity'
+            ? ((entityType && shareEntityTable(entityType)) ?? 'unknown')
+            : 'documents',
         localId: row.record_name,
         changeTag,
       });
@@ -818,8 +825,6 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
  * apoi trage schimbările — atât ca participant cât și, pentru share-urile
  * readwrite, ca owner. Fără cont iCloud (simulator, delogat) → no-op liniștit.
  */
-let syncInFlight: Promise<void> | null = null;
-
 /**
  * Serializează sincronizările. `useSharingSync` (mount + AppState → active +
  * silent push) și ecranul Partajare (`useSharing`) pornesc fiecare propriul
@@ -832,17 +837,7 @@ export function syncSharedEntities(): Promise<void> {
   // inserează (sau le-a șters wipe-ul), iar un flush ar trimite ștergeri pentru
   // documente lipsă temporar. Următorul sync (AppState active) recuperează.
   if (isImportInProgress()) return Promise.resolve();
-  if (syncInFlight) return syncInFlight;
-  const run = runSyncSharedEntities().finally(() => {
-    if (syncInFlight === run) syncInFlight = null;
-  });
-  syncInFlight = run;
-  return run;
-}
-
-/** Așteaptă sync-ul în curs (dacă există), fără să-i propage eroarea. */
-export async function waitForShareSyncIdle(): Promise<void> {
-  if (syncInFlight) await syncInFlight.catch(() => {});
+  return runShareSyncExclusive(runSyncSharedEntities);
 }
 
 async function runSyncSharedEntities(): Promise<void> {
@@ -1010,7 +1005,7 @@ async function applyFetchedRecords(share: SharedEntity, records: FetchedRecord[]
       share.zone_name,
       entity.recordName,
       share.entity_type,
-      ENTITY_TABLE[share.entity_type] ?? 'unknown',
+      shareEntityTable(share.entity_type) ?? 'unknown',
       entity.changeTag
     );
   }
@@ -1081,7 +1076,7 @@ async function applyEntityRow(
   recordName: string,
   fields: Record<string, string>
 ): Promise<void> {
-  const table = ENTITY_TABLE[entityType];
+  const table = shareEntityTable(entityType);
   if (!table) return;
   if (!fields.name) return; // NOT NULL guard — record de sistem/payload incomplet
 

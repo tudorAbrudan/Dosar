@@ -1,8 +1,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { db } from './db';
+import { emit } from './events';
+import { beginImport } from './importState';
 import * as cloudStorage from './cloudStorage';
 import { applyManifest } from './backup';
-import { syncSharedEntities } from './cloudShare';
 import { buildCanonicalManifest, hashManifestAsync } from './manifestHash';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -288,19 +289,48 @@ export function detectManifestShrink(
   return false;
 }
 
+/**
+ * Copiază meta-ul curent lângă o copie a manifestului. La un backup criptat, salt-ul
+ * și verificatorul parolei stau DOAR în meta, care se suprascrie la fiecare upload:
+ * fără copia lui, o copie criptată nu se mai poate deschide pe un telefon nou.
+ */
+async function copyMetaTo(path: string): Promise<void> {
+  if (!(await cloudStorage.exists(META_PATH))) return;
+  await cloudStorage.writeFile(path, await cloudStorage.readFile(META_PATH, 'utf8'), 'utf8');
+}
+
 /** Copiază manifestul curent din cloud în `snapshots/pre-shrink_<ts>.json` (text brut,
- *  deci merge și criptat) și păstrează ultimele {@link PRE_SHRINK_KEEP}. */
+ *  deci merge și criptat), cu meta-ul în `pre-shrink-meta_<ts>.json`, și păstrează
+ *  ultimele {@link PRE_SHRINK_KEEP}. */
 async function preserveManifestBeforeShrink(): Promise<void> {
   if (!(await cloudStorage.exists(MANIFEST_PATH))) return;
   const text = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   await cloudStorage.writeFile(`${SNAPSHOTS_PREFIX}pre-shrink_${stamp}.json`, text, 'utf8');
+  await copyMetaTo(`${SNAPSHOTS_PREFIX}pre-shrink-meta_${stamp}.json`);
   const files = (await cloudStorage.listDir(SNAPSHOTS_PREFIX))
     .filter(f => f.startsWith('pre-shrink_') && f.endsWith('.json'))
     .sort();
   for (const name of files.slice(0, Math.max(0, files.length - PRE_SHRINK_KEEP))) {
     await cloudStorage.deleteFile(`${SNAPSHOTS_PREFIX}${name}`);
+    await cloudStorage.deleteFile(
+      `${SNAPSHOTS_PREFIX}${name.replace('pre-shrink_', 'pre-shrink-meta_')}`
+    );
   }
+}
+
+function isFromOtherDevice(meta: CloudManifestMeta, deviceId: string): boolean {
+  return !!meta.deviceId && meta.deviceId !== deviceId;
+}
+
+/**
+ * Backup-ul din iCloud e de pe alt telefon și n-a fost înlocuit de pe acesta (vezi
+ * regula din `uploadManifestIfChanged`). Pentru mesajul de după „Backup acum".
+ */
+export async function isCloudBackupFromOtherDevice(): Promise<boolean> {
+  const meta = await readCloudMeta();
+  if (!meta) return false;
+  return isFromOtherDevice(meta, (await getCloudState()).device_id);
 }
 
 export async function uploadManifestIfChanged(): Promise<boolean> {
@@ -312,11 +342,28 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   }
 
   const payload = await buildManifestPayload();
-  const canonical = buildCanonicalManifest(payload as unknown as Record<string, unknown>);
+  // `exportDate` e ora curentă: inclus în hash, orice două upload-uri difereau, deci
+  // „nimic schimbat → nu urca" nu funcționa (manifest re-urcat la fiecare ieșire din
+  // aplicație, iar celălalt telefon vedea mereu un „backup mai nou").
+  const canonical = buildCanonicalManifest({
+    ...(payload as unknown as Record<string, unknown>),
+    exportDate: null,
+  });
   const hash = await hashManifestAsync(canonical);
 
   const state = await getCloudState();
-  if (state.last_manifest_hash === hash) {
+  // Snapshot al meta-ului din cloud: comparat cu hash-ul local și folosit la rollback.
+  const previousMeta = await readCloudMeta();
+  // Fără modificări locale de la ultimul upload nu urcăm dacă iCloud are deja starea
+  // asta SAU un backup făcut între timp de alt telefon (ar fi suprascris cu date mai
+  // vechi; telefonul acesta îl vede ca „backup mai nou"). Un manifest șters din iCloud
+  // se re-urcă. Cu modificări locale: last-write-wins, ca înainte.
+  if (
+    state.last_manifest_hash === hash &&
+    previousMeta &&
+    (previousMeta.hash === hash || isFromOtherDevice(previousMeta, state.device_id)) &&
+    (await cloudStorage.exists(MANIFEST_PATH))
+  ) {
     return false;
   }
 
@@ -348,9 +395,6 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
     medicalRecordCount: payload.medicalRecords.length,
     ...(encryption ? { encryption } : {}),
   };
-
-  // Snapshot al meta-ului anterior pentru rollback dacă manifestul eșuează după meta.
-  const previousMeta = await readCloudMeta();
 
   // Guard anti-pierdere: dacă starea locală e mult mai mică decât backup-ul din cloud,
   // păstrăm manifestul vechi ÎNAINTE să-l suprascriem. Dacă păstrarea eșuează, NU
@@ -918,6 +962,11 @@ function todaySnapshotName(): string {
   return `manifest_${y}-${m}-${day}.json`;
 }
 
+/** `manifest_<zi>.json` → `meta_<zi>.json` (nu intră în `listSnapshots`). */
+function snapshotMetaName(snapshotName: string): string {
+  return snapshotName.replace(/^manifest_/, 'meta_');
+}
+
 /**
  * Dacă a trecut intervalul corespunzător `frequency` de la ultimul snapshot,
  * copiază `manifest.json` curent în `snapshots/manifest_YYYY-MM-DD.json` și
@@ -949,8 +998,9 @@ export async function maybeSnapshot(
   }
 
   const manifestText = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
-  const snapshotPath = `${SNAPSHOTS_PREFIX}${todaySnapshotName()}`;
-  await cloudStorage.writeFile(snapshotPath, manifestText, 'utf8');
+  const snapshotName = todaySnapshotName();
+  await cloudStorage.writeFile(`${SNAPSHOTS_PREFIX}${snapshotName}`, manifestText, 'utf8');
+  await copyMetaTo(`${SNAPSHOTS_PREFIX}${snapshotMetaName(snapshotName)}`);
 
   await setCloudState({ last_snapshot_at: now });
 
@@ -974,6 +1024,7 @@ async function cleanupSnapshots(retention: number): Promise<void> {
   const toDelete = snapshots.slice(safeRetention);
   for (const name of toDelete) {
     await cloudStorage.deleteFile(`${SNAPSHOTS_PREFIX}${name}`);
+    await cloudStorage.deleteFile(`${SNAPSHOTS_PREFIX}${snapshotMetaName(name)}`);
   }
 }
 
@@ -1213,6 +1264,29 @@ export async function restoreFromCloud(
   onProgress?: (p: RestoreProgress) => void,
   key?: Uint8Array
 ): Promise<{ documentCount: number; fileCount: number }> {
+  // Toată restaurarea (descărcarea durează minute, apoi aplicarea și preluarea
+  // criptării) e o fereastră de import: upload-ul din fundal (`useCloudBackup`) și
+  // sync-ul de partajare nu pornesc. Altfel starea de dinainte de restaurare putea
+  // suprascrie backup-ul care se restaurează, iar pe un telefon nou un manifest
+  // necriptat putea ajunge peste unul criptat.
+  const endImport = beginImport({ restore: false });
+  let result: { documentCount: number; fileCount: number };
+  try {
+    result = await runRestoreFromCloud(onProgress, key);
+  } finally {
+    endImport();
+  }
+  // Zonele primite au pierdut token-ul la restaurare (resetShareStateAfterWipe):
+  // `useSharingSync` le re-descarcă acum, nu abia la următoarea revenire în aplicație.
+  // Prin eveniment, nu import: cloudSync → cloudShare → documents → cloudSync e ciclu.
+  emit('cloud:restored');
+  return result;
+}
+
+async function runRestoreFromCloud(
+  onProgress: ((p: RestoreProgress) => void) | undefined,
+  key: Uint8Array | undefined
+): Promise<{ documentCount: number; fileCount: number }> {
   if (!(await cloudStorage.isAvailable())) {
     throw new Error('iCloud nu este disponibil');
   }
@@ -1381,15 +1455,6 @@ export async function restoreFromCloud(
   }
 
   onProgress?.({ phase: 'done', current: 1, total: 1, bytesDone, bytesTotal });
-
-  // Zonele primite au pierdut token-ul la restaurare (resetShareStateAfterWipe): le
-  // re-descărcăm acum, nu abia la următoarea revenire în aplicație. Best-effort.
-  syncSharedEntities().catch(e => {
-    console.warn(
-      '[cloudSync.restore] share sync after restore failed:',
-      e instanceof Error ? e.message : e
-    );
-  });
 
   return {
     documentCount: asArray(payload.documents).length,

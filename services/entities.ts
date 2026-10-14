@@ -15,7 +15,7 @@ import { assignNextOrder, removeOrder } from './entityOrder';
 import { emit } from './events';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
-import { isImportInProgress, isRestoreInProgress } from './backup';
+import { isImportInProgress, isRestoreInProgress } from './importState';
 import type { SharePushOp } from './sharing';
 import { deleteServiceProvidersForProperty } from './serviceProviders';
 

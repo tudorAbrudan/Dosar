@@ -22,7 +22,7 @@ import type { TestDb } from '../helpers/testDb';
 let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let applyManifest: typeof import('@/services/backup').applyManifest;
-let isImportInProgress: typeof import('@/services/backup').isImportInProgress;
+let isImportInProgress: typeof import('@/services/importState').isImportInProgress;
 let deleteAllUserData: typeof import('@/services/backup').deleteAllUserData;
 let estimateBackupSizeBytes: typeof import('@/services/backup').estimateBackupSizeBytes;
 let getDocuments: typeof import('@/services/documents').getDocuments;
@@ -36,7 +36,7 @@ beforeAll(() => {
     testDb = db as unknown as TestDb;
     const backup = require('@/services/backup');
     applyManifest = backup.applyManifest;
-    isImportInProgress = backup.isImportInProgress;
+    isImportInProgress = require('@/services/importState').isImportInProgress;
     deleteAllUserData = backup.deleteAllUserData;
     estimateBackupSizeBytes = backup.estimateBackupSizeBytes;
     const documents = require('@/services/documents');
@@ -276,6 +276,21 @@ describe('backup applyManifest — import ZIP aditiv: ID-uri și contopire', () 
     expect(rows[0].id).not.toBe('v-partajat');
   });
 
+  it('un document cunoscut de recordurile de partajare primește un ID nou', async () => {
+    await db.runAsync(
+      `INSERT INTO cloud_records (id, zone_name, record_name, record_type, local_table, local_id, change_tag)
+       VALUES ('cr-1', 'entity_vehicle_v-x', 'd-sincronizat', 'document', 'documents', 'd-sincronizat', 't')`
+    );
+    await applyManifest({
+      documents: [{ id: 'd-sincronizat', type: 'rca', created_at: T }],
+      vehicles: [{ id: 'd-sincronizat', name: 'Același ID, alt tabel', created_at: T }],
+    });
+    const doc = await db.getFirstAsync<{ id: string }>('SELECT id FROM documents');
+    expect(doc!.id).not.toBe('d-sincronizat');
+    // Recordul e al tabelului `documents`: un vehicul cu același ID îl păstrează.
+    expect(await db.getAllAsync('SELECT id FROM vehicles')).toEqual([{ id: 'd-sincronizat' }]);
+  });
+
   it('nu contopește rândurile cu același nume din același fișier, doar față de datele existente', async () => {
     const manifest = {
       vehicles: [
@@ -331,6 +346,33 @@ describe('backup applyManifest — import ZIP aditiv: ID-uri și contopire', () 
       { id: 'f-b', vehicle_id: 'v-b' },
     ]);
     expect((await db.getAllAsync('SELECT id FROM service_providers')).length).toBe(2);
+  });
+
+  it('re-importul nu mută paginile între documente cu aceeași cheie (type+date)', async () => {
+    const manifest = {
+      documents: [
+        { id: 'd-1', type: 'altul', note: 'primul', created_at: T },
+        { id: 'd-2', type: 'altul', note: 'al doilea', created_at: T },
+      ],
+      documentPages: [
+        { id: 'pg-1', document_id: 'd-1', file_path: 'documents/p1.jpg', page_order: 1 },
+        { id: 'pg-2', document_id: 'd-2', file_path: 'documents/p2.jpg', page_order: 1 },
+      ],
+    };
+    await applyManifest(manifest);
+    await applyManifest(manifest);
+
+    expect(await db.getAllAsync('SELECT id FROM documents ORDER BY id')).toEqual([
+      { id: 'd-1' },
+      { id: 'd-2' },
+    ]);
+    const pages = await db.getAllAsync<{ document_id: string; file_path: string }>(
+      'SELECT document_id, file_path FROM document_pages ORDER BY file_path'
+    );
+    expect(pages.map(p => [p.document_id, p.file_path])).toEqual([
+      ['d-1', 'documents/p1.jpg'],
+      ['d-2', 'documents/p2.jpg'],
+    ]);
   });
 });
 

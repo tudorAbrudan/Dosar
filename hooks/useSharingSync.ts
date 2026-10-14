@@ -3,6 +3,7 @@ import { Alert, AppState, InteractionManager, type AppStateStatus } from 'react-
 import { router } from 'expo-router';
 
 import { syncSharedEntities, takeReceivedShareNotices } from '@/services/cloudShare';
+import { on } from '@/services/events';
 import { ENTITY_TYPE_LABELS } from '@/types';
 
 /**
@@ -15,6 +16,8 @@ import { ENTITY_TYPE_LABELS } from '@/types';
  * - `AppState → active`
  * - `onRemoteChange` (silent push CloudKit / accept share / cont schimbat,
  *   emise de modulul nativ — vezi `ExpoCloudKitShareAppDelegate`)
+ * - `cloud:restored` (după o restaurare din iCloud zonele primite au pierdut
+ *   token-ul și trebuie re-descărcate)
  *
  * Import lazy al modulului nativ (poate lipsi pre-prebuild, la fel ca în
  * `cloudShare.ts`'s `native()`). Nu aruncă niciodată — eșecurile sunt expuse
@@ -81,6 +84,7 @@ export function useSharingSync() {
     const appStateSub = AppState.addEventListener('change', (s: AppStateStatus) => {
       if (s === 'active') void refresh();
     });
+    const offRestored = on('cloud:restored', () => void refresh());
 
     let remoteChangeSub: { remove(): void } | null = null;
     import('@/modules/expo-cloudkit-share/src')
@@ -95,6 +99,7 @@ export function useSharingSync() {
     return () => {
       mountedRef.current = false;
       appStateSub.remove();
+      offRestored();
       remoteChangeSub?.remove();
     };
   }, [refresh]);

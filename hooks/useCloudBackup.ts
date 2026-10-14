@@ -23,7 +23,7 @@ import {
 } from '@/services/settings';
 import { isSessionUnlocked } from '@/services/cloudCrypto';
 import { deriveCloudStatus } from '@/services/cloud/status';
-import { isImportInProgress } from '@/services/backup';
+import { isImportInProgress } from '@/services/importState';
 import type { CloudStatus } from '@/types';
 
 interface State {
@@ -50,6 +50,8 @@ interface State {
 
 const BACKUP_ALREADY_RUNNING: BackupNowResult = {
   ok: false,
+  changed: false,
+  otherDeviceBackup: false,
   failedFiles: 0,
   error: 'Un backup rulează deja.',
   passwordRequired: false,

@@ -35,6 +35,8 @@ let testDb: TestDb;
 let cloudSync: typeof import('@/services/cloudSync');
 let crypto: typeof import('@/services/cloudCrypto');
 let settings: typeof import('@/services/settings');
+let events: typeof import('@/services/events');
+let importState: typeof import('@/services/importState');
 let fs: {
   getInfoAsync: jest.Mock;
   readAsStringAsync: jest.Mock;
@@ -52,6 +54,8 @@ beforeAll(() => {
     cloudSync = require('@/services/cloudSync');
     crypto = require('@/services/cloudCrypto');
     settings = require('@/services/settings');
+    events = require('@/services/events');
+    importState = require('@/services/importState');
     fs = require('expo-file-system/legacy');
     cloudFiles = require('@/services/cloudStorage').__files;
     resetSecureStore = require('expo-secure-store').__reset;
@@ -202,6 +206,44 @@ describe('backup criptat — restaurare pe telefon nou', () => {
     );
   });
 
+  it('anunță restaurarea terminată (sync-ul de partajare re-descarcă zonele primite)', async () => {
+    await backupFromPhoneA('parola-buna');
+    newPhone('device-B');
+    const restored = jest.fn();
+    const off = events.on('cloud:restored', restored);
+    try {
+      await expect(cloudSync.restoreFromCloud()).rejects.toBeInstanceOf(
+        crypto.PasswordRequiredError
+      );
+      await Promise.resolve();
+      expect(restored).not.toHaveBeenCalled();
+
+      await cloudSync.restoreFromCloud(
+        undefined,
+        await cloudSync.unlockCloudBackupKey('parola-buna')
+      );
+      await Promise.resolve();
+      expect(restored).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
+  });
+
+  it('descărcarea fișierelor e în fereastra de import (fără upload din fundal)', async () => {
+    await backupFromPhoneA(null);
+    newPhone('device-B');
+    const duringDownload: boolean[] = [];
+    fs.writeAsStringAsync.mockImplementation(async () => {
+      duringDownload.push(importState.isImportInProgress());
+    });
+
+    await cloudSync.restoreFromCloud();
+
+    // Copia locală de dinainte de restaurare + fișierul descărcat.
+    expect(duringDownload).toEqual([true, true]);
+    expect(importState.isImportInProgress()).toBe(false);
+  });
+
   it('un backup necriptat oprește flag-ul local de criptare', async () => {
     await backupFromPhoneA(null);
     newPhone('device-B');
@@ -214,18 +256,60 @@ describe('backup criptat — restaurare pe telefon nou', () => {
   });
 });
 
+describe('backup criptat — copiile din snapshots/ se pot deschide fără meta-ul curent', () => {
+  function snapshotFiles(prefix: string): string[] {
+    return [...cloudFiles.keys()].filter(k => k.startsWith(`Dosar/snapshots/${prefix}`));
+  }
+
+  it('snapshot-ul zilnic are lângă el meta-ul cu salt-ul și verificatorul', async () => {
+    await backupFromPhoneA('parola-buna');
+    const params = cloudMeta().encryption;
+
+    expect(await cloudSync.maybeSnapshot('daily', 3)).toBe(true);
+
+    const [metaCopy] = snapshotFiles('meta_');
+    expect(JSON.parse(cloudFiles.get(metaCopy) as string).encryption).toEqual(params);
+    expect(await cloudSync.listSnapshots()).toHaveLength(1);
+  });
+
+  it('copia pre-shrink rămâne decriptabilă după „Încep de la zero" pe un telefon nou', async () => {
+    await backupFromPhoneA('parola-buna');
+    await db.runAsync('INSERT INTO persons (id, name, created_at) VALUES (?, ?, ?)', [
+      'p-1',
+      'Ana',
+      TS,
+    ]);
+    expect(await cloudSync.uploadManifestIfChanged()).toBe(true);
+    const params = cloudMeta().encryption!;
+
+    // Telefon nou, backup pornit fără restaurare și fără criptare: manifest gol.
+    newPhone('device-B');
+    expect(await cloudSync.uploadManifestIfChanged()).toBe(true);
+    expect(cloudMeta().encryption).toBeUndefined();
+
+    const [copy] = snapshotFiles('pre-shrink_');
+    const [metaCopy] = snapshotFiles('pre-shrink-meta_');
+    const savedParams = JSON.parse(cloudFiles.get(metaCopy) as string).encryption;
+    expect(savedParams).toEqual(params);
+    const key = await crypto.unlockWithParams('parola-buna', savedParams);
+    const restored = JSON.parse(await crypto.decryptString(cloudFiles.get(copy) as string, key));
+    expect(restored.persons).toHaveLength(1);
+  });
+});
+
 describe('backup criptat — meta vechi, fără parametri', () => {
   async function stripEncryptionFromMeta(): Promise<void> {
     const { encryption: _drop, ...legacy } = cloudMeta();
     cloudFiles.set(META, JSON.stringify(legacy));
   }
 
-  /** Aplicația repornită (sesiune blocată) intră în fundal: upload-ul cere parola. */
+  /**
+   * Aplicația repornită (sesiune blocată) intră în fundal fără modificări: upload-ul
+   * se oprește la hash, după ce a completat meta-ul.
+   */
   async function backgroundWithLockedSession(): Promise<void> {
     crypto.setSessionKey(null);
-    await expect(cloudSync.uploadManifestIfChanged()).rejects.toBeInstanceOf(
-      crypto.PasswordRequiredError
-    );
+    await expect(cloudSync.uploadManifestIfChanged()).resolves.toBe(false);
   }
 
   it('telefonul care a făcut backup-ul completează meta fără să ceară parola', async () => {
@@ -234,6 +318,24 @@ describe('backup criptat — meta vechi, fără parametri', () => {
     await stripEncryptionFromMeta();
 
     await backgroundWithLockedSession();
+
+    expect(cloudMeta().encryption).toEqual(params);
+  });
+
+  it('completează meta și când datele s-au schimbat și upload-ul cere parola', async () => {
+    await backupFromPhoneA('parola-buna');
+    const params = await crypto.getEncryptionParams();
+    await stripEncryptionFromMeta();
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-2',
+      'Dacia',
+      TS,
+    ]);
+    crypto.setSessionKey(null);
+
+    await expect(cloudSync.uploadManifestIfChanged()).rejects.toBeInstanceOf(
+      crypto.PasswordRequiredError
+    );
 
     expect(cloudMeta().encryption).toEqual(params);
   });

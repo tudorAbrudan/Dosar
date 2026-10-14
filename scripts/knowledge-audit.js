@@ -65,9 +65,15 @@ const ENTRIES = {
     reminders: { required: true, keywords: ['remindere', 'expirări', 'reminder', 'expirari'] },
     // Helper intern al restaurării (ID-urile păstrate din backup).
     restoreIds: { required: false },
+    // Flag-uri de import în curs + coordonare cu sync-ul de partajare (modul frunză).
+    importState: { required: false },
     settings: { required: true, keywords: ['setări'] },
     shareIntentIngest: { required: true, keywords: ['Share', 'altă aplicație'] },
     sharing: { required: false },
+    // Reset intern al registrului de partajare după restaurare / ștergere totală.
+    shareRegistryReset: { required: false },
+    // Tipuri partajabile + numele zonelor CloudKit (modul frunză).
+    shareZones: { required: false },
     taskRequirements: { required: true, keywords: ['DATE NECESARE', 'task'] },
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
     vehicleStatus: { required: true, keywords: ['vehicul'] },
@@ -235,11 +241,9 @@ function main() {
     for (const s of issues.unknownServices) {
       console.log(`  - services/${s}.ts`);
     }
-    console.log(
-      '  → Adaugă fiecare în ENTRIES.services din scripts/knowledge-audit.js:'
-    );
+    console.log('  → Adaugă fiecare în ENTRIES.services din scripts/knowledge-audit.js:');
     console.log("    { required: true, keywords: ['...'] }  // dacă user-visible");
-    console.log("    { required: false }                     // dacă internal");
+    console.log('    { required: false }                     // dacă internal');
     console.log('');
   }
 

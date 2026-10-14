@@ -54,6 +54,7 @@ export default function PartajareScreen() {
     animals,
     companies,
     loading: entitiesLoading,
+    error: entitiesError,
   } = useEntities();
   const {
     shares,
@@ -99,13 +100,15 @@ export default function PartajareScreen() {
   }, [shareable]);
 
   // Partajări proprii a căror entitate nu mai e pe telefon: nu apar în „Entitățile
-  // mele" (lista vine din entitățile locale), dar sunt încă active în iCloud.
+  // mele" (lista vine din entitățile locale), dar sunt încă active în iCloud. Doar cu
+  // listele încărcate cu succes: o eroare de încărcare le lasă goale și ar propune
+  // „Revocă" pe partajări ale căror entități există.
   const orphanedShares = useMemo(
     () =>
-      entitiesLoading
+      entitiesLoading || entitiesError
         ? []
         : ownedShares.filter(s => !entityNameByKey.has(`${s.entity_type}:${s.entity_id}`)),
-    [entitiesLoading, ownedShares, entityNameByKey]
+    [entitiesLoading, entitiesError, ownedShares, entityNameByKey]
   );
 
   const findOwnedShare = (type: EntityType, id: string) =>

@@ -43,6 +43,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let backup: typeof import('@/services/backup');
 let cloudShare: typeof import('@/services/cloudShare');
+let importState: typeof import('@/services/importState');
 let sharing: typeof import('@/services/sharing');
 
 beforeAll(() => {
@@ -52,6 +53,7 @@ beforeAll(() => {
     testDb = db as unknown as TestDb;
     backup = require('@/services/backup');
     cloudShare = require('@/services/cloudShare');
+    importState = require('@/services/importState');
     sharing = require('@/services/sharing');
   });
 });
@@ -89,11 +91,11 @@ describe('restaurare și partajare', () => {
   it('flag-ul de restaurare e activ doar în timpul restaurării cu înlocuire', async () => {
     const seen: boolean[] = [];
     mockOnRestoreSuccess.mockImplementation(async () => {
-      seen.push(backup.isRestoreInProgress());
+      seen.push(importState.isRestoreInProgress());
     });
 
     await backup.applyManifest(PAYLOAD, { wipeFirst: true });
-    expect(backup.isRestoreInProgress()).toBe(false);
+    expect(importState.isRestoreInProgress()).toBe(false);
     await backup.applyManifest(PAYLOAD);
 
     // [restaurare, import aditiv]: doar restaurarea oprește push-urile spre zone.
@@ -131,6 +133,30 @@ describe('restaurare și partajare', () => {
     await restore;
     expect(restored).toBe(true);
     expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(1);
+  });
+
+  it('„Șterge toate datele" așteaptă sync-ul în curs și oprește push-urile cât șterge', async () => {
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+    let release!: () => void;
+    mockNative.isAvailable.mockImplementation(
+      () => new Promise(resolve => (release = () => resolve({ available: false })))
+    );
+    const sync = cloudShare.syncSharedEntities();
+    let restoreFlagDuringWipe: boolean | null = null;
+    const wipe = backup.deleteAllUserData().then(() => {
+      restoreFlagDuringWipe = importState.isRestoreInProgress();
+    });
+    const flagWhileWaiting = importState.isRestoreInProgress();
+
+    await settle();
+    expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(1);
+
+    release();
+    await sync;
+    await wipe;
+    expect(flagWhileWaiting).toBe(true);
+    expect(restoreFlagDuringWipe).toBe(false); // încheiat după ștergere
+    expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(0);
   });
 });
 
@@ -204,24 +230,38 @@ describe('restaurare — starea registrului de partajare', () => {
     expect(row.last_sync_error).toMatch(/nu mai există pe acest telefon/);
   });
 
-  it('coada de push păstrează doar ce mai corespunde datelor restaurate', async () => {
+  it('coada de push păstrează doar ștergerile rândurilor care lipsesc', async () => {
     const zone = 'entity_vehicle_v-dacia';
     await registerShare(zone, 'owner', 'vehicle', 'v-dacia');
-    await queuePush(zone, 'd-rca', 'upsert', 'document'); // există → rămâne
+    // Editare făcută după backup, nepush-uită: rândul are acum conținutul din backup,
+    // deci flush-ul ar întoarce zona (și participanții) la starea veche → scos.
+    await queuePush(zone, 'd-rca', 'upsert', 'document');
     await queuePush(zone, 'd-nou-dupa-backup', 'upsert', 'document'); // lipsește → ar fi tombstone, scos
     await queuePush(zone, 'd-sters', 'delete', 'document'); // lipsește → ștergere legitimă, rămâne
-    await queuePush(zone, 'v-dacia', 'upsert', 'entity'); // există → rămâne
+    await queuePush(zone, 'v-dacia', 'upsert', 'entity'); // conținut din backup → scos
 
     await backup.applyManifest(PAYLOAD, { wipeFirst: true });
 
     const left = testDb._raw
       .prepare('SELECT record_name, op FROM pending_share_pushes ORDER BY record_name')
       .all() as { record_name: string; op: string }[];
-    expect(left).toEqual([
-      { record_name: 'd-rca', op: 'upsert' },
-      { record_name: 'd-sters', op: 'delete' },
-      { record_name: 'v-dacia', op: 'upsert' },
-    ]);
+    expect(left).toEqual([{ record_name: 'd-sters', op: 'delete' }]);
+  });
+
+  it('eroarea „entitatea nu mai există" dispare când restaurarea o readuce', async () => {
+    await registerShare('entity_vehicle_v-dacia', 'owner', 'vehicle', 'v-dacia');
+    await backup.deleteAllUserData();
+    const errorOf = () =>
+      (
+        testDb._raw
+          .prepare('SELECT last_sync_error FROM shared_entities WHERE zone_name = ?')
+          .get('entity_vehicle_v-dacia') as { last_sync_error: string | null }
+      ).last_sync_error;
+    expect(errorOf()).toMatch(/nu mai există pe acest telefon/);
+
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+
+    expect(errorOf()).toBeNull();
   });
 
   it('un delete în coadă pentru un rând readus de restaurare e scos', async () => {
