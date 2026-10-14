@@ -22,7 +22,7 @@ import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
 import { waitForShareSyncIdle } from './cloudShare';
-import { resetShareStateAfterWipe } from './sharing';
+import { resetShareStateAfterWipe } from './shareRegistryReset';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
 import { createRestoreIdAllocator, isIdTakenForImport, rememberId } from './restoreIds';

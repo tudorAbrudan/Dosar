@@ -68,6 +68,8 @@ const ENTRIES = {
     settings: { required: true, keywords: ['setări'] },
     shareIntentIngest: { required: true, keywords: ['Share', 'altă aplicație'] },
     sharing: { required: false },
+    // Reset intern al registrului de partajare după restaurare / ștergere totală.
+    shareRegistryReset: { required: false },
     taskRequirements: { required: true, keywords: ['DATE NECESARE', 'task'] },
     updateCheck: { required: true, keywords: ['update', 'actualizare'] },
     vehicleStatus: { required: true, keywords: ['vehicul'] },
