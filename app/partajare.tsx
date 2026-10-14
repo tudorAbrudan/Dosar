@@ -16,6 +16,7 @@ import { friendlyCloudKitMessage } from '@/services/cloudShare';
 import { dark, light, onPrimary, primary, statusColors } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useSharing } from '@/hooks/useSharing';
+import { OrphanedSharesCard } from '@/components/sharing/OrphanedSharesCard';
 import { ENTITY_TYPE_EMOJI, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
 import type { SharedEntity, SharePermission } from '@/services/sharing';
@@ -46,7 +47,14 @@ export default function PartajareScreen() {
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
 
-  const { persons, vehicles, properties, animals, companies } = useEntities();
+  const {
+    persons,
+    vehicles,
+    properties,
+    animals,
+    companies,
+    loading: entitiesLoading,
+  } = useEntities();
   const {
     shares,
     available,
@@ -89,6 +97,16 @@ export default function PartajareScreen() {
     for (const row of shareable) map.set(`${row.type}:${row.id}`, row.name);
     return map;
   }, [shareable]);
+
+  // Partajări proprii a căror entitate nu mai e pe telefon: nu apar în „Entitățile
+  // mele" (lista vine din entitățile locale), dar sunt încă active în iCloud.
+  const orphanedShares = useMemo(
+    () =>
+      entitiesLoading
+        ? []
+        : ownedShares.filter(s => !entityNameByKey.has(`${s.entity_type}:${s.entity_id}`)),
+    [entitiesLoading, ownedShares, entityNameByKey]
+  );
 
   const findOwnedShare = (type: EntityType, id: string) =>
     ownedShares.find(s => s.entity_type === type && s.entity_id === id);
@@ -288,6 +306,11 @@ export default function PartajareScreen() {
             })
           )}
         </View>
+
+        <OrphanedSharesCard
+          shares={orphanedShares}
+          onRevoke={(s, name) => onRevoke({ type: s.entity_type, id: s.entity_id, name })}
+        />
 
         {/* Partajat cu mine */}
         <View style={styles.sectionRow}>
