@@ -449,7 +449,7 @@ export default function EditDocumentScreen() {
         // pentru detalii: răspuns brut, lungime).
         Alert.alert(
           'AI nu a returnat transcrierea',
-          `Câmpurile structurate s-au completat, dar AI nu a inclus „Text complet (OCR)" în răspuns.\n\nDetalii (în logul Metro):\n- note: ${extracted.note?.length ?? 0} char\n- metadata: ${Object.keys(extracted.metadata).length} câmpuri\n- ocr_text: lipsește\n\nPoți rula manual butonul „🔍 OCR" din secțiunea „Poze / scan" pentru OCR on-device.`
+          `Câmpurile structurate s-au completat, dar AI nu a inclus „Text complet (OCR)" în răspuns.\n\nDetalii (în logul Metro):\n- note: ${extracted.note?.length ?? 0} char\n- metadata: ${Object.keys(extracted.metadata).length} câmpuri\n- ocr_text: lipsește\n\nPoți apăsa „🔍 Citește textul" din secțiunea „Poze / scan" ca să citești textul pe telefon.`
         );
       }
       setAiOcrApplied(true);

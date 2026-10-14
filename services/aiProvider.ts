@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { getStoredLocalModelId } from './localModelSelection';
 
 // ─── Limită zilnică ────────────────────────────────────────────────────────────
 
@@ -189,6 +190,100 @@ export const PROVIDER_DEFAULTS: Record<
 
 const VALID_PROVIDER_TYPES = new Set<string>(Object.keys(PROVIDER_DEFAULTS));
 
+/**
+ * Cele 4 moduri, cu aceleași texte în onboarding și în Setări. Userul alege
+ * „unde merg datele", nu un provider tehnic — de aceea fiecare mod spune
+ * explicit ce pleacă de pe telefon (`dataFlow`).
+ */
+export interface AiModeOption {
+  type: AiProviderType;
+  title: string;
+  summary: string;
+  dataFlow: string;
+}
+
+export const AI_MODE_OPTIONS: readonly AiModeOption[] = [
+  {
+    type: 'local',
+    title: PROVIDER_DEFAULTS.local.label,
+    summary: 'Pe telefon · privat · nelimitat · merge și fără internet',
+    dataFlow: 'Nimic nu pleacă de pe telefon. Descarci o singură dată un model AI.',
+  },
+  {
+    type: 'builtin',
+    title: PROVIDER_DEFAULTS.builtin.label,
+    summary: `În cloud · ${DAILY_AI_LIMIT} cereri pe zi gratuit · fără configurare`,
+    dataFlow:
+      'Textul documentelor (și poza, doar când o trimiți tu) trece prin serverul Dosar AI ' +
+      'către Mistral AI. Serverul nu păstrează conținutul cererilor.',
+  },
+  {
+    type: 'external',
+    title: PROVIDER_DEFAULTS.external.label,
+    summary: 'În cloud · nelimitat · Mistral, OpenAI, Anthropic sau alt provider compatibil',
+    dataFlow:
+      'Datele pleacă direct de pe telefon la providerul ales de tine și sunt procesate ' +
+      'conform politicii lui.',
+  },
+  {
+    type: 'none',
+    title: PROVIDER_DEFAULTS.none.label,
+    summary: 'Aplicația funcționează complet, fără asistent și fără completare automată',
+    dataFlow: 'Nimic nu se trimite nicăieri.',
+  },
+];
+
+// ─── Ruta datelor ─────────────────────────────────────────────────────────────
+
+/**
+ * Unde ajung datele pentru configurația curentă — SINGURA sursă pentru
+ * întrebarea „pleacă ceva de pe telefon?". Guard-urile de privacy, bara de
+ * consimțământ și vizibilitatea butoanelor AI decid din ea.
+ *
+ * - `text`: chat + extracție din text. `device` = model local (llama.rn).
+ * - `images`: cereri cu poza documentului. `none` = configurația nu citește
+ *   imagini (cererea se face doar pe text). Un model local cu „provider OCR
+ *   remote" trimite pozele în cloud chiar dacă textul rămâne pe telefon.
+ */
+export interface AiRoute {
+  text: 'off' | 'device' | 'cloud';
+  images: 'none' | 'cloud';
+}
+
+function hasSeparateVisionProvider(config: AiProviderConfig): boolean {
+  return (
+    config.visionUrl.trim() !== '' &&
+    config.visionApiKey.trim() !== '' &&
+    config.visionModel.trim() !== ''
+  );
+}
+
+export function getAiRoute(config: AiProviderConfig): AiRoute {
+  switch (config.type) {
+    case 'none':
+      return { text: 'off', images: 'none' };
+    case 'local':
+      return { text: 'device', images: hasSeparateVisionProvider(config) ? 'cloud' : 'none' };
+    case 'builtin':
+      return { text: 'cloud', images: 'cloud' };
+    case 'external':
+      return {
+        text: 'cloud',
+        images:
+          hasSeparateVisionProvider(config) || config.chatModelSupportsVision ? 'cloud' : 'none',
+      };
+  }
+}
+
+/** True dacă măcar o parte din date (text sau poze) pleacă de pe telefon. */
+export function aiRouteLeavesDevice(route: AiRoute): boolean {
+  return route.text === 'cloud' || route.images === 'cloud';
+}
+
+export async function getCurrentAiRoute(): Promise<AiRoute> {
+  return getAiRoute(await getAiConfig());
+}
+
 // ─── Chei stocare ─────────────────────────────────────────────────────────────
 
 const KEY_PROVIDER_TYPE = 'ai_provider_type';
@@ -251,10 +346,19 @@ export async function getAiConfig(): Promise<AiProviderConfig> {
 
   const defaults = PROVIDER_DEFAULTS[type];
 
+  // Pentru modelul local, sursa de adevăr e selecția din localModel (scrisă la
+  // descărcare și la alegerea din listă). `ai_provider_model` rămânea gol după
+  // onboarding („Model local" → descărcare), iar chat-urile răspundeau „Modelul
+  // local nu este selectat" deși modelul era instalat și bifat în Setări.
+  let model = modelRaw ?? defaults.model;
+  if (type === 'local') {
+    model = (await getStoredLocalModelId()) ?? '';
+  }
+
   return {
     type,
     url: urlRaw ?? defaults.url,
-    model: modelRaw ?? defaults.model,
+    model,
     visionUrl: visionUrlRaw ?? '',
     visionModel: visionModelRaw ?? '',
     chatModelSupportsVision: chatVisionRaw === 'true',
@@ -393,42 +497,14 @@ export function validateConfig(config: AiProviderConfig): string | null {
 }
 
 /**
- * Verifică rapid dacă AI-ul e disponibil pentru a fi folosit.
- * Folosit din ecranul Chat pentru afișarea unui banner de avertizare.
- */
-export async function isAiAvailable(): Promise<{ ok: boolean; reason?: string }> {
-  const config = await getAiConfig();
-  const err = validateConfig(config);
-  return err ? { ok: false, reason: err } : { ok: true };
-}
-
-/**
  * Întoarce true dacă configurația curentă poate procesa imagini (vision).
  * Folosit în ecranele de adăugare/editare document pentru a decide dacă butonul
- * „Trimite documentul la AI" e vizibil. Regula:
- *
- * - Vision provider separat complet configurat → true (indiferent de chat).
- * - `builtin` cu cheie validă → true (modelul intern e Pixtral, are vision).
- * - `external` + flag `chatModelSupportsVision` + config chat valid → true.
- * - `local` fără vision provider separat → false (executorch nu duce vision).
- * - `none` → false.
+ * „Trimite documentul la AI" e vizibil: configurația trebuie să fie validă și
+ * ruta pozelor să fie `cloud` (vezi `getAiRoute`).
  */
 export async function canDoVision(): Promise<boolean> {
   const config = await getAiConfig();
-
-  const hasSeparateVision =
-    config.visionUrl.trim() !== '' &&
-    config.visionApiKey.trim() !== '' &&
-    config.visionModel.trim() !== '';
-  if (hasSeparateVision) return true;
-
-  if (config.type === 'builtin') return !!BUILTIN_API_KEY && !!BUILTIN_URL;
-
-  if (config.type === 'external' && config.chatModelSupportsVision) {
-    return config.url.trim() !== '' && config.apiKey.trim() !== '' && config.model.trim() !== '';
-  }
-
-  return false;
+  return validateConfig(config) === null && getAiRoute(config).images === 'cloud';
 }
 
 // ─── Helper fetch cu timeout ──────────────────────────────────────────────────
@@ -593,30 +669,23 @@ export async function sendAiRequestWithImage(
   const validationError = validateConfig(config);
   if (validationError) throw new Error(validationError);
 
-  // Pre-calculează dacă există un vision provider complet configurat — folosit
-  // de toate branch-urile (inclusiv `local`).
-  const hasVisionProvider =
-    config.visionUrl.trim() !== '' &&
-    config.visionApiKey.trim() !== '' &&
-    config.visionModel.trim() !== '';
-
-  // Modele locale nu suportă vision azi. Dacă userul a configurat un vision
-  // provider separat (ex. Mistral free pe pixtral, Anthropic Haiku) îl folosim
-  // pentru cererile cu imagine. Altfel fallback text-only — păstrat pentru
-  // aiOcrMapper / ocrLlmExtractor care contează pe acest comportament.
-  if (config.type === 'local' && !hasVisionProvider) {
+  // Configurația nu citește imagini (model local fără provider OCR remote, sau
+  // cheie proprie cu model doar-text): cererea se face doar pe text. Păstrat
+  // pentru aiOcrMapper / ocrLlmExtractor care contează pe acest comportament.
+  // Înainte, cheia proprie doar-text primea oricum imaginea și cererea pica.
+  if (getAiRoute(config).images !== 'cloud') {
     const arr = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
     const userTextWithNote =
       arr.length > 0
-        ? `${userText}\n\n[Notă: modelul local nu suportă imagini — răspunde pe baza textului furnizat.]`
+        ? `${userText}\n\n[Notă: modelul configurat nu citește imagini — răspunde pe baza textului furnizat.]`
         : userText;
-    const { runLocalInference } = await import('./localModel');
-    return runLocalInference(
+    return sendAiRequest(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userTextWithNote },
       ],
-      maxTokens
+      maxTokens,
+      'extraction'
     );
   }
 
@@ -638,7 +707,7 @@ export async function sendAiRequestWithImage(
   // TOATE completate), îl folosim pentru cererile cu imagine — indiferent de tipul
   // de chat. Permite scenarii: chat Mistral free + OCR Anthropic, chat local +
   // OCR remote, etc. Dacă oricare câmp e gol, fallback la provider-ul de chat.
-  const useSeparateVisionProvider = hasVisionProvider;
+  const useSeparateVisionProvider = hasSeparateVisionProvider(config);
 
   const apiKey =
     config.type === 'builtin'
@@ -797,4 +866,52 @@ export async function sendAiRequest(
   }
 
   return content;
+}
+
+// ─── Cine răspunde (afișat în chat-uri) ───────────────────────────────────────
+
+export interface AiAnswererStatus {
+  /** null = AI-ul poate răspunde acum; altfel motivul, în română. */
+  unavailableReason: string | null;
+  /** Cine răspunde și unde, ex. „Model local, pe telefon · Qwen 3.5 2B". */
+  label: string;
+  /** Răspunsurile din chat se generează pe telefon (nimic nu pleacă). */
+  onDevice: boolean;
+}
+
+/**
+ * Descrierea afișată deasupra ambelor chat-uri, ca userul să știe mereu ce
+ * model îi răspunde și dacă întrebarea pleacă de pe telefon.
+ */
+export async function describeAiAnswerer(): Promise<AiAnswererStatus> {
+  const config = await getAiConfig();
+  const unavailableReason = validateConfig(config);
+  const onDevice = getAiRoute(config).text === 'device';
+  switch (config.type) {
+    case 'none':
+      return { unavailableReason, label: PROVIDER_DEFAULTS.none.label, onDevice: false };
+    case 'local': {
+      const { LOCAL_MODEL_CATALOG } = await import('./localModel');
+      const name = LOCAL_MODEL_CATALOG.find(m => m.id === config.model)?.name;
+      return {
+        unavailableReason,
+        label: `${PROVIDER_DEFAULTS.local.label}, pe telefon${name ? ` · ${name}` : ''}`,
+        onDevice,
+      };
+    }
+    case 'builtin': {
+      const left = Math.max(0, DAILY_AI_LIMIT - (await getAiUsageToday()));
+      return {
+        unavailableReason,
+        label: `${PROVIDER_DEFAULTS.builtin.label}, în cloud · ${left} din ${DAILY_AI_LIMIT} cereri rămase azi`,
+        onDevice,
+      };
+    }
+    case 'external':
+      return {
+        unavailableReason,
+        label: `${PROVIDER_DEFAULTS.external.label}, în cloud${config.model ? ` · ${config.model}` : ''}`,
+        onDevice,
+      };
+  }
 }

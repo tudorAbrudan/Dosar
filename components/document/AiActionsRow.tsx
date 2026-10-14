@@ -49,8 +49,8 @@ export function AiActionsRow({ busy, busyLabel, showAction, onAction }: AiAction
         </Pressable>
       </View>
       <Text style={[styles.info, { color: C.textSecondary }]}>
-        Se trimite imaginea/PDF-ul documentului la AI pentru extragerea datelor. Acțiune
-        manuală explicită.
+        Trimite poza documentului (și textul citit) la AI ca să completeze câmpurile. Poza pleacă
+        doar când apeși acest buton.
       </Text>
     </View>
   );

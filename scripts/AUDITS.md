@@ -25,7 +25,7 @@ Origini și detalii: header-ul fiecărui script. Regresie nouă → audit nou (v
 | `expo-public-secrets-audit.js` | strict | warn | Flag variabile `EXPO_PUBLIC_*` cu nume care sugerează secret (KEY, TOKEN, SECRET, PASSWORD, APIKEY, PRIVKEY). |
 | `pin-secure-store-audit.js` | strict | strict | Flag `AsyncStorage.{set,get,remove}Item` cu chei care conțin `pin`, `biometric`, `password`, `secret`, `lock`. |
 | `medical-ai-summary-isolation-audit.js` | strict | strict | Audit script — verifică că `ai_summary` și `pending_reminders_json` NU apar în fișierele care construiesc context pentru chat-ul medical sau FTS. |
-| `medical-ai-guard-audit.js` | strict | strict | Plasă de siguranță pentru privacy AI (Faza 3, 2026-07-04). |
+| `medical-ai-guard-audit.js` | strict | strict | Plasă de siguranță pentru privacy AI (Faza 3, 2026-07-04; strâns 2026-10-13). |
 | `share-privacy-audit.js` | strict | — | Păzește granița de privacy a partajării entităților între conturi (CloudKit). |
 | `share-scope-audit.js` | strict | — | Păzește gate-ul de permisiune la push-back-ul participantului (CloudKit sharing, Faza 2). |
 | `silent-ai-catch-audit.js` | strict | strict | Audit script — flag-uiește pattern-ul `catch (e) { console.warn(...) }` în jurul apelurilor AI (sendAiRequest, sendAiRequestWithImage, callMistral etc.) fără surfacing vizibil (Alert/Toast/inline UI). |

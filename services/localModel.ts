@@ -15,6 +15,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initLlama, LlamaContext } from 'llama.rn';
 import type { AiMessage } from './aiProvider';
+import { LOCAL_MODEL_SELECTED_KEY, getStoredLocalModelId } from './localModelSelection';
 
 // ─── Tipuri ───────────────────────────────────────────────────────────────────
 
@@ -249,9 +250,28 @@ export function getCompatibleModels(): LocalModelEntry[] {
   return LOCAL_MODEL_CATALOG.filter(m => isModelCompatible(m, ramBytes, iphoneGen));
 }
 
-// ─── Persistență ─────────────────────────────────────────────────────────────
+/**
+ * Modelul propus când userul alege „Model local": cel mai MARE compatibil cu
+ * device-ul. Mai mult spațiu înseamnă în general mai multă precizie, iar
+ * descărcarea nu blochează nimic (continuă în fundal — services/modelDownload.ts).
+ * Compromisul viteză/precizie e în descrierea fiecărui model; lista completă
+ * rămâne în Setări → Asistent AI → „Alte modele".
+ */
+export function getRecommendedModel(): LocalModelEntry | null {
+  const compatible = getCompatibleModels();
+  if (compatible.length === 0) return null;
+  return [...compatible].sort((a, b) => b.sizeBytes - a.sizeBytes)[0];
+}
 
-const KEY_SELECTED = 'local_model_selected';
+/** Intervalul de dimensiuni din catalog, ex. „~1.2GB–4.7GB" (derivat, nu hardcodat). */
+export function getLocalModelSizeRange(): string {
+  const bySize = [...LOCAL_MODEL_CATALOG].sort((a, b) => a.sizeBytes - b.sizeBytes);
+  const min = bySize[0].sizeLabel.replace('~', '');
+  const max = bySize[bySize.length - 1].sizeLabel.replace('~', '');
+  return `~${min}–${max}`;
+}
+
+// ─── Persistență ─────────────────────────────────────────────────────────────
 
 function getModelsDir(): string {
   return (FileSystem.documentDirectory ?? '') + 'models/';
@@ -267,7 +287,7 @@ export async function isModelDownloaded(modelId: string): Promise<boolean> {
 }
 
 export async function getSelectedModelId(): Promise<string | null> {
-  const id = await AsyncStorage.getItem(KEY_SELECTED);
+  const id = await getStoredLocalModelId();
   // Ignoră o selecție care nu mai există în catalog (ex. model scos/redenumit
   // între versiuni). Altfel s-ar încerca încărcarea unui fișier orfan de pe disc.
   if (id && !LOCAL_MODEL_CATALOG.some(m => m.id === id)) return null;
@@ -275,11 +295,11 @@ export async function getSelectedModelId(): Promise<string | null> {
 }
 
 export async function setSelectedModelId(modelId: string): Promise<void> {
-  await AsyncStorage.setItem(KEY_SELECTED, modelId);
+  await AsyncStorage.setItem(LOCAL_MODEL_SELECTED_KEY, modelId);
 }
 
 export async function clearSelectedModelId(): Promise<void> {
-  await AsyncStorage.removeItem(KEY_SELECTED);
+  await AsyncStorage.removeItem(LOCAL_MODEL_SELECTED_KEY);
 }
 
 // ─── Download ────────────────────────────────────────────────────────────────
@@ -596,12 +616,12 @@ export function stripReasoning(text: string): string {
  * sampler-ului (heap corruption nativ, SIGABRT în `initSampling()`).
  *
  * De ce se poate ajunge la două apeluri concurente în JS deși fiecare callsite
- * face `await sendAiRequest(...)`: unele fluxuri pornesc o a doua inferență
- * fire-and-forget (ex. `medicalChat.autoRenameAfterFirstExchange`, apelat fără
- * `await` după ce `sendMessage` s-a rezolvat deja). UI-ul consideră trimiterea
- * „terminată" și userul poate trimite imediat un mesaj nou → al doilea
- * `runLocalInference` pornește cât primul (title-gen) e încă activ pe același
- * `_llamaContext`. Cu provider remote (HTTP) e inofensiv; cu contextul nativ
+ * face `await sendAiRequest(...)`: unele fluxuri pornesc o inferență
+ * fire-and-forget (ex. `medicalExtractor.extractAsync`, pornit la salvarea unui
+ * document medical). UI-ul nu așteaptă după ea, iar userul poate trimite imediat
+ * o întrebare în chat → al doilea `runLocalInference` pornește cât primul e încă
+ * activ pe același `_llamaContext` (crash-ul original venea din titlul generat cu
+ * AI după primul mesaj din chat-ul medical). Cu provider remote (HTTP) e inofensiv; cu contextul nativ
  * local, crapă. Coada de mai jos forțează execuție strict secvențială,
  * indiferent de câte apeluri concurente pornesc din JS.
  * Crash confirmat din .ips device: 2026-07-26.

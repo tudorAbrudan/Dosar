@@ -16,7 +16,8 @@ interface UseMedicalChatState {
   sending: boolean;
   error: string | null;
   messages: MedicalChatMessage[];
-  send(question: string): Promise<void>;
+  /** true = răspuns primit; false = eroare (afișată în `error`, întrebarea nu e salvată). */
+  send(question: string): Promise<boolean>;
   refresh(): Promise<void>;
 }
 
@@ -46,17 +47,31 @@ export function useMedicalChat(
   }, [threadId]);
 
   const send = useCallback(
-    async (question: string) => {
-      if (!threadId || !recordId) return;
+    async (question: string): Promise<boolean> => {
+      if (!threadId || !recordId) return false;
       const trimmed = question.trim();
-      if (trimmed === '') return;
+      if (trimmed === '') return false;
+      // Întrebarea apare imediat, nu abia după răspuns (care poate dura zeci de
+      // secunde pe modelul local).
+      const pending: MedicalChatMessage = {
+        id: `pending-${Date.now()}`,
+        thread_id: threadId,
+        role: 'user',
+        content: trimmed,
+        citations: [],
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, pending]);
       setSending(true);
       setError(null);
       try {
         await sendMessage({ threadId, recordId, question: trimmed });
         await refresh();
+        return true;
       } catch (e) {
+        setMessages(prev => prev.filter(m => m.id !== pending.id));
         setError(humanizeAiError(e));
+        return false;
       } finally {
         setSending(false);
       }

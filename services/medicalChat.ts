@@ -511,8 +511,13 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
   }
 
   const history = await listMessages(args.threadId);
-  // Excludem mesajul user pe care tocmai l-am salvat — îl avem deja ca prompt.
-  const trimmedHistory = history.filter(m => m.id !== userMsg.id).slice(-HISTORY_TURNS * 2);
+  // Excludem mesajul user pe care tocmai l-am salvat — îl avem deja ca prompt —
+  // și erorile salvate ca răspuns de versiunile vechi: retrimise modelului, îl
+  // făceau să repete eroarea în loc să răspundă (bug deja reparat în chat-ul
+  // general, vezi stripErrorTurns din chatbot.ts).
+  const trimmedHistory = history
+    .filter(m => m.id !== userMsg.id && !isLegacyErrorAnswer(m))
+    .slice(-HISTORY_TURNS * 2);
 
   const aiMessages = [
     {
@@ -530,14 +535,11 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
   try {
     answer = await sendAiRequest(aiMessages, 1000, 'chat');
   } catch (e) {
-    // silent-ai-catch-ok: eroarea AI devine mesajul răspunsului afișat în
-    // chat (vezi answer = `Asistentul AI nu e disponibil: ${e.message}`),
-    // deci e vizibilă userului prin canalul natural al feature-ului.
-    console.warn('[medicalChat] sendAiRequest failed:', e);
-    answer =
-      e instanceof Error
-        ? `Asistentul AI nu este disponibil acum: ${e.message}`
-        : 'A apărut o eroare la asistentul AI. Încearcă din nou peste câteva momente.';
+    // Eroarea NU se salvează în conversație (ar ajunge la model la următoarea
+    // întrebare). Scoatem și întrebarea, ca userul s-o poată retrimite curat;
+    // hook-ul afișează eroarea umanizată și pune întrebarea înapoi în câmp.
+    await deleteMessage(userMsg.id);
+    throw e;
   }
 
   const citations = extractCitations(answer);
@@ -549,50 +551,51 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
     citations,
   });
 
+  await titleThreadFromFirstQuestion(args.threadId);
   emit('entities:changed');
-
-  // Auto-rename după primul schimb — fire-and-forget.
-  autoRenameAfterFirstExchange(args.threadId).catch(() => {
-    /* păstrăm titlu default */
-  });
 
   return { userMessage: userMsg, assistantMessage: assistantMsg };
 }
 
-// ── Auto-rename thread ───────────────────────────────────────────────────────
+/** Răspunsurile-eroare salvate de versiunile dinainte de 2026-10-13. */
+function isLegacyErrorAnswer(m: MedicalChatMessage): boolean {
+  return (
+    m.role === 'assistant' &&
+    (m.content.startsWith('Asistentul AI nu este disponibil acum:') ||
+      m.content.startsWith('A apărut o eroare la asistentul AI.'))
+  );
+}
+
+async function deleteMessage(id: string): Promise<void> {
+  await db.runAsync('DELETE FROM medical_chat_messages WHERE id = ?', [id]);
+}
+
+// ── Titlu conversație ────────────────────────────────────────────────────────
+
+const TITLE_MAX_LEN = 40;
 
 /**
- * După primul schimb user→assistant, cere LLM un titlu scurt (≤5 cuvinte).
- * NO-OP dacă titlul a fost deja schimbat de user sau dacă există deja >2
- * mesaje (a fost rulat anterior).
+ * Titlul conversației = începutul primei întrebări, tăiat la cuvânt. Înainte
+ * se cerea un titlu de la AI — o cerere în plus din limita zilnică Dosar AI la
+ * fiecare conversație nouă, pentru un titlu pe care UI-ul nici nu-l afișează.
+ * NO-OP dacă titlul nu mai e cel implicit.
  */
-export async function autoRenameAfterFirstExchange(threadId: string): Promise<void> {
-  const msgs = await listMessages(threadId);
-  if (msgs.length < 2 || msgs.length > 4) return;
-
+async function titleThreadFromFirstQuestion(threadId: string): Promise<void> {
   const thread = await getThread(threadId);
   if (!thread) return;
-  // Skip dacă userul l-a redenumit deja sau dacă nu mai e default.
-  if (thread.title !== 'Conversație' && !thread.title.startsWith('Conversație ')) {
-    return;
-  }
+  if (thread.title !== 'Conversație' && !thread.title.startsWith('Conversație ')) return;
 
-  const firstQuestion = msgs.find(m => m.role === 'user')?.content ?? '';
+  const msgs = await listMessages(threadId);
+  const firstQuestion = msgs.find(m => m.role === 'user')?.content.trim() ?? '';
   if (!firstQuestion) return;
 
-  const prompt = `Generează un titlu scurt (maxim 5 cuvinte) în română pentru o conversație medicală despre subiectul de mai jos. Răspunde DOAR titlul, fără ghilimele, fără punct final.
+  await renameThread(threadId, deriveThreadTitle(firstQuestion));
+}
 
-Întrebare: "${firstQuestion.slice(0, 200)}"`;
-
-  try {
-    const title = (await sendAiRequest([{ role: 'user', content: prompt }], 30, 'chat'))
-      .trim()
-      .replace(/^["'„"]+|["'""]+$/g, '')
-      .slice(0, 60);
-    if (title.length >= 3) {
-      await renameThread(threadId, title);
-    }
-  } catch {
-    /* păstrăm titlu default */
-  }
+export function deriveThreadTitle(question: string): string {
+  const oneLine = question.replace(/\s+/g, ' ').trim();
+  if (oneLine.length <= TITLE_MAX_LEN) return oneLine;
+  const cut = oneLine.slice(0, TITLE_MAX_LEN);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 15 ? cut.slice(0, lastSpace) : cut).trim()}…`;
 }

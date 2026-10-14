@@ -6,6 +6,8 @@ import type { AiProviderType } from '@/services/aiProvider';
 
 interface AiConsentBarProps {
   providerType: AiProviderType;
+  /** Configurația din formular trimite ceva de pe telefon (vezi `aiRouteLeavesDevice`). */
+  leavesDevice: boolean;
   checked: boolean;
   scheme: 'light' | 'dark';
   onToggle: () => void;
@@ -13,16 +15,26 @@ interface AiConsentBarProps {
 
 /**
  * Bară fixă cu checkbox pentru acordul de utilizare AI.
- * Apare doar pentru providerType `builtin` sau `external` (la `none`/`local` nu pleacă date).
+ * Apare doar când ceva pleacă de pe telefon — inclusiv modelul local cu citirea
+ * pozelor în cloud (până la 2026-10-13 modul local era tratat mereu ca „nimic nu
+ * pleacă", deși pozele mergeau la providerul de imagini fără acord).
  */
-export function AiConsentBar({ providerType, checked, scheme, onToggle }: AiConsentBarProps) {
+export function AiConsentBar({
+  providerType,
+  leavesDevice,
+  checked,
+  scheme,
+  onToggle,
+}: AiConsentBarProps) {
   const C = Colors[scheme];
-  if (providerType !== 'builtin' && providerType !== 'external') return null;
+  if (!leavesDevice) return null;
 
   const label =
     providerType === 'builtin'
       ? 'Sunt de acord cu trimiterea datelor la serviciul Dosar AI'
-      : 'Sunt de acord cu trimiterea datelor la serviciul AI configurat';
+      : providerType === 'local'
+        ? 'Sunt de acord cu trimiterea pozelor documentelor la providerul de imagini'
+        : 'Sunt de acord cu trimiterea datelor la serviciul AI configurat';
 
   return (
     <Pressable
@@ -52,7 +64,9 @@ export function AiConsentBar({ providerType, checked, scheme, onToggle }: AiCons
       <View style={{ flex: 1 }}>
         <Text style={[styles.label, { color: C.text }]}>{label}</Text>
         <Text style={[styles.sub, { color: C.textSecondary }]}>
-          Acoperă: text OCR, entități, detalii documente, chat. PIN-ul nu este niciodată trimis.
+          {providerType === 'local'
+            ? 'Doar pozele trimise cu „Trimite documentul la AI". Chat-ul și textul rămân pe telefon.'
+            : 'Acoperă: textul citit din documente, entități, detalii documente, chat. „Notă privată" și PIN-ul nu pleacă niciodată.'}
         </Text>
       </View>
     </Pressable>

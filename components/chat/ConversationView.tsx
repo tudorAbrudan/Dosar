@@ -15,6 +15,8 @@ import { useRouter } from 'expo-router';
 
 import { light as lightColors } from '@/theme/colors';
 import type { ChatThread } from '@/services/chatThreads';
+import { AiStatusBanner } from './AiStatusBanner';
+import type { AiAnswererStatus } from '@/services/aiProvider';
 import { MessageBubble } from './MessageBubble';
 import type { ConversationMessage } from './MessageBubble';
 import type { EntityType } from '@/types';
@@ -44,7 +46,7 @@ interface ConversationViewProps {
   colors: typeof lightColors;
   insets: { top: number; bottom: number };
   mentionItems: MentionItem[];
-  aiUnavailableReason: string | null;
+  aiStatus: AiAnswererStatus;
   onBack: () => void;
   onRename: () => void;
   onClear: () => void;
@@ -61,7 +63,7 @@ export function ConversationView({
   colors,
   insets,
   mentionItems,
-  aiUnavailableReason,
+  aiStatus,
   onBack,
   onRename,
   onClear,
@@ -128,7 +130,13 @@ export function ConversationView({
     router.push(`/(tabs)/documente/${id}?from=chat`);
   }
 
-  function handleEntityPress(id: string) {
+  function handleEntityPress(id: string, entityType: string) {
+    // Link-ul spre chat-ul medical (adăugat de chatbot la întrebările medicale)
+    // deschide direct tab-ul Chat al dosarului.
+    if (entityType === 'medical_record') {
+      router.push({ pathname: '/(tabs)/entitati/medical/[id]', params: { id, tab: 'chat' } });
+      return;
+    }
     router.push(`/(tabs)/entitati/${id}`);
   }
 
@@ -167,25 +175,12 @@ export function ConversationView({
         </Pressable>
       </View>
 
-      {aiUnavailableReason && (
-        <Pressable
-          style={[styles.aiBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={onOpenSettings}
-        >
-          <Text style={styles.aiBannerIcon}>⚠️</Text>
-          <View style={styles.aiBannerTextWrap}>
-            <Text style={[styles.aiBannerTitle, { color: colors.text }]}>
-              Asistentul AI nu este disponibil
-            </Text>
-            <Text style={[styles.aiBannerBody, { color: colors.textSecondary }]}>
-              {aiUnavailableReason}
-            </Text>
-            <Text style={[styles.aiBannerCta, { color: colors.primary }]}>
-              Apasă pentru Setări →
-            </Text>
-          </View>
-        </Pressable>
-      )}
+      <AiStatusBanner
+        unavailableReason={aiStatus.unavailableReason}
+        label={aiStatus.label}
+        onDevice={aiStatus.onDevice}
+        onOpenSettings={onOpenSettings}
+      />
 
       <ScrollView
         ref={scrollRef}
@@ -274,7 +269,7 @@ export function ConversationView({
             },
           ]}
           placeholder={
-            aiUnavailableReason
+            aiStatus.unavailableReason
               ? 'AI indisponibil. Verifică Setări.'
               : 'Scrie un mesaj... (@ pentru entități)'
           }
@@ -283,7 +278,7 @@ export function ConversationView({
           onChangeText={handleInputChange}
           onSubmitEditing={handleSend}
           returnKeyType="send"
-          editable={!loading && !aiUnavailableReason}
+          editable={!loading && !aiStatus.unavailableReason}
           multiline
         />
         <Pressable
@@ -291,11 +286,11 @@ export function ConversationView({
             styles.sendButton,
             {
               backgroundColor: colors.primary,
-              opacity: pressed || !input.trim() || aiUnavailableReason ? 0.6 : 1,
+              opacity: pressed || !input.trim() || aiStatus.unavailableReason ? 0.6 : 1,
             },
           ]}
           onPress={handleSend}
-          disabled={loading || !input.trim() || !!aiUnavailableReason}
+          disabled={loading || !input.trim() || !!aiStatus.unavailableReason}
         >
           <Text style={styles.sendButtonText}>Trimite</Text>
         </Pressable>
@@ -319,23 +314,6 @@ const styles = StyleSheet.create({
   convHeaderTitle: { flex: 1, fontSize: 16, fontWeight: '600', textAlign: 'center' },
   menuBtn: { minWidth: 40, alignItems: 'flex-end' },
   menuBtnText: { fontSize: 20, fontWeight: '700', letterSpacing: 1 },
-
-  aiBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 12,
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 12,
-  },
-  aiBannerIcon: { fontSize: 20, lineHeight: 22 },
-  aiBannerTextWrap: { flex: 1, gap: 2 },
-  aiBannerTitle: { fontSize: 14, fontWeight: '700' },
-  aiBannerBody: { fontSize: 13, lineHeight: 18 },
-  aiBannerCta: { fontSize: 13, fontWeight: '600', marginTop: 4 },
 
   messageList: { flex: 1 },
   messageListContent: { padding: 16, paddingBottom: 8 },

@@ -21,9 +21,10 @@ import {
   updateServiceProvider,
   deleteServiceProvider,
 } from '@/services/serviceProviders';
-import { extractText } from '@/services/ocr';
+import { extractText, extractUtilityInvoiceInfo } from '@/services/ocr';
 import { compressImageToBase64ForAi } from '@/services/imageProcessing';
-import { mapUtilityInvoiceWithAi } from '@/services/aiOcrMapper';
+import { mapUtilityInvoiceWithAi, type UtilityInvoiceAiResult } from '@/services/aiOcrMapper';
+import { getScanAiAccess } from '@/services/aiGuard';
 import { scanDocumentPages } from '@/services/documentScanner';
 import { ALL_UTILITY_TYPES, UTILITY_TYPE_LABELS, UTILITY_TYPE_EMOJI } from '@/types';
 import type { ServiceProvider, UtilityType } from '@/types';
@@ -95,7 +96,12 @@ export function PropertyProvidersSection({ propertyId, readOnly = false }: Props
     setScanning(true);
     try {
       const ocr = await extractText(uri);
-      const result = await mapUtilityInvoiceWithAi(ocr.text, base64);
+      // AI doar dacă e configurat și, pentru cloud, cu acordul general; poza doar
+      // dacă configurația citește imagini. Altfel rămâne citirea de pe telefon (regex).
+      const access = await getScanAiAccess();
+      const result: UtilityInvoiceAiResult = access.useAi
+        ? await mapUtilityInvoiceWithAi(ocr.text, access.withImage ? base64 : undefined)
+        : extractUtilityInvoiceInfo(ocr.text);
       if (result.type && ALL_UTILITY_TYPES.includes(result.type)) setType(result.type);
       if (result.providerName) setProviderName(result.providerName);
       if (result.customerCode) setCustomerCode(result.customerCode);

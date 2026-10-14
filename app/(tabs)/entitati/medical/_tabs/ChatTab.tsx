@@ -17,8 +17,10 @@ import { useMedicalChat, useMedicalChatThreads } from '@/hooks/useMedicalChat';
 import { MedicalChatBubble } from '@/components/medical/MedicalChatBubble';
 import { MedicalConsentModal } from '@/components/medical/MedicalConsentModal';
 import { useMedicalLock } from '@/hooks/useMedicalLock';
-import { setAiConsent } from '@/services/medicalRecord';
-import { getAiMedicalAllowed, setAiMedicalAllowed } from '@/services/settings';
+import { isMedicalAiConsentValid, setAiConsent } from '@/services/medicalRecord';
+import { getAiMedicalAllowed } from '@/services/settings';
+import { useAiStatus } from '@/hooks/useAiStatus';
+import { AiStatusBanner } from '@/components/chat/AiStatusBanner';
 import { on as subscribe } from '@/services/events';
 import { useRouter } from 'expo-router';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -52,7 +54,10 @@ export function ChatTab({ record }: Props) {
   const { messages, sending, send, error } = useMedicalChat(activeThreadId, record.id);
   const [input, setInput] = useState('');
   const [globallyAllowed, setGloballyAllowed] = useState<boolean | null>(null);
+  const aiStatus = useAiStatus();
+  const aiReady = !aiStatus.unavailableReason;
   const listRef = useRef<FlatList>(null);
+  const openAiSettings = useCallback(() => router.push('/(tabs)/setari?openAi=1'), [router]);
 
   const refreshGlobalAllowed = useCallback(() => {
     getAiMedicalAllowed().then(setGloballyAllowed);
@@ -92,15 +97,15 @@ export function ChatTab({ record }: Props) {
       <View style={styles.center}>
         <Ionicons name="warning-outline" size={48} color={palette.textSecondary} />
         <Text style={[styles.centerTitle, { color: palette.text }]}>
-          AI medical dezactivat global
+          Asistentul AI e oprit pe dosarele medicale
         </Text>
         <Text style={[styles.centerHint, { color: palette.textSecondary }]}>
-          Ai dezactivat asistentul AI pentru date medicale din Setări → Asistent AI. Activează-l de
-          acolo pentru a folosi chat-ul.
+          L-ai oprit din Setări → Asistent AI → „Asistent AI pe dosarele medicale". Pornește-l de
+          acolo ca să folosești chat-ul.
         </Text>
         <Pressable
           style={[styles.unlockBtn, { backgroundColor: primary }]}
-          onPress={() => router.push('/(tabs)/setari')}
+          onPress={openAiSettings}
         >
           <Text style={[styles.unlockBtnText, { color: onPrimary }]}>Deschide Setări AI</Text>
         </Pressable>
@@ -108,33 +113,34 @@ export function ChatTab({ record }: Props) {
     );
   }
 
-  // Empty state: consent missing per dosar — buton direct pentru activare
-  if (!record.ai_consent_at) {
+  // Empty state: acord lipsă pe dosar (sau dat pe un text de consimțământ mai
+  // vechi) — buton direct pentru activare.
+  if (!isMedicalAiConsentValid(record)) {
+    const outdated = !!record.ai_consent_at;
     return (
       <View style={styles.center}>
         <Ionicons name="lock-closed-outline" size={48} color={palette.textSecondary} />
         <Text style={[styles.centerTitle, { color: palette.text }]}>
-          Asistent AI dezactivat pentru acest dosar
+          {outdated ? 'Confirmă din nou acordul' : 'Asistent AI oprit pentru acest dosar'}
         </Text>
         <Text style={[styles.centerHint, { color: palette.textSecondary }]}>
-          Categoria datelor medicale (GDPR Art. 9) cere consimțământ explicit pe fiecare dosar
-          separat. Toggle-ul global din Setări permite AI medical pe app, dar fiecare dosar e opt-in
-          distinct.
+          {outdated
+            ? 'Textul acordului s-a actualizat: spune acum exact pe unde trec datele medicale. Citește-l și confirmă ca să folosești în continuare asistentul pe acest dosar.'
+            : 'Datele medicale (GDPR Art. 9) se folosesc cu AI doar cu acordul tău explicit, dat separat pe fiecare dosar.'}
         </Text>
         <Pressable
           style={[styles.unlockBtn, { backgroundColor: primary }]}
           onPress={() => setShowConsent(true)}
         >
           <Text style={[styles.unlockBtnText, { color: onPrimary }]}>
-            Activează AI pentru acest dosar
+            {outdated ? 'Citește și confirmă' : 'Activează AI pentru acest dosar'}
           </Text>
         </Pressable>
         <MedicalConsentModal
           visible={showConsent}
           onAccept={async () => {
             try {
-              // Sigur și global allowed e ON (consent dosar implică folosire activă).
-              await setAiMedicalAllowed(true);
+              // setAiConsent pornește și întrerupătorul general din Setări.
               await setAiConsent(record.id);
             } catch {
               /* logged in service */
@@ -178,6 +184,12 @@ export function ChatTab({ record }: Props) {
       // Raportat pe device 2026-09-04.
       keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
     >
+      <AiStatusBanner
+        unavailableReason={aiStatus.unavailableReason}
+        label={aiStatus.label}
+        onDevice={aiStatus.onDevice}
+        onOpenSettings={openAiSettings}
+      />
       <FlatList
         ref={listRef}
         data={messages}
@@ -192,7 +204,8 @@ export function ChatTab({ record }: Props) {
             {SUGGESTIONS.map(s => (
               <Pressable
                 key={s}
-                onPress={() => send(s)}
+                disabled={!aiReady || sending}
+                onPress={() => void send(s).then(() => aiStatus.refresh())}
                 style={[
                   styles.suggestion,
                   { borderColor: palette.border, backgroundColor: palette.card },
@@ -204,7 +217,14 @@ export function ChatTab({ record }: Props) {
           </View>
         }
         ListFooterComponent={
-          error ? (
+          sending ? (
+            <View style={styles.typingRow}>
+              <ActivityIndicator size="small" color={palette.textSecondary} />
+              <Text style={[styles.typingText, { color: palette.textSecondary }]}>
+                Asistentul caută în dosar…
+              </Text>
+            </View>
+          ) : error ? (
             <View
               style={[styles.errorBanner, { backgroundColor: statusColors.criticalSurfaceDark }]}
             >
@@ -232,7 +252,7 @@ export function ChatTab({ record }: Props) {
             placeholder="Întreabă despre dosarul medical..."
             placeholderTextColor={palette.textSecondary}
             multiline
-            editable={!sending}
+            editable={!sending && aiReady}
             style={[styles.input, { color: palette.text }]}
           />
         </View>
@@ -240,15 +260,18 @@ export function ChatTab({ record }: Props) {
           style={[
             styles.sendBtn,
             {
-              backgroundColor: input.trim() && !sending ? primary : palette.border,
+              backgroundColor: input.trim() && !sending && aiReady ? primary : palette.border,
             },
           ]}
-          disabled={!input.trim() || sending}
+          disabled={!input.trim() || sending || !aiReady}
           onPress={async () => {
             const q = input.trim();
             if (!q) return;
             setInput('');
-            await send(q);
+            // La eroare întrebarea nu se salvează — o punem înapoi în câmp.
+            const ok = await send(q);
+            if (!ok) setInput(q);
+            void aiStatus.refresh();
           }}
           accessibilityLabel="Trimite întrebare"
         >
@@ -264,6 +287,14 @@ export function ChatTab({ record }: Props) {
 }
 
 const styles = StyleSheet.create({
+  typingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  typingText: { fontSize: 13 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   centerTitle: { fontSize: 17, fontWeight: '600', marginTop: 12 },
   centerHint: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8 },

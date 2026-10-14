@@ -25,6 +25,8 @@ const ALLOWED = new Set([
   'components/CloudPasswordModal.tsx',
   'components/AppLockPinModal.tsx',
   'components/settings/LocalModelCatalog.tsx',
+  // „Anulează" = oprește descărcarea modelului (acțiune inline, ca în LocalModelCatalog):
+  'components/settings/LocalModePanel.tsx',
   'components/settings/AiActionBar.tsx',
   'components/ui/SheetHeader.tsx',
   // butoane inline de conținut (pill cu icon + text), nu header de sheet:

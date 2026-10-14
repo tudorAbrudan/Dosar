@@ -24,7 +24,7 @@ export interface MessageBubbleColors {
 interface MessageBubbleProps {
   message: ConversationMessage;
   onIdPress: (id: string) => void;
-  onEntityPress: (id: string) => void;
+  onEntityPress: (id: string, entityType: string) => void;
   onDelete: (msg: ConversationMessage) => void;
   colors: MessageBubbleColors;
 }
@@ -105,7 +105,7 @@ function renderPlainText(text: string, keyPrefix: string, textColor: string): Re
 function renderMessageContent(
   content: string,
   onIdPress: (id: string) => void,
-  onEntityPress: (id: string) => void,
+  onEntityPress: (id: string, entityType: string) => void,
   linkColor: string,
   textColor: string
 ): React.ReactNode[] {
@@ -148,12 +148,13 @@ function renderMessageContent(
     } else {
       // [ENT:name|type|id]
       const entName = match[4];
+      const entType = match[5];
       const entId = match[6];
       parts.push(
         <Text
           key={`ent-${match.index}`}
           style={[styles.idLink, { color: linkColor }]}
-          onPress={() => onEntityPress(entId)}
+          onPress={() => onEntityPress(entId, entType)}
         >
           {entName}
         </Text>

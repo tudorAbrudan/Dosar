@@ -497,7 +497,7 @@ export async function getVehicleIdentifiers(): Promise<
  *   2. toggle global AI medical ON (settings)
  *   3. documentul e legat la un medical_record (direct via entity_links sau
  *      indirect via legacyPersonId → getMedicalRecordByPersonId)
- *   4. dosarul medical are ai_consent_at setat
+ *   4. dosarul medical are acord AI valid (`isMedicalAiConsentValid`)
  *
  * Dynamic imports → evită circular dep (medicalExtractor → documents).
  * Spec §6.3.
@@ -511,7 +511,8 @@ async function triggerMedicalExtraction(
     const { getAiMedicalAllowed } = await import('./settings');
     if (!(await getAiMedicalAllowed())) return;
 
-    const { getMedicalRecord, getMedicalRecordByPersonId } = await import('./medicalRecord');
+    const { getMedicalRecord, getMedicalRecordByPersonId, isMedicalAiConsentValid } =
+      await import('./medicalRecord');
 
     let recordId: string | null = null;
     const direct = entityLinks.find(l => l.entityType === 'medical_record');
@@ -524,10 +525,12 @@ async function triggerMedicalExtraction(
     if (!recordId) return;
 
     const rec = await getMedicalRecord(recordId);
-    if (!rec || !rec.ai_consent_at) return;
+    if (!rec || !isMedicalAiConsentValid(rec)) return;
 
     const { extractAsync } = await import('./medicalExtractor');
-    extractAsync(documentId);
+    // Dosarul e deja rezolvat aici (inclusiv prin persoana legată) — fără hint,
+    // extractorul caută doar linkul direct la dosar și ieșea tăcut cu `no_record`.
+    extractAsync(documentId, recordId);
   } catch (e) {
     console.warn('[documents] medical extraction trigger failed:', e);
   }
@@ -906,7 +909,7 @@ export async function addEntityLinkToDocument(
       .catch(() => {});
     // Simetrie cu createDocument: asocierea la un dosar medical declanșează
     // extracția observațiilor în background. Guard-uit intern de toggle AI
-    // medical + ai_consent_at pe dosar. Idempotent (șterge observațiile vechi
+    // medical + acordul AI valid pe dosar. Idempotent (șterge observațiile vechi
     // pe acest document înainte de re-insert).
     void triggerMedicalExtraction(documentId, [link], null);
   }

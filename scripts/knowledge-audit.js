@@ -52,6 +52,8 @@ const ENTRIES = {
     fuel: { required: true, keywords: ['carburant', 'consum'] },
     aiErrorAlert: { required: false },
     localModel: { required: true, keywords: ['model local', 'on-device'] },
+    // Doar cheia de stocare a selecției (citită de aiProvider fără llama.rn).
+    localModelSelection: { required: false },
     modelDownload: { required: true, keywords: ['descarcă', 'onboarding'] },
     maintenance: { required: true, keywords: ['mentenanță', 'revizie'] },
     notifications: { required: true, keywords: ['notificări'] },

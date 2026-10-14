@@ -49,6 +49,25 @@ NU trece prin `getDocumentsForAI`.
 
 Garanție verificată de `__tests__/characterization/getDocumentsForAI.test.ts`.
 
+## Unde pleacă datele — `getAiRoute` + gate-urile din `aiGuard.ts`
+
+„Pleacă ceva de pe telefon?" se decide DOAR din `getAiRoute(config)` (`services/aiProvider.ts`):
+`text: off | device | cloud`, `images: none | cloud`. Modelul local cu provider de imagini în
+cloud are `images: 'cloud'` — NU e „local" pentru privacy (bug până la 2026-10-13).
+
+Orice trimitere de conținut de document la AI din `app/` / `components/` trece, **în aceeași
+funcție**, printr-un gate (verificat de `scripts/medical-ai-guard-audit.js`, la nivel de funcție):
+
+| Flux | Gate | Regulă |
+|---|---|---|
+| Buton „Trimite documentul la AI" | `ensureAiAnalysisAllowed` | medical → acord valid pe dosar; tip sensibil → acord per tip |
+| Completare automată la atașare | `ensureAutoAiAllowed` | doar text în cloud + acord general + aceleași reguli; **niciodată poza** |
+| Bon carburant / factură utilități | `getScanAiAccess` | acord general dacă pleacă ceva; poza doar dacă ruta citește imagini |
+
+Acordul medical se verifică DOAR prin `isMedicalAiConsentValid` (include versiunea textului
+din `MedicalConsentModal` — `MEDICAL_AI_CONSENT_VERSION`). Schimbi materialmente textul de
+consimțământ → crești versiunea, ca userii să fie întrebați din nou.
+
 ## Checklist la orice feature nou AI
 
 Înainte de merge pe un feature care adaugă un apel AI (nou chatbot, OCR LLM, clasificare, sumarizare, agent, etc.):
@@ -56,6 +75,8 @@ Garanție verificată de `__tests__/characterization/getDocumentsForAI.test.ts`.
 - [ ] Sursa de documente e `getDocumentsForAI()` sau trecută prin `sanitizeDocumentForAI`?
 - [ ] Câmpul `private_notes` e absent din orice string serializat inclus în prompt?
 - [ ] Nu există branch care, în anumite condiții (retry, fallback, error-path), să trimită documentul brut?
+- [ ] Trimiterea trece printr-un gate din `aiGuard.ts` în aceeași funcție (vezi tabelul de mai sus)?
+- [ ] Textele vizibile (Setări, onboarding, consimțăminte, `legalTexts.ts`, `docs/legal/`) încă descriu exact ce pleacă?
 
 Dacă un test nou face `JSON.stringify(doc)` și rezultatul e inclus într-un `AiMessage.content`, asta e un leak — foloseste sanitize.
 
