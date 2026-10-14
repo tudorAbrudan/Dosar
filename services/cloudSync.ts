@@ -11,15 +11,19 @@ import * as providers from './serviceProviders';
 import { getCustomTypes } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { buildEntityFileMap, sanitizeFolderName, type EntityNameMaps } from './fileOrganization';
-import { getCloudEncryptionEnabled } from './settings';
+import { getCloudEncryptionEnabled, setCloudEncryptionEnabled } from './settings';
 import {
   PasswordRequiredError,
+  adoptEncryptionParams,
   decryptString,
   decryptToBase64,
   encryptBase64,
   encryptString,
+  getEncryptionParams,
   getSessionKey,
   isSessionUnlocked,
+  setSessionKey,
+  unlockWithParams,
 } from './cloudCrypto';
 import type {
   Animal,
@@ -301,6 +305,11 @@ async function preserveManifestBeforeShrink(): Promise<void> {
 export async function uploadManifestIfChanged(): Promise<boolean> {
   if (!(await cloudStorage.isAvailable())) return false;
 
+  const encryptionEnabled = await getCloudEncryptionEnabled();
+  if (encryptionEnabled) {
+    await addEncryptionParamsToLegacyMeta();
+  }
+
   const payload = await buildManifestPayload();
   const canonical = buildCanonicalManifest(payload as unknown as Record<string, unknown>);
   const hash = await hashManifestAsync(canonical);
@@ -311,7 +320,6 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   }
 
   const json = JSON.stringify(payload);
-  const encryptionEnabled = await getCloudEncryptionEnabled();
   let payloadToWrite = json;
   let encrypted = false;
   if (encryptionEnabled) {
@@ -322,6 +330,7 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
     payloadToWrite = await encryptString(json, key);
     encrypted = true;
   }
+  const encryption = encrypted ? await getEncryptionParams() : null;
 
   const documentCount = payload.documents.length;
   const fileCount =
@@ -336,6 +345,7 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
     fileCount,
     personCount: payload.persons.length,
     medicalRecordCount: payload.medicalRecords.length,
+    ...(encryption ? { encryption } : {}),
   };
 
   // Snapshot al meta-ului anterior pentru rollback dacă manifestul eșuează după meta.
@@ -393,6 +403,31 @@ export async function uploadManifestIfChanged(): Promise<boolean> {
   });
 
   return true;
+}
+
+/**
+ * Backup-urile criptate urcate înainte ca meta să conțină `encryption` nu se pot
+ * debloca pe un telefon nou. Completăm meta-ul o singură dată, fără parolă (salt-ul
+ * și verificatorul stau în SecureStore) — DOAR dacă manifestul din cloud e exact
+ * ultimul urcat de pe acest telefon. Schimbarea parolei anulează `last_manifest_hash`,
+ * deci parametrii locali corespund garantat cheii cu care e criptat manifestul.
+ * Best-effort: un eșec nu blochează upload-ul.
+ */
+async function addEncryptionParamsToLegacyMeta(): Promise<void> {
+  try {
+    const meta = await readCloudMeta();
+    if (!meta?.encrypted || meta.encryption) return;
+    const state = await getCloudState();
+    if (meta.deviceId !== state.device_id || meta.hash !== state.last_manifest_hash) return;
+    const encryption = await getEncryptionParams();
+    if (!encryption) return;
+    await cloudStorage.writeFile(META_PATH, JSON.stringify({ ...meta, encryption }), 'utf8');
+  } catch (e) {
+    console.warn(
+      '[cloudSync.addEncryptionParamsToLegacyMeta] failed:',
+      e instanceof Error ? e.message : e
+    );
+  }
 }
 
 export async function readCloudMeta(): Promise<CloudManifestMeta | null> {
@@ -1021,13 +1056,59 @@ function asArray<T = unknown>(v: unknown): T[] {
 }
 
 /**
+ * Derivă cheia backup-ului din iCloud dintr-o parolă, folosind parametrii din meta
+ * (merge pe un telefon nou). Pentru meta vechi, fără parametri, cade pe setup-ul
+ * local. Nu setează cheia de sesiune: ea devine cheia telefonului abia după o
+ * restaurare reușită (altfel upload-urile ar cripta cu o cheie pe care meta n-o
+ * descrie).
+ *
+ * @throws „Parolă incorectă" sau un mesaj explicit când parametrii lipsesc.
+ */
+export async function unlockCloudBackupKey(password: string): Promise<Uint8Array> {
+  const meta = await readCloudMeta();
+  const params = meta?.encryption ?? (await getEncryptionParams());
+  if (!params) {
+    throw new Error(
+      'Backup-ul a fost criptat de o versiune mai veche a aplicației și nu poate fi deschis pe acest telefon. Deschide Dosar pe telefonul de pe care a fost făcut, apoi încearcă din nou.'
+    );
+  }
+  return unlockWithParams(password, params);
+}
+
+/**
+ * Cheia cu care se citește un backup criptat: cea primită explicit (după
+ * `unlockCloudBackupKey`), altfel cheia de sesiune — dar numai dacă parola
+ * locală e aceeași cu a backup-ului (alt telefon poate fi schimbat-o).
+ *
+ * @throws `PasswordRequiredError` când nu există o cheie potrivită.
+ */
+async function resolveBackupKey(
+  meta: CloudManifestMeta,
+  key: Uint8Array | undefined
+): Promise<Uint8Array> {
+  if (key) return key;
+  const session = getSessionKey();
+  if (session) {
+    const local = meta.encryption ? await getEncryptionParams() : null;
+    if (
+      !meta.encryption ||
+      (local?.salt === meta.encryption.salt && local.verify === meta.encryption.verify)
+    ) {
+      return session;
+    }
+  }
+  throw new PasswordRequiredError('Parolă necesară pentru restaurare backup criptat');
+}
+
+/**
  * Estimează mărimea backup-ului din iCloud înainte de restore. Citește meta +
  * manifest, apoi face `stat` paralel pentru toate fișierele remote.
  *
+ * @param key cheia backup-ului din `unlockCloudBackupKey`; implicit cheia de sesiune.
  * @throws când iCloud e indisponibil sau manifestul lipsește.
- * @throws `PasswordRequiredError` dacă backup-ul e criptat și sesiunea blocată.
+ * @throws `PasswordRequiredError` dacă backup-ul e criptat și nu există o cheie potrivită.
  */
-export async function estimateRestoreSize(): Promise<RestoreEstimate> {
+export async function estimateRestoreSize(key?: Uint8Array): Promise<RestoreEstimate> {
   if (!(await cloudStorage.isAvailable())) {
     throw new Error('iCloud nu este disponibil');
   }
@@ -1037,10 +1118,7 @@ export async function estimateRestoreSize(): Promise<RestoreEstimate> {
 
   const meta = await readCloudMeta();
   const isEncrypted = meta?.encrypted === true;
-  if (isEncrypted && !isSessionUnlocked()) {
-    throw new PasswordRequiredError('Parolă necesară pentru restaurare backup criptat');
-  }
-  const sessionKey = isEncrypted ? getSessionKey() : null;
+  const sessionKey = meta && isEncrypted ? await resolveBackupKey(meta, key) : null;
 
   const manifestBytes = await cloudStorage.fileSize(MANIFEST_PATH);
   const manifestRaw = await cloudStorage.readFile(MANIFEST_PATH, 'utf8');
@@ -1115,17 +1193,24 @@ function collectFileNamesFromPayload(payload: Record<string, unknown>): string[]
  * sărite la următoarea încercare via `!localInfo.exists`). Cleanup pentru
  * orfani după un eșec definitiv este TBD într-o iterație ulterioară.
  *
- * Dacă `meta.encrypted === true` și sesiunea nu e deblocată, aruncă
- * `PasswordRequiredError` înainte de orice modificare. Apelantul (Setări) trebuie
- * să prompt-eze utilizatorul, să apeleze `unlockWithPassword`, apoi să reîncerce.
+ * Dacă `meta.encrypted === true` și nu există o cheie potrivită, aruncă
+ * `PasswordRequiredError` înainte de orice modificare. Apelantul cere parola,
+ * apelează `unlockCloudBackupKey`, apoi reîncearcă cu cheia primită.
  *
- * @throws `PasswordRequiredError` când backup-ul e criptat și nu există session key,
+ * După aplicare, telefonul preia starea de criptare a backup-ului: flag-ul din
+ * `meta.encrypted`, iar pentru un backup criptat parametrii din meta și cheia de
+ * sesiune — altfel următorul upload ar scrie un manifest necriptat peste fișiere
+ * criptate.
+ *
+ * @param key cheia backup-ului din `unlockCloudBackupKey`; implicit cheia de sesiune.
+ * @throws `PasswordRequiredError` când backup-ul e criptat și nu există o cheie potrivită,
  *   sau când decriptarea manifestului eșuează (parolă greșită).
  * @throws când iCloud nu este disponibil, manifestul lipsește, versiunea e mai
  *   nouă decât suportă app-ul, sau `applyManifest` eșuează (transaction rollback).
  */
 export async function restoreFromCloud(
-  onProgress?: (p: RestoreProgress) => void
+  onProgress?: (p: RestoreProgress) => void,
+  key?: Uint8Array
 ): Promise<{ documentCount: number; fileCount: number }> {
   if (!(await cloudStorage.isAvailable())) {
     throw new Error('iCloud nu este disponibil');
@@ -1136,10 +1221,7 @@ export async function restoreFromCloud(
   // parțial), presupunem necriptat ca să nu blocăm restore-ul vechi.
   const metaPre = await readCloudMeta();
   const isEncrypted = metaPre?.encrypted === true;
-  if (isEncrypted && !isSessionUnlocked()) {
-    throw new PasswordRequiredError('Parolă necesară pentru restaurare backup criptat');
-  }
-  const sessionKey = isEncrypted ? getSessionKey() : null;
+  const sessionKey = metaPre && isEncrypted ? await resolveBackupKey(metaPre, key) : null;
 
   onProgress?.({ phase: 'manifest', current: 0, total: 1, bytesDone: 0, bytesTotal: 0 });
   if (!(await cloudStorage.exists(MANIFEST_PATH))) {
@@ -1264,6 +1346,12 @@ export async function restoreFromCloud(
 
   await applyManifest(payload, { wipeFirst: true });
   onProgress?.({ phase: 'apply', current: 1, total: 1, bytesDone, bytesTotal });
+
+  if (sessionKey) {
+    if (metaPre?.encryption) await adoptEncryptionParams(metaPre.encryption);
+    setSessionKey(sessionKey);
+  }
+  await setCloudEncryptionEnabled(isEncrypted);
 
   const meta = await readCloudMeta();
   if (meta) {
