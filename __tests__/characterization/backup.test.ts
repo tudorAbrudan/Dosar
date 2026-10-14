@@ -276,6 +276,21 @@ describe('backup applyManifest — import ZIP aditiv: ID-uri și contopire', () 
     expect(rows[0].id).not.toBe('v-partajat');
   });
 
+  it('un document cunoscut de recordurile de partajare primește un ID nou', async () => {
+    await db.runAsync(
+      `INSERT INTO cloud_records (id, zone_name, record_name, record_type, local_table, local_id, change_tag)
+       VALUES ('cr-1', 'entity_vehicle_v-x', 'd-sincronizat', 'document', 'documents', 'd-sincronizat', 't')`
+    );
+    await applyManifest({
+      documents: [{ id: 'd-sincronizat', type: 'rca', created_at: T }],
+      vehicles: [{ id: 'd-sincronizat', name: 'Același ID, alt tabel', created_at: T }],
+    });
+    const doc = await db.getFirstAsync<{ id: string }>('SELECT id FROM documents');
+    expect(doc!.id).not.toBe('d-sincronizat');
+    // Recordul e al tabelului `documents`: un vehicul cu același ID îl păstrează.
+    expect(await db.getAllAsync('SELECT id FROM vehicles')).toEqual([{ id: 'd-sincronizat' }]);
+  });
+
   it('nu contopește rândurile cu același nume din același fișier, doar față de datele existente', async () => {
     const manifest = {
       vehicles: [

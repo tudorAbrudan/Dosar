@@ -76,12 +76,14 @@ const RESTORABLE_TABLES = new Set([
  */
 export async function isIdTakenForImport(table: string, id: string): Promise<boolean> {
   if (!RESTORABLE_TABLES.has(table)) return true;
+  // `local_table` = numele tabelului SQLite (și pentru paginile primite, al căror ID
+  // local e chiar numele recordului), deci interogarea folosește idx_cloud_records_local.
   const row = await db.getFirstAsync<{ hit: number }>(
     `SELECT 1 AS hit FROM ${table} WHERE id = ?
      UNION ALL SELECT 1 FROM shared_entities WHERE entity_id = ?
-     UNION ALL SELECT 1 FROM cloud_records WHERE local_id = ? OR record_name = ?
+     UNION ALL SELECT 1 FROM cloud_records WHERE local_table = ? AND local_id = ?
      LIMIT 1`,
-    [id, id, id, id]
+    [id, id, table, id]
   );
   return !!row;
 }
