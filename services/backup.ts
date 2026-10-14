@@ -1329,11 +1329,20 @@ async function applyManifestBody(
  * Fișierele de pe disc le șterge apelantul.
  */
 export async function deleteAllUserData(): Promise<void> {
-  await db.withTransactionAsync(async () => {
-    await wipeUserData();
-    await db.runAsync('DELETE FROM pending_uploads');
-    await resetShareStateAfterWipe();
-  });
+  // Aceeași izolare ca restaurarea: niciun push spre zone și niciun sync de partajare
+  // cât rulează ștergerea, iar cele deja pornite se termină înainte (altfel un flush
+  // vedea documentele lipsă și trimitea ștergeri participanților).
+  const endImport = beginImport({ restore: true });
+  try {
+    await waitForShareSyncIdle();
+    await db.withTransactionAsync(async () => {
+      await wipeUserData();
+      await db.runAsync('DELETE FROM pending_uploads');
+      await resetShareStateAfterWipe();
+    });
+  } finally {
+    endImport();
+  }
 }
 
 /**

@@ -14,7 +14,12 @@ import {
   parseFetchedRecords,
 } from './cloudShareMapping';
 import type { FetchedRecord, PushRecord } from './cloudShareMapping';
-import { isImportInProgress, runShareSyncExclusive } from './importState';
+import {
+  isImportInProgress,
+  isRestoreInProgress,
+  runShareSyncExclusive,
+  trackShareWork,
+} from './importState';
 import { db } from './db';
 import { getDocumentById } from './documents';
 import { assignNextOrder } from './entityOrder';
@@ -386,12 +391,15 @@ export async function acceptShareByURL(url: string): Promise<void> {
     // Trage ȚINTIT zona tocmai acceptată, fără să depindă de fereastra tokenului
     // DB-level și fără să aștepte un sync general care poate fi deja în curs
     // (trecut de faza de reconcile) — userul se așteaptă să vadă entitatea
-    // imediat după „Acceptă".
-    try {
-      await syncOneZone(share);
-      await markZoneSyncSuccess(share.zone_name);
-    } catch (e) {
-      await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+    // imediat după „Acceptă". Nu în timpul unei restaurări / ștergeri totale: zona se
+    // trage la sync-ul de după.
+    if (!isImportInProgress()) {
+      try {
+        await trackShareWork(syncOneZone(share));
+        await markZoneSyncSuccess(share.zone_name);
+      } catch (e) {
+        await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+      }
     }
   }
   await syncSharedEntities();
@@ -611,17 +619,23 @@ export function afterEntityMutation(
   op: SharePushOp
 ): Promise<void> {
   const table = ENTITY_TABLE[entityType];
-  if (!table) return Promise.resolve();
-  return pushLocalChange(table as LocalTable, entityId, op).catch(e => {
-    console.warn('[cloudShare] afterEntityMutation eșuat:', e instanceof Error ? e.message : e);
-  });
+  // Importul dinamic din apelant lasă o fereastră în care poate începe o restaurare.
+  if (!table || isRestoreInProgress()) return Promise.resolve();
+  return trackShareWork(
+    pushLocalChange(table as LocalTable, entityId, op).catch(e => {
+      console.warn('[cloudShare] afterEntityMutation eșuat:', e instanceof Error ? e.message : e);
+    })
+  );
 }
 
 /** Hook thin apelat din `documents.ts` (dynamic import, fire-and-forget). */
 export function afterDocumentMutation(documentId: string, op: SharePushOp): Promise<void> {
-  return pushLocalChange('documents', documentId, op).catch(e => {
-    console.warn('[cloudShare] afterDocumentMutation eșuat:', e instanceof Error ? e.message : e);
-  });
+  if (isRestoreInProgress()) return Promise.resolve();
+  return trackShareWork(
+    pushLocalChange('documents', documentId, op).catch(e => {
+      console.warn('[cloudShare] afterDocumentMutation eșuat:', e instanceof Error ? e.message : e);
+    })
+  );
 }
 
 /**
@@ -629,10 +643,12 @@ export function afterDocumentMutation(documentId: string, op: SharePushOp): Prom
  * întoarce zona tocmai eliminată — trebuie țintită explicit cu link-ul primit
  * ca parametru, altfel documentul rămâne „fantomă" pe server în acea zonă.
  */
-export async function afterDocumentUnlinked(
-  documentId: string,
-  link: DocumentEntityLink
-): Promise<void> {
+export function afterDocumentUnlinked(documentId: string, link: DocumentEntityLink): Promise<void> {
+  if (isRestoreInProgress()) return Promise.resolve();
+  return trackShareWork(pushUnlinkedDocument(documentId, link));
+}
+
+async function pushUnlinkedDocument(documentId: string, link: DocumentEntityLink): Promise<void> {
   try {
     const share = await getShareForEntity(link.entityType, link.entityId);
     if (!share || share.role !== 'owner') return;

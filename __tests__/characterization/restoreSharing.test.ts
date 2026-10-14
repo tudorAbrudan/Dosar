@@ -134,6 +134,30 @@ describe('restaurare și partajare', () => {
     expect(restored).toBe(true);
     expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(1);
   });
+
+  it('„Șterge toate datele" așteaptă sync-ul în curs și oprește push-urile cât șterge', async () => {
+    await backup.applyManifest(PAYLOAD, { wipeFirst: true });
+    let release!: () => void;
+    mockNative.isAvailable.mockImplementation(
+      () => new Promise(resolve => (release = () => resolve({ available: false })))
+    );
+    const sync = cloudShare.syncSharedEntities();
+    let restoreFlagDuringWipe: boolean | null = null;
+    const wipe = backup.deleteAllUserData().then(() => {
+      restoreFlagDuringWipe = importState.isRestoreInProgress();
+    });
+    const flagWhileWaiting = importState.isRestoreInProgress();
+
+    await settle();
+    expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(1);
+
+    release();
+    await sync;
+    await wipe;
+    expect(flagWhileWaiting).toBe(true);
+    expect(restoreFlagDuringWipe).toBe(false); // încheiat după ștergere
+    expect(await db.getAllAsync('SELECT id FROM vehicles')).toHaveLength(0);
+  });
 });
 
 describe('restaurare — starea registrului de partajare', () => {

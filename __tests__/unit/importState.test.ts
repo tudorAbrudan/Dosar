@@ -1,4 +1,10 @@
-import { beginImport, isImportInProgress, isRestoreInProgress } from '@/services/importState';
+import {
+  beginImport,
+  isImportInProgress,
+  isRestoreInProgress,
+  trackShareWork,
+  waitForShareSyncIdle,
+} from '@/services/importState';
 
 describe('importState', () => {
   it('importuri suprapuse: primul terminat nu închide flag-ul celuilalt', () => {
@@ -36,5 +42,27 @@ describe('importState', () => {
 
     endB();
     expect(isRestoreInProgress()).toBe(false);
+  });
+
+  it('restaurarea așteaptă și push-urile pornite în afara sync-ului', async () => {
+    let finish!: () => void;
+    const push = trackShareWork(new Promise<void>(r => (finish = r)));
+    let idle = false;
+    const wait = waitForShareSyncIdle().then(() => {
+      idle = true;
+    });
+
+    await Promise.resolve();
+    expect(idle).toBe(false);
+
+    finish();
+    await push;
+    await wait;
+    expect(idle).toBe(true);
+  });
+
+  it('un push eșuat nu blochează și nu aruncă din așteptare', async () => {
+    trackShareWork(Promise.reject(new Error('offline'))).catch(() => {});
+    await expect(waitForShareSyncIdle()).resolves.toBeUndefined();
   });
 });

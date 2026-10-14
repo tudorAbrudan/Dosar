@@ -11,6 +11,7 @@
 let importsRunning = 0;
 let restoresRunning = 0;
 let shareSyncInFlight: Promise<void> | null = null;
+const shareWork = new Set<Promise<unknown>>();
 
 /**
  * True cât rulează `applyManifest` (restaurare din cloud SAU import ZIP). Serviciile
@@ -54,7 +55,23 @@ export function runShareSyncExclusive(run: () => Promise<void>): Promise<void> {
   return current;
 }
 
-/** Așteaptă sync-ul de partajare în curs (dacă există), fără să-i propage eroarea. */
+/**
+ * Lucru de partajare pornit în afara sync-ului exclusiv: push-urile fire-and-forget
+ * după o mutație și sync-ul țintit al unei zone tocmai acceptate. Înregistrat ca
+ * restaurarea / ștergerea totală să-l poată aștepta.
+ */
+export function trackShareWork<T>(work: Promise<T>): Promise<T> {
+  shareWork.add(work);
+  const done = () => {
+    shareWork.delete(work);
+  };
+  work.then(done, done);
+  return work;
+}
+
+/** Așteaptă sync-ul și push-urile de partajare în curs, fără să le propage erorile. */
 export async function waitForShareSyncIdle(): Promise<void> {
-  if (shareSyncInFlight) await shareSyncInFlight.catch(() => {});
+  while (shareSyncInFlight || shareWork.size > 0) {
+    await Promise.allSettled([...(shareSyncInFlight ? [shareSyncInFlight] : []), ...shareWork]);
+  }
 }
