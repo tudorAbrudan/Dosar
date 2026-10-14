@@ -25,7 +25,7 @@ import { waitForShareSyncIdle } from './cloudShare';
 import { resetShareStateAfterRestore } from './sharing';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
-import { createRestoreIdAllocator, rememberId } from './restoreIds';
+import { createRestoreIdAllocator, isIdTakenForImport, rememberId } from './restoreIds';
 import { emit } from './events';
 
 /**
@@ -391,6 +391,35 @@ async function applyManifestBody(
     getCustomTypes(),
   ]);
 
+  // Re-import al aceluiași fișier: un rând existent cu ACELAȘI ID și aceeași cheie are
+  // prioritate față de potrivirea doar după nume — altfel două „Dacia" din fișier s-ar
+  // lega amândouă de primul vehicul existent (iar alimentările celui de-al doilea s-ar
+  // dubla pe primul).
+  const keyById = new Map<string, string>();
+  const keyed = (table: string, id: string, key: string) => keyById.set(`${table}|${id}`, key);
+  existingPersons.forEach(p => keyed('persons', p.id, p.name.toLowerCase().trim()));
+  existingProperties.forEach(p => keyed('properties', p.id, p.name.toLowerCase().trim()));
+  existingVehicles.forEach(v => keyed('vehicles', v.id, v.name.toLowerCase().trim()));
+  existingCards.forEach(c => keyed('cards', c.id, `${c.last4}|${c.nickname.toLowerCase().trim()}`));
+  existingAnimals.forEach(a =>
+    keyed('animals', a.id, `${a.name.toLowerCase().trim()}|${a.species.toLowerCase().trim()}`)
+  );
+  existingCompanies.forEach(c => keyed('companies', c.id, c.cui ?? c.name.toLowerCase().trim()));
+  existingCustomTypes.forEach(ct =>
+    keyed('custom_document_types', ct.id, ct.name.toLowerCase().trim())
+  );
+  /** ID-ul rândului existent cu care se potrivește rândul din manifest (doar aditiv). */
+  const matchExisting = (
+    table: string,
+    rawId: unknown,
+    key: string,
+    byKey: () => string | undefined
+  ): string | undefined => {
+    if (wipeFirst) return undefined;
+    if (typeof rawId === 'string' && keyById.get(`${table}|${rawId}`) === key) return rawId;
+    return byKey();
+  };
+
   const existingPersonByName = new Map(
     existingPersons.map(p => [p.name.toLowerCase().trim(), p.id])
   );
@@ -459,15 +488,23 @@ async function applyManifestBody(
 
   // Restaurarea cu înlocuire păstrează ID-urile din manifest și NU contopește după
   // nume/cheie: baza e goală, deci fiecare rând din backup e o entitate distinctă
-  // (două vehicule „Dacia" rămân două). Importul aditiv deduplică față de datele
-  // existente. Hărțile old→new rămân singurul remap de FK (identitate la restaurare).
-  const ids = createRestoreIdAllocator({ preserve: wipeFirst });
+  // (două vehicule „Dacia" rămân două). Importul aditiv deduplică DOAR față de datele
+  // existente dinainte de import (hărțile existing* sunt un snapshot, nu se completează
+  // în timpul rulării) și păstrează ID-ul original când e liber — pe un telefon nou,
+  // o zonă partajată redescoperită cade peste aceleași ID-uri, fără duplicate.
+  // Hărțile old→new rămân singurul remap de FK.
+  const ids = createRestoreIdAllocator({
+    preserve: true,
+    isTaken: wipeFirst ? undefined : isIdTakenForImport,
+  });
 
   // personMap rămâne disponibil pentru remap în restul importului (entity_order etc.).
   for (const p of (payload.persons as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((p.name as string) || '').toLowerCase().trim();
-      const existingId = wipeFirst ? undefined : existingPersonByName.get(nameKey);
+      const existingId = matchExisting('persons', p.id, nameKey, () =>
+        existingPersonByName.get(nameKey)
+      );
       if (existingId) {
         rememberId(personMap, p.id, existingId);
         skipped++;
@@ -480,7 +517,6 @@ async function applyManifestBody(
           { id: await ids.claim('persons', p.id) }
         );
         rememberId(personMap, p.id, created.id);
-        if (!wipeFirst) existingPersonByName.set(nameKey, created.id);
         imported++;
       }
     } catch (e) {
@@ -491,7 +527,9 @@ async function applyManifestBody(
   for (const pr of (payload.properties as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((pr.name as string) || '').toLowerCase().trim();
-      const existingId = wipeFirst ? undefined : existingPropertyByName.get(nameKey);
+      const existingId = matchExisting('properties', pr.id, nameKey, () =>
+        existingPropertyByName.get(nameKey)
+      );
       if (existingId) {
         rememberId(propertyMap, pr.id, existingId);
         skipped++;
@@ -500,7 +538,6 @@ async function applyManifestBody(
           id: await ids.claim('properties', pr.id),
         });
         rememberId(propertyMap, pr.id, created.id);
-        if (!wipeFirst) existingPropertyByName.set(nameKey, created.id);
         imported++;
       }
     } catch (e) {
@@ -511,7 +548,9 @@ async function applyManifestBody(
   for (const v of (payload.vehicles as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((v.name as string) || '').toLowerCase().trim();
-      const existingId = wipeFirst ? undefined : existingVehicleByName.get(nameKey);
+      const existingId = matchExisting('vehicles', v.id, nameKey, () =>
+        existingVehicleByName.get(nameKey)
+      );
       if (existingId) {
         rememberId(vehicleMap, v.id, existingId);
         skipped++;
@@ -552,7 +591,6 @@ async function applyManifestBody(
         await entities.updateVehicle(created.id, vehicleName, newPhotoUri, plate, fuel);
 
         rememberId(vehicleMap, v.id, created.id);
-        if (!wipeFirst) existingVehicleByName.set(nameKey, created.id);
         imported++;
       }
     } catch (e) {
@@ -563,7 +601,9 @@ async function applyManifestBody(
   for (const c of (payload.cards as AnyRecord[]) ?? []) {
     try {
       const cardKey = `${(c.last4 as string) || ''}|${((c.nickname as string) || '').toLowerCase().trim()}`;
-      const existingId = wipeFirst ? undefined : existingCardByKey.get(cardKey);
+      const existingId = matchExisting('cards', c.id, cardKey, () =>
+        existingCardByKey.get(cardKey)
+      );
       if (existingId) {
         rememberId(cardMap, c.id, existingId);
         skipped++;
@@ -575,7 +615,6 @@ async function applyManifestBody(
           { id: await ids.claim('cards', c.id) }
         );
         rememberId(cardMap, c.id, created.id);
-        if (!wipeFirst) existingCardByKey.set(cardKey, created.id);
         imported++;
       }
     } catch (e) {
@@ -586,7 +625,9 @@ async function applyManifestBody(
   for (const a of (payload.animals as AnyRecord[]) ?? []) {
     try {
       const animalKey = `${((a.name as string) || '').toLowerCase().trim()}|${((a.species as string) || '').toLowerCase().trim()}`;
-      const existingId = wipeFirst ? undefined : existingAnimalByKey.get(animalKey);
+      const existingId = matchExisting('animals', a.id, animalKey, () =>
+        existingAnimalByKey.get(animalKey)
+      );
       if (existingId) {
         rememberId(animalMap, a.id, existingId);
         skipped++;
@@ -597,7 +638,6 @@ async function applyManifestBody(
           { id: await ids.claim('animals', a.id) }
         );
         rememberId(animalMap, a.id, created.id);
-        if (!wipeFirst) existingAnimalByKey.set(animalKey, created.id);
         imported++;
       }
     } catch (e) {
@@ -609,9 +649,12 @@ async function applyManifestBody(
     try {
       const cui = co.cui as string | undefined;
       const nameKey = ((co.name as string) || '').toLowerCase().trim();
-      const existingId = wipeFirst
-        ? undefined
-        : ((cui && existingCompanyByCui.get(cui)) ?? existingCompanyByName.get(nameKey));
+      const existingId = matchExisting(
+        'companies',
+        co.id,
+        cui ?? nameKey,
+        () => (cui && existingCompanyByCui.get(cui)) ?? existingCompanyByName.get(nameKey)
+      );
       if (existingId) {
         rememberId(companyMap, co.id, existingId);
         skipped++;
@@ -623,10 +666,6 @@ async function applyManifestBody(
           { id: await ids.claim('companies', co.id) }
         );
         rememberId(companyMap, co.id, created.id);
-        if (!wipeFirst) {
-          if (cui) existingCompanyByCui.set(cui, created.id);
-          existingCompanyByName.set(nameKey, created.id);
-        }
         imported++;
       }
     } catch (e) {
@@ -637,7 +676,9 @@ async function applyManifestBody(
   for (const ct of (payload.customTypes as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((ct.name as string) || '').toLowerCase().trim();
-      const existingId = wipeFirst ? undefined : existingCustomTypeByName.get(nameKey);
+      const existingId = matchExisting('custom_document_types', ct.id, nameKey, () =>
+        existingCustomTypeByName.get(nameKey)
+      );
       if (existingId) {
         rememberId(customTypeMap, ct.id, existingId);
         skipped++;
@@ -646,7 +687,6 @@ async function applyManifestBody(
           id: await ids.claim('custom_document_types', ct.id),
         });
         rememberId(customTypeMap, ct.id, created.id);
-        if (!wipeFirst) existingCustomTypeByName.set(nameKey, created.id);
         imported++;
       }
     } catch (e) {
@@ -686,8 +726,6 @@ async function applyManifestBody(
       } else {
         await fuel.addCanisterFuelRecord(input, fuelOpts);
       }
-
-      if (!wipeFirst) existingFuelByKey.add(dedupeKey);
       imported++;
     } catch (e) {
       errors.push(`Alimentare carburant: ${e instanceof Error ? e.message : 'eroare'}`);
@@ -723,9 +761,7 @@ async function applyManifestBody(
         skipped++;
         continue;
       }
-      const id = wipeFirst
-        ? await ids.claim('vehicle_maintenance_tasks', m.id)
-        : (m.id as string | undefined) || generateId();
+      const id = await ids.claim('vehicle_maintenance_tasks', m.id);
       const createdAt =
         (m.createdAt as string) || (m.created_at as string) || new Date().toISOString();
       const updatedAt = (m.updatedAt as string) || (m.updated_at as string) || createdAt;
@@ -749,34 +785,49 @@ async function applyManifestBody(
           updatedAt,
         ]
       );
-      if (!wipeFirst) existingMaintenanceByKey.add(key);
       imported++;
     } catch (e) {
       errors.push(`Mentenanță auto: ${e instanceof Error ? e.message : 'eroare'}`);
     }
   }
 
-  // Furnizori utilități: remap property_id la noile id-uri; INSERT OR REPLACE pentru idempotență.
+  // Furnizori utilități: remap property_id la noile id-uri. Importul aditiv sare un
+  // furnizor identic cu unul existent dinainte de import (snapshot, nu rândurile
+  // inserate din același fișier).
+  const providerKey = (
+    propertyId: string | null,
+    type: string,
+    name: string | null,
+    code: string | null
+  ): string => `${propertyId ?? ''}|${type}|${name ?? ''}|${code ?? ''}`;
+  const existingProviderKeys = new Set(
+    wipeFirst
+      ? []
+      : (
+          await db.getAllAsync<{
+            property_id: string | null;
+            type: string;
+            provider_name: string | null;
+            customer_code: string | null;
+          }>('SELECT property_id, type, provider_name, customer_code FROM service_providers')
+        ).map(r => providerKey(r.property_id, r.type, r.provider_name, r.customer_code))
+  );
   for (const p of (payload.serviceProviders as AnyRecord[]) ?? []) {
     try {
       const oldPropertyId = p.property_id as string | undefined;
       const newPropertyId = oldPropertyId
         ? (propertyMap.get(oldPropertyId) ?? oldPropertyId)
         : null;
-      // Import aditiv: skip dacă există deja un furnizor identic pe aceeași proprietate.
-      // La restaurare fiecare rând din backup e un furnizor distinct.
-      const existingRows = wipeFirst
-        ? []
-        : await db.getAllAsync<{ id: string }>(
-            `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
-            [
-              newPropertyId,
-              p.type as string,
-              (p.provider_name as string | null) ?? null,
-              (p.customer_code as string | null) ?? null,
-            ]
-          );
-      if (existingRows.length > 0) {
+      if (
+        existingProviderKeys.has(
+          providerKey(
+            newPropertyId,
+            p.type as string,
+            (p.provider_name as string | null) ?? null,
+            (p.customer_code as string | null) ?? null
+          )
+        )
+      ) {
         skipped++;
         continue;
       }
@@ -786,9 +837,7 @@ async function applyManifestBody(
             consumption_point_code, support_phone, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          wipeFirst
-            ? await ids.claim('service_providers', p.id)
-            : (p.id as string | undefined) || generateId(),
+          await ids.claim('service_providers', p.id),
           newPropertyId,
           p.type as string,
           (p.provider_name as string | null | undefined) ?? null,

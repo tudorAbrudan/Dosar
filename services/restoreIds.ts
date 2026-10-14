@@ -10,7 +10,7 @@
  * ID care se repetă în același tabel îl păstrează doar prima apariție (FK-urile
  * merg spre ea), restul primesc ID-uri noi. Același ID în tabele diferite e permis.
  */
-import { generateId } from './db';
+import { db, generateId } from './db';
 
 export interface RestoreIdAllocator {
   /** ID-ul cu care se inserează rândul: originalul dacă se poate, altfel unul nou. */
@@ -50,4 +50,38 @@ export function createRestoreIdAllocator(options: RestoreIdOptions): RestoreIdAl
 /** Prima apariție a unui ID vechi câștigă: un duplicat din manifest nu mută FK-urile. */
 export function rememberId(map: Map<string, string>, oldId: unknown, newId: string): void {
   if (typeof oldId === 'string' && oldId.length > 0 && !map.has(oldId)) map.set(oldId, newId);
+}
+
+/** Tabelele în care importul poate păstra un ID original (nume fixe, nu input). */
+const RESTORABLE_TABLES = new Set([
+  'persons',
+  'properties',
+  'vehicles',
+  'cards',
+  'animals',
+  'companies',
+  'custom_document_types',
+  'fuel_records',
+  'vehicle_maintenance_tasks',
+  'service_providers',
+  'documents',
+  'document_pages',
+]);
+
+/**
+ * Pentru importul aditiv: un ID e „ocupat" dacă există deja în tabel SAU dacă
+ * registrul de partajare îl cunoaște. Al doilea caz contează după „Șterge toate
+ * datele" (registrul rămâne): un rând importat cu ID-ul unei entități partajate ar
+ * fi împins în zonă cu starea din fișier. Un ID ocupat primește unul nou, ca înainte.
+ */
+export async function isIdTakenForImport(table: string, id: string): Promise<boolean> {
+  if (!RESTORABLE_TABLES.has(table)) return true;
+  const row = await db.getFirstAsync<{ hit: number }>(
+    `SELECT 1 AS hit FROM ${table} WHERE id = ?
+     UNION ALL SELECT 1 FROM shared_entities WHERE entity_id = ?
+     UNION ALL SELECT 1 FROM cloud_records WHERE local_id = ? OR record_name = ?
+     LIMIT 1`,
+    [id, id, id, id]
+  );
+  return !!row;
 }

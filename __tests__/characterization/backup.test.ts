@@ -45,9 +45,9 @@ beforeAll(() => {
 
 function resetSchema(): void {
   // Vezi nota din db.test.ts despre DELETE vs DROP — folosim DELETE pentru stabilitate.
-  const tables = testDb._raw
-    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
-    .all() as { name: string }[];
+  const tables = testDb._raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {
+    name: string;
+  }[];
   testDb._raw.pragma('foreign_keys = OFF');
   for (const t of tables) {
     if (t.name.startsWith('sqlite_')) continue;
@@ -68,9 +68,7 @@ describe('backup applyManifest — single entity round-trip', () => {
     await applyManifest({
       persons: [{ id: 'p1', name: 'Ana Pop', created_at: '2026-01-01' }],
     });
-    const rows = await db.getAllAsync<{ id: string; name: string }>(
-      'SELECT id, name FROM persons'
-    );
+    const rows = await db.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM persons');
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe('Ana Pop');
   });
@@ -109,9 +107,7 @@ describe('backup applyManifest — single entity round-trip', () => {
 
   it('imports a card', async () => {
     await applyManifest({
-      cards: [
-        { id: 'c1', nickname: 'Visa Personal', last4: '1234', created_at: '2026-01-01' },
-      ],
+      cards: [{ id: 'c1', nickname: 'Visa Personal', last4: '1234', created_at: '2026-01-01' }],
     });
     const rows = await db.getAllAsync<{ nickname: string; last4: string }>(
       'SELECT nickname, last4 FROM cards'
@@ -131,9 +127,7 @@ describe('backup applyManifest — single entity round-trip', () => {
 
   it('imports a company', async () => {
     await applyManifest({
-      companies: [
-        { id: 'co1', name: 'SRL Demo', cui: 'RO12345', created_at: '2026-01-01' },
-      ],
+      companies: [{ id: 'co1', name: 'SRL Demo', cui: 'RO12345', created_at: '2026-01-01' }],
     });
     const rows = await db.getAllAsync<{ name: string; cui: string }>(
       'SELECT name, cui FROM companies'
@@ -167,9 +161,7 @@ describe('backup applyManifest — single entity round-trip', () => {
     await applyManifest({
       customTypes: [{ id: 'ct1', name: 'Tip Custom', created_at: '2026-01-01' }],
     });
-    const rows = await db.getAllAsync<{ name: string }>(
-      'SELECT name FROM custom_document_types'
-    );
+    const rows = await db.getAllAsync<{ name: string }>('SELECT name FROM custom_document_types');
     expect(rows[0].name).toBe('Tip Custom');
   });
 });
@@ -214,9 +206,7 @@ describe('backup applyManifest — deduplication', () => {
 
   it('cards dedupe by last4 + nickname', async () => {
     const manifest = {
-      cards: [
-        { id: 'c1', nickname: 'Visa Personal', last4: '1234', created_at: '2026-01-01' },
-      ],
+      cards: [{ id: 'c1', nickname: 'Visa Personal', last4: '1234', created_at: '2026-01-01' }],
     };
     await applyManifest(manifest);
     await applyManifest(manifest);
@@ -234,19 +224,111 @@ describe('backup applyManifest — deduplication', () => {
 
   it('companies dedupe by CUI (primary key)', async () => {
     await applyManifest({
-      companies: [
-        { id: 'co1', name: 'SRL Vechi', cui: 'RO12345', created_at: '2026-01-01' },
-      ],
+      companies: [{ id: 'co1', name: 'SRL Vechi', cui: 'RO12345', created_at: '2026-01-01' }],
     });
     await applyManifest({
-      companies: [
-        { id: 'co2', name: 'SRL Nou', cui: 'RO12345', created_at: '2026-01-01' },
-      ],
+      companies: [{ id: 'co2', name: 'SRL Nou', cui: 'RO12345', created_at: '2026-01-01' }],
     });
     const rows = await db.getAllAsync<{ id: string; name: string }>(
       'SELECT id, name FROM companies'
     );
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe('backup applyManifest — import ZIP aditiv: ID-uri și contopire', () => {
+  const T = '2026-01-01';
+
+  it('pe un telefon nou păstrează ID-urile originale (inclusiv FK-urile)', async () => {
+    await applyManifest({
+      persons: [{ id: 'p-ana', name: 'Ana', created_at: T }],
+      vehicles: [{ id: 'v-dacia', name: 'Dacia', created_at: T }],
+      documents: [{ id: 'd-rca', type: 'rca', vehicle_id: 'v-dacia', created_at: T }],
+    });
+    expect(await db.getAllAsync('SELECT id FROM persons')).toEqual([{ id: 'p-ana' }]);
+    expect(await db.getAllAsync('SELECT id, vehicle_id FROM documents')).toEqual([
+      { id: 'd-rca', vehicle_id: 'v-dacia' },
+    ]);
+  });
+
+  it('un ID deja folosit de alt rând primește unul nou, iar rândul existent rămâne neatins', async () => {
+    await applyManifest({ persons: [{ id: 'p-1', name: 'Bob', created_at: T }] });
+    await applyManifest({ persons: [{ id: 'p-1', name: 'Ana', created_at: T }] });
+    const rows = await db.getAllAsync<{ id: string; name: string }>(
+      'SELECT id, name FROM persons ORDER BY name'
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.find(r => r.name === 'Bob')!.id).toBe('p-1');
+    expect(rows.find(r => r.name === 'Ana')!.id).not.toBe('p-1');
+  });
+
+  it('un ID cunoscut de registrul de partajare primește unul nou', async () => {
+    await db.runAsync(
+      `INSERT INTO shared_entities (id, entity_type, entity_id, zone_name, role, created_at)
+       VALUES ('se-1', 'vehicle', 'v-partajat', 'entity_vehicle_v-partajat', 'owner', ?)`,
+      [T]
+    );
+    await applyManifest({ vehicles: [{ id: 'v-partajat', name: 'Logan', created_at: T }] });
+    const rows = await db.getAllAsync<{ id: string }>('SELECT id FROM vehicles');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).not.toBe('v-partajat');
+  });
+
+  it('nu contopește rândurile cu același nume din același fișier, doar față de datele existente', async () => {
+    const manifest = {
+      vehicles: [
+        { id: 'v-a', name: 'Dacia', created_at: T },
+        { id: 'v-b', name: 'Dacia', created_at: T },
+      ],
+      properties: [{ id: 'pr-1', name: 'Casa', created_at: T }],
+      serviceProviders: [
+        {
+          id: 'sp-a',
+          property_id: 'pr-1',
+          type: 'gaz',
+          provider_name: 'E.ON',
+          customer_code: null,
+          created_at: T,
+        },
+        {
+          id: 'sp-b',
+          property_id: 'pr-1',
+          type: 'gaz',
+          provider_name: 'E.ON',
+          customer_code: null,
+          created_at: T,
+        },
+      ],
+    };
+    await applyManifest(manifest);
+    expect(await db.getAllAsync('SELECT id FROM vehicles ORDER BY id')).toEqual([
+      { id: 'v-a' },
+      { id: 'v-b' },
+    ]);
+    expect(await db.getAllAsync('SELECT id FROM service_providers ORDER BY id')).toEqual([
+      { id: 'sp-a' },
+      { id: 'sp-b' },
+    ]);
+
+    // Re-importul aceluiași fișier nu dublează nimic (dedupe față de datele existente),
+    // iar fiecare „Dacia" își regăsește propriul rând (alimentările nu se mută).
+    await applyManifest({
+      ...manifest,
+      fuelRecords: [
+        { id: 'f-b', vehicle_id: 'v-b', date: '2026-05-01', liters: 40, is_full: 1, created_at: T },
+      ],
+    });
+    expect((await db.getAllAsync('SELECT id FROM vehicles')).length).toBe(2);
+    await applyManifest({
+      ...manifest,
+      fuelRecords: [
+        { id: 'f-b', vehicle_id: 'v-b', date: '2026-05-01', liters: 40, is_full: 1, created_at: T },
+      ],
+    });
+    expect(await db.getAllAsync('SELECT id, vehicle_id FROM fuel_records')).toEqual([
+      { id: 'f-b', vehicle_id: 'v-b' },
+    ]);
+    expect((await db.getAllAsync('SELECT id FROM service_providers')).length).toBe(2);
   });
 });
 
@@ -318,11 +400,13 @@ describe('backup applyManifest — medical AI fields round-trip', () => {
       .prepare(
         'SELECT ai_summary, medical_reminders_prompted_at, pending_reminders_json FROM documents WHERE type = ? AND issue_date = ?'
       )
-      .get('analize_medicale', '2026-05-24') as {
-      ai_summary: string | null;
-      medical_reminders_prompted_at: string | null;
-      pending_reminders_json: string | null;
-    } | undefined;
+      .get('analize_medicale', '2026-05-24') as
+      | {
+          ai_summary: string | null;
+          medical_reminders_prompted_at: string | null;
+          pending_reminders_json: string | null;
+        }
+      | undefined;
 
     expect(row).toBeDefined();
     expect(row!.ai_summary).toBe('**Rezumat:** test');
@@ -334,9 +418,7 @@ describe('backup applyManifest — medical AI fields round-trip', () => {
 
   it('exports the 3 medical AI fields via getDocuments (export side of round-trip)', async () => {
     // Seed: insert document directly cu cele 3 câmpuri populate.
-    const remindersJson = JSON.stringify([
-      { label: 'control', suggested_date_iso: '2026-08-24' },
-    ]);
+    const remindersJson = JSON.stringify([{ label: 'control', suggested_date_iso: '2026-08-24' }]);
     testDb._raw
       .prepare(
         `INSERT INTO documents (id, type, issue_date, expiry_date, created_at,
@@ -398,11 +480,13 @@ describe('backup applyManifest — medical AI fields round-trip', () => {
       .prepare(
         'SELECT ai_summary, medical_reminders_prompted_at, pending_reminders_json FROM documents WHERE type = ? AND issue_date = ?'
       )
-      .get('analize_medicale', '2026-05-24') as {
-      ai_summary: string | null;
-      medical_reminders_prompted_at: string | null;
-      pending_reminders_json: string | null;
-    } | undefined;
+      .get('analize_medicale', '2026-05-24') as
+      | {
+          ai_summary: string | null;
+          medical_reminders_prompted_at: string | null;
+          pending_reminders_json: string | null;
+        }
+      | undefined;
 
     expect(row).toBeDefined();
     expect(row!.ai_summary).toBe('**Rezumat:** roundtrip');
