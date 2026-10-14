@@ -11,7 +11,11 @@ import { OnboardingFooter } from '@/components/onboarding/OnboardingFooter';
 import { AiStep } from '@/components/onboarding/AiStep';
 import { AppearanceStep } from '@/components/onboarding/AppearanceStep';
 import { BackupStep } from '@/components/onboarding/BackupStep';
-import { CloudBackupStep, type CloudCheckStatus } from '@/components/onboarding/CloudBackupStep';
+import {
+  CloudBackupStep,
+  autoBackupOnContinue,
+  type CloudCheckStatus,
+} from '@/components/onboarding/CloudBackupStep';
 import { CloudPasswordModal } from '@/components/CloudPasswordModal';
 import { DocsStep } from '@/components/onboarding/DocsStep';
 import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
@@ -265,14 +269,31 @@ export default function OnboardingWizard({ onComplete }: Props) {
   }
 
   async function goNextFromCloudBackup() {
-    if (cloudCheck.status === 'available') {
-      // Variant A: persistă alegerea utilizatorului. Variant B (skip restore): tot
-      // activăm backup-ul ca să nu pierdem fișierele viitoare.
-      const enable = cloudCheck.meta ? true : cloudOptIn;
-      await settings.setCloudBackupEnabled(enable);
-    }
-    // Variant C (unavailable): nimic de persistat — defaultul OFF rămâne.
+    const enable = autoBackupOnContinue(cloudCheck, cloudOptIn);
+    if (enable !== null) await settings.setCloudBackupEnabled(enable);
     gotoNextActive();
+  }
+
+  function confirmStartFresh() {
+    if (cloudCheck.status !== 'available' || !cloudCheck.meta) return;
+    const { count, date } = cloudCheck.meta;
+    Alert.alert(
+      'Începi de la zero?',
+      `Backup-ul automat pornește cu datele de pe acest telefon și înlocuiește backup-ul din iCloud din ${date} (${count} ${count === 1 ? 'document' : 'documente'}). Dacă vrei datele din el, alege „Restaurează".`,
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Încep de la zero',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await settings.setCloudBackupEnabled(true);
+              gotoNextActive();
+            })();
+          },
+        },
+      ]
+    );
   }
 
   function requestCloudRestore() {
@@ -312,8 +333,10 @@ export default function OnboardingWizard({ onComplete }: Props) {
       bytesTotal: 0,
     });
     try {
-      await settings.setCloudBackupEnabled(true);
       await cloudSync.restoreFromCloud(p => setCloudRestoreProgress(p), key);
+      // Abia după o restaurare reușită: pornit înainte, un restore eșuat lăsa backup-ul
+      // activ, iar starea goală de pe telefon înlocuia backup-ul la ieșirea din aplicație.
+      await settings.setCloudBackupEnabled(true);
       setCloudRestoring(false);
       setCloudRestoreProgress(null);
       gotoNextActive();
@@ -489,6 +512,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
             cloudRestoring={cloudRestoring}
             onChangeOptIn={setCloudOptIn}
             onRestore={requestCloudRestore}
+            onStartFresh={confirmStartFresh}
           />
         )}
 
