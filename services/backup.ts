@@ -22,7 +22,7 @@ import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
 import { waitForShareSyncIdle } from './cloudShare';
-import { resetShareStateAfterRestore } from './sharing';
+import { resetShareStateAfterWipe } from './sharing';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
 import { createRestoreIdAllocator, isIdTakenForImport, rememberId } from './restoreIds';
@@ -349,7 +349,7 @@ export async function applyManifest(
       }
       result = await applyManifestBody(payload, options.wipeFirst === true);
       if (options.wipeFirst) {
-        await resetShareStateAfterRestore();
+        await resetShareStateAfterWipe();
       }
     });
     return result;
@@ -1342,9 +1342,24 @@ async function applyManifestBody(
 }
 
 /**
+ * „Șterge toate datele" din Setări: aceeași ștergere ca restaurarea (inclusiv dosarul
+ * medical și indexul lui de căutare `medical_fts`, reminder-ele, furnizorii), plus
+ * coada de upload. Registrul de partajare rămâne, cu starea de sync resetată:
+ * partajările proprii nu se revocă automat, cele primite se re-descarcă la sync.
+ * Fișierele de pe disc le șterge apelantul.
+ */
+export async function deleteAllUserData(): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await wipeUserData();
+    await db.runAsync('DELETE FROM pending_uploads');
+    await resetShareStateAfterWipe();
+  });
+}
+
+/**
  * Șterge toate datele utilizator (entități, documente, fișiere asociate metadata)
  * înaintea unui restore complet din cloud. Nu atinge tabelele de infrastructură
- * (cloud_state, pending_uploads).
+ * (cloud_state, pending_uploads) și nici registrul de partajare.
  */
 async function wipeUserData(): Promise<void> {
   await db.execAsync(`

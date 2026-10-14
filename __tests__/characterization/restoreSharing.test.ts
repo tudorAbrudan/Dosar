@@ -201,7 +201,7 @@ describe('restaurare — starea registrului de partajare', () => {
       .prepare('SELECT revoked_at, last_sync_error FROM shared_entities WHERE zone_name = ?')
       .get('entity_vehicle_v-vanduta') as { revoked_at: string | null; last_sync_error: string };
     expect(row.revoked_at).toBeNull();
-    expect(row.last_sync_error).toMatch(/nu mai există/);
+    expect(row.last_sync_error).toMatch(/nu mai există pe acest telefon/);
   });
 
   it('coada de push păstrează doar ce mai corespunde datelor restaurate', async () => {

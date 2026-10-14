@@ -23,6 +23,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let applyManifest: typeof import('@/services/backup').applyManifest;
 let isImportInProgress: typeof import('@/services/backup').isImportInProgress;
+let deleteAllUserData: typeof import('@/services/backup').deleteAllUserData;
 let estimateBackupSizeBytes: typeof import('@/services/backup').estimateBackupSizeBytes;
 let getDocuments: typeof import('@/services/documents').getDocuments;
 // Captat în ACELAȘI isolateModules ca backup.ts, altfel e o instanță diferită a mock-ului
@@ -36,6 +37,7 @@ beforeAll(() => {
     const backup = require('@/services/backup');
     applyManifest = backup.applyManifest;
     isImportInProgress = backup.isImportInProgress;
+    deleteAllUserData = backup.deleteAllUserData;
     estimateBackupSizeBytes = backup.estimateBackupSizeBytes;
     const documents = require('@/services/documents');
     getDocuments = documents.getDocuments;
@@ -329,6 +331,58 @@ describe('backup applyManifest — import ZIP aditiv: ID-uri și contopire', () 
       { id: 'f-b', vehicle_id: 'v-b' },
     ]);
     expect((await db.getAllAsync('SELECT id FROM service_providers')).length).toBe(2);
+  });
+});
+
+describe('deleteAllUserData („Șterge toate datele")', () => {
+  const T = '2026-01-01T00:00:00Z';
+
+  it('șterge și dosarul medical cu indexul lui de căutare, păstrând registrul de partajare', async () => {
+    await db.runAsync("INSERT INTO persons (id, name, created_at) VALUES ('p-1', 'Ana', ?)", [T]);
+    await db.runAsync(
+      `INSERT INTO medical_record (id, person_id, name, encryption_key_ref, created_at, updated_at)
+       VALUES ('m-1', 'p-1', 'Dosar Ana', 'plaintext-v2', ?, ?)`,
+      [T, T]
+    );
+    await db.runAsync(
+      `INSERT INTO medical_fts (document_id, medical_record_id, chunk_type, chunk_text)
+       VALUES ('d-x', 'm-1', 'ocr', 'glicemie 95 mg/dl')`
+    );
+    await db.runAsync(
+      `INSERT INTO reminders (id, source_type, label, reminder_date, origin, created_at)
+       VALUES ('r-1', 'custom', 'Control', '2030-01-01', 'manual', ?)`,
+      [T]
+    );
+    await db.runAsync(
+      `INSERT INTO shared_entities (id, entity_type, entity_id, zone_name, role, created_at)
+       VALUES ('se-1', 'person', 'p-1', 'entity_person_p-1', 'owner', ?)`,
+      [T]
+    );
+    await db.runAsync(
+      "INSERT INTO pending_uploads (file_path, attempt_count, created_at) VALUES ('documents/a.jpg', 0, 0)"
+    );
+    await db.runAsync("INSERT INTO cloud_state (id, device_id) VALUES (1, 'device-A')");
+
+    await deleteAllUserData();
+
+    for (const table of [
+      'persons',
+      'medical_record',
+      'medical_fts',
+      'reminders',
+      'pending_uploads',
+    ]) {
+      const row = testDb._raw.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
+      expect({ table, n: row.n }).toEqual({ table, n: 0 });
+    }
+    const share = testDb._raw
+      .prepare('SELECT revoked_at, last_sync_error FROM shared_entities')
+      .get() as { revoked_at: string | null; last_sync_error: string | null };
+    expect(share.revoked_at).toBeNull();
+    expect(share.last_sync_error).toMatch(/nu mai există pe acest telefon/);
+    expect(
+      (testDb._raw.prepare('SELECT COUNT(*) AS n FROM cloud_state').get() as { n: number }).n
+    ).toBe(1);
   });
 });
 

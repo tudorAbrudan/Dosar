@@ -841,14 +841,14 @@ export async function bumpSharePushAttempt(id: number, error: string): Promise<v
   );
 }
 
-/** Mesajul pus pe o partajare proprie a cărei entitate lipsește după o restaurare. */
+/** Mesajul pus pe o partajare proprie a cărei entitate a dispărut la o restaurare / ștergere totală. */
 export const SHARE_ENTITY_MISSING_ERROR =
-  'Entitatea nu mai există pe acest telefon după restaurarea backup-ului. Partajarea e încă activă: o poți revoca.';
+  'Entitatea nu mai există pe acest telefon. Partajarea e încă activă: o poți revoca.';
 
 /**
- * După o restaurare cu înlocuire (wipe + reinserare cu ID-urile originale) registrul
- * de partajare rămâne, dar starea lui de sync nu mai descrie datele locale. Rulează
- * în tranzacția restaurării:
+ * După o restaurare cu înlocuire (wipe + reinserare cu ID-urile originale) sau după
+ * „Șterge toate datele", registrul de partajare rămâne, dar starea lui de sync nu mai
+ * descrie datele locale. Rulează în aceeași tranzacție cu ștergerea:
  *
  * 1. Zonele primite (participant): token și `cloud_records` șterse → următorul sync
  *    face un fetch complet, idempotent pe ID-urile păstrate (readuce ce lipsește din
@@ -862,7 +862,7 @@ export const SHARE_ENTITY_MISSING_ERROR =
  * Zonele proprii NU se resetează: fără `cloud_records`, un pull ar rescrie
  * `file_path` la documentele proprii spre copii din `shared/…`.
  */
-export async function resetShareStateAfterRestore(): Promise<void> {
+export async function resetShareStateAfterWipe(): Promise<void> {
   const shares = await db.getAllAsync<{
     zone_name: string;
     role: string;
