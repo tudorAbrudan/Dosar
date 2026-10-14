@@ -9,6 +9,7 @@ import {
   formatBytes,
   markCloudBackupForReupload,
   restoreFromCloud,
+  unlockCloudBackupKey,
   type RestoreEstimate,
   type RestoreProgress,
 } from '@/services/cloudSync';
@@ -57,6 +58,12 @@ export default function CloudBackupScreen() {
   const [pwModalMode, setPwModalMode] = useState<CloudPasswordModalMode | null>(null);
   // Acțiunea care a declanșat unlock-ul; rulată după onSubmit reușit.
   const [pendingAfterUnlock, setPendingAfterUnlock] = useState<null | 'backup' | 'restore'>(null);
+  // Pasul de după parolă rulează abia când modalul a dispărut (onDismissed):
+  // confirmarea restaurării e un Alert, iar progresul e un alt <Modal>.
+  const afterPasswordRef = useRef<(() => void) | null>(null);
+  // Restaurarea a cerut parola în timp ce modalul de progres era deschis: o cerem
+  // după ce acela dispare.
+  const askPasswordAfterProgressRef = useRef(false);
 
   // Gate setState pentru restore progress contra unmount (utilizatorul poate
   // naviga înapoi mid-restore — restoreFromCloud continuă să cheme callback-ul).
@@ -141,66 +148,81 @@ export default function CloudBackupScreen() {
   // exhaustive-deps să ceară `cloud` ca dep, ceea ce ar reintroduce bug-ul de
   // re-fire la fiecare status tick.
   const cloudRefresh = cloud.refresh;
-  // Rulează restore-ul efectiv (după ce userul a confirmat sau după unlock).
-  const runRestore = useCallback(async () => {
-    safeSetRestoreProgress({
-      phase: 'manifest',
-      current: 0,
-      total: 1,
-      bytesDone: 0,
-      bytesTotal: 0,
-    });
-    try {
-      await restoreFromCloud(safeSetRestoreProgress);
-      safeSetRestoreProgress({ phase: 'done', current: 1, total: 1, bytesDone: 0, bytesTotal: 0 });
-      Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
-      await cloudRefresh();
-    } catch (e) {
-      if (e instanceof PasswordRequiredError) {
-        setPendingAfterUnlock('restore');
-        setPwModalMode('unlock');
-      } else {
-        const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
-        Alert.alert('Eroare restaurare', msg);
+  // Rulează restore-ul efectiv, după confirmare. `key` = cheia backup-ului criptat,
+  // derivată din parola introdusă (merge și pe un telefon fără setup local).
+  const runRestore = useCallback(
+    async (key?: Uint8Array) => {
+      safeSetRestoreProgress({
+        phase: 'manifest',
+        current: 0,
+        total: 1,
+        bytesDone: 0,
+        bytesTotal: 0,
+      });
+      try {
+        await restoreFromCloud(safeSetRestoreProgress, key);
+        safeSetRestoreProgress({
+          phase: 'done',
+          current: 1,
+          total: 1,
+          bytesDone: 0,
+          bytesTotal: 0,
+        });
+        // Restaurarea poate porni sau opri criptarea (preia starea backup-ului).
+        setEncryptionEnabledState(await getCloudEncryptionEnabled());
+        Alert.alert('Restaurare', 'Datele au fost restaurate cu succes.');
+        await cloudRefresh();
+      } catch (e) {
+        if (e instanceof PasswordRequiredError) {
+          askPasswordAfterProgressRef.current = true;
+        } else {
+          const msg = e instanceof Error ? e.message : 'Eroare necunoscută';
+          Alert.alert('Eroare restaurare', msg);
+        }
+      } finally {
+        if (mountedRef.current) setRestoreProgress(null);
       }
-    } finally {
-      if (mountedRef.current) setRestoreProgress(null);
-    }
-  }, [cloudRefresh, safeSetRestoreProgress]);
+    },
+    [cloudRefresh, safeSetRestoreProgress]
+  );
 
-  const handleRestore = useCallback(async () => {
-    let estimate: RestoreEstimate | null = null;
-    try {
-      estimate = await estimateRestoreSize();
-    } catch (e) {
-      if (e instanceof PasswordRequiredError) {
-        setPendingAfterUnlock('restore');
-        setPwModalMode('unlock');
+  const handleRestore = useCallback(
+    async (key?: Uint8Array) => {
+      let estimate: RestoreEstimate | null = null;
+      try {
+        estimate = await estimateRestoreSize(key);
+      } catch (e) {
+        if (e instanceof PasswordRequiredError) {
+          setPendingAfterUnlock('restore');
+          setPwModalMode('unlock');
+          return;
+        }
+        Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
         return;
       }
-      Alert.alert('Eroare', e instanceof Error ? e.message : 'Eroare necunoscută');
-      return;
-    }
-    const totalBytes = estimate.manifestBytes + estimate.filesBytes;
-    const sizeText =
-      estimate.fileCount > 0
-        ? `${estimate.fileCount} fișiere · ${formatBytes(totalBytes)}`
-        : `Doar manifestul (${formatBytes(totalBytes)})`;
-    Alert.alert(
-      'Restaurează din iCloud',
-      `Vei descărca ${sizeText}. Datele locale curente vor fi înlocuite cu cele din backup. Continui?`,
-      [
-        { text: 'Anulează', style: 'cancel' },
-        {
-          text: 'Restaurează',
-          style: 'destructive',
-          onPress: () => {
-            void runRestore();
+      const totalBytes = estimate.manifestBytes + estimate.filesBytes;
+      const sizeText =
+        estimate.fileCount > 0
+          ? `${estimate.fileCount} fișiere · ${formatBytes(totalBytes)}`
+          : `Doar manifestul (${formatBytes(totalBytes)})`;
+      Alert.alert(
+        'Restaurează din iCloud',
+        `Vei descărca ${sizeText}. Datele locale curente vor fi înlocuite cu cele din backup. Continui?`,
+        [
+          { text: 'Anulează', style: 'cancel' },
+          {
+            text: 'Restaurează',
+            style: 'destructive',
+            onPress: () => {
+              // Modalul de progres se deschide după ce Alert-ul a dispărut (iOS).
+              setTimeout(() => void runRestore(key), 350);
+            },
           },
-        },
-      ]
-    );
-  }, [runRestore]);
+        ]
+      );
+    },
+    [runRestore]
+  );
 
   // ── Encryption toggle ────────────────────────────────────────────────────
   // La orice schimbare a stării de criptare (activare / dezactivare / schimbare
@@ -303,23 +325,43 @@ export default function CloudBackupScreen() {
       return;
     }
     // mode === 'unlock'
-    const key = await unlockWithPassword(password);
-    setSessionKey(key);
-    setPwModalMode(null);
-    if (pendingAfterUnlock === 'backup') {
-      setPendingAfterUnlock(null);
-      await cloud.backupNow();
-    } else if (pendingAfterUnlock === 'restore') {
-      setPendingAfterUnlock(null);
-      await runRestore();
+    if (pendingAfterUnlock === 'restore') {
+      // Parola backup-ului din iCloud, verificată cu parametrii din meta: merge și pe
+      // un telefon nou. Cheia devine cheia telefonului abia după restaurare.
+      const key = await unlockCloudBackupKey(password);
+      afterPasswordRef.current = () => void handleRestore(key);
     } else {
-      await cloudRefresh();
+      const key = await unlockWithPassword(password);
+      setSessionKey(key);
+      afterPasswordRef.current =
+        pendingAfterUnlock === 'backup' ? () => void cloud.backupNow() : () => void cloudRefresh();
     }
+    setPendingAfterUnlock(null);
+    setPwModalMode(null);
   };
 
   const handlePasswordCancel = () => {
+    afterPasswordRef.current = null;
     setPwModalMode(null);
     setPendingAfterUnlock(null);
+  };
+
+  const handlePasswordDismissed = () => {
+    const next = afterPasswordRef.current;
+    afterPasswordRef.current = null;
+    next?.();
+  };
+
+  const handleRestoreProgressDismissed = () => {
+    if (!askPasswordAfterProgressRef.current) return;
+    askPasswordAfterProgressRef.current = false;
+    setPendingAfterUnlock('restore');
+    setPwModalMode('unlock');
+  };
+
+  const handleUnlockBackup = () => {
+    setPendingAfterUnlock('backup');
+    setPwModalMode('unlock');
   };
 
   useEffect(() => {
@@ -339,7 +381,11 @@ export default function CloudBackupScreen() {
           <QuotaExceededBanner scheme={scheme === 'dark' ? 'dark' : 'light'} />
         ) : null}
 
-        <CloudStatusCard cloud={cloud} scheme={scheme === 'dark' ? 'dark' : 'light'} />
+        <CloudStatusCard
+          cloud={cloud}
+          scheme={scheme === 'dark' ? 'dark' : 'light'}
+          onUnlock={handleUnlockBackup}
+        />
 
         {/* ── Toggle ── */}
         <CloudAutoBackupToggle
@@ -405,7 +451,7 @@ export default function CloudBackupScreen() {
           uploading={cloud.status === 'uploading'}
           restoreInProgress={restoreProgress !== null}
           onBackupNow={handleBackupNow}
-          onRestore={handleRestore}
+          onRestore={() => void handleRestore()}
         />
       </ScrollView>
 
@@ -416,6 +462,7 @@ export default function CloudBackupScreen() {
         onRequestClose={() => {
           if (restoreModalDismissable) setRestoreProgress(null);
         }}
+        onDismiss={handleRestoreProgressDismissed}
       >
         <View style={[styles.modalBackdrop, { backgroundColor: `${palette.text}80` }]}>
           <CloudRestoreProgress progress={restoreProgress} />
@@ -427,6 +474,7 @@ export default function CloudBackupScreen() {
         mode={pwModalMode ?? 'unlock'}
         onSubmit={handlePasswordSubmit}
         onCancel={handlePasswordCancel}
+        onDismissed={handlePasswordDismissed}
       />
     </View>
   );

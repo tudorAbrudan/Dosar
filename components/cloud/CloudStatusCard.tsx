@@ -5,7 +5,7 @@
  *
  * Extras din `app/cloud-backup.tsx` (~85 linii inline).
  */
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { primary, statusColors } from '@/theme/colors';
@@ -20,6 +20,8 @@ const STATUS_LABELS: Record<CloudStatus, string> = {
   error: 'Eroare',
   paused: 'Dezactivat',
   unavailable: 'iCloud indisponibil',
+  needsPassword: 'Parolă necesară',
+  noBackup: 'Niciun backup încă',
 };
 
 function statusDotColor(status: CloudStatus): string {
@@ -31,6 +33,7 @@ function statusDotColor(status: CloudStatus): string {
       return statusColors.warning;
     case 'error':
     case 'unavailable':
+    case 'needsPassword':
       return statusColors.critical;
     case 'paused':
     default:
@@ -65,9 +68,11 @@ export interface CloudStatusCardData {
 interface CloudStatusCardProps {
   cloud: CloudStatusCardData;
   scheme: 'light' | 'dark';
+  /** Deschide promptul de parolă când backup-ul criptat e blocat. */
+  onUnlock: () => void;
 }
 
-export function CloudStatusCard({ cloud, scheme }: CloudStatusCardProps) {
+export function CloudStatusCard({ cloud, scheme, onUnlock }: CloudStatusCardProps) {
   const C = Colors[scheme];
   return (
     <View style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
@@ -89,6 +94,33 @@ export function CloudStatusCard({ cloud, scheme }: CloudStatusCardProps) {
           </Text>{' '}
           să fie pornit, iar în listă aplicația <Text style={{ fontWeight: '600' }}>Dosar</Text> să
           fie activată. Dacă tocmai le-ai pornit, revino aici — starea se reîmprospătează singură.
+        </Text>
+      ) : null}
+      {/* Cheia de criptare trăiește doar în memorie: după fiecare repornire a
+          aplicației backup-ul se oprește până la parolă. Fără mesajul ăsta ecranul
+          arăta „Se sincronizează..." la nesfârșit. */}
+      {cloud.status === 'needsPassword' ? (
+        <>
+          <Text style={[styles.hintText, { color: C.textSecondary }]}>
+            Backup-ul e criptat, iar parola se cere din nou după fiecare repornire a aplicației.
+            Până o introduci, nu se salvează nimic în iCloud.
+          </Text>
+          <Pressable
+            onPress={onUnlock}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.unlockBtn,
+              { borderColor: primary },
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Text style={[styles.unlockBtnText, { color: primary }]}>Introdu parola</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {cloud.status === 'noBackup' ? (
+        <Text style={[styles.hintText, { color: C.textSecondary }]}>
+          Primul backup se face când ieși din aplicație sau când apeși „Backup acum".
         </Text>
       ) : null}
       <View style={styles.statRow}>
@@ -177,6 +209,16 @@ const styles = StyleSheet.create({
   statusLabel: { fontSize: 16, fontWeight: '600' },
   errorText: { fontSize: 13, marginBottom: 8 },
   hintText: { fontSize: 13, lineHeight: 19, marginBottom: 8 },
+  unlockBtn: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  unlockBtnText: { fontSize: 15, fontWeight: '600' },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   statLabel: { fontSize: 13 },
   statValue: { fontSize: 13, fontWeight: '600' },

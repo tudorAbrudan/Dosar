@@ -25,7 +25,7 @@ import { radius, spacing } from '@/theme/layout';
 
 export type CloudCheckStatus =
   | { status: 'checking' }
-  | { status: 'available'; meta: { count: number; date: string } | null }
+  | { status: 'available'; meta: { count: number; date: string; encrypted: boolean } | null }
   | { status: 'unavailable' };
 
 interface CloudBackupStepProps {
@@ -74,8 +74,8 @@ export function CloudBackupStep({
             <View style={styles.cardRowText}>
               <Text style={[styles.label, { color: C.text }]}>Activează backup în iCloud</Text>
               <Text style={[styles.sub, { color: C.textSecondary }]}>
-                Salvăm automat copii ale documentelor în iCloud-ul tău, în folderul „Dosar".
-                Poți dezactiva oricând din Setări.
+                Salvăm automat copii ale documentelor în iCloud-ul tău, în folderul „Dosar". Poți
+                dezactiva oricând din Setări.
               </Text>
             </View>
             <Switch
@@ -96,7 +96,7 @@ export function CloudBackupStep({
   }
 
   if (cloudCheck.status === 'available' && cloudCheck.meta != null) {
-    const { count, date } = cloudCheck.meta;
+    const { count, date, encrypted } = cloudCheck.meta;
     return (
       <View style={styles.block}>
         <View style={[styles.card, { backgroundColor: C.card, borderColor: C.border }]}>
@@ -105,6 +105,11 @@ export function CloudBackupStep({
             În iCloud există un backup din {date} cu {count}{' '}
             {count === 1 ? 'document' : 'documente'}. Vrei să-l restaurezi acum?
           </Text>
+          {encrypted ? (
+            <Text style={[styles.sub, { color: C.textSecondary }]}>
+              Backup-ul e criptat: îți vom cere parola de criptare.
+            </Text>
+          ) : null}
           <Pressable
             style={({ pressed }) => [
               styles.cta,
@@ -116,8 +121,8 @@ export function CloudBackupStep({
             <Text style={styles.ctaText}>Da, restaurează backup-ul</Text>
           </Pressable>
           <Text style={[styles.sub, { color: C.textSecondary, marginTop: 12 }]}>
-            Dacă alegi „Nu, încep gol", backup-ul automat rămâne activ și începe să se
-            sincronizeze de la zero din momentul ăsta.
+            Dacă alegi „Nu, încep gol", backup-ul automat rămâne activ și începe să se sincronizeze
+            de la zero din momentul ăsta.
           </Text>
         </View>
       </View>
