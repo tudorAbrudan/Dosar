@@ -332,6 +332,33 @@ describe('backup applyManifest — import ZIP aditiv: ID-uri și contopire', () 
     ]);
     expect((await db.getAllAsync('SELECT id FROM service_providers')).length).toBe(2);
   });
+
+  it('re-importul nu mută paginile între documente cu aceeași cheie (type+date)', async () => {
+    const manifest = {
+      documents: [
+        { id: 'd-1', type: 'altul', note: 'primul', created_at: T },
+        { id: 'd-2', type: 'altul', note: 'al doilea', created_at: T },
+      ],
+      documentPages: [
+        { id: 'pg-1', document_id: 'd-1', file_path: 'documents/p1.jpg', page_order: 1 },
+        { id: 'pg-2', document_id: 'd-2', file_path: 'documents/p2.jpg', page_order: 1 },
+      ],
+    };
+    await applyManifest(manifest);
+    await applyManifest(manifest);
+
+    expect(await db.getAllAsync('SELECT id FROM documents ORDER BY id')).toEqual([
+      { id: 'd-1' },
+      { id: 'd-2' },
+    ]);
+    const pages = await db.getAllAsync<{ document_id: string; file_path: string }>(
+      'SELECT document_id, file_path FROM document_pages ORDER BY file_path'
+    );
+    expect(pages.map(p => [p.document_id, p.file_path])).toEqual([
+      ['d-1', 'documents/p1.jpg'],
+      ['d-2', 'documents/p2.jpg'],
+    ]);
+  });
 });
 
 describe('deleteAllUserData („Șterge toate datele")', () => {

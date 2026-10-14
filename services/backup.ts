@@ -388,6 +388,11 @@ async function applyManifestBody(
   existingCustomTypes.forEach(ct =>
     keyed('custom_document_types', ct.id, ct.name.toLowerCase().trim())
   );
+  const docKeyOf = (type: unknown, issue: unknown, expiry: unknown) =>
+    `${String(type)}|${(issue as string | null) ?? ''}|${(expiry as string | null) ?? ''}`;
+  existingDocuments.forEach(d =>
+    keyed('documents', d.id, docKeyOf(d.type, d.issue_date, d.expiry_date))
+  );
   /** ID-ul rândului existent cu care se potrivește rândul din manifest (doar aditiv). */
   const matchExisting = (
     table: string,
@@ -427,10 +432,13 @@ async function applyManifestBody(
   const existingCustomTypeByName = new Map(
     existingCustomTypes.map(ct => [ct.name.toLowerCase().trim(), ct.id])
   );
-  // Document key: type + issue_date + expiry_date
-  const existingDocByKey = new Map(
-    existingDocuments.map(d => [`${d.type}|${d.issue_date ?? ''}|${d.expiry_date ?? ''}`, d.id])
-  );
+  // Document key: type + issue_date + expiry_date. Primul document cu o cheie câștigă
+  // (cheia nu e unică: două „altul" fără date au aceeași cheie).
+  const existingDocByKey = new Map<string, string>();
+  for (const d of existingDocuments) {
+    const key = docKeyOf(d.type, d.issue_date, d.expiry_date);
+    if (!existingDocByKey.has(key)) existingDocByKey.set(key, d.id);
+  }
   // Fuel record: dedupe exact (vehicle + date + liters + km_total)
   const existingFuelByKey = new Set(
     existingFuelRecords.map(
@@ -835,20 +843,23 @@ async function applyManifestBody(
 
   for (const d of (payload.documents as AnyRecord[]) ?? []) {
     try {
-      const docKey = `${d.type as string}|${(d.issue_date as string) ?? ''}|${(d.expiry_date as string) ?? ''}`;
+      const docKey = docKeyOf(d.type, d.issue_date, d.expiry_date);
       // Dedupe DOAR pe calea aditivă (import ZIP peste date existente) și DOAR
       // contra rândurilor preexistente în DB — NICIODATĂ contra documentelor
       // tocmai inserate din ACELAȘI manifest (altfel două documente distincte cu
       // aceeași cheie type|issue|expiry, ex. două `altul` fără date, s-ar colapsa
       // iar paginile s-ar atașa greșit la supraviețuitor). La restore (wipeFirst)
       // DB-ul e gol → orice skip = pierdere de date, deci dedupe complet dezactivat.
-      if (!wipeFirst) {
-        const existingDocId = existingDocByKey.get(docKey);
-        if (existingDocId) {
-          rememberId(docIdMap, d.id, existingDocId);
-          skipped++;
-          continue;
-        }
+      // Același ID + aceeași cheie are prioritate: la re-importul aceluiași fișier,
+      // fiecare document se potrivește cu el însuși, nu cu primul cu aceeași cheie
+      // (paginile lui s-ar fi adăugat la alt document).
+      const existingDocId = matchExisting('documents', d.id, docKey, () =>
+        existingDocByKey.get(docKey)
+      );
+      if (existingDocId) {
+        rememberId(docIdMap, d.id, existingDocId);
+        skipped++;
+        continue;
       }
       const filePath = d.file_path ? toRelativePath(d.file_path as string) : undefined;
       const created = await docs.createDocument(
@@ -947,7 +958,7 @@ async function applyManifestBody(
 
   // ── Restaurare tabele medicale ──────────────────────────────────────────────
   // Dosarele își păstrează id-ul (recordIdMap = identitate) dar person_id trebuie
-  // remapat: persoanele primesc id-uri NOI la restore, iar fără remap
+  // remapat: la import o persoană poate primi un id nou (al ei era ocupat), iar fără remap
   // getMedicalRecordByPersonId(noulPersonId) întoarce null → dosarul devine invizibil.
   for (const r of (payload.medicalRecords as AnyRecord[]) ?? []) {
     try {
