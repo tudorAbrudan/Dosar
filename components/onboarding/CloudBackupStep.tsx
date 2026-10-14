@@ -3,7 +3,7 @@
  * iCloud:
  *   - `checking`   → spinner
  *   - `available`, fără meta → toggle "Activează backup în iCloud" + bullet list
- *   - `available`, cu meta   → "Am găsit un backup" + buton "Da, restaurează"
+ *   - `available`, cu meta   → "Am găsit un backup" + „Restaurează" / „Încep de la zero"
  *   - `unavailable`          → mesaj de fallback (iCloud Drive dezactivat)
  *
  * Extras din OnboardingWizard.tsx (~112 linii).
@@ -35,6 +35,19 @@ interface CloudBackupStepProps {
   cloudRestoring: boolean;
   onChangeOptIn: (value: boolean) => void;
   onRestore: () => void;
+  /** Pornește backup-ul automat peste backup-ul găsit (apelantul cere confirmare). */
+  onStartFresh: () => void;
+}
+
+/**
+ * Ce face „Continuă" cu backup-ul automat: `null` = nu-l atinge. Când există deja un
+ * backup în iCloud, „Continuă" nu-l mai pornește — manifestul gol de pe telefonul nou
+ * ar înlocui backup-ul la prima ieșire din aplicație. Pornirea peste un backup găsit
+ * se face doar explicit, prin „Încep de la zero".
+ */
+export function autoBackupOnContinue(cloudCheck: CloudCheckStatus, optIn: boolean): boolean | null {
+  if (cloudCheck.status !== 'available') return null;
+  return cloudCheck.meta ? null : optIn;
 }
 
 const BULLETS = [
@@ -50,6 +63,7 @@ export function CloudBackupStep({
   cloudRestoring,
   onChangeOptIn,
   onRestore,
+  onStartFresh,
 }: CloudBackupStepProps) {
   const C = Colors[scheme];
 
@@ -103,7 +117,7 @@ export function CloudBackupStep({
           <Text style={[styles.label, { color: C.text }]}>Am găsit un backup</Text>
           <Text style={[styles.sub, { color: C.textSecondary }]}>
             În iCloud există un backup din {date} cu {count}{' '}
-            {count === 1 ? 'document' : 'documente'}. Vrei să-l restaurezi acum?
+            {count === 1 ? 'document' : 'documente'}. Vrei să-l restaurezi pe acest telefon?
           </Text>
           {encrypted ? (
             <Text style={[styles.sub, { color: C.textSecondary }]}>
@@ -117,12 +131,25 @@ export function CloudBackupStep({
             ]}
             onPress={onRestore}
             disabled={cloudRestoring}
+            accessibilityRole="button"
           >
-            <Text style={styles.ctaText}>Da, restaurează backup-ul</Text>
+            <Text style={styles.ctaText}>Restaurează</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.ctaOutline,
+              { borderColor: C.primary, opacity: cloudRestoring || pressed ? 0.6 : 1 },
+            ]}
+            onPress={onStartFresh}
+            disabled={cloudRestoring}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.ctaOutlineText, { color: C.primary }]}>Încep de la zero</Text>
           </Pressable>
           <Text style={[styles.sub, { color: C.textSecondary, marginTop: 12 }]}>
-            Dacă alegi „Nu, încep gol", backup-ul automat rămâne activ și începe să se sincronizeze
-            de la zero din momentul ăsta.
+            Dacă apeși „Continuă" fără să alegi, backup-ul automat rămâne oprit și backup-ul din
+            iCloud rămâne neatins. Îl poți restaura mai târziu din Setări → Backup și restaurare →
+            iCloud Backup.
           </Text>
         </View>
       </View>
@@ -181,6 +208,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
+  ctaOutline: {
+    marginTop: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  ctaOutlineText: { fontSize: 15, fontWeight: '700' },
   // Text peste fundal primary (verde) — alb pe ambele teme, theme-neutral.
   // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
   ctaText: { color: '#fff', fontSize: 15, fontWeight: '700' },
