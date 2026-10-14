@@ -34,6 +34,12 @@ export function CloudActionsCard({
   const C = Colors[scheme];
   const backupDisabled = !enabled || !available || uploading;
   const restoreDisabled = !available || restoreInProgress;
+  // Un buton dezactivat fără explicație pare stricat: spunem de ce.
+  const backupDisabledReason = !available
+    ? 'iCloud nu este disponibil, deci backup-ul nu poate rula acum.'
+    : !enabled
+      ? 'Pornește „Backup automat iCloud" de mai sus ca să poți face backup acum.'
+      : null;
 
   return (
     <View style={[styles.card, { backgroundColor: C.card, shadowColor: C.cardShadow }]}>
@@ -55,6 +61,9 @@ export function CloudActionsCard({
           {uploading ? 'Se sincronizează...' : 'Backup acum'}
         </Text>
       </Pressable>
+      {backupDisabledReason ? (
+        <Text style={[styles.hint, { color: C.textSecondary }]}>{backupDisabledReason}</Text>
+      ) : null}
       <Pressable
         onPress={onRestore}
         disabled={restoreDisabled}

@@ -111,22 +111,22 @@ export default function CloudBackupScreen() {
     await cloud.setEnabled(value);
   };
 
-  // `cloud.backupNow()` rezolvă DUPĂ ce upload + refresh sunt complete
-  // (vezi `inFlightBackupRef` în hook). Așadar, după await, backup-ul e
-  // finalizat — nu „pornit". Notă: state-ul React citit imediat după await
-  // poate fi cu un tick stale; badge-ul se re-randa la următorul refresh.
+  // Mesajul vine din rezultatul întors de `backupNow`, nu din `cloud.status` /
+  // `cloud.error`: aceia sunt din render-ul de dinainte de apăsare (afișau
+  // „Backup finalizat." și când backup-ul eșua).
   const handleBackupNow = async () => {
-    await cloud.backupNow();
-    // `cloud.error` poate conține mesajul `PasswordRequiredError` re-aruncat
-    // de `uploadManifestIfChanged`. Detectăm după mesaj (string starts cu „Parolă").
-    const err = cloud.error;
-    if (cloud.status === 'error' && err) {
-      if (/^Parolă/.test(err)) {
-        setPendingAfterUnlock('backup');
-        setPwModalMode('unlock');
-      } else {
-        Alert.alert('Eroare backup', err);
-      }
+    const result = await cloud.backupNow();
+    if (result.passwordRequired) {
+      setPendingAfterUnlock('backup');
+      setPwModalMode('unlock');
+    } else if (result.error) {
+      Alert.alert('Eroare backup', result.error);
+    } else if (result.failedFiles > 0) {
+      const n = result.failedFiles;
+      Alert.alert(
+        'Backup incomplet',
+        `${n} ${n === 1 ? 'fișier nu a putut fi urcat' : 'fișiere nu au putut fi urcate'} în iCloud. Restul backup-ului e salvat.`
+      );
     } else {
       Alert.alert('Backup', 'Backup finalizat.');
     }
@@ -334,7 +334,7 @@ export default function CloudBackupScreen() {
       const key = await unlockWithPassword(password);
       setSessionKey(key);
       afterPasswordRef.current =
-        pendingAfterUnlock === 'backup' ? () => void cloud.backupNow() : () => void cloudRefresh();
+        pendingAfterUnlock === 'backup' ? () => void handleBackupNow() : () => void cloudRefresh();
     }
     setPendingAfterUnlock(null);
     setPwModalMode(null);
