@@ -63,6 +63,8 @@ const ENTRIES = {
     orphans: { required: true, keywords: ['sugestii', 'completare'] },
     pdfOcr: { required: true, keywords: ['PDF', 'OCR'] },
     reminders: { required: true, keywords: ['remindere', 'expirări', 'reminder', 'expirari'] },
+    // Helper intern al restaurării (ID-urile păstrate din backup).
+    restoreIds: { required: false },
     settings: { required: true, keywords: ['setări'] },
     shareIntentIngest: { required: true, keywords: ['Share', 'altă aplicație'] },
     sharing: { required: false },

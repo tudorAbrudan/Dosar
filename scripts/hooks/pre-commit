@@ -70,6 +70,9 @@ node scripts/alert-modal-race-audit.js --strict
 echo "▸ Sheet-header audit (strict — headere modal cu butoane-text în loc de <SheetHeader>)..."
 node scripts/sheet-header-audit.js --strict
 node scripts/manifest-shrink-guard-audit.js --strict
+
+echo "▸ Restore/share isolation audit (strict)..."
+node scripts/restore-share-isolation-audit.js --strict
 node scripts/unique-filename-audit.js --strict
 node scripts/share-intent-fallback-audit.js --strict
 

@@ -52,6 +52,7 @@ import { AI_CONSENT_KEY } from '@/services/aiProvider';
 import { clearAllPerTypeConsents, hasAnyPerTypeConsent } from '@/services/ocrConsent';
 import { scheduleExpirationReminders } from '@/services/notifications';
 import {
+  deleteAllUserData,
   exportBackup,
   importBackup,
   estimateBackupSizeBytes,
@@ -68,7 +69,6 @@ import {
 } from '@/services/crashReporter';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db } from '@/services/db';
 import { emit } from '@/services/events';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
@@ -1065,29 +1065,10 @@ export default function SetariScreen() {
               // Userul îl reactivează manual după restore.
               await settings.setCloudBackupEnabled(false);
 
-              // Șterge toate datele într-o tranzacție.
-              // Păstrăm: app_settings (preferințe UI), cloud_state (device_id + hash
-              // pentru sync corect la reactivare), modelele AI descărcate.
-              await db.execAsync(`
-                BEGIN;
-                DELETE FROM document_pages;
-                DELETE FROM document_entities;
-                DELETE FROM documents;
-                DELETE FROM persons;
-                DELETE FROM properties;
-                DELETE FROM vehicles;
-                DELETE FROM cards;
-                DELETE FROM animals;
-                DELETE FROM companies;
-                DELETE FROM custom_document_types;
-                DELETE FROM fuel_records;
-                DELETE FROM vehicle_maintenance_tasks;
-                DELETE FROM chat_messages;
-                DELETE FROM chat_threads;
-                DELETE FROM entity_order;
-                DELETE FROM pending_uploads;
-                COMMIT;
-              `);
+              // Aceeași ștergere ca restaurarea (inclusiv dosarul medical și indexul
+              // lui de căutare). Păstrăm: preferințele, cloud_state (device_id + hash
+              // pentru sync corect la reactivare), modelele AI, registrul de partajare.
+              await deleteAllUserData();
 
               // Șterge fișierele atașate (poze/PDF-uri documente, foto vehicule).
               const docDir = FileSystem.documentDirectory;

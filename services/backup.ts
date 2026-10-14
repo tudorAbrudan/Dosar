@@ -21,8 +21,11 @@ import { getCustomTypes, createCustomType } from './customTypes';
 import { toFileUri, toRelativePath } from './fileUtils';
 import { sanitizeFolderName, buildEntityFileMap, type EntityNameMaps } from './fileOrganization';
 import { onRestoreSuccess } from './reviewPrompt';
+import { waitForShareSyncIdle } from './cloudShare';
+import { resetShareStateAfterWipe } from './sharing';
 import { getLocalDbSizeBytes } from './cloud/stats';
 import { db, generateId } from './db';
+import { createRestoreIdAllocator, isIdTakenForImport, rememberId } from './restoreIds';
 import { emit } from './events';
 
 /**
@@ -303,6 +306,16 @@ export function isImportInProgress(): boolean {
   return _importInProgress;
 }
 
+// True doar cât rulează o restaurare cu înlocuire (wipeFirst). Restaurarea păstrează
+// ID-urile originale, deci rândurile ei se potrivesc cu registrul de partajare: dacă
+// mutațiile ar fi împinse în zonele CloudKit, starea din backup ar suprascrie datele
+// mai noi din zonă (la participant: datele owner-ului). Hook-urile de partajare din
+// entities/documents verifică flag-ul SINCRON, la locul apelului.
+let _restoreInProgress = false;
+export function isRestoreInProgress(): boolean {
+  return _restoreInProgress;
+}
+
 /**
  * Aplică un manifest (payload JSON deja parsat) peste DB-ul curent.
  * Folosit atât de importBackup (după parse ZIP/JSON) cât și de cloudSync.restore().
@@ -322,17 +335,27 @@ export async function applyManifest(
   options: ApplyManifestOptions = {}
 ): Promise<ImportResult> {
   _importInProgress = true;
+  _restoreInProgress = options.wipeFirst === true;
   try {
+    if (_restoreInProgress) {
+      // Un pull CloudKit în curs ar scrie în tabele în timpul wipe-ului (tranzacția
+      // expo-sqlite nu e exclusivă). Sync-urile noi nu mai pornesc cât rulează importul.
+      await waitForShareSyncIdle();
+    }
     let result!: ImportResult;
     await db.withTransactionAsync(async () => {
       if (options.wipeFirst) {
         await wipeUserData();
       }
       result = await applyManifestBody(payload, options.wipeFirst === true);
+      if (options.wipeFirst) {
+        await resetShareStateAfterWipe();
+      }
     });
     return result;
   } finally {
     _importInProgress = false;
+    _restoreInProgress = false;
     emit('documents:changed');
     emit('links:changed');
     emit('entities:changed');
@@ -367,6 +390,35 @@ async function applyManifestBody(
     docs.getDocuments(),
     getCustomTypes(),
   ]);
+
+  // Re-import al aceluiași fișier: un rând existent cu ACELAȘI ID și aceeași cheie are
+  // prioritate față de potrivirea doar după nume — altfel două „Dacia" din fișier s-ar
+  // lega amândouă de primul vehicul existent (iar alimentările celui de-al doilea s-ar
+  // dubla pe primul).
+  const keyById = new Map<string, string>();
+  const keyed = (table: string, id: string, key: string) => keyById.set(`${table}|${id}`, key);
+  existingPersons.forEach(p => keyed('persons', p.id, p.name.toLowerCase().trim()));
+  existingProperties.forEach(p => keyed('properties', p.id, p.name.toLowerCase().trim()));
+  existingVehicles.forEach(v => keyed('vehicles', v.id, v.name.toLowerCase().trim()));
+  existingCards.forEach(c => keyed('cards', c.id, `${c.last4}|${c.nickname.toLowerCase().trim()}`));
+  existingAnimals.forEach(a =>
+    keyed('animals', a.id, `${a.name.toLowerCase().trim()}|${a.species.toLowerCase().trim()}`)
+  );
+  existingCompanies.forEach(c => keyed('companies', c.id, c.cui ?? c.name.toLowerCase().trim()));
+  existingCustomTypes.forEach(ct =>
+    keyed('custom_document_types', ct.id, ct.name.toLowerCase().trim())
+  );
+  /** ID-ul rândului existent cu care se potrivește rândul din manifest (doar aditiv). */
+  const matchExisting = (
+    table: string,
+    rawId: unknown,
+    key: string,
+    byKey: () => string | undefined
+  ): string | undefined => {
+    if (wipeFirst) return undefined;
+    if (typeof rawId === 'string' && keyById.get(`${table}|${rawId}`) === key) return rawId;
+    return byKey();
+  };
 
   const existingPersonByName = new Map(
     existingPersons.map(p => [p.name.toLowerCase().trim(), p.id])
@@ -434,23 +486,37 @@ async function applyManifestBody(
 
   type AnyRecord = Record<string, unknown>;
 
+  // Restaurarea cu înlocuire păstrează ID-urile din manifest și NU contopește după
+  // nume/cheie: baza e goală, deci fiecare rând din backup e o entitate distinctă
+  // (două vehicule „Dacia" rămân două). Importul aditiv deduplică DOAR față de datele
+  // existente dinainte de import (hărțile existing* sunt un snapshot, nu se completează
+  // în timpul rulării) și păstrează ID-ul original când e liber — pe un telefon nou,
+  // o zonă partajată redescoperită cade peste aceleași ID-uri, fără duplicate.
+  // Hărțile old→new rămân singurul remap de FK.
+  const ids = createRestoreIdAllocator({
+    preserve: true,
+    isTaken: wipeFirst ? undefined : isIdTakenForImport,
+  });
+
   // personMap rămâne disponibil pentru remap în restul importului (entity_order etc.).
   for (const p of (payload.persons as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((p.name as string) || '').toLowerCase().trim();
-      const existingId = existingPersonByName.get(nameKey);
+      const existingId = matchExisting('persons', p.id, nameKey, () =>
+        existingPersonByName.get(nameKey)
+      );
       if (existingId) {
-        if (p.id) personMap.set(p.id as string, existingId);
+        rememberId(personMap, p.id, existingId);
         skipped++;
       } else {
         const created = await entities.createPerson(
           (p.name as string) || 'Persoană',
           (p.phone as string | null) ?? undefined,
           (p.email as string | null) ?? undefined,
-          (p.date_of_birth as string | null) ?? undefined
+          (p.date_of_birth as string | null) ?? undefined,
+          { id: await ids.claim('persons', p.id) }
         );
-        if (p.id) personMap.set(p.id as string, created.id);
-        existingPersonByName.set(nameKey, created.id);
+        rememberId(personMap, p.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -461,14 +527,17 @@ async function applyManifestBody(
   for (const pr of (payload.properties as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((pr.name as string) || '').toLowerCase().trim();
-      const existingId = existingPropertyByName.get(nameKey);
+      const existingId = matchExisting('properties', pr.id, nameKey, () =>
+        existingPropertyByName.get(nameKey)
+      );
       if (existingId) {
-        if (pr.id) propertyMap.set(pr.id as string, existingId);
+        rememberId(propertyMap, pr.id, existingId);
         skipped++;
       } else {
-        const created = await entities.createProperty((pr.name as string) || 'Proprietate');
-        if (pr.id) propertyMap.set(pr.id as string, created.id);
-        existingPropertyByName.set(nameKey, created.id);
+        const created = await entities.createProperty((pr.name as string) || 'Proprietate', {
+          id: await ids.claim('properties', pr.id),
+        });
+        rememberId(propertyMap, pr.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -479,13 +548,17 @@ async function applyManifestBody(
   for (const v of (payload.vehicles as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((v.name as string) || '').toLowerCase().trim();
-      const existingId = existingVehicleByName.get(nameKey);
+      const existingId = matchExisting('vehicles', v.id, nameKey, () =>
+        existingVehicleByName.get(nameKey)
+      );
       if (existingId) {
-        if (v.id) vehicleMap.set(v.id as string, existingId);
+        rememberId(vehicleMap, v.id, existingId);
         skipped++;
       } else {
         const vehicleName = (v.name as string) || 'Vehicul';
-        const created = await entities.createVehicle(vehicleName);
+        const created = await entities.createVehicle(vehicleName, {
+          id: await ids.claim('vehicles', v.id),
+        });
 
         const oldPhotoRel = v.photo_uri ? toRelativePath(v.photo_uri as string) : undefined;
         let newPhotoUri: string | null = null;
@@ -517,8 +590,7 @@ async function applyManifestBody(
         const fuel = (v.fuel_type as 'diesel' | 'benzina' | 'gpl' | 'electric' | undefined) ?? null;
         await entities.updateVehicle(created.id, vehicleName, newPhotoUri, plate, fuel);
 
-        if (v.id) vehicleMap.set(v.id as string, created.id);
-        existingVehicleByName.set(nameKey, created.id);
+        rememberId(vehicleMap, v.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -529,18 +601,20 @@ async function applyManifestBody(
   for (const c of (payload.cards as AnyRecord[]) ?? []) {
     try {
       const cardKey = `${(c.last4 as string) || ''}|${((c.nickname as string) || '').toLowerCase().trim()}`;
-      const existingId = existingCardByKey.get(cardKey);
+      const existingId = matchExisting('cards', c.id, cardKey, () =>
+        existingCardByKey.get(cardKey)
+      );
       if (existingId) {
-        if (c.id) cardMap.set(c.id as string, existingId);
+        rememberId(cardMap, c.id, existingId);
         skipped++;
       } else {
         const created = await entities.createCard(
           (c.nickname as string) || 'Card',
           (c.last4 as string) || '****',
-          c.expiry as string | undefined
+          c.expiry as string | undefined,
+          { id: await ids.claim('cards', c.id) }
         );
-        if (c.id) cardMap.set(c.id as string, created.id);
-        existingCardByKey.set(cardKey, created.id);
+        rememberId(cardMap, c.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -551,17 +625,19 @@ async function applyManifestBody(
   for (const a of (payload.animals as AnyRecord[]) ?? []) {
     try {
       const animalKey = `${((a.name as string) || '').toLowerCase().trim()}|${((a.species as string) || '').toLowerCase().trim()}`;
-      const existingId = existingAnimalByKey.get(animalKey);
+      const existingId = matchExisting('animals', a.id, animalKey, () =>
+        existingAnimalByKey.get(animalKey)
+      );
       if (existingId) {
-        if (a.id) animalMap.set(a.id as string, existingId);
+        rememberId(animalMap, a.id, existingId);
         skipped++;
       } else {
         const created = await entities.createAnimal(
           (a.name as string) || 'Animal',
-          (a.species as string) || ''
+          (a.species as string) || '',
+          { id: await ids.claim('animals', a.id) }
         );
-        if (a.id) animalMap.set(a.id as string, created.id);
-        existingAnimalByKey.set(animalKey, created.id);
+        rememberId(animalMap, a.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -573,20 +649,23 @@ async function applyManifestBody(
     try {
       const cui = co.cui as string | undefined;
       const nameKey = ((co.name as string) || '').toLowerCase().trim();
-      const existingId =
-        (cui && existingCompanyByCui.get(cui)) ?? existingCompanyByName.get(nameKey);
+      const existingId = matchExisting(
+        'companies',
+        co.id,
+        cui ?? nameKey,
+        () => (cui && existingCompanyByCui.get(cui)) ?? existingCompanyByName.get(nameKey)
+      );
       if (existingId) {
-        if (co.id) companyMap.set(co.id as string, existingId);
+        rememberId(companyMap, co.id, existingId);
         skipped++;
       } else {
         const created = await entities.createCompany(
           (co.name as string) || 'Firmă',
           cui,
-          co.reg_com as string | undefined
+          co.reg_com as string | undefined,
+          { id: await ids.claim('companies', co.id) }
         );
-        if (co.id) companyMap.set(co.id as string, created.id);
-        if (cui) existingCompanyByCui.set(cui, created.id);
-        existingCompanyByName.set(nameKey, created.id);
+        rememberId(companyMap, co.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -594,42 +673,20 @@ async function applyManifestBody(
     }
   }
 
-  // Restaurează ordinea globală a entităților, remappând ID-urile vechi la cele noi.
-  // Ordinea e nice-to-have: erorile individuale nu blochează restul importului.
-  for (const row of (payload.entityOrder as AnyRecord[]) ?? []) {
-    try {
-      const oldId = row.entity_id as string | undefined;
-      const entityType = row.entity_type as EntityType | undefined;
-      const sortOrder = row.sort_order as number | undefined;
-      if (!oldId || !entityType || typeof sortOrder !== 'number') continue;
-      let newId: string | undefined;
-      if (entityType === 'person') newId = personMap.get(oldId);
-      else if (entityType === 'property') newId = propertyMap.get(oldId);
-      else if (entityType === 'vehicle') newId = vehicleMap.get(oldId);
-      else if (entityType === 'card') newId = cardMap.get(oldId);
-      else if (entityType === 'animal') newId = animalMap.get(oldId);
-      else if (entityType === 'company') newId = companyMap.get(oldId);
-      if (!newId) continue;
-      await db.runAsync(
-        'INSERT OR REPLACE INTO entity_order (entity_type, entity_id, sort_order) VALUES (?, ?, ?)',
-        [entityType, newId, sortOrder]
-      );
-    } catch {
-      // ignorăm erori punctuale la restaurarea ordinii
-    }
-  }
-
   for (const ct of (payload.customTypes as AnyRecord[]) ?? []) {
     try {
       const nameKey = ((ct.name as string) || '').toLowerCase().trim();
-      const existingId = existingCustomTypeByName.get(nameKey);
+      const existingId = matchExisting('custom_document_types', ct.id, nameKey, () =>
+        existingCustomTypeByName.get(nameKey)
+      );
       if (existingId) {
-        if (ct.id) customTypeMap.set(ct.id as string, existingId);
+        rememberId(customTypeMap, ct.id, existingId);
         skipped++;
       } else {
-        const created = await createCustomType((ct.name as string) || 'Tip');
-        if (ct.id) customTypeMap.set(ct.id as string, created.id);
-        existingCustomTypeByName.set(nameKey, created.id);
+        const created = await createCustomType((ct.name as string) || 'Tip', {
+          id: await ids.claim('custom_document_types', ct.id),
+        });
+        rememberId(customTypeMap, ct.id, created.id);
         imported++;
       }
     } catch (e) {
@@ -644,7 +701,9 @@ async function applyManifestBody(
       const newVehicleId = oldVehicleId ? vehicleMap.get(oldVehicleId) : undefined;
 
       const dedupeKey = `${newVehicleId ?? ''}|${f.date as string}|${f.liters ?? ''}|${f.km_total ?? ''}|${(f.station as string) ?? ''}`;
-      if (existingFuelByKey.has(dedupeKey)) {
+      // Dedupe doar la importul aditiv: la restaurare două alimentări identice din
+      // backup (aceeași zi, aceeași stație) sunt două alimentări reale.
+      if (!wipeFirst && existingFuelByKey.has(dedupeKey)) {
         skipped++;
         continue;
       }
@@ -661,13 +720,12 @@ async function applyManifestBody(
         pump_number: f.pump_number as string | undefined,
       };
 
+      const fuelOpts = { id: await ids.claim('fuel_records', f.id) };
       if (newVehicleId) {
-        await fuel.addFuelRecord(newVehicleId, input);
+        await fuel.addFuelRecord(newVehicleId, input, fuelOpts);
       } else {
-        await fuel.addCanisterFuelRecord(input);
+        await fuel.addCanisterFuelRecord(input, fuelOpts);
       }
-
-      existingFuelByKey.add(dedupeKey);
       imported++;
     } catch (e) {
       errors.push(`Alimentare carburant: ${e instanceof Error ? e.message : 'eroare'}`);
@@ -699,11 +757,11 @@ async function applyManifestBody(
       const name = ((m.name as string) || '').trim();
       const presetKey = (m.preset_key as string | null | undefined) ?? null;
       const key = `${newVehicleId}|${name.toLowerCase()}|${presetKey ?? ''}`;
-      if (existingMaintenanceByKey.has(key)) {
+      if (!wipeFirst && existingMaintenanceByKey.has(key)) {
         skipped++;
         continue;
       }
-      const id = (m.id as string | undefined) || generateId();
+      const id = await ids.claim('vehicle_maintenance_tasks', m.id);
       const createdAt =
         (m.createdAt as string) || (m.created_at as string) || new Date().toISOString();
       const updatedAt = (m.updatedAt as string) || (m.updated_at as string) || createdAt;
@@ -727,31 +785,49 @@ async function applyManifestBody(
           updatedAt,
         ]
       );
-      existingMaintenanceByKey.add(key);
       imported++;
     } catch (e) {
       errors.push(`Mentenanță auto: ${e instanceof Error ? e.message : 'eroare'}`);
     }
   }
 
-  // Furnizori utilități: remap property_id la noile id-uri; INSERT OR REPLACE pentru idempotență.
+  // Furnizori utilități: remap property_id la noile id-uri. Importul aditiv sare un
+  // furnizor identic cu unul existent dinainte de import (snapshot, nu rândurile
+  // inserate din același fișier).
+  const providerKey = (
+    propertyId: string | null,
+    type: string,
+    name: string | null,
+    code: string | null
+  ): string => `${propertyId ?? ''}|${type}|${name ?? ''}|${code ?? ''}`;
+  const existingProviderKeys = new Set(
+    wipeFirst
+      ? []
+      : (
+          await db.getAllAsync<{
+            property_id: string | null;
+            type: string;
+            provider_name: string | null;
+            customer_code: string | null;
+          }>('SELECT property_id, type, provider_name, customer_code FROM service_providers')
+        ).map(r => providerKey(r.property_id, r.type, r.provider_name, r.customer_code))
+  );
   for (const p of (payload.serviceProviders as AnyRecord[]) ?? []) {
     try {
       const oldPropertyId = p.property_id as string | undefined;
       const newPropertyId = oldPropertyId
         ? (propertyMap.get(oldPropertyId) ?? oldPropertyId)
         : null;
-      // Skip dacă există deja un furnizor identic pe aceeași proprietate
-      const existingRows = await db.getAllAsync<{ id: string }>(
-        `SELECT id FROM service_providers WHERE property_id = ? AND type = ? AND provider_name IS ? AND customer_code IS ?`,
-        [
-          newPropertyId,
-          p.type as string,
-          (p.provider_name as string | null) ?? null,
-          (p.customer_code as string | null) ?? null,
-        ]
-      );
-      if (existingRows.length > 0) {
+      if (
+        existingProviderKeys.has(
+          providerKey(
+            newPropertyId,
+            p.type as string,
+            (p.provider_name as string | null) ?? null,
+            (p.customer_code as string | null) ?? null
+          )
+        )
+      ) {
         skipped++;
         continue;
       }
@@ -761,7 +837,7 @@ async function applyManifestBody(
             consumption_point_code, support_phone, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          (p.id as string | undefined) || generateId(),
+          await ids.claim('service_providers', p.id),
           newPropertyId,
           p.type as string,
           (p.provider_name as string | null | undefined) ?? null,
@@ -789,37 +865,40 @@ async function applyManifestBody(
       if (!wipeFirst) {
         const existingDocId = existingDocByKey.get(docKey);
         if (existingDocId) {
-          if (d.id) docIdMap.set(d.id as string, existingDocId);
+          rememberId(docIdMap, d.id, existingDocId);
           skipped++;
           continue;
         }
       }
       const filePath = d.file_path ? toRelativePath(d.file_path as string) : undefined;
-      const created = await docs.createDocument({
-        type: d.type as DocumentType,
-        custom_type_id: d.custom_type_id
-          ? (customTypeMap.get(d.custom_type_id as string) ?? undefined)
-          : undefined,
-        issue_date: (d.issue_date as string) || undefined,
-        expiry_date: (d.expiry_date as string) || undefined,
-        note: (d.note as string) || undefined,
-        file_path: filePath || undefined,
-        ocr_text: (d.ocr_text as string) || undefined,
-        auto_delete: (d.auto_delete as string) || undefined,
-        private_notes: (d.private_notes as string) || undefined,
-        metadata: d.metadata
-          ? typeof d.metadata === 'string'
-            ? (JSON.parse(d.metadata) as Record<string, string>)
-            : (d.metadata as Record<string, string>)
-          : undefined,
-        person_id: d.person_id ? personMap.get(d.person_id as string) : undefined,
-        property_id: d.property_id ? propertyMap.get(d.property_id as string) : undefined,
-        vehicle_id: d.vehicle_id ? vehicleMap.get(d.vehicle_id as string) : undefined,
-        card_id: d.card_id ? cardMap.get(d.card_id as string) : undefined,
-        animal_id: d.animal_id ? animalMap.get(d.animal_id as string) : undefined,
-        company_id: d.company_id ? companyMap.get(d.company_id as string) : undefined,
-      });
-      if (d.id) docIdMap.set(d.id as string, created.id);
+      const created = await docs.createDocument(
+        {
+          type: d.type as DocumentType,
+          custom_type_id: d.custom_type_id
+            ? (customTypeMap.get(d.custom_type_id as string) ?? undefined)
+            : undefined,
+          issue_date: (d.issue_date as string) || undefined,
+          expiry_date: (d.expiry_date as string) || undefined,
+          note: (d.note as string) || undefined,
+          file_path: filePath || undefined,
+          ocr_text: (d.ocr_text as string) || undefined,
+          auto_delete: (d.auto_delete as string) || undefined,
+          private_notes: (d.private_notes as string) || undefined,
+          metadata: d.metadata
+            ? typeof d.metadata === 'string'
+              ? (JSON.parse(d.metadata) as Record<string, string>)
+              : (d.metadata as Record<string, string>)
+            : undefined,
+          person_id: d.person_id ? personMap.get(d.person_id as string) : undefined,
+          property_id: d.property_id ? propertyMap.get(d.property_id as string) : undefined,
+          vehicle_id: d.vehicle_id ? vehicleMap.get(d.vehicle_id as string) : undefined,
+          card_id: d.card_id ? cardMap.get(d.card_id as string) : undefined,
+          animal_id: d.animal_id ? animalMap.get(d.animal_id as string) : undefined,
+          company_id: d.company_id ? companyMap.get(d.company_id as string) : undefined,
+        },
+        { id: await ids.claim('documents', d.id) }
+      );
+      rememberId(docIdMap, d.id, created.id);
       // NU adăugăm docKey în existingDocByKey: documentele din același manifest nu
       // se dedupe între ele (vezi comentariul de mai sus). Harta rămâne snapshot-ul
       // rândurilor preexistente în DB.
@@ -872,7 +951,11 @@ async function applyManifestBody(
       const newDocId = docIdMap.get(page.document_id as string);
       if (!newDocId) continue;
       const filePath = toRelativePath(page.file_path as string);
-      const newPageId = await docs.addDocumentPage(newDocId, filePath);
+      // ID-ul paginii păstrat contează la partajare: recordul CloudKit al paginii
+      // se numește după el (`<doc>__p__<pagină>`), iar la participant e chiar ID-ul.
+      const newPageId = await docs.addDocumentPage(newDocId, filePath, {
+        id: await ids.claim('document_pages', page.id),
+      });
       if (page.orientation_locked === true || page.orientation_locked === 1) {
         await docs.lockPageOrientation(newPageId);
       }
@@ -904,7 +987,15 @@ async function applyManifestBody(
           'SELECT id FROM persons WHERE LOWER(TRIM(name)) = ? AND id NOT IN (SELECT person_id FROM medical_record)',
           [recordName.toLowerCase()]
         );
-        newPersonId = byName?.id ?? (await entities.createPerson(recordName)).id;
+        // Persoană nouă: la restaurare primește ID-ul referit de dosar (person_id
+        // rămâne cel din backup, la fel ca restul ID-urilor).
+        newPersonId =
+          byName?.id ??
+          (
+            await entities.createPerson(recordName, undefined, undefined, undefined, {
+              id: await ids.claim('persons', oldPersonId),
+            })
+          ).id;
       }
       // UPSERT (nu INSERT OR REPLACE): cu FK ON, REPLACE = DELETE + INSERT, iar
       // DELETE-ul ar cascada pe medical_observations/threads/messages/shares. La
@@ -1080,6 +1171,26 @@ async function applyManifestBody(
     }
   }
 
+  // Ordinea globală a entităților (inclusiv dosarele medicale), prin aceleași hărți
+  // old→new ca restul FK-urilor. Rulează după dosarele medicale ca harta lor să fie
+  // populată. Ordinea e nice-to-have: erorile individuale nu blochează importul.
+  for (const row of (payload.entityOrder as AnyRecord[]) ?? []) {
+    try {
+      const oldId = row.entity_id as string | undefined;
+      const entityType = row.entity_type as EntityType | undefined;
+      const sortOrder = row.sort_order as number | undefined;
+      if (!oldId || !entityType || typeof sortOrder !== 'number') continue;
+      const newId = entityIdMaps.get(entityType)?.get(oldId);
+      if (!newId) continue;
+      await db.runAsync(
+        'INSERT OR REPLACE INTO entity_order (entity_type, entity_id, sort_order) VALUES (?, ?, ?)',
+        [entityType, newId, sortOrder]
+      );
+    } catch {
+      // ignorăm erori punctuale la restaurarea ordinii
+    }
+  }
+
   // ── Restaurare document_entities (junction table) ────────────────────────────
   // Sursa completă a legăturilor document↔entitate: multi-link de același tip ȘI
   // legături către dosare medicale (care NU au coloană legacy). createDocument a
@@ -1231,9 +1342,24 @@ async function applyManifestBody(
 }
 
 /**
+ * „Șterge toate datele" din Setări: aceeași ștergere ca restaurarea (inclusiv dosarul
+ * medical și indexul lui de căutare `medical_fts`, reminder-ele, furnizorii), plus
+ * coada de upload. Registrul de partajare rămâne, cu starea de sync resetată:
+ * partajările proprii nu se revocă automat, cele primite se re-descarcă la sync.
+ * Fișierele de pe disc le șterge apelantul.
+ */
+export async function deleteAllUserData(): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await wipeUserData();
+    await db.runAsync('DELETE FROM pending_uploads');
+    await resetShareStateAfterWipe();
+  });
+}
+
+/**
  * Șterge toate datele utilizator (entități, documente, fișiere asociate metadata)
  * înaintea unui restore complet din cloud. Nu atinge tabelele de infrastructură
- * (cloud_state, pending_uploads).
+ * (cloud_state, pending_uploads) și nici registrul de partajare.
  */
 async function wipeUserData(): Promise<void> {
   await db.execAsync(`

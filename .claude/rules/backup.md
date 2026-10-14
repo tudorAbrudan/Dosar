@@ -16,11 +16,11 @@ paths:
 | Fișiere documente | Device local (`expo-file-system` DocumentsDirectory) | Sursă primară |
 | Metadate (DB) | SQLite local (`expo-sqlite`) | Sursă primară |
 | Backup | ZIP manual + iCloud Drive (`cloudSync.ts`) | Copie externă (Apple-only) |
-| Format backup | **ZIP** (fișier `.zip`) conținând manifest JSON + fișiere organizate | Version 5 |
+| Format backup | **ZIP** (fișier `.zip`) conținând manifest JSON + fișiere organizate | Version 16 (`exportBackup`) |
 
 **Nu există backend pentru date.** Tot ce nu e pe device sau în iCloud e pierdut.
 
-## Format export (version 5 — curent)
+## Format export (structura de bază din version 5; curent: version 16)
 
 Fișier: `acte_backup_YYYY-MM-DD.zip`
 
@@ -77,20 +77,30 @@ acte_backup_2024-01-15.zip
 ## Import (`importBackup()`)
 
 Acceptă:
-- **ZIP** (`application/zip`) — format curent (version 5) și version 4
+- **ZIP** (`application/zip`) — version 4 până la cea curentă (16)
 - **JSON** (`application/json`) — format vechi (version 1–3), fișiere din câmpul `images`
 
 Pași:
 1. Picker fișier (ZIP sau JSON)
 2. Pentru ZIP: extrage `backup.json` + fișiere pe disk (folosind `fileMap` din manifest pentru reverse-map zip→disk)
-3. Import entități cu deduplicare:
-   - Persoane/Proprietăți/Vehicule/Animale: by `name` (case-insensitive)
+3. `applyManifest(payload)` — import **aditiv**, deduplicat DOAR față de datele existente dinainte de import (snapshot; rândurile din același fișier nu se contopesc între ele):
+   - un rând existent cu ACELAȘI ID și aceeași cheie are prioritate; apoi:
+   - Persoane/Proprietăți/Vehicule: by `name` (case-insensitive); Animale: `name + species`
    - Carduri: by `last4 + nickname`
    - Firme: by `cui` (primar) sau `name` (fallback)
    - CustomTypes: by `name`
    - Documente: by `type + issue_date + expiry_date`
-4. Remapare ID-uri vechi → noi pentru foreign keys
-5. Import documentPages cu noul `document_id`
+4. ID-ul original se păstrează când e liber (nu există în tabel și nu e cunoscut de registrul de partajare); altfel ID nou + remap FK prin hărțile old→new
+5. Import documentPages cu `document_id` remapat
+
+### Restaurare cu înlocuire (`applyManifest(payload, { wipeFirst: true })`)
+
+Folosită de `restoreFromCloud`. Într-o tranzacție: `wipeUserData()` → reinserare cu **ID-urile originale** (fără dedupe după nume — două entități „Dacia" rămân două; `services/restoreIds.ts` tratează ID-uri lipsă/duplicate) → `resetShareStateAfterWipe()`.
+
+- **Izolată de partajarea CloudKit:** `isRestoreInProgress()` oprește push-urile spre zone (garda sincronă din `pushEntityToShare` / `pushDocumentToShare`, păzită de `restore-share-isolation-audit`); `syncSharedEntities` nu pornește cât rulează un import; restaurarea așteaptă sync-ul în curs.
+- **Registrul de partajare** (`shared_entities`, `cloud_records`, `pending_share_pushes`) nu e în backup și nu se șterge: zonele primite pierd token-ul (fetch complet la sync), coada de push se curăță, partajările proprii fără entitate primesc o eroare vizibilă (Partajare → „Revocă").
+- **„Șterge toate datele"** (Setări) = `deleteAllUserData()`: aceeași ștergere + coada de upload, registrul rămâne.
+- Funcțiile `create*` din servicii primesc `{ id }` opțional DOAR pentru restaurare/import.
 
 ## Reguli de implementare
 
@@ -107,6 +117,7 @@ Pași:
 | 1–3 | JSON | Fișiere în câmpul `images` |
 | 4 | ZIP | `files/` cu cale relativă din disk |
 | 5 | ZIP | `fileMap` explicit disk→zip; fișiere organizate pe entitate/tip; animals, companies, customTypes, documentPages |
+| 6–16 | ZIP | tabele adăugate incremental (fuel, mentenanță, furnizori, medical, reminders, entity_order); v16: `documentEntities` |
 
 ## Testare manuală
 
@@ -122,7 +133,7 @@ Pași:
 ```
 iCloud Drive / Dosar /
 ├── manifest.json                    ← state-ul curent (suprascris)
-├── manifest.meta.json               ← { version, hash, uploadedAt, deviceId, encrypted, ... }
+├── manifest.meta.json               ← { version, hash, uploadedAt, deviceId, encrypted, encryption?: { salt, verify }, ... }
 ├── snapshots/
 │   └── manifest_YYYY-MM-DD.json
 └── files/
@@ -155,6 +166,7 @@ Orice modificare de schemă SQLite (tabel/coloană nouă, redenumire, ștergere)
 - Offline upload → queue în `pending_uploads`, retry la următoarea acțiune
 - Conflict cross-device → last-write-wins, banner pe celălalt device
 - Criptare: pierderea parolei = pierderea backup-ului, by design
+- Criptare pe telefon nou: salt + verificator în `manifest.meta.json` (`encryption`) → `unlockCloudBackupKey(parolă)` derivă cheia fără SecureStore-ul vechi; după restaurare telefonul preia flag-ul, parametrii și cheia backup-ului
 
 ### Testare manuală obligatorie
 

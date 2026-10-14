@@ -14,6 +14,7 @@ import {
   parseFetchedRecords,
 } from './cloudShareMapping';
 import type { FetchedRecord, PushRecord } from './cloudShareMapping';
+import { isImportInProgress } from './backup';
 import { db } from './db';
 import { getDocumentById } from './documents';
 import { assignNextOrder } from './entityOrder';
@@ -827,12 +828,21 @@ let syncInFlight: Promise<void> | null = null;
  * (vezi `pullSharedChanges`). Al doilea apelant așteaptă rularea în curs.
  */
 export function syncSharedEntities(): Promise<void> {
+  // Import / restaurare în curs: un pull ar scrie peste rândurile pe care tocmai le
+  // inserează (sau le-a șters wipe-ul), iar un flush ar trimite ștergeri pentru
+  // documente lipsă temporar. Următorul sync (AppState active) recuperează.
+  if (isImportInProgress()) return Promise.resolve();
   if (syncInFlight) return syncInFlight;
   const run = runSyncSharedEntities().finally(() => {
     if (syncInFlight === run) syncInFlight = null;
   });
   syncInFlight = run;
   return run;
+}
+
+/** Așteaptă sync-ul în curs (dacă există), fără să-i propage eroarea. */
+export async function waitForShareSyncIdle(): Promise<void> {
+  if (syncInFlight) await syncInFlight.catch(() => {});
 }
 
 async function runSyncSharedEntities(): Promise<void> {
