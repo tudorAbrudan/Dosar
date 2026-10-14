@@ -135,7 +135,9 @@ iCloud Drive / Dosar /
 ├── manifest.json                    ← state-ul curent (suprascris)
 ├── manifest.meta.json               ← { version, hash, uploadedAt, deviceId, encrypted, encryption?: { salt, verify }, ... }
 ├── snapshots/
-│   └── manifest_YYYY-MM-DD.json
+│   ├── manifest_YYYY-MM-DD.json
+│   ├── meta_YYYY-MM-DD.json         ← meta-ul de la momentul snapshot-ului (salt + verificator)
+│   └── pre-shrink_<ts>.json + pre-shrink-meta_<ts>.json
 └── files/
     └── <uuid>.{jpg,pdf}             ← imutabile
 ```

@@ -256,6 +256,47 @@ describe('backup criptat — restaurare pe telefon nou', () => {
   });
 });
 
+describe('backup criptat — copiile din snapshots/ se pot deschide fără meta-ul curent', () => {
+  function snapshotFiles(prefix: string): string[] {
+    return [...cloudFiles.keys()].filter(k => k.startsWith(`Dosar/snapshots/${prefix}`));
+  }
+
+  it('snapshot-ul zilnic are lângă el meta-ul cu salt-ul și verificatorul', async () => {
+    await backupFromPhoneA('parola-buna');
+    const params = cloudMeta().encryption;
+
+    expect(await cloudSync.maybeSnapshot('daily', 3)).toBe(true);
+
+    const [metaCopy] = snapshotFiles('meta_');
+    expect(JSON.parse(cloudFiles.get(metaCopy) as string).encryption).toEqual(params);
+    expect(await cloudSync.listSnapshots()).toHaveLength(1);
+  });
+
+  it('copia pre-shrink rămâne decriptabilă după „Încep de la zero" pe un telefon nou', async () => {
+    await backupFromPhoneA('parola-buna');
+    await db.runAsync('INSERT INTO persons (id, name, created_at) VALUES (?, ?, ?)', [
+      'p-1',
+      'Ana',
+      TS,
+    ]);
+    expect(await cloudSync.uploadManifestIfChanged()).toBe(true);
+    const params = cloudMeta().encryption!;
+
+    // Telefon nou, backup pornit fără restaurare și fără criptare: manifest gol.
+    newPhone('device-B');
+    expect(await cloudSync.uploadManifestIfChanged()).toBe(true);
+    expect(cloudMeta().encryption).toBeUndefined();
+
+    const [copy] = snapshotFiles('pre-shrink_');
+    const [metaCopy] = snapshotFiles('pre-shrink-meta_');
+    const savedParams = JSON.parse(cloudFiles.get(metaCopy) as string).encryption;
+    expect(savedParams).toEqual(params);
+    const key = await crypto.unlockWithParams('parola-buna', savedParams);
+    const restored = JSON.parse(await crypto.decryptString(cloudFiles.get(copy) as string, key));
+    expect(restored.persons).toHaveLength(1);
+  });
+});
+
 describe('backup criptat — meta vechi, fără parametri', () => {
   async function stripEncryptionFromMeta(): Promise<void> {
     const { encryption: _drop, ...legacy } = cloudMeta();
