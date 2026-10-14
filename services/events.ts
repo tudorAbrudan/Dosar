@@ -17,7 +17,9 @@ export type AppEvent =
   | 'customTypes:changed'
   | 'settings:changed'
   | 'reminders:changed'
-  | 'sharing:changed';
+  | 'sharing:changed'
+  // O restaurare din iCloud s-a terminat (`useSharingSync` re-descarcă zonele primite).
+  | 'cloud:restored';
 
 const listeners: Record<AppEvent, Set<() => void>> = {
   'documents:changed': new Set(),
@@ -27,6 +29,7 @@ const listeners: Record<AppEvent, Set<() => void>> = {
   'settings:changed': new Set(),
   'reminders:changed': new Set(),
   'sharing:changed': new Set(),
+  'cloud:restored': new Set(),
 };
 
 const pending = new Set<AppEvent>();

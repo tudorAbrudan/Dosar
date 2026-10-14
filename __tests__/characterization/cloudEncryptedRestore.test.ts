@@ -35,6 +35,7 @@ let testDb: TestDb;
 let cloudSync: typeof import('@/services/cloudSync');
 let crypto: typeof import('@/services/cloudCrypto');
 let settings: typeof import('@/services/settings');
+let events: typeof import('@/services/events');
 let fs: {
   getInfoAsync: jest.Mock;
   readAsStringAsync: jest.Mock;
@@ -52,6 +53,7 @@ beforeAll(() => {
     cloudSync = require('@/services/cloudSync');
     crypto = require('@/services/cloudCrypto');
     settings = require('@/services/settings');
+    events = require('@/services/events');
     fs = require('expo-file-system/legacy');
     cloudFiles = require('@/services/cloudStorage').__files;
     resetSecureStore = require('expo-secure-store').__reset;
@@ -200,6 +202,29 @@ describe('backup criptat — restaurare pe telefon nou', () => {
     await expect(cloudSync.estimateRestoreSize()).rejects.toBeInstanceOf(
       crypto.PasswordRequiredError
     );
+  });
+
+  it('anunță restaurarea terminată (sync-ul de partajare re-descarcă zonele primite)', async () => {
+    await backupFromPhoneA('parola-buna');
+    newPhone('device-B');
+    const restored = jest.fn();
+    const off = events.on('cloud:restored', restored);
+    try {
+      await expect(cloudSync.restoreFromCloud()).rejects.toBeInstanceOf(
+        crypto.PasswordRequiredError
+      );
+      await Promise.resolve();
+      expect(restored).not.toHaveBeenCalled();
+
+      await cloudSync.restoreFromCloud(
+        undefined,
+        await cloudSync.unlockCloudBackupKey('parola-buna')
+      );
+      await Promise.resolve();
+      expect(restored).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
   });
 
   it('un backup necriptat oprește flag-ul local de criptare', async () => {
