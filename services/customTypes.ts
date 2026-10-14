@@ -1,6 +1,6 @@
 import { db, generateId } from './db';
 import { emit } from './events';
-import type { CustomDocumentType } from '@/types';
+import type { CreateRowOptions, CustomDocumentType } from '@/types';
 
 export async function getCustomTypes(): Promise<CustomDocumentType[]> {
   return db.getAllAsync<CustomDocumentType>(
@@ -8,8 +8,11 @@ export async function getCustomTypes(): Promise<CustomDocumentType[]> {
   );
 }
 
-export async function createCustomType(name: string): Promise<CustomDocumentType> {
-  const id = generateId();
+export async function createCustomType(
+  name: string,
+  opts: CreateRowOptions = {}
+): Promise<CustomDocumentType> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync('INSERT INTO custom_document_types (id, name, created_at) VALUES (?, ?, ?)', [
     id,

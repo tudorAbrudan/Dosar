@@ -4,7 +4,9 @@
  *
  * Rulează fluxul REAL: seed DB → export (buildManifestPayload, funcția de export
  * cloud) → wipe + applyManifest({ wipeFirst: true }) → aserțiuni că nimic nu se
- * pierde și că toate FK-urile arată spre ID-urile NOI (regenerate la restore).
+ * pierde și că rândurile își păstrează ID-urile ORIGINALE (P0 audit backup
+ * 2026-10-14): partajările CloudKit și linkurile din calendar rămân legate, iar
+ * entitățile cu același nume nu se mai contopesc.
  *
  * Acoperă problemele confirmate în review:
  *   1. Remap FK medicale (person_id, source_document_id, summary.document_id)
@@ -49,9 +51,9 @@ beforeAll(() => {
 });
 
 function resetSchema(): void {
-  const tables = testDb._raw
-    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
-    .all() as { name: string }[];
+  const tables = testDb._raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {
+    name: string;
+  }[];
   testDb._raw.pragma('foreign_keys = OFF');
   for (const t of tables) {
     if (t.name.startsWith('sqlite_')) continue;
@@ -67,8 +69,8 @@ function resetSchema(): void {
 
 beforeEach(resetSchema);
 
-// ID-uri „vechi" (de pe device-ul sursă). La restore cu wipe, entitățile primesc
-// ID-uri NOI — aserțiunile identifică rândurile după conținut, nu după ID.
+// ID-urile de pe device-ul sursă. Restaurarea cu înlocuire le păstrează; testele
+// mai vechi identifică rândurile după conținut, cele noi verifică și ID-ul.
 const P1 = 'old-person-1';
 const P2 = 'old-person-2';
 const V1 = 'old-vehicle-1';
@@ -85,7 +87,11 @@ async function seed(): Promise<void> {
   await db.runAsync('INSERT INTO persons (id, name, created_at) VALUES (?, ?, ?)', [P1, 'Ana', TS]);
   await db.runAsync('INSERT INTO persons (id, name, created_at) VALUES (?, ?, ?)', [P2, 'Bob', TS]);
   // Vehicul
-  await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [V1, 'Logan', TS]);
+  await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+    V1,
+    'Logan',
+    TS,
+  ]);
   // Dosar medical legat de Ana
   await db.runAsync(
     `INSERT INTO medical_record (id, person_id, name, encryption_key_ref, created_at, updated_at)
@@ -213,11 +219,12 @@ describe('restore round-trip — fidelity', () => {
     expect(med.private_notes).toBe('secret medical');
   });
 
-  it('dosarul medical e găsibil prin getMedicalRecordByPersonId pe NOUL person_id', async () => {
-    const newAna = testDb._raw.prepare('SELECT id FROM persons WHERE name = ?').get('Ana') as {
+  it('dosarul medical e găsibil prin getMedicalRecordByPersonId pe person_id-ul original', async () => {
+    const ana = testDb._raw.prepare('SELECT id FROM persons WHERE name = ?').get('Ana') as {
       id: string;
     };
-    const record = await getMedicalRecordByPersonId(newAna.id);
+    expect(ana.id).toBe(P1);
+    const record = await getMedicalRecordByPersonId(ana.id);
     expect(record).not.toBeNull();
     expect(record!.name).toBe('Dosar Ana');
   });
@@ -245,9 +252,9 @@ describe('restore round-trip — fidelity', () => {
 
   it('linkul document↔dosar medical e păstrat (document_entities restaurat)', async () => {
     const newMedDoc = docIdByType('analize_medicale')!;
-    const newRecord = testDb._raw
-      .prepare('SELECT id FROM medical_record LIMIT 1')
-      .get() as { id: string };
+    const newRecord = testDb._raw.prepare('SELECT id FROM medical_record LIMIT 1').get() as {
+      id: string;
+    };
     const links = await getDocumentEntityLinks(newMedDoc);
     const medLink = links.find(l => l.entityType === 'medical_record');
     expect(medLink).toBeDefined();
@@ -263,7 +270,9 @@ describe('restore round-trip — fidelity', () => {
 
   it('reminders: fără dubluri, fără orfani, dismissed_at păstrat, calendar_event_id NULL', () => {
     const allReminders = testDb._raw
-      .prepare('SELECT id, source_type, document_id, calendar_event_id, dismissed_at FROM reminders')
+      .prepare(
+        'SELECT id, source_type, document_id, calendar_event_id, dismissed_at FROM reminders'
+      )
       .all() as {
       id: string;
       source_type: string;
@@ -304,13 +313,101 @@ describe('restore round-trip — compatibilitate manifest vechi (fără document
     // Simulează un manifest generat de o versiune veche a app-ului.
     delete payload.documentEntities;
 
-    await expect(
-      applyManifest(payload, { wipeFirst: true })
-    ).resolves.toBeDefined();
+    await expect(applyManifest(payload, { wipeFirst: true })).resolves.toBeDefined();
 
     // Documentele se restaurează; linkul legacy (person pe analize) se reconstruiește.
     const newMedDoc = docIdByType('analize_medicale')!;
     const links = await getDocumentEntityLinks(newMedDoc);
     expect(links.some(l => l.entityType === 'person')).toBe(true);
+  });
+});
+
+describe('restaurarea păstrează entitățile distincte cu același nume', () => {
+  it('două vehicule „Dacia" rămân două, fiecare cu documentul lui', async () => {
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-dacia-a',
+      'Dacia',
+      TS,
+    ]);
+    await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
+      'v-dacia-b',
+      'Dacia',
+      TS,
+    ]);
+    for (const [docId, vehicleId] of [
+      ['d-rca-a', 'v-dacia-a'],
+      ['d-rca-b', 'v-dacia-b'],
+    ]) {
+      await db.runAsync(
+        `INSERT INTO documents (id, type, vehicle_id, note, created_at) VALUES (?, 'rca', ?, ?, ?)`,
+        [docId, vehicleId, docId, TS]
+      );
+      await db.runAsync(
+        'INSERT INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)',
+        [`de-${docId}`, docId, 'vehicle', vehicleId]
+      );
+    }
+    const payload = await buildManifestPayload();
+
+    await applyManifest(payload as unknown as Record<string, unknown>, { wipeFirst: true });
+
+    const vehicles = testDb._raw
+      .prepare('SELECT id FROM vehicles WHERE name = ? ORDER BY id')
+      .all('Dacia') as { id: string }[];
+    expect(vehicles.map(v => v.id)).toEqual(['v-dacia-a', 'v-dacia-b']);
+    const links = testDb._raw
+      .prepare(
+        `SELECT d.note AS note, de.entity_id AS vehicle FROM documents d
+         JOIN document_entities de ON de.document_id = d.id AND de.entity_type = 'vehicle'
+         ORDER BY d.note`
+      )
+      .all() as { note: string; vehicle: string }[];
+    expect(links).toEqual([
+      { note: 'd-rca-a', vehicle: 'v-dacia-a' },
+      { note: 'd-rca-b', vehicle: 'v-dacia-b' },
+    ]);
+  });
+
+  it('două tipuri personalizate cu același nume rămân două', async () => {
+    await db.runAsync('INSERT INTO custom_document_types (id, name, created_at) VALUES (?, ?, ?)', [
+      'ct-a',
+      'Garanție',
+      TS,
+    ]);
+    await db.runAsync('INSERT INTO custom_document_types (id, name, created_at) VALUES (?, ?, ?)', [
+      'ct-b',
+      'Garanție',
+      TS,
+    ]);
+    const payload = await buildManifestPayload();
+
+    await applyManifest(payload as unknown as Record<string, unknown>, { wipeFirst: true });
+
+    const types = testDb._raw.prepare('SELECT id FROM custom_document_types ORDER BY id').all() as {
+      id: string;
+    }[];
+    expect(types.map(t => t.id)).toEqual(['ct-a', 'ct-b']);
+  });
+
+  it('un ID duplicat în manifest păstrează doar prima apariție, fără să piardă rânduri', async () => {
+    const payload = {
+      version: 4,
+      persons: [
+        { id: 'p-dup', name: 'Ana', created_at: TS },
+        { id: 'p-dup', name: 'Bob', created_at: TS },
+        { name: 'Fără ID', created_at: TS },
+      ],
+    };
+
+    const result = await applyManifest(payload, { wipeFirst: true });
+
+    expect(result.errors).toEqual([]);
+    const persons = testDb._raw.prepare('SELECT id, name FROM persons ORDER BY name').all() as {
+      id: string;
+      name: string;
+    }[];
+    expect(persons).toHaveLength(3);
+    expect(persons.find(p => p.name === 'Ana')!.id).toBe('p-dup');
+    expect(persons.find(p => p.name === 'Bob')!.id).not.toBe('p-dup');
   });
 });

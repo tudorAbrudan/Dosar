@@ -1,5 +1,14 @@
 import { db, generateId } from './db';
-import type { Person, Property, Vehicle, Card, Animal, Company, EntityType } from '@/types';
+import type {
+  Person,
+  Property,
+  Vehicle,
+  Card,
+  Animal,
+  Company,
+  EntityType,
+  CreateRowOptions,
+} from '@/types';
 import * as FileSystem from 'expo-file-system/legacy';
 import { toFileUri } from './fileUtils';
 import { assignNextOrder, removeOrder } from './entityOrder';
@@ -113,9 +122,10 @@ export async function createPerson(
   name: string,
   phone?: string,
   email?: string,
-  date_of_birth?: string
+  date_of_birth?: string,
+  opts: CreateRowOptions = {}
 ): Promise<Person> {
-  const id = generateId();
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
     'INSERT INTO persons (id, name, phone, email, date_of_birth, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -127,8 +137,8 @@ export async function createPerson(
   return { id, name, phone, email, date_of_birth, createdAt: created_at };
 }
 
-export async function createProperty(name: string): Promise<Property> {
-  const id = generateId();
+export async function createProperty(name: string, opts: CreateRowOptions = {}): Promise<Property> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync('INSERT INTO properties (id, name, created_at) VALUES (?, ?, ?)', [
     id,
@@ -141,8 +151,8 @@ export async function createProperty(name: string): Promise<Property> {
   return { id, name, createdAt: created_at };
 }
 
-export async function createVehicle(name: string): Promise<Vehicle> {
-  const id = generateId();
+export async function createVehicle(name: string, opts: CreateRowOptions = {}): Promise<Vehicle> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync('INSERT INTO vehicles (id, name, created_at) VALUES (?, ?, ?)', [
     id,
@@ -155,8 +165,13 @@ export async function createVehicle(name: string): Promise<Vehicle> {
   return { id, name, createdAt: created_at };
 }
 
-export async function createCard(nickname: string, last4: string, expiry?: string): Promise<Card> {
-  const id = generateId();
+export async function createCard(
+  nickname: string,
+  last4: string,
+  expiry?: string,
+  opts: CreateRowOptions = {}
+): Promise<Card> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
     'INSERT INTO cards (id, nickname, last4, expiry, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -337,8 +352,12 @@ export async function getAnimals(): Promise<Animal[]> {
   return rows.map(r => ({ id: r.id, name: r.name, species: r.species, createdAt: r.created_at }));
 }
 
-export async function createAnimal(name: string, species: string): Promise<Animal> {
-  const id = generateId();
+export async function createAnimal(
+  name: string,
+  species: string,
+  opts: CreateRowOptions = {}
+): Promise<Animal> {
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync('INSERT INTO animals (id, name, species, created_at) VALUES (?, ?, ?, ?)', [
     id,
@@ -394,9 +413,10 @@ export async function getCompanies(): Promise<Company[]> {
 export async function createCompany(
   name: string,
   cui?: string,
-  reg_com?: string
+  reg_com?: string,
+  opts: CreateRowOptions = {}
 ): Promise<Company> {
-  const id = generateId();
+  const id = opts.id ?? generateId();
   const created_at = new Date().toISOString();
   await db.runAsync(
     'INSERT INTO companies (id, name, cui, reg_com, created_at) VALUES (?, ?, ?, ?, ?)',

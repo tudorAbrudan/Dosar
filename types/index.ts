@@ -877,6 +877,14 @@ export interface CloudSettings {
   ignoredCloudUploadedAt: number | null;
 }
 
+/**
+ * Opțiuni pentru funcțiile `create*` din servicii. `id` e folosit doar de restaurare
+ * (`applyManifest`), ca rândul să-și păstreze ID-ul din backup; UI-ul nu-l trimite.
+ */
+export interface CreateRowOptions {
+  id?: string;
+}
+
 /** Salt-ul PBKDF2 și verificatorul parolei (base64), aceleași ca în SecureStore. */
 export interface CloudEncryptionParams {
   salt: string;
