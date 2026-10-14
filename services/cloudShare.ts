@@ -14,7 +14,7 @@ import {
   parseFetchedRecords,
 } from './cloudShareMapping';
 import type { FetchedRecord, PushRecord } from './cloudShareMapping';
-import { isImportInProgress } from './backup';
+import { isImportInProgress, runShareSyncExclusive } from './importState';
 import { db } from './db';
 import { getDocumentById } from './documents';
 import { assignNextOrder } from './entityOrder';
@@ -818,8 +818,6 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
  * apoi trage schimbările — atât ca participant cât și, pentru share-urile
  * readwrite, ca owner. Fără cont iCloud (simulator, delogat) → no-op liniștit.
  */
-let syncInFlight: Promise<void> | null = null;
-
 /**
  * Serializează sincronizările. `useSharingSync` (mount + AppState → active +
  * silent push) și ecranul Partajare (`useSharing`) pornesc fiecare propriul
@@ -832,17 +830,7 @@ export function syncSharedEntities(): Promise<void> {
   // inserează (sau le-a șters wipe-ul), iar un flush ar trimite ștergeri pentru
   // documente lipsă temporar. Următorul sync (AppState active) recuperează.
   if (isImportInProgress()) return Promise.resolve();
-  if (syncInFlight) return syncInFlight;
-  const run = runSyncSharedEntities().finally(() => {
-    if (syncInFlight === run) syncInFlight = null;
-  });
-  syncInFlight = run;
-  return run;
-}
-
-/** Așteaptă sync-ul în curs (dacă există), fără să-i propage eroarea. */
-export async function waitForShareSyncIdle(): Promise<void> {
-  if (syncInFlight) await syncInFlight.catch(() => {});
+  return runShareSyncExclusive(runSyncSharedEntities);
 }
 
 async function runSyncSharedEntities(): Promise<void> {

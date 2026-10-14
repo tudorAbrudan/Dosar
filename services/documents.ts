@@ -5,7 +5,7 @@ import { computeFileHash } from './fileHash';
 import { onDocumentCreated, onDocumentRenewed } from './reviewPrompt';
 import * as cloudSync from './cloudSync';
 import { getCloudBackupEnabled } from './settings';
-import { isImportInProgress, isRestoreInProgress } from './backup';
+import { isImportInProgress, isRestoreInProgress } from './importState';
 import type { SharePushOp } from './sharing';
 import { deleteCalendarEvent } from './calendar';
 import { emit } from './events';

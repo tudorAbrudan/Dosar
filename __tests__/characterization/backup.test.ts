@@ -22,7 +22,7 @@ import type { TestDb } from '../helpers/testDb';
 let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let applyManifest: typeof import('@/services/backup').applyManifest;
-let isImportInProgress: typeof import('@/services/backup').isImportInProgress;
+let isImportInProgress: typeof import('@/services/importState').isImportInProgress;
 let deleteAllUserData: typeof import('@/services/backup').deleteAllUserData;
 let estimateBackupSizeBytes: typeof import('@/services/backup').estimateBackupSizeBytes;
 let getDocuments: typeof import('@/services/documents').getDocuments;
@@ -36,7 +36,7 @@ beforeAll(() => {
     testDb = db as unknown as TestDb;
     const backup = require('@/services/backup');
     applyManifest = backup.applyManifest;
-    isImportInProgress = backup.isImportInProgress;
+    isImportInProgress = require('@/services/importState').isImportInProgress;
     deleteAllUserData = backup.deleteAllUserData;
     estimateBackupSizeBytes = backup.estimateBackupSizeBytes;
     const documents = require('@/services/documents');

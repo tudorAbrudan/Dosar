@@ -65,6 +65,8 @@ const ENTRIES = {
     reminders: { required: true, keywords: ['remindere', 'expirări', 'reminder', 'expirari'] },
     // Helper intern al restaurării (ID-urile păstrate din backup).
     restoreIds: { required: false },
+    // Flag-uri de import în curs + coordonare cu sync-ul de partajare (modul frunză).
+    importState: { required: false },
     settings: { required: true, keywords: ['setări'] },
     shareIntentIngest: { required: true, keywords: ['Share', 'altă aplicație'] },
     sharing: { required: false },

@@ -23,7 +23,7 @@ import {
 } from '@/services/settings';
 import { isSessionUnlocked } from '@/services/cloudCrypto';
 import { deriveCloudStatus } from '@/services/cloud/status';
-import { isImportInProgress } from '@/services/backup';
+import { isImportInProgress } from '@/services/importState';
 import type { CloudStatus } from '@/types';
 
 interface State {

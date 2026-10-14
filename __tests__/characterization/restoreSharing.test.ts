@@ -43,6 +43,7 @@ let db: typeof import('@/services/db').db;
 let testDb: TestDb;
 let backup: typeof import('@/services/backup');
 let cloudShare: typeof import('@/services/cloudShare');
+let importState: typeof import('@/services/importState');
 let sharing: typeof import('@/services/sharing');
 
 beforeAll(() => {
@@ -52,6 +53,7 @@ beforeAll(() => {
     testDb = db as unknown as TestDb;
     backup = require('@/services/backup');
     cloudShare = require('@/services/cloudShare');
+    importState = require('@/services/importState');
     sharing = require('@/services/sharing');
   });
 });
@@ -89,11 +91,11 @@ describe('restaurare și partajare', () => {
   it('flag-ul de restaurare e activ doar în timpul restaurării cu înlocuire', async () => {
     const seen: boolean[] = [];
     mockOnRestoreSuccess.mockImplementation(async () => {
-      seen.push(backup.isRestoreInProgress());
+      seen.push(importState.isRestoreInProgress());
     });
 
     await backup.applyManifest(PAYLOAD, { wipeFirst: true });
-    expect(backup.isRestoreInProgress()).toBe(false);
+    expect(importState.isRestoreInProgress()).toBe(false);
     await backup.applyManifest(PAYLOAD);
 
     // [restaurare, import aditiv]: doar restaurarea oprește push-urile spre zone.

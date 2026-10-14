@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { db } from './db';
 import * as cloudStorage from './cloudStorage';
 import { applyManifest } from './backup';
-import { syncSharedEntities } from './cloudShare';
+import { isRestoreInProgress } from './importState';
 import { buildCanonicalManifest, hashManifestAsync } from './manifestHash';
 import * as entities from './entities';
 import * as docs from './documents';
@@ -1390,12 +1390,18 @@ export async function restoreFromCloud(
 
   // Zonele primite au pierdut token-ul la restaurare (resetShareStateAfterWipe): le
   // re-descărcăm acum, nu abia la următoarea revenire în aplicație. Best-effort.
-  syncSharedEntities().catch(e => {
-    console.warn(
-      '[cloudSync.restore] share sync after restore failed:',
-      e instanceof Error ? e.message : e
-    );
-  });
+  // Import dinamic (ca hook-urile din entities/documents): static ar închide ciclul
+  // cloudSync → cloudShare → documents → cloudSync.
+  if (!isRestoreInProgress()) {
+    void import('./cloudShare')
+      .then(m => m.syncSharedEntities())
+      .catch(e => {
+        console.warn(
+          '[cloudSync.restore] share sync after restore failed:',
+          e instanceof Error ? e.message : e
+        );
+      });
+  }
 
   return {
     documentCount: asArray(payload.documents).length,
