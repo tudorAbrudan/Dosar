@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, ScrollView, StyleSheet, Platform, Linking, Alert, Modal } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,7 +11,8 @@ import { OnboardingFooter } from '@/components/onboarding/OnboardingFooter';
 import { AiStep } from '@/components/onboarding/AiStep';
 import { AppearanceStep } from '@/components/onboarding/AppearanceStep';
 import { BackupStep } from '@/components/onboarding/BackupStep';
-import { CloudBackupStep } from '@/components/onboarding/CloudBackupStep';
+import { CloudBackupStep, type CloudCheckStatus } from '@/components/onboarding/CloudBackupStep';
+import { CloudPasswordModal } from '@/components/CloudPasswordModal';
 import { DocsStep } from '@/components/onboarding/DocsStep';
 import { EntitiesStep } from '@/components/onboarding/EntitiesStep';
 import { MedicalAiStep } from '@/components/onboarding/MedicalAiStep';
@@ -140,15 +141,14 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const [aiExternalModel, setAiExternalModel] = useState('');
   const [aiConsentChecked, setAiConsentChecked] = useState(false);
 
-  type CloudCheck =
-    | { status: 'checking' }
-    | { status: 'available'; meta: { count: number; date: string } | null }
-    | { status: 'unavailable' };
-
-  const [cloudCheck, setCloudCheck] = useState<CloudCheck>({ status: 'checking' });
+  const [cloudCheck, setCloudCheck] = useState<CloudCheckStatus>({ status: 'checking' });
   const [cloudOptIn, setCloudOptIn] = useState(true);
   const [cloudRestoring, setCloudRestoring] = useState(false);
   const [cloudRestoreProgress, setCloudRestoreProgress] = useState<RestoreProgress | null>(null);
+  // Backup criptat: parola se cere înainte de restaurare. Cheia verificată așteaptă
+  // aici până dispare modalul de parolă, apoi pornește restaurarea (alt <Modal>).
+  const [cloudPasswordVisible, setCloudPasswordVisible] = useState(false);
+  const restoreKeyAfterPasswordRef = useRef<Uint8Array | null>(null);
 
   // Lista de pași activi (VEHICLE_MGMT apare doar dacă utilizatorul a ales vehicul).
   const activeSteps: number[] = [
@@ -199,6 +199,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
             ? {
                 count: meta.documentCount,
                 date: new Date(meta.uploadedAt).toLocaleDateString('ro-RO'),
+                encrypted: meta.encrypted,
               }
             : null,
         });
@@ -274,7 +275,33 @@ export default function OnboardingWizard({ onComplete }: Props) {
     gotoNextActive();
   }
 
-  async function handleCloudRestore() {
+  function requestCloudRestore() {
+    if (cloudCheck.status !== 'available' || !cloudCheck.meta) return;
+    if (cloudCheck.meta.encrypted) {
+      setCloudPasswordVisible(true);
+      return;
+    }
+    void handleCloudRestore();
+  }
+
+  async function handleCloudPasswordSubmit(password: string) {
+    // Verificată cu parametrii din meta-ul iCloud — pe un telefon nou nu există setup local.
+    restoreKeyAfterPasswordRef.current = await cloudSync.unlockCloudBackupKey(password);
+    setCloudPasswordVisible(false);
+  }
+
+  function handleCloudPasswordCancel() {
+    restoreKeyAfterPasswordRef.current = null;
+    setCloudPasswordVisible(false);
+  }
+
+  function handleCloudPasswordDismissed() {
+    const key = restoreKeyAfterPasswordRef.current;
+    restoreKeyAfterPasswordRef.current = null;
+    if (key) void handleCloudRestore(key);
+  }
+
+  async function handleCloudRestore(key?: Uint8Array) {
     if (cloudCheck.status !== 'available' || !cloudCheck.meta) return;
     setCloudRestoring(true);
     setCloudRestoreProgress({
@@ -286,7 +313,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
     });
     try {
       await settings.setCloudBackupEnabled(true);
-      await cloudSync.restoreFromCloud(p => setCloudRestoreProgress(p));
+      await cloudSync.restoreFromCloud(p => setCloudRestoreProgress(p), key);
       setCloudRestoring(false);
       setCloudRestoreProgress(null);
       gotoNextActive();
@@ -461,7 +488,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
             cloudOptIn={cloudOptIn}
             cloudRestoring={cloudRestoring}
             onChangeOptIn={setCloudOptIn}
-            onRestore={() => void handleCloudRestore()}
+            onRestore={requestCloudRestore}
           />
         )}
 
@@ -519,6 +546,14 @@ export default function OnboardingWizard({ onComplete }: Props) {
         onDismiss={() => setPinModalVisible(false)}
         showSuccessAlert={false}
         onPinSaved={() => setLockEnabled(true)}
+      />
+
+      <CloudPasswordModal
+        visible={cloudPasswordVisible}
+        mode="unlock"
+        onSubmit={handleCloudPasswordSubmit}
+        onCancel={handleCloudPasswordCancel}
+        onDismissed={handleCloudPasswordDismissed}
       />
 
       <Modal visible={cloudRestoring} transparent animationType="fade">
