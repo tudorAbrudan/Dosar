@@ -33,6 +33,7 @@ let seed: ReturnType<typeof shareSeed>;
 let cloudShare: typeof import('@/services/cloudShare');
 let shareClosing: typeof import('@/services/shareClosing');
 let importState: typeof import('@/services/importState');
+let sharing: typeof import('@/services/sharing');
 
 beforeAll(() => {
   jest.resetModules();
@@ -43,6 +44,7 @@ beforeAll(() => {
     cloudShare = require('@/services/cloudShare');
     shareClosing = require('@/services/shareClosing');
     importState = require('@/services/importState');
+    sharing = require('@/services/sharing');
   });
 });
 
@@ -199,5 +201,139 @@ describe('owner — confirmările participanților', () => {
 
     expect(mockNative.fetchShareParticipants).not.toHaveBeenCalled();
     expect(seed.shareRow(ZONE).revoked_at).toBeNull();
+  });
+});
+
+describe('owner — „Revocă" și „Șterge doar la mine"', () => {
+  const STOP_RECORD = {
+    recordName: 'veh-1',
+    recordType: 'vehicle',
+    fields: { share_state: 'stopped' },
+    mustExist: true,
+  };
+
+  function seedActiveShare(): void {
+    seed.insertVehicle('veh-1');
+    seed.insertShare({ zoneName: ZONE, entityId: 'veh-1', role: 'owner' });
+    seed.insertCloudRecord(ZONE, 'veh-1', 'vehicle');
+    // O editare a owner-ului încă netrimisă: nu mai pleacă după oprire.
+    seed.insertPendingPush(ZONE, 'veh-1', 'upsert', 'entity');
+  }
+
+  it('trimite doar semnalul pe rădăcină, lasă zona deschisă și o închide când ies toți', async () => {
+    seedActiveShare();
+    mockNative.pushRecords.mockResolvedValue({ succeeded: { 'veh-1': 'tag-2' }, failed: {} });
+
+    await cloudShare.revokeEntityShare('vehicle', 'veh-1');
+    await importState.waitForShareSyncIdle();
+
+    expect(mockNative.pushRecords).toHaveBeenCalledTimes(1);
+    expect(mockNative.pushRecords.mock.calls[0][0]).toEqual({
+      zoneName: ZONE,
+      scope: 'private',
+      records: [STOP_RECORD],
+      deletions: [],
+    });
+    const row = seed.shareRow(ZONE);
+    expect(row.stop_requested_at).not.toBeNull();
+    expect(row.stop_sent_at).not.toBeNull();
+    expect(row.revoked_at).toBeNull();
+    expect(seed.pendingPushes(ZONE)).toHaveLength(0);
+    expect(await sharing.getShareForEntity('vehicle', 'veh-1')).toBeNull();
+    expect(seed.exists('vehicles', 'veh-1')).toBe(true);
+    expect(mockNative.deleteZone).not.toHaveBeenCalled();
+    const [closing] = await shareClosing.getClosingShares();
+    expect(shareClosing.shareCloseKind(closing)).toBe('stop');
+
+    await cloudShare.syncSharedEntities();
+    expect(closingParticipants()).toEqual([{ id: 'user-ana', name: null, confirmedAt: null }]);
+    expect(mockNative.pushRecords).toHaveBeenCalledTimes(1); // semnalul nu se retrimite
+
+    mockNative.fetchShareParticipants.mockResolvedValue([]);
+    await cloudShare.syncSharedEntities();
+    expect(mockNative.deleteZone).toHaveBeenCalledWith(ZONE);
+    expect(seed.shareRow(ZONE).revoked_at).not.toBeNull();
+  });
+
+  it('„Șterge doar la mine": entitatea dispare local, partajarea trece prin aceeași oprire', async () => {
+    seedActiveShare();
+    mockNative.pushRecords.mockResolvedValue({ succeeded: { 'veh-1': 'tag-2' }, failed: {} });
+
+    // Ce face `deleteVehicle`: șterge rândul, apoi anunță partajarea (prin import
+    // dinamic, care în test ar încărca altă instanță a modulului).
+    seed.run('DELETE FROM vehicles WHERE id = ?', 'veh-1');
+    await cloudShare.afterEntityMutation('vehicle', 'veh-1', 'delete');
+    await importState.waitForShareSyncIdle();
+
+    expect(seed.exists('vehicles', 'veh-1')).toBe(false);
+    expect(mockNative.pushRecords.mock.calls[0][0].records).toEqual([STOP_RECORD]);
+    expect(seed.shareRow(ZONE).stop_sent_at).not.toBeNull();
+    expect(mockNative.deleteZone).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'schema din Production fără câmp',
+      "Cannot create or modify field 'share_state' in record 'vehicle' in production schema",
+    ],
+    ['rădăcina lipsă pe server', 'record-missing'],
+  ])('semnalul imposibil de trimis (%s) închide imediat', async (_label, error) => {
+    seedActiveShare();
+    mockNative.pushRecords.mockResolvedValue({ succeeded: {}, failed: { 'veh-1': error } });
+
+    await cloudShare.revokeEntityShare('vehicle', 'veh-1');
+    await importState.waitForShareSyncIdle();
+
+    expect(mockNative.deleteZone).toHaveBeenCalledWith(ZONE);
+    expect(seed.shareRow(ZONE).revoked_at).not.toBeNull();
+  });
+
+  it('offline: semnalul rămâne de trimis și pleacă la sync-ul următor', async () => {
+    seedActiveShare();
+    mockNative.pushRecords.mockRejectedValueOnce(new Error('network offline'));
+
+    await cloudShare.revokeEntityShare('vehicle', 'veh-1');
+    await importState.waitForShareSyncIdle();
+
+    let row = seed.shareRow(ZONE);
+    expect(row.stop_sent_at).toBeNull();
+    expect(row.last_sync_error).toContain('offline');
+    expect(mockNative.deleteZone).not.toHaveBeenCalled();
+
+    mockNative.pushRecords.mockResolvedValue({ succeeded: { 'veh-1': 'tag-2' }, failed: {} });
+    await cloudShare.syncSharedEntities();
+
+    row = seed.shareRow(ZONE);
+    expect(row.stop_sent_at).not.toBeNull();
+    expect(mockNative.pushRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ records: [STOP_RECORD] })
+    );
+  });
+
+  it('repartajarea unei entități oprite închide întâi zona veche și pornește curat', async () => {
+    const now = new Date().toISOString();
+    seed.insertVehicle('veh-1');
+    seed.insertShare({
+      zoneName: ZONE,
+      entityId: 'veh-1',
+      role: 'owner',
+      stopRequestedAt: now,
+      stopSentAt: now,
+      closingParticipants: '[]',
+    });
+    mockNative.createSharedZone.mockResolvedValue({ zoneName: ZONE });
+    mockNative.pushRecords.mockResolvedValue({ succeeded: { 'veh-1': 'tag-1' }, failed: {} });
+    mockNative.shareZone.mockResolvedValue({ shareURL: 'https://www.icloud.com/share/y' });
+
+    await cloudShare.shareEntity('vehicle', 'veh-1');
+
+    expect(mockNative.deleteZone.mock.invocationCallOrder[0]).toBeLessThan(
+      mockNative.createSharedZone.mock.invocationCallOrder[0]
+    );
+    const row = seed.shareRow(ZONE);
+    expect(row.stop_requested_at).toBeNull();
+    expect(row.stop_sent_at).toBeNull();
+    expect(row.closing_participants).toBeNull();
+    expect(await sharing.getShareForEntity('vehicle', 'veh-1')).not.toBeNull();
   });
 });

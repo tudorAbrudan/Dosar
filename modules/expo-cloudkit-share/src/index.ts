@@ -290,13 +290,7 @@ export function subscribeDatabase(
   return NativeModule.subscribeDatabase(options);
 }
 
-/** Owner: șterge share-ul zonei (revocare forward-only). */
-export function stopSharing(zoneName: string): Promise<{ revoked: boolean }> {
-  if (!zoneName) throw new Error('stopSharing: zoneName obligatoriu');
-  return NativeModule.stopSharing(zoneName);
-}
-
-/** Owner: șterge zona cu tot conținutul ei (închiderea după „Șterge și la ei"). */
+/** Owner: șterge zona cu tot conținutul ei (închiderea unei partajări șterse sau oprite). */
 export function deleteZone(zoneName: string): Promise<{ deleted: boolean }> {
   if (!zoneName) throw new Error('deleteZone: zoneName obligatoriu');
   return NativeModule.deleteZone(zoneName);

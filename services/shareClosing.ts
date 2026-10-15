@@ -11,6 +11,7 @@
  */
 import type { ShareParticipant } from '@/modules/expo-cloudkit-share/src';
 import { isZoneGoneError, native } from './cloudKitNative';
+import { stopSignalRecord } from './cloudShareMapping';
 import { emit } from './events';
 import { db } from './db';
 import {
@@ -137,6 +138,79 @@ export async function closeShareZone(zoneName: string): Promise<void> {
   await deleteSharePushesForZone(zoneName);
   await deleteCloudRecordsForZone(zoneName);
   await revokeShare(zoneName);
+}
+
+/**
+ * Owner, „Revocă" sau ștergerea locală a entității („Șterge doar la mine"): partajarea
+ * nu mai e activă (nimic nu mai pleacă spre zonă), iar semnalul de oprire pleacă la
+ * `sendStopSignals`. Ce era în coadă pentru zonă se abandonează.
+ */
+export async function requestShareStop(zoneName: string): Promise<void> {
+  await db.runAsync(
+    `UPDATE shared_entities SET stop_requested_at = COALESCE(stop_requested_at, ?)
+     WHERE zone_name = ? AND role = 'owner'`,
+    [new Date().toISOString(), zoneName]
+  );
+  await deleteSharePushesForZone(zoneName);
+  emit('sharing:changed');
+}
+
+async function markShareStopSent(zoneName: string): Promise<void> {
+  await db.runAsync(
+    'UPDATE shared_entities SET stop_sent_at = COALESCE(stop_sent_at, ?) WHERE zone_name = ?',
+    [new Date().toISOString(), zoneName]
+  );
+  emit('sharing:changed');
+}
+
+const STOP_UNSENT_SQL =
+  "role = 'owner' AND revoked_at IS NULL AND stop_requested_at IS NOT NULL AND stop_sent_at IS NULL";
+
+/** Semnalul nu poate pleca niciodată: rădăcina lipsește, zona lipsește sau schema din Production n-are câmpul. */
+function isPermanentStopFailure(message: string): boolean {
+  return (
+    message === 'record-missing' ||
+    isZoneGoneError(message) ||
+    /production schema|cannot create/i.test(message)
+  );
+}
+
+/**
+ * Owner: trimite `share_state = 'stopped'` pe rădăcina fiecărei partajări oprite.
+ * Doar actualizare: nativul aplică câmpul peste recordul de pe server, deci merge și
+ * cu entitatea ștearsă local. Reușit → de aici curg confirmările și termenul.
+ * Imposibil de trimis → închidere imediată, ca înainte de confirmări (participanții
+ * păstrează copia, fără mesaj). Eroare de rețea → reîncercat la sync-ul următor.
+ */
+export async function sendStopSignals(): Promise<void> {
+  for (const share of await selectShares(STOP_UNSENT_SQL)) {
+    try {
+      await sendStopSignal(share);
+    } catch (e) {
+      await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+    }
+  }
+}
+
+async function sendStopSignal(share: SharedEntity): Promise<void> {
+  let error: string;
+  try {
+    const { succeeded, failed } = await native().pushRecords({
+      zoneName: share.zone_name,
+      scope: 'private',
+      records: [stopSignalRecord(share.entity_type, share.entity_id)],
+      deletions: [],
+    });
+    if (succeeded[share.entity_id]) {
+      await markShareStopSent(share.zone_name);
+      return;
+    }
+    error = failed[share.entity_id] ?? 'Semnalul de oprire nu a plecat.';
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  if (isPermanentStopFailure(error)) await closeShareZone(share.zone_name);
+  else await markZoneSyncError(share.zone_name, error);
 }
 
 /** Termenul a expirat sau au confirmat toți (inclusiv: nu mai are nimeni acces). */

@@ -61,6 +61,31 @@ export const PAGE_FILE_KEY = 'file';
 export const PAGE_RECORD_TYPE = 'document_page';
 
 /**
+ * Semnalul „owner-ul a oprit partajarea", pus pe recordul-rădăcină al zonei. Câmp
+ * String pe toate cele 5 tipuri de entitate: trebuie creat în Development și
+ * publicat în Production ÎNAINTE de release (altfel push-ul semnalului e respins și
+ * oprirea cade pe închiderea imediată). Build-urile vechi îl ignoră: rădăcina se
+ * aplică doar prin `ENTITY_SYNC_FIELDS`.
+ */
+export const SHARE_STATE_FIELD = 'share_state';
+export const SHARE_STATE_STOPPED = 'stopped';
+
+/** Actualizarea rădăcinii care poartă doar semnalul de oprire (fără creare). */
+export function stopSignalRecord(entityType: string, entityId: string): PushRecord {
+  return {
+    recordName: entityId,
+    recordType: entityType,
+    fields: { [SHARE_STATE_FIELD]: SHARE_STATE_STOPPED },
+    mustExist: true,
+  };
+}
+
+/** Rădăcina primită poartă semnalul de oprire. */
+export function isStoppedRoot(fields: Record<string, string>): boolean {
+  return fields[SHARE_STATE_FIELD] === SHARE_STATE_STOPPED;
+}
+
+/**
  * Numele CloudKit al recordului unei pagini: `<documentId>__p__<pageId>`.
  * Prefixul permite găsirea paginilor unui document în `cloud_records` fără să
  * mai avem rândul local (necesar ca să ștergem de pe server paginile eliminate

@@ -67,6 +67,8 @@ import {
   leaveZone,
   processOwnerDeletions,
   refreshClosingShares,
+  requestShareStop,
+  sendStopSignals,
 } from './shareClosing';
 import { isZoneGoneError, native } from './cloudKitNative';
 import type {
@@ -280,20 +282,21 @@ async function pageDeletionsFor(
   return known.map(r => r.record_name).filter(name => !desiredRecordNames.has(name));
 }
 
-/** Owner: revocă accesul (forward-only). */
+/**
+ * Owner: oprește partajarea — „Revocă" și ștergerea locală a entității („Șterge doar
+ * la mine"). Nu se mai trimite nimic spre zonă; participanții primesc semnalul la
+ * sync („copia rămâne la tine"), iar partajarea se închide când au ieșit toți
+ * (`shareClosing.ts`). No-op dacă nu sunt owner-ul.
+ */
 export async function revokeEntityShare(entityType: EntityType, entityId: string): Promise<void> {
   const share = await getShareForEntity(entityType, entityId);
-  if (!share) return;
-  try {
-    await native().stopSharing(share.zone_name);
-  } catch (e) {
-    // Zona poate lipsi pe server: partajarea a fost creată într-un build dev
-    // (mediu Development) dar rulăm acum în Production, sau a fost deja ștearsă.
-    // Scopul revocării e local — marcăm entitatea ca nepartajată indiferent, ca
-    // userul să nu rămână blocat cu un rând „Revocă" imposibil de curățat.
-    if (!isZoneGoneError(e)) throw e;
-  }
-  await revokeShare(share.zone_name);
+  if (!share || share.role !== 'owner') return;
+  await requestShareStop(share.zone_name);
+  void trackShareWork(
+    sendStopSignals().catch(e => {
+      console.warn('[cloudShare] semnalul de oprire eșuat:', e instanceof Error ? e.message : e);
+    })
+  );
 }
 
 /**
@@ -589,8 +592,8 @@ export async function pushLocalChange(
     if (!share) return; // nu-i partajată de mine — no-op adevărat
     if (share.role === 'owner') {
       if (op === 'delete') {
-        // Ștergerea entității-rădăcină = revocă share-ul, nu push de delete brut
-        // pe zone-root (zona ar rămâne partajată dar goală).
+        // Ștergerea entității-rădăcină („Șterge doar la mine") = oprește partajarea,
+        // nu push de delete brut pe rădăcină: acela e semnalul „Șterge și la ei".
         await revokeEntityShare(entityType, localId);
         return;
       }
@@ -898,6 +901,7 @@ async function runSyncSharedEntities(): Promise<void> {
   }
 
   await flushSharePushes();
+  await sendStopSignals();
   await refreshClosingShares();
   await pullSharedChanges();
   await pullOwnedChanges();
