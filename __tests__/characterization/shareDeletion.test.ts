@@ -485,3 +485,13 @@ describe('participant — owner-ul a șters entitatea', () => {
     expect(exists('vehicles', 'veh-2')).toBe(true);
   });
 });
+
+describe('friendlyCloudKitMessage', () => {
+  it('telefonul fără cont iCloud primește mesajul în română, nu eroarea CloudKit brută', () => {
+    expect(
+      cloudShare.friendlyCloudKitMessage(
+        new Error('This request requires an authenticated account')
+      )
+    ).toBe('Conectează-te la iCloud pentru a partaja.');
+  });
+});

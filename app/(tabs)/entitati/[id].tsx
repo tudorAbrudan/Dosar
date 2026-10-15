@@ -272,11 +272,9 @@ export default function EntityDetailScreen() {
         `Documentele legate rămân la tine.\n\n„${entityName}" e partajată. „Șterge și la ei" o scoate și de pe telefoanele celorlalți, împreună cu documentele primite prin ea.`,
         [
           { text: 'Anulează', style: 'cancel' },
-          {
-            text: 'Șterge doar la mine',
-            style: 'destructive',
-            onPress: () => void runDelete(share, false),
-          },
+          // Pe iOS, RN colorează roșu un singur buton `destructive` (ultimul):
+          // cel care șterge și la ceilalți.
+          { text: 'Șterge doar la mine', onPress: () => void runDelete(share, false) },
           {
             text: 'Șterge și la ei',
             style: 'destructive',

@@ -53,17 +53,18 @@ export function TeardownSharesCard({ shares, onCloseNow }: Props) {
                 <Text style={[styles.rowSub, { color: palette.textSecondary }]}>
                   {ENTITY_TYPE_LABELS[s.entity_type]} • {teardownStatus(s)}
                 </Text>
+                {/* Sub text, nu lângă: la mărimi mari de text rândul ar rămâne fără loc. */}
+                <TouchableOpacity
+                  onPress={() => onCloseNow(s, name)}
+                  style={styles.action}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Oprește acum partajarea ${name}`}
+                >
+                  <Text style={[styles.actionText, { color: statusColors.critical }]}>
+                    Oprește acum
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={() => onCloseNow(s, name)}
-                style={styles.action}
-                accessibilityRole="button"
-                accessibilityLabel={`Oprește acum partajarea ${name}`}
-              >
-                <Text style={[styles.actionText, { color: statusColors.critical }]}>
-                  Oprește acum
-                </Text>
-              </TouchableOpacity>
             </View>
           );
         })}
@@ -80,12 +81,12 @@ export function TeardownSharesCard({ shares, onCloseNow }: Props) {
 const styles = StyleSheet.create({
   section: { fontSize: 12, fontWeight: '600', marginTop: 16, marginBottom: 6, marginLeft: 4 },
   card: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, gap: 12 },
   emoji: { fontSize: 22 },
   rowText: { flex: 1 },
   rowName: { fontSize: 15, fontWeight: '500' },
   rowSub: { fontSize: 12, marginTop: 2 },
-  action: { paddingHorizontal: 10, paddingVertical: 6 },
+  action: { alignSelf: 'flex-start', paddingVertical: 8 },
   actionText: { fontSize: 14, fontWeight: '600' },
   hint: { fontSize: 13, marginTop: 8, lineHeight: 18 },
 });

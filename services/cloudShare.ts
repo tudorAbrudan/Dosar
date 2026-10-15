@@ -416,7 +416,12 @@ export function friendlyCloudKitMessage(e: unknown): string {
   if (/production schema|cannot create new type/i.test(msg)) {
     return 'Partajarea nu e încă activată pe server. Schema CloudKit trebuie publicată în Production (Deploy Schema to Production).';
   }
-  if (/not authenticated|notauthenticated|no account|account.*not available/i.test(msg)) {
+  // „This request requires an authenticated account" = telefon fără cont iCloud.
+  if (
+    /not authenticated|notauthenticated|authenticated account|no account|account.*not available/i.test(
+      msg
+    )
+  ) {
     return 'Conectează-te la iCloud pentru a partaja.';
   }
   if (/network|connection|offline|internet/i.test(msg)) {
