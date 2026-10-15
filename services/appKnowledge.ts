@@ -205,6 +205,15 @@ Pentru task-urile cu prag pe luni, utilizatorul poate activa toggle-ul „Adaug�
     body: `În dosarul unei entități (persoană, vehicul, proprietate, card, animal, firmă) poți alege ordinea în care apar documentele. Navigare: Entități → deschide entitatea → secțiunea „Documente legate" → „Ordonează" → ține apăsat pe un document și trage-l în noua poziție → „Salvează". Ordinea e personală pe fiecare entitate (același document poate avea poziții diferite în entități diferite) și se păstrează în backup. Documentele adăugate ulterior apar primele. Butonul „Ordonează" apare doar când sunt cel puțin 2 documente și entitatea nu e partajată doar pentru citire.`,
   },
   {
+    title: `Partajarea entităților cu familia`,
+    keywords: ['partaj', 'famili', 'revoc', 'renunt', 'si la ei'],
+    body: `O persoană, un vehicul, o proprietate, un animal sau o firmă se pot partaja cu altcineva prin iCloud (fără server al nostru). Documentele medicale, notele private și cardurile nu se partajează. Navigare: Setări → „Partajare (Beta)" → „Partajare entități" → „Partajează" lângă entitate → „Doar citire" sau „Poate edita" → trimiți linkul. Cine primește linkul îl deschide sau îl lipește la „+ Am un link". „Revocă" oprește partajarea: ceilalți păstrează ce au primit deja, dar nu mai primesc actualizări. „Renunță" (pe o entitate primită) te scoate din partajare.
+
+**Ștergerea unei entități partajate:** aplicația întreabă ce se întâmplă cu copia celorlalți.
+- „Șterge doar la mine": partajarea se oprește, ceilalți își păstrează copia.
+- „Șterge și la ei": entitatea dispare și de pe telefoanele lor, împreună cu documentele primite prin ea (un document legat și de altă entitate de-a lor rămâne). Documentele tale rămân la tine. Partajarea mai stă deschisă 30 de zile, ca ștergerea să ajungă și la cine e offline, apoi se închide singură; până atunci apare în Partajare la „Se șterg la ceilalți", cu „Oprește acum". Cine n-a deschis aplicația până la închidere își păstrează copia. Cei care primesc ștergerea văd un mesaj la deschiderea aplicației.`,
+  },
+  {
     title: `Backup automat în iCloud`,
     keywords: ['backup', 'icloud', 'restaur', 'salvez', 'copie', 'sincroniz', 'export'],
     body: `Aplicația poate salva automat copii ale documentelor în iCloud Drive-ul personal al utilizatorului (folderul „Dosar" vizibil și în Files app). Datele sunt în iCloud-ul lui, nu trec printr-un server al nostru.
