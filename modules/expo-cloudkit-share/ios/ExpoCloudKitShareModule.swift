@@ -372,12 +372,23 @@ public class ExpoCloudKitShareModule: Module {
       let inputRecords = options["records"] as? [[String: Any]] ?? []
       let deletionNames = options["deletions"] as? [String] ?? []
 
+      var succeeded: [String: String] = [:]
+      var failed: [String: String] = [:]
+
       var toSave: [CKRecord] = []
       for rec in inputRecords {
         guard let recordName = rec["recordName"] as? String,
               let recordType = rec["recordType"] as? String else { continue }
         let recordID = CKRecord.ID(recordName: recordName, zoneID: zoneID)
-        let record = (try? await db.record(for: recordID)) ?? CKRecord(recordType: recordType, recordID: recordID)
+        let fetched = try? await db.record(for: recordID)
+        // `mustExist`: doar actualizare, niciodată creare. Participantul nu re-creează
+        // rădăcina zonei: dacă owner-ul a șters-o („Șterge și la ei"), o re-creare
+        // ar ascunde ștergerea de ceilalți participanți.
+        if fetched == nil, (rec["mustExist"] as? Bool) == true {
+          failed[recordName] = "record-missing"
+          continue
+        }
+        let record = fetched ?? CKRecord(recordType: recordType, recordID: recordID)
         applyFields(rec["fields"] as? [String: String] ?? [:], to: record)
 
         let files = rec["files"] as? [[String: Any]] ?? []
@@ -398,9 +409,6 @@ public class ExpoCloudKitShareModule: Module {
         }
         toSave.append(record)
       }
-
-      var succeeded: [String: String] = [:]
-      var failed: [String: String] = [:]
 
       for chunk in toSave.dosarChunked(into: 400) {
         await self.pushChunk(db: db, records: chunk, succeeded: &succeeded, failed: &failed, attempt: 1)
@@ -457,6 +465,19 @@ public class ExpoCloudKitShareModule: Module {
       )
       for (_, r) in deleteResults { _ = try r.get() }
       return ["revoked": true]
+    }
+
+    // ─── deleteZone ──────────────────────────────────────────────────────
+    // Owner side: șterge zona cu tot ce mai are în ea (CKShare, recorduri, CKAsset-uri).
+    // Închiderea unei partajări după „Șterge și la ei". Participanții văd zona în
+    // `deletedZones`, la fel ca la `stopSharing`.
+    AsyncFunction("deleteZone") { (zoneName: String) async throws -> [String: Any] in
+      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
+      let (_, deleteResults) = try await self.container.privateCloudDatabase.modifyRecordZones(
+        saving: [], deleting: [zoneID]
+      )
+      for (_, r) in deleteResults { _ = try r.get() }
+      return ["deleted": true]
     }
 
     // ─── leaveShare ──────────────────────────────────────────────────────
