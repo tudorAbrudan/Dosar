@@ -8,6 +8,7 @@ import {
   PAGE_RECORD_TYPE,
   docWithPagesToPushRecords,
   entityToPushRecord,
+  isStoppedRoot,
   pageRecordName,
   pageRecordPrefix,
   parseFetchedRecords,
@@ -65,7 +66,9 @@ import {
   closeShareZone,
   getClosingShare,
   leaveZone,
-  processOwnerDeletions,
+  hasLocalEntity,
+  markOwnerStopped,
+  processParticipantClosings,
   refreshClosingShares,
   requestShareStop,
   sendStopSignals,
@@ -442,6 +445,8 @@ export async function takeReceivedShareNotices(): Promise<ReceivedShareNotice[]>
   const drained = receivedNotices.splice(0, receivedNotices.length);
   const out: ReceivedShareNotice[] = [];
   for (const n of drained) {
+    // Oprită sau ștearsă de owner chiar în sync-ul în care a fost acceptată.
+    if (!(await getShareForEntity(n.entityType, n.entityId))) continue;
     const table = shareEntityTable(n.entityType);
     const row = table
       ? await db.getFirstAsync<{ name: string }>(`SELECT name FROM ${table} WHERE id = ?`, [
@@ -905,7 +910,7 @@ async function runSyncSharedEntities(): Promise<void> {
   await refreshClosingShares();
   await pullSharedChanges();
   await pullOwnedChanges();
-  await processOwnerDeletions();
+  await processParticipantClosings();
 }
 
 async function pullSharedChanges(): Promise<void> {
@@ -1037,6 +1042,13 @@ async function syncOneZone(share: SharedEntity): Promise<void> {
 
 async function applyFetchedRecords(share: SharedEntity, records: FetchedRecord[]): Promise<void> {
   const { entity, documents, pages } = parseFetchedRecords(records);
+  if (share.role === 'participant' && entity && isStoppedRoot(entity.fields)) {
+    // Owner-ul a oprit partajarea: copia rămâne, zona nu se mai trage. Cine n-are
+    // încă entitatea (a intrat pe link după oprire) nu primește nimic.
+    const arrived = await hasLocalEntity(share);
+    await markOwnerStopped(share.zone_name);
+    if (!arrived) return;
+  }
   if (entity && (await shouldApplyRecord(share.zone_name, entity))) {
     await applyEntityRow(share.entity_type, entity.recordName, entity.fields);
     await rememberAppliedRecord(
@@ -1247,7 +1259,7 @@ async function applyDeletions(share: SharedEntity, deletedRecordNames: string[])
   if (share.role === 'participant' && deletedRecordNames.includes(share.entity_id)) {
     // Owner-ul a ales „Șterge și la ei" și a golit zona, rădăcina întâi. Copia
     // locală (entitate + documente legate doar de ea) o curăță
-    // `processOwnerDeletions` după pull, pe calea ștergerii locale — nu aici, în
+    // `processParticipantClosings` după pull, pe calea ștergerii locale — nu aici, în
     // tranzacția de pull. Restul ștergerilor din zonă devin inutile.
     await markOwnerDeleted(share.zone_name);
     return;

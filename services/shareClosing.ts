@@ -22,6 +22,7 @@ import {
 } from './shareDeletion';
 import { deleteCloudRecordsForZone, markZoneSyncError, revokeShare, selectShares } from './sharing';
 import type { SharedEntity } from './sharing';
+import { shareEntityTable } from './shareZones';
 
 export const SHARE_CLOSE_GRACE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -261,12 +262,55 @@ export async function leaveZone(share: SharedEntity): Promise<void> {
   await deleteCloudRecordsForZone(share.zone_name);
 }
 
+// ── Participant ──
+
+/** Entitatea partajării e pe telefon (a ajuns măcar o dată prin pull). */
+export async function hasLocalEntity(share: SharedEntity): Promise<boolean> {
+  const table = shareEntityTable(share.entity_type);
+  if (!table) return false;
+  const row = await db.getFirstAsync<{ id: string }>(`SELECT id FROM ${table} WHERE id = ?`, [
+    share.entity_id,
+  ]);
+  return !!row;
+}
+
 /**
- * Participant: curăță copia entităților șterse de owner (reluat până vede userul
- * mesajul — o restaurare între timp le-ar readuce) și iese din partajările ale
- * căror mesaje au fost văzute (reluat până reușește).
+ * Participant: owner-ul a oprit partajarea (rădăcina cu `share_state`). Copia
+ * rămâne; push-urile încă netrimise spre zonă se abandonează, iar partajarea nu mai
+ * e activă (copia devine editabilă, fără sync).
  */
-export async function processOwnerDeletions(): Promise<void> {
+export async function markOwnerStopped(zoneName: string): Promise<void> {
+  await db.runAsync(
+    `UPDATE shared_entities SET owner_stopped_at = COALESCE(owner_stopped_at, ?)
+     WHERE zone_name = ? AND role = 'participant'`,
+    [new Date().toISOString(), zoneName]
+  );
+  await deleteSharePushesForZone(zoneName);
+  emit('sharing:changed');
+}
+
+const PARTICIPANT_STOPPED_SQL = "role = 'participant' AND owner_stopped_at IS NOT NULL";
+
+/** Participant: opriri despre care userul încă n-a văzut mesajul. */
+export function getUnseenOwnerStops(): Promise<SharedEntity[]> {
+  return selectShares(`${PARTICIPANT_STOPPED_SQL} AND owner_stopped_seen_at IS NULL`);
+}
+
+async function markOwnerStopSeen(zoneName: string): Promise<void> {
+  await db.runAsync(
+    'UPDATE shared_entities SET owner_stopped_seen_at = COALESCE(owner_stopped_seen_at, ?) WHERE zone_name = ?',
+    [new Date().toISOString(), zoneName]
+  );
+  emit('sharing:changed');
+}
+
+/**
+ * Participant, la fiecare sync: curăță copia entităților șterse de owner (reluat
+ * până vede userul mesajul — o restaurare între timp le-ar readuce) și iese din
+ * partajările șterse sau oprite ale căror mesaje au fost văzute (reluat până
+ * reușește). Ieșirea e confirmarea pe care o vede owner-ul.
+ */
+export async function processParticipantClosings(): Promise<void> {
   for (const share of await getOwnerDeletedShares()) {
     try {
       if (!share.owner_deleted_seen_at) await purgeOwnerDeletedEntity(share);
@@ -274,6 +318,14 @@ export async function processOwnerDeletions(): Promise<void> {
     } catch (e) {
       console.warn('[cloudShare] ștergere owner neaplicată:', e instanceof Error ? e.message : e);
     }
+  }
+  const seenStops = await selectShares(
+    `${PARTICIPANT_STOPPED_SQL} AND owner_stopped_seen_at IS NOT NULL AND revoked_at IS NULL`
+  );
+  for (const share of seenStops) {
+    await leaveZone(share).catch(e => {
+      console.warn('[cloudShare] ieșire neconfirmată:', e instanceof Error ? e.message : e);
+    });
   }
 }
 
@@ -283,6 +335,19 @@ export async function acknowledgeOwnerDeletion(zoneName: string): Promise<void> 
   const share = (await getOwnerDeletedShares()).find(s => s.zone_name === zoneName);
   if (!share) return;
   await leaveZone(share).catch(() => {
-    // Offline: `processOwnerDeletions` reîncearcă la următorul sync.
+    // Offline: `processParticipantClosings` reîncearcă la următorul sync.
+  });
+}
+
+/** Participant: userul a văzut mesajul despre oprire → iese din partajare. */
+export async function acknowledgeOwnerStop(zoneName: string): Promise<void> {
+  await markOwnerStopSeen(zoneName);
+  const [share] = await selectShares(
+    `zone_name = ? AND ${PARTICIPANT_STOPPED_SQL} AND revoked_at IS NULL`,
+    [zoneName]
+  );
+  if (!share) return;
+  await leaveZone(share).catch(() => {
+    // Offline: `processParticipantClosings` reîncearcă la următorul sync.
   });
 }

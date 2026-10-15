@@ -337,3 +337,111 @@ describe('owner — „Revocă" și „Șterge doar la mine"', () => {
     expect(await sharing.getShareForEntity('vehicle', 'veh-1')).not.toBeNull();
   });
 });
+
+describe('participant — owner-ul a oprit partajarea', () => {
+  const P_ZONE = 'entity_vehicle_veh-2';
+
+  function stoppedRoot(name = 'Dacia nouă') {
+    return {
+      recordName: 'veh-2',
+      recordType: 'vehicle',
+      changeTag: 'tag-stop',
+      fields: { name, share_state: 'stopped' },
+      assets: [],
+    };
+  }
+
+  function zoneReports(records: unknown[], dbToken: string): void {
+    mockNative.fetchDatabaseChanges.mockImplementation(
+      async (opts: { scope: 'shared' | 'private' }) =>
+        opts.scope === 'shared'
+          ? {
+              changedZones: [{ zoneName: P_ZONE, ownerName: 'owner1' }],
+              deletedZones: [],
+              newToken: dbToken,
+            }
+          : { changedZones: [], deletedZones: [], newToken: null }
+    );
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records,
+      deletedRecordNames: [],
+      newToken: 'zone-token',
+    });
+  }
+
+  it('copia rămâne editabilă și fără sync; OK-ul iese din partajare (offline: la sync-ul următor)', async () => {
+    seed.insertVehicle('veh-2');
+    seed.insertShare({
+      zoneName: P_ZONE,
+      entityId: 'veh-2',
+      role: 'participant',
+      ownerName: 'owner1',
+      permission: 'readwrite',
+    });
+    seed.insertCloudRecord(P_ZONE, 'veh-2', 'vehicle');
+    seed.insertDocument('doc-a', 'veh-2');
+    seed.link('doc-a_shlink', 'doc-a', 'vehicle', 'veh-2');
+    // Editare offline care nu reușește să plece înainte de oprire.
+    seed.insertPendingPush(P_ZONE, 'doc-a', 'upsert', 'document', 'shared');
+    mockNative.pushRecords.mockResolvedValue({ succeeded: {}, failed: { 'doc-a': 'offline' } });
+    mockNative.listSharedZones.mockResolvedValue([{ zoneName: P_ZONE, ownerName: 'owner1' }]);
+    zoneReports([stoppedRoot()], 'db-1');
+
+    await cloudShare.syncSharedEntities();
+
+    const row = seed.shareRow(P_ZONE);
+    expect(row.owner_stopped_at).not.toBeNull();
+    expect(row.revoked_at).toBeNull();
+    expect(seed.exists('vehicles', 'veh-2')).toBe(true);
+    expect(seed.exists('documents', 'doc-a')).toBe(true);
+    // Ultimele modificări ale owner-ului din același pull se aplică.
+    expect(testDb._raw.prepare('SELECT name FROM vehicles WHERE id = ?').get('veh-2')).toEqual({
+      name: 'Dacia nouă',
+    });
+    expect(seed.pendingPushes(P_ZONE)).toHaveLength(0);
+    expect(await sharing.getSharedEntities()).toHaveLength(0);
+    expect(await sharing.isEntityReadOnlyForMe('vehicle', 'veh-2')).toBe(false);
+    expect(await shareClosing.getUnseenOwnerStops()).toHaveLength(1);
+    expect(mockNative.leaveShare).not.toHaveBeenCalled();
+
+    // Zona oprită nu se mai trage.
+    await cloudShare.syncSharedEntities();
+    expect(mockNative.fetchZoneChanges).toHaveBeenCalledTimes(1);
+
+    mockNative.leaveShare.mockRejectedValueOnce(new Error('offline'));
+    await shareClosing.acknowledgeOwnerStop(P_ZONE);
+    expect(await shareClosing.getUnseenOwnerStops()).toHaveLength(0);
+    expect(seed.shareRow(P_ZONE).revoked_at).toBeNull();
+
+    await cloudShare.syncSharedEntities();
+    expect(mockNative.leaveShare).toHaveBeenLastCalledWith({
+      zoneName: P_ZONE,
+      ownerName: 'owner1',
+    });
+    expect(seed.shareRow(P_ZONE).revoked_at).not.toBeNull();
+    expect(seed.exists('vehicles', 'veh-2')).toBe(true);
+  });
+
+  it('cine intră pe link după oprire nu primește nimic și nu e anunțat ca „Entitate primită"', async () => {
+    mockNative.listSharedZones.mockResolvedValue([{ zoneName: P_ZONE, ownerName: 'owner1' }]);
+    mockNative.fetchShareInfo.mockResolvedValue({ title: 'Dacia' });
+    const doc = {
+      recordName: 'doc-a',
+      recordType: 'document',
+      changeTag: 'tag-doc',
+      fields: { type: 'talon' },
+      assets: [],
+    };
+    zoneReports([stoppedRoot(), doc], 'db-1');
+
+    await cloudShare.syncSharedEntities();
+
+    expect(seed.exists('vehicles', 'veh-2')).toBe(false);
+    expect(seed.exists('documents', 'doc-a')).toBe(false);
+    const row = seed.shareRow(P_ZONE);
+    expect(row.owner_stopped_at).not.toBeNull();
+    expect(await cloudShare.takeReceivedShareNotices()).toEqual([]);
+    const [stop] = await shareClosing.getUnseenOwnerStops();
+    expect(await shareClosing.hasLocalEntity(stop)).toBe(false);
+  });
+});
