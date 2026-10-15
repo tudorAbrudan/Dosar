@@ -6,7 +6,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { teardownClosesAt, SHARE_TEARDOWN_GRACE_DAYS } from '@/services/shareClosing';
+import { shareClosesAt, SHARE_CLOSE_GRACE_DAYS } from '@/services/shareClosing';
 import { dark, light, statusColors } from '@/theme/colors';
 import { ENTITY_TYPE_EMOJI, ENTITY_TYPE_LABELS } from '@/types';
 import type { SharedEntity } from '@/services/sharing';
@@ -17,7 +17,7 @@ interface Props {
 }
 
 function teardownStatus(share: SharedEntity): string {
-  const closesAt = teardownClosesAt(share);
+  const closesAt = shareClosesAt(share);
   if (!closesAt) return 'ștergerea pleacă la următoarea conexiune';
   const date = closesAt.toLocaleDateString('ro-RO', { day: 'numeric', month: 'long' });
   return `se închide pe ${date}`;
@@ -70,7 +70,7 @@ export function TeardownSharesCard({ shares, onCloseNow }: Props) {
         })}
         <Text style={[styles.hint, { color: palette.textSecondary }]}>
           Le-ai șters și de pe telefoanele celorlalți. Partajarea rămâne deschisă{' '}
-          {SHARE_TEARDOWN_GRACE_DAYS} de zile, ca ștergerea să ajungă și la cine e offline, apoi se
+          {SHARE_CLOSE_GRACE_DAYS} de zile, ca ștergerea să ajungă și la cine e offline, apoi se
           închide singură.
         </Text>
       </View>

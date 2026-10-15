@@ -59,7 +59,7 @@ export default function PartajareScreen() {
   } = useEntities();
   const {
     shares,
-    teardowns,
+    closings,
     available,
     diagnostics,
     loading,
@@ -67,7 +67,7 @@ export default function PartajareScreen() {
     share,
     revoke,
     leave,
-    closeTeardown,
+    closeNow,
     sync,
     acceptByURL,
   } = useSharing();
@@ -181,7 +181,7 @@ export default function PartajareScreen() {
           text: 'Oprește',
           style: 'destructive',
           onPress: () =>
-            void closeTeardown(s.zone_name).catch(e => {
+            void closeNow(s.zone_name).catch(e => {
               Alert.alert('Partajare', friendlyCloudKitMessage(e));
             }),
         },
@@ -336,7 +336,7 @@ export default function PartajareScreen() {
           onRevoke={(s, name) => onRevoke({ type: s.entity_type, id: s.entity_id, name })}
         />
 
-        <TeardownSharesCard shares={teardowns} onCloseNow={onCloseTeardown} />
+        <TeardownSharesCard shares={closings} onCloseNow={onCloseTeardown} />
 
         {/* Partajat cu mine */}
         <View style={styles.sectionRow}>

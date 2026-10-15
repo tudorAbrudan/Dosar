@@ -5,8 +5,8 @@
  * Spec: ../docs/superpowers/specs/2026-10-15-delete-shared-entity-design.md
  *
  * Owner: zona se golește (rădăcina întâi), partajarea rămâne deschisă
- * SHARE_TEARDOWN_GRACE_DAYS zile de la confirmarea ștergerii pe server, ca s-o
- * prindă și participanții offline, apoi zona se șterge.
+ * până confirmă toți participanții (cel mult SHARE_CLOSE_GRACE_DAYS zile, ca s-o
+ * prindă și cei offline), apoi zona se șterge (`shareClosing.ts`).
  * Participant: dispariția rădăcinii din zonă = owner-ul a șters entitatea.
  */
 import { db } from './db';

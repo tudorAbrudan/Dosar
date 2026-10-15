@@ -62,11 +62,11 @@ import {
   markShareDeleteSent,
 } from './shareDeletion';
 import {
-  closeExpiredTeardowns,
-  closeShareTeardown,
-  getShareTeardown,
+  closeShareZone,
+  getClosingShare,
   leaveZone,
   processOwnerDeletions,
+  refreshClosingShares,
 } from './shareClosing';
 import { isZoneGoneError, native } from './cloudKitNative';
 import type {
@@ -131,9 +131,10 @@ export async function shareEntity(
   const bundle = await getShareBundle(entityType, entityId);
   const zoneName = zoneNameFor(entityType, entityId);
 
-  // Entitate readusă de o restaurare cât timp vechea ei partajare se închide după
-  // „Șterge și la ei": zona veche (golită) se închide înainte de una nouă cu același nume.
-  if (await getShareTeardown(zoneName)) await closeShareTeardown(zoneName);
+  // Partajare veche încă în curs de închidere (oprită, sau ștearsă „și la ei" și
+  // readusă de o restaurare): zona veche se închide înainte de una nouă cu același
+  // nume. Cine n-a confirmat încă păstrează copia; partajarea nouă are link nou.
+  if (await getClosingShare(zoneName)) await closeShareZone(zoneName);
 
   await native().createSharedZone(zoneName);
 
@@ -897,7 +898,7 @@ async function runSyncSharedEntities(): Promise<void> {
   }
 
   await flushSharePushes();
-  await closeExpiredTeardowns();
+  await refreshClosingShares();
   await pullSharedChanges();
   await pullOwnedChanges();
   await processOwnerDeletions();
