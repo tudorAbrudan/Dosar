@@ -57,6 +57,19 @@ import {
   upsertCloudRecord,
 } from './sharing';
 import { SHAREABLE_ENTITY_TYPES, parseZoneName, shareEntityTable, zoneNameFor } from './shareZones';
+import {
+  deleteSharePushesForZone,
+  enqueueZoneTeardown,
+  getOwnerDeletedShares,
+  getShareTeardown,
+  getShareTeardowns,
+  getUnrevokedShares,
+  markOwnerDeleted,
+  markOwnerDeletionSeen,
+  markShareDeleteSent,
+  purgeOwnerDeletedEntity,
+  teardownClosesAt,
+} from './shareDeletion';
 import type {
   PendingSharePush,
   PushScope,
@@ -129,6 +142,10 @@ export async function shareEntity(
   // getShareBundle aruncă dacă entitatea nu e partajabilă + garantează no-leak.
   const bundle = await getShareBundle(entityType, entityId);
   const zoneName = zoneNameFor(entityType, entityId);
+
+  // Entitate readusă de o restaurare cât timp vechea ei partajare se închide după
+  // „Șterge și la ei": zona veche (golită) se închide înainte de una nouă cu același nume.
+  if (await getShareTeardown(zoneName)) await closeShareTeardown(zoneName);
 
   await native().createSharedZone(zoneName);
 
@@ -299,6 +316,10 @@ export async function revokeEntityShare(entityType: EntityType, entityId: string
 export async function leaveEntityShare(entityType: EntityType, entityId: string): Promise<void> {
   const share = await getShareForEntity(entityType, entityId);
   if (!share || share.role !== 'participant') return;
+  await leaveZone(share);
+}
+
+async function leaveZone(share: SharedEntity): Promise<void> {
   try {
     await native().leaveShare({ zoneName: share.zone_name, ownerName: share.owner_name });
   } catch (e) {
@@ -308,6 +329,79 @@ export async function leaveEntityShare(entityType: EntityType, entityId: string)
   }
   await revokeShare(share.zone_name);
   await deleteCloudRecordsForZone(share.zone_name);
+}
+
+/**
+ * Owner, „Șterge și la ei": golește zona (rădăcina întâi) și o lasă deschisă, ca
+ * participanții să afle de ștergere la sync. Se apelează ÎNAINTE de ștergerea
+ * locală a entității: odată marcată, partajarea nu mai e activă, deci ștergerea
+ * locală nu mai revocă (`pushLocalChange`). No-op dacă nu sunt owner-ul.
+ */
+export async function deleteEntityShareEverywhere(
+  entityType: EntityType,
+  entityId: string
+): Promise<void> {
+  const share = await getShareForEntity(entityType, entityId);
+  if (!share || share.role !== 'owner') return;
+  await enqueueZoneTeardown(share);
+  void trackShareWork(
+    flushSharePushes().catch(e => {
+      console.warn('[cloudShare] golirea zonei eșuată:', e instanceof Error ? e.message : e);
+    })
+  );
+}
+
+/**
+ * Owner: închide o partajare golită — șterge zona cu tot ce a rămas în ea. Cine n-a
+ * sincronizat până acum își păstrează copia (vede doar că zona a dispărut).
+ */
+export async function closeShareTeardown(zoneName: string): Promise<void> {
+  try {
+    await native().deleteZone(zoneName);
+  } catch (e) {
+    if (!isZoneGoneError(e)) throw e;
+  }
+  await deleteSharePushesForZone(zoneName);
+  await deleteCloudRecordsForZone(zoneName);
+  await revokeShare(zoneName);
+}
+
+async function closeExpiredTeardowns(): Promise<void> {
+  for (const share of await getShareTeardowns()) {
+    const closesAt = teardownClosesAt(share);
+    if (!closesAt || closesAt.getTime() > Date.now()) continue;
+    try {
+      await closeShareTeardown(share.zone_name);
+    } catch (e) {
+      await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
+    }
+  }
+}
+
+/**
+ * Participant: curăță copia entităților șterse de owner (reluat până vede userul
+ * mesajul — o restaurare între timp le-ar readuce) și iese din partajările ale
+ * căror mesaje au fost văzute (reluat până reușește).
+ */
+async function processOwnerDeletions(): Promise<void> {
+  for (const share of await getOwnerDeletedShares()) {
+    try {
+      if (!share.owner_deleted_seen_at) await purgeOwnerDeletedEntity(share);
+      else await leaveZone(share);
+    } catch (e) {
+      console.warn('[cloudShare] ștergere owner neaplicată:', e instanceof Error ? e.message : e);
+    }
+  }
+}
+
+/** Participant: userul a văzut mesajul despre ștergere → iese din partajare. */
+export async function acknowledgeOwnerDeletion(zoneName: string): Promise<void> {
+  await markOwnerDeletionSeen(zoneName);
+  const share = (await getOwnerDeletedShares()).find(s => s.zone_name === zoneName);
+  if (!share) return;
+  await leaveZone(share).catch(() => {
+    // Offline: `processOwnerDeletions` reîncearcă la următorul sync.
+  });
 }
 
 /** True dacă eroarea CloudKit înseamnă „zona nu (mai) există pe server". */
@@ -438,9 +532,10 @@ export async function reconcileParticipantShares(): Promise<void> {
   const liveZoneNames = new Set(zones.map(z => z.zoneName));
 
   const active = await getSharedEntities();
-  const knownParticipant = new Set(
-    active.filter(s => s.role === 'participant').map(s => s.zone_name)
-  );
+  // Inclusiv zonele șterse de owner din care n-am ieșit încă: altfel ar fi
+  // re-înregistrate ca share nou și ar re-anunța „Entitate primită".
+  const registered = (await getUnrevokedShares()).filter(s => s.role === 'participant');
+  const knownParticipant = new Set(registered.map(s => s.zone_name));
 
   for (const zone of zones) {
     if (knownParticipant.has(zone.zoneName)) continue;
@@ -506,10 +601,8 @@ export async function reconcileParticipantShares(): Promise<void> {
     }
   }
 
-  for (const share of active) {
-    if (share.role === 'participant' && !liveZoneNames.has(share.zone_name)) {
-      await revokeShare(share.zone_name);
-    }
+  for (const share of registered) {
+    if (!liveZoneNames.has(share.zone_name)) await revokeShare(share.zone_name);
   }
 }
 
@@ -711,7 +804,14 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
         skipIds.push(row.id);
         continue;
       }
-      records.push({ recordName: row.record_name, recordType: entityType, fields });
+      // Participantul doar actualizează rădăcina: dacă owner-ul a șters-o, o
+      // re-creare ar ascunde ștergerea de ceilalți participanți.
+      records.push({
+        recordName: row.record_name,
+        recordType: entityType,
+        fields,
+        mustExist: scope === 'shared',
+      });
     } else {
       const doc = await getDocumentById(row.record_name);
       const shareable = doc ? toShareableDocument(doc) : null;
@@ -746,6 +846,12 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
   for (const id of skipIds) await deleteSharePush(id);
   if (records.length === 0 && deletions.length === 0) return;
 
+  // Rădăcina zonei pleacă prima (ștergerile se trimit în bucăți de 400): pentru
+  // participanți, dispariția ei e semnalul că owner-ul a șters entitatea.
+  const rootId = parseZoneName(zoneName)?.entityId;
+  const rootIndex = rootId ? deletions.indexOf(rootId) : -1;
+  if (rootIndex > 0) deletions.unshift(...deletions.splice(rootIndex, 1));
+
   try {
     const { succeeded, failed } = await native().pushRecords({
       zoneName,
@@ -771,6 +877,7 @@ async function flushZoneGroup(rows: PendingSharePush[]): Promise<void> {
       await deleteSharePush(row.id);
       if (row.op === 'delete') {
         await deleteCloudRecord(zoneName, row.record_name);
+        if (row.kind === 'entity') await markShareDeleteSent(zoneName);
         continue;
       }
       for (const name of pageNames) {
@@ -868,8 +975,10 @@ async function runSyncSharedEntities(): Promise<void> {
   }
 
   await flushSharePushes();
+  await closeExpiredTeardowns();
   await pullSharedChanges();
   await pullOwnedChanges();
+  await processOwnerDeletions();
 }
 
 async function pullSharedChanges(): Promise<void> {
@@ -888,6 +997,8 @@ async function pullSharedChanges(): Promise<void> {
   const shares = await getSharedEntities();
   const participants = shares.filter(s => s.role === 'participant');
   const byZone = new Map(participants.map(s => [s.zone_name, s]));
+  // Zone ale căror entități le-a șters owner-ul: cunoscute, dar nu se mai trag.
+  const registered = new Set((await getUnrevokedShares()).map(s => s.zone_name));
 
   // Ce zone tragem: cele raportate ca schimbate + TOATE cele care n-au tras
   // niciodată nimic (fără `change_token`). Al doilea set e obligatoriu: tokenul
@@ -906,7 +1017,7 @@ async function pullSharedChanges(): Promise<void> {
       // Zonă a APLICAȚIEI, dar încă neînregistrată local (reconcile-ul o prinde
       // la următoarea trecere) → NU avansa tokenul, altfel îi pierdem definitiv
       // notificarea. Zonele străine (nume neparsabil) nu blochează tokenul.
-      if (parseZoneName(z.zoneName)) missedOwnZone = true;
+      if (parseZoneName(z.zoneName) && !registered.has(z.zoneName)) missedOwnZone = true;
       continue;
     }
     zonesToSync.set(share.zone_name, share);
@@ -1206,8 +1317,16 @@ async function applyPageRow(share: SharedEntity, rec: FetchedRecord): Promise<vo
  * readwrite au încă evidență și se aplică.
  */
 async function applyDeletions(share: SharedEntity, deletedRecordNames: string[]): Promise<void> {
+  if (share.role === 'participant' && deletedRecordNames.includes(share.entity_id)) {
+    // Owner-ul a ales „Șterge și la ei" și a golit zona, rădăcina întâi. Copia
+    // locală (entitate + documente legate doar de ea) o curăță
+    // `processOwnerDeletions` după pull, pe calea ștergerii locale — nu aici, în
+    // tranzacția de pull. Restul ștergerilor din zonă devin inutile.
+    await markOwnerDeleted(share.zone_name);
+    return;
+  }
   for (const recordName of deletedRecordNames) {
-    if (recordName === share.entity_id) continue; // zone-root — revocarea reală vine prin deletedZones, nu de aici
+    if (recordName === share.entity_id) continue; // ecoul propriei ștergeri la owner
     if (share.role === 'owner' && !(await getCloudRecord(share.zone_name, recordName))) continue;
 
     // Pagină ștearsă la owner (eliminare de pagină sau reordonare): dispare
