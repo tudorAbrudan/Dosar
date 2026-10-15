@@ -17,7 +17,8 @@ import { dark, light, onPrimary, primary, statusColors } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useSharing } from '@/hooks/useSharing';
 import { OrphanedSharesCard } from '@/components/sharing/OrphanedSharesCard';
-import { TeardownSharesCard } from '@/components/sharing/TeardownSharesCard';
+import { ClosingSharesCard } from '@/components/sharing/ClosingSharesCard';
+import { SHARE_CLOSE_GRACE_DAYS, shareCloseKind } from '@/services/shareClosing';
 import { ENTITY_TYPE_EMOJI, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
 import type { SharedEntity, SharePermission } from '@/services/sharing';
@@ -163,7 +164,7 @@ export default function PartajareScreen() {
   const onRevoke = (row: ShareableRow) => {
     Alert.alert(
       'Revocă accesul',
-      `Oprești partajarea „${row.name}"? Persoana nu va mai primi actualizări (ce a văzut deja rămâne la ea).`,
+      `Oprești partajarea „${row.name}"? Ceilalți păstrează ce au primit și văd un mesaj că ai oprit-o. Partajarea se închide după ce confirmă toți, cel târziu în ${SHARE_CLOSE_GRACE_DAYS} de zile.`,
       [
         { text: 'Anulează', style: 'cancel' },
         { text: 'Revocă', style: 'destructive', onPress: () => void revoke(row.type, row.id) },
@@ -171,10 +172,12 @@ export default function PartajareScreen() {
     );
   };
 
-  const onCloseTeardown = (s: SharedEntity, name: string) => {
+  const onCloseNow = (s: SharedEntity, name: string) => {
     Alert.alert(
       'Oprești partajarea acum?',
-      `Cine n-a deschis aplicația de când ai șters „${name}" își păstrează copia.`,
+      shareCloseKind(s) === 'delete'
+        ? `Cine n-a confirmat încă păstrează „${name}" pe telefon.`
+        : `Cine n-a confirmat încă păstrează copia, fără mesajul că ai oprit partajarea.`,
       [
         { text: 'Anulează', style: 'cancel' },
         {
@@ -336,7 +339,7 @@ export default function PartajareScreen() {
           onRevoke={(s, name) => onRevoke({ type: s.entity_type, id: s.entity_id, name })}
         />
 
-        <TeardownSharesCard shares={closings} onCloseNow={onCloseTeardown} />
+        <ClosingSharesCard shares={closings} onCloseNow={onCloseNow} />
 
         {/* Partajat cu mine */}
         <View style={styles.sectionRow}>
