@@ -272,6 +272,16 @@ export interface SharedEntity {
   owner_deleted_at?: string;
   /** Participant: userul a văzut mesajul despre ștergere. */
   owner_deleted_seen_at?: string;
+  /** Owner: „Revocă" cerut — participanții află, partajarea se închide când confirmă toți. */
+  stop_requested_at?: string;
+  /** Owner: semnalul de oprire a ajuns pe server; de aici curge termenul de închidere. */
+  stop_sent_at?: string;
+  /** Owner: JSON cu participanții care trebuie să confirme (`ClosingParticipant[]`). */
+  closing_participants?: string;
+  /** Participant: owner-ul a oprit partajarea, copia rămâne. */
+  owner_stopped_at?: string;
+  /** Participant: userul a văzut mesajul despre oprire. */
+  owner_stopped_seen_at?: string;
 }
 
 export interface CloudRecordRef {
@@ -306,6 +316,11 @@ export interface SharedEntityRow {
   delete_sent_at: string | null;
   owner_deleted_at: string | null;
   owner_deleted_seen_at: string | null;
+  stop_requested_at: string | null;
+  stop_sent_at: string | null;
+  closing_participants: string | null;
+  owner_stopped_at: string | null;
+  owner_stopped_seen_at: string | null;
 }
 
 interface CloudRecordRow {
@@ -340,6 +355,11 @@ export function mapSharedEntity(r: SharedEntityRow): SharedEntity {
     delete_sent_at: r.delete_sent_at ?? undefined,
     owner_deleted_at: r.owner_deleted_at ?? undefined,
     owner_deleted_seen_at: r.owner_deleted_seen_at ?? undefined,
+    stop_requested_at: r.stop_requested_at ?? undefined,
+    stop_sent_at: r.stop_sent_at ?? undefined,
+    closing_participants: r.closing_participants ?? undefined,
+    owner_stopped_at: r.owner_stopped_at ?? undefined,
+    owner_stopped_seen_at: r.owner_stopped_seen_at ?? undefined,
   };
 }
 
@@ -397,7 +417,12 @@ export async function recordShare(params: {
        delete_requested_at = NULL,
        delete_sent_at = NULL,
        owner_deleted_at = NULL,
-       owner_deleted_seen_at = NULL`,
+       owner_deleted_seen_at = NULL,
+       stop_requested_at = NULL,
+       stop_sent_at = NULL,
+       closing_participants = NULL,
+       owner_stopped_at = NULL,
+       owner_stopped_seen_at = NULL`,
     [
       id,
       params.entityType,
@@ -445,6 +470,11 @@ export async function recordShare(params: {
         delete_sent_at: null,
         owner_deleted_at: null,
         owner_deleted_seen_at: null,
+        stop_requested_at: null,
+        stop_sent_at: null,
+        closing_participants: null,
+        owner_stopped_at: null,
+        owner_stopped_seen_at: null,
       });
 }
 
@@ -455,7 +485,8 @@ export async function recordShare(params: {
  * entitatea să pară partajată — le citește doar `services/shareDeletion.ts`.
  */
 export const ACTIVE_SHARE_SQL =
-  'revoked_at IS NULL AND delete_requested_at IS NULL AND owner_deleted_at IS NULL';
+  'revoked_at IS NULL AND delete_requested_at IS NULL AND owner_deleted_at IS NULL' +
+  ' AND stop_requested_at IS NULL AND owner_stopped_at IS NULL';
 
 export async function getSharedEntities(includeRevoked = false): Promise<SharedEntity[]> {
   const where = includeRevoked ? '' : `WHERE ${ACTIVE_SHARE_SQL}`;
@@ -693,7 +724,8 @@ export async function getZonesForDocument(documentId: string): Promise<SharedEnt
        JOIN document_entities de
          ON de.entity_type = se.entity_type AND de.entity_id = se.entity_id
      WHERE de.document_id = ? AND se.revoked_at IS NULL
-       AND se.delete_requested_at IS NULL AND se.owner_deleted_at IS NULL`,
+       AND se.delete_requested_at IS NULL AND se.owner_deleted_at IS NULL
+       AND se.stop_requested_at IS NULL AND se.owner_stopped_at IS NULL`,
     [documentId]
   );
   // Dedup pe zone_name (un doc legat de aceeași entitate de mai multe ori).

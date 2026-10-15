@@ -875,6 +875,17 @@ safeAlterTable('ALTER TABLE shared_entities ADD COLUMN delete_sent_at TEXT');
 safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_deleted_at TEXT');
 safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_deleted_seen_at TEXT');
 
+// Migrare: confirmări de la participanți (spec 2026-10-15, pasul 2). Owner:
+// stop_requested_at = „Revocă" cerut, partajarea rămâne deschisă până confirmă
+// toți; stop_sent_at = semnalul a ajuns pe server; closing_participants = JSON cu
+// participanții care trebuie să confirme (ștergere sau oprire). Participant:
+// owner_stopped_at = owner-ul a oprit partajarea; owner_stopped_seen_at = mesaj văzut.
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN stop_requested_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN stop_sent_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN closing_participants TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_stopped_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_stopped_seen_at TEXT');
+
 // Migrare: marchează mesajele care sunt de fapt erori afișate în conversație.
 // Erorile se persistă ca mesaje `assistant` (ca să nu rămână două mesaje `user`
 // consecutive, pe care template-ele stricte le resping), dar NU trebuie trimise
