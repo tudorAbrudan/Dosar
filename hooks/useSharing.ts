@@ -4,10 +4,9 @@ import type { EntityType } from '@/types';
 import { getSharedEntities } from '@/services/sharing';
 import type { SharedEntity, SharePermission } from '@/services/sharing';
 import { on } from '@/services/events';
-import { getShareTeardowns } from '@/services/shareDeletion';
+import { closeShareZone, getClosingShares } from '@/services/shareClosing';
 import {
   acceptShareByURL,
-  closeShareTeardown,
   friendlyCloudKitMessage,
   getShareDiagnostics,
   isCloudKitAvailable,
@@ -28,8 +27,8 @@ const EMPTY_DIAGNOSTICS: ShareDiagnostics = { zones: [], pendingPushCount: 0, st
 
 export interface UseSharing {
   shares: SharedEntity[];
-  /** Partajări proprii golite după „Șterge și la ei", încă deschise. */
-  teardowns: SharedEntity[];
+  /** Partajări proprii șterse „și la ei" sau oprite, care așteaptă confirmările. */
+  closings: SharedEntity[];
   available: boolean;
   diagnostics: ShareDiagnostics;
   loading: boolean;
@@ -38,15 +37,15 @@ export interface UseSharing {
   share(entityType: EntityType, entityId: string, permission?: SharePermission): Promise<void>;
   revoke(entityType: EntityType, entityId: string): Promise<void>;
   leave(entityType: EntityType, entityId: string): Promise<void>;
-  /** „Oprește acum": închide imediat o partajare golită. */
-  closeTeardown(zoneName: string): Promise<void>;
+  /** „Oprește acum": închide imediat o partajare care așteaptă confirmările. */
+  closeNow(zoneName: string): Promise<void>;
   sync(): Promise<void>;
   acceptByURL(url: string): Promise<void>;
 }
 
 export function useSharing(): UseSharing {
   const [shares, setShares] = useState<SharedEntity[]>([]);
-  const [teardowns, setTeardowns] = useState<SharedEntity[]>([]);
+  const [closings, setClosings] = useState<SharedEntity[]>([]);
   const [available, setAvailable] = useState(false);
   const [diagnostics, setDiagnostics] = useState<ShareDiagnostics>(EMPTY_DIAGNOSTICS);
   const [loading, setLoading] = useState(true);
@@ -58,7 +57,7 @@ export function useSharing(): UseSharing {
     try {
       setAvailable(await isCloudKitAvailable());
       setShares(await getSharedEntities());
-      setTeardowns(await getShareTeardowns());
+      setClosings(await getClosingShares());
       setDiagnostics(await getShareDiagnostics());
     } catch (e) {
       setError(friendlyCloudKitMessage(e));
@@ -109,11 +108,11 @@ export function useSharing(): UseSharing {
     [refresh]
   );
 
-  const closeTeardown = useCallback(
+  const closeNow = useCallback(
     async (zoneName: string) => {
       setError(null);
       try {
-        await closeShareTeardown(zoneName);
+        await closeShareZone(zoneName);
         await refresh();
       } catch (e) {
         setError(friendlyCloudKitMessage(e));
@@ -157,7 +156,7 @@ export function useSharing(): UseSharing {
 
   return {
     shares,
-    teardowns,
+    closings,
     available,
     diagnostics,
     loading,
@@ -166,7 +165,7 @@ export function useSharing(): UseSharing {
     share,
     revoke,
     leave,
-    closeTeardown,
+    closeNow,
     sync,
     acceptByURL,
   };

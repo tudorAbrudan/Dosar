@@ -269,7 +269,7 @@ export default function EntityDetailScreen() {
     if (share?.role === 'owner') {
       Alert.alert(
         `Ștergi „${entityName}"?`,
-        `Documentele legate rămân la tine.\n\n„${entityName}" e partajată. „Șterge și la ei" o scoate și de pe telefoanele celorlalți, împreună cu documentele primite prin ea.`,
+        `Documentele legate rămân la tine.\n\n„${entityName}" e partajată. „Doar la mine": ceilalți păstrează copia și văd un mesaj că ai oprit partajarea. „Și la ei": dispare și de pe telefoanele lor, împreună cu documentele primite prin ea.`,
         [
           { text: 'Anulează', style: 'cancel' },
           // Pe iOS, RN colorează roșu un singur buton `destructive` (ultimul):

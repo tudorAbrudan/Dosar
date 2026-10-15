@@ -30,6 +30,8 @@ export const SHARE_ENTITY_MISSING_ERROR =
  * 4. Zonele proprii în curs de golire („Șterge și la ei") își păstrează ștergerile
  *    din coadă, chiar dacă documentele există local (owner-ul le păstrează): userul
  *    a cerut explicit golirea zonei. Ele nu primesc eroarea de la pasul 3.
+ * 5. Nici partajările proprii oprite („Revocă", „Șterge doar la mine") nu primesc
+ *    eroarea: entitatea poate lipsi legitim, iar închiderea merge mai departe singură.
  *
  * Zonele proprii NU se resetează: fără `cloud_records`, un pull ar rescrie
  * `file_path` la documentele proprii spre copii din `shared/…`.
@@ -42,7 +44,7 @@ export async function resetShareStateAfterWipe(): Promise<void> {
     entity_id: string;
   }>(
     `SELECT zone_name, role, entity_type, entity_id FROM shared_entities
-     WHERE revoked_at IS NULL AND delete_requested_at IS NULL`
+     WHERE revoked_at IS NULL AND delete_requested_at IS NULL AND stop_requested_at IS NULL`
   );
 
   for (const s of shares) {

@@ -233,6 +233,40 @@ describe('store shared_entities', () => {
     expect(await sharing.getSharedEntities()).toHaveLength(0);
     expect(await sharing.getSharedEntities(true)).toHaveLength(1);
   });
+
+  it('o partajare oprită (la owner sau la participant) nu mai e activă; re-înregistrarea o reactivează', async () => {
+    insertPerson('pers-stop', 'Ana');
+    insertDoc({ id: 'doc-stop', type: 'buletin', personId: 'pers-stop' });
+    testDb._raw
+      .prepare(
+        `INSERT INTO document_entities (id, document_id, entity_type, entity_id) VALUES (?, ?, ?, ?)`
+      )
+      .run('l-stop', 'doc-stop', 'person', 'pers-stop');
+    const zone = zones.zoneNameFor('person', 'pers-stop');
+    const params = {
+      entityType: 'person' as const,
+      entityId: 'pers-stop',
+      zoneName: zone,
+      role: 'participant' as const,
+      permission: 'read' as const,
+    };
+    await sharing.recordShare(params);
+
+    for (const column of ['stop_requested_at', 'owner_stopped_at']) {
+      testDb._raw
+        .prepare(`UPDATE shared_entities SET ${column} = ? WHERE zone_name = ?`)
+        .run('2026-10-15T00:00:00Z', zone);
+      expect(await sharing.getShareForEntity('person', 'pers-stop')).toBeNull();
+      expect(await sharing.getSharedEntities()).toHaveLength(0);
+      expect(await sharing.getZonesForDocument('doc-stop')).toHaveLength(0);
+      expect(await sharing.isDocumentReadOnlyForMe('doc-stop')).toBe(false);
+
+      await sharing.recordShare(params);
+      const row = await sharing.getShareForEntity('person', 'pers-stop');
+      expect(row?.stop_requested_at).toBeUndefined();
+      expect(row?.owner_stopped_at).toBeUndefined();
+    }
+  });
 });
 
 describe('store cloud_records', () => {

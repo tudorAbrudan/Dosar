@@ -206,12 +206,14 @@ Pentru task-urile cu prag pe luni, utilizatorul poate activa toggle-ul „Adaug�
   },
   {
     title: `Partajarea entităților cu familia`,
-    keywords: ['partaj', 'famili', 'revoc', 'renunt', 'si la ei'],
-    body: `O persoană, un vehicul, o proprietate, un animal sau o firmă se pot partaja cu altcineva prin iCloud (fără server al nostru). Documentele medicale, notele private și cardurile nu se partajează. Navigare: Setări → „Partajare (Beta)" → „Partajare entități" → „Partajează" lângă entitate → „Doar citire" sau „Poate edita" → trimiți linkul. Cine primește linkul îl deschide sau îl lipește la „+ Am un link". „Revocă" oprește partajarea: ceilalți păstrează ce au primit deja, dar nu mai primesc actualizări. „Renunță" (pe o entitate primită) te scoate din partajare.
+    keywords: ['partaj', 'famili', 'revoc', 'renunt', 'si la ei', 'confirm', 'oprit'],
+    body: `O persoană, un vehicul, o proprietate, un animal sau o firmă se pot partaja cu altcineva prin iCloud (fără server al nostru). Documentele medicale, notele private și cardurile nu se partajează. Navigare: Setări → „Partajare (Beta)" → „Partajare entități" → „Partajează" lângă entitate → „Doar citire" sau „Poate edita" → trimiți linkul. Cine primește linkul îl deschide sau îl lipește la „+ Am un link". „Revocă" oprește partajarea: ceilalți păstrează ce au primit deja, nu mai primesc actualizări și văd un mesaj la deschiderea aplicației („copia rămâne la tine"); când apasă OK, ies din partajare. „Renunță" (pe o entitate primită) te scoate din partajare.
 
 **Ștergerea unei entități partajate:** aplicația întreabă ce se întâmplă cu copia celorlalți.
-- „Șterge doar la mine": partajarea se oprește, ceilalți își păstrează copia.
-- „Șterge și la ei": entitatea dispare și de pe telefoanele lor, împreună cu documentele primite prin ea (un document legat și de altă entitate de-a lor rămâne). Documentele tale rămân la tine. Partajarea mai stă deschisă 30 de zile, ca ștergerea să ajungă și la cine e offline, apoi se închide singură; până atunci apare în Partajare la „Se șterg la ceilalți", cu „Oprește acum". Cine n-a deschis aplicația până la închidere își păstrează copia. Cei care primesc ștergerea văd un mesaj la deschiderea aplicației.`,
+- „Șterge doar la mine": partajarea se oprește ca la „Revocă", ceilalți își păstrează copia și văd mesajul.
+- „Șterge și la ei": entitatea dispare și de pe telefoanele lor, împreună cu documentele primite prin ea (un document legat și de altă entitate de-a lor rămâne). Documentele tale rămân la tine. Cei care primesc ștergerea văd un mesaj la deschiderea aplicației.
+
+**Confirmări:** după „Șterge și la ei" sau o oprire, partajarea rămâne deschisă până confirmă toți cei care o aveau (confirmă = deschid aplicația și apasă OK pe mesaj), cel mult 30 de zile, apoi se închide singură. Între timp apare în Partajare la „Se șterg la ceilalți" sau „Partajări oprite", cu cine a confirmat și cine nu încă, plus „Oprește acum". Cine n-a confirmat până la închidere își păstrează copia, fără mesaj. Cine intră pe link după oprire nu mai primește entitatea.`,
   },
   {
     title: `Backup automat în iCloud`,

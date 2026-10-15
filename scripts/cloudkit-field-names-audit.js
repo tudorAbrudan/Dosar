@@ -34,6 +34,7 @@ const SCAN_FILES = [
   'services/cloudShareMapping.ts',
   'services/cloudShare.ts',
   'services/sharing.ts',
+  'services/shareClosing.ts',
 ];
 
 /** Marker inline pentru excepții justificate (pe linia dinainte). */

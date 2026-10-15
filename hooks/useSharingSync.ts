@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, InteractionManager, type AppStateStatus } from 'react-native';
 import { router } from 'expo-router';
 
+import { syncSharedEntities, takeReceivedShareNotices } from '@/services/cloudShare';
+import { on } from '@/services/events';
 import {
   acknowledgeOwnerDeletion,
-  syncSharedEntities,
-  takeReceivedShareNotices,
-} from '@/services/cloudShare';
-import { on } from '@/services/events';
+  acknowledgeOwnerStop,
+  getUnseenOwnerStops,
+  hasLocalEntity,
+} from '@/services/shareClosing';
 import { getUnseenOwnerDeletions } from '@/services/shareDeletion';
 import { ENTITY_TYPE_LABELS } from '@/types';
 
@@ -60,9 +62,9 @@ async function announceReceivedShares(): Promise<void> {
   }
 }
 
-// Zonele al căror mesaj de ștergere e deja pe ecran: un sync nou (revenire din
-// fundal, silent push) nu-l mai afișează a doua oară până nu apasă userul OK.
-const deletionNoticesOnScreen = new Set<string>();
+// Zonele al căror mesaj de ștergere / oprire e deja pe ecran: un sync nou (revenire
+// din fundal, silent push) nu-l mai afișează a doua oară până nu apasă userul OK.
+const closingNoticesOnScreen = new Set<string>();
 
 /**
  * Anunță entitățile primite pe care owner-ul le-a șters „și la ei". Copia e deja
@@ -71,8 +73,8 @@ const deletionNoticesOnScreen = new Set<string>();
  */
 async function announceOwnerDeletions(): Promise<void> {
   for (const s of await getUnseenOwnerDeletions()) {
-    if (deletionNoticesOnScreen.has(s.zone_name)) continue;
-    deletionNoticesOnScreen.add(s.zone_name);
+    if (closingNoticesOnScreen.has(s.zone_name)) continue;
+    closingNoticesOnScreen.add(s.zone_name);
     const name = s.share_title ?? ENTITY_TYPE_LABELS[s.entity_type];
     const who = s.owner_display_name ?? 'Persoana care a partajat-o';
     Alert.alert(
@@ -84,7 +86,39 @@ async function announceOwnerDeletions(): Promise<void> {
           onPress: () => {
             void acknowledgeOwnerDeletion(s.zone_name)
               .catch(() => {})
-              .finally(() => deletionNoticesOnScreen.delete(s.zone_name));
+              .finally(() => closingNoticesOnScreen.delete(s.zone_name));
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  }
+}
+
+/**
+ * Anunță partajările primite pe care owner-ul le-a oprit. Copia rămâne, dar nu se mai
+ * actualizează; OK-ul scoate userul din partajare, iar owner-ul vede asta drept
+ * confirmare. Mesajul rămâne în așteptare până la OK, inclusiv după repornire.
+ */
+async function announceOwnerStops(): Promise<void> {
+  for (const s of await getUnseenOwnerStops()) {
+    if (closingNoticesOnScreen.has(s.zone_name)) continue;
+    closingNoticesOnScreen.add(s.zone_name);
+    const name = s.share_title ?? ENTITY_TYPE_LABELS[s.entity_type];
+    const who = s.owner_display_name ?? 'Persoana care a partajat-o';
+    const body = (await hasLocalEntity(s))
+      ? `${who} a oprit partajarea. Copia rămâne la tine, dar nu se mai actualizează.`
+      : `${who} a oprit partajarea înainte să primești datele.`;
+    Alert.alert(
+      `„${name}": partajarea s-a oprit`,
+      body,
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            void acknowledgeOwnerStop(s.zone_name)
+              .catch(() => {})
+              .finally(() => closingNoticesOnScreen.delete(s.zone_name));
           },
         },
       ],
@@ -107,6 +141,7 @@ export function useSharingSync() {
       await syncSharedEntities();
       await announceReceivedShares();
       await announceOwnerDeletions();
+      await announceOwnerStops();
       if (mountedRef.current) setError(null);
     } catch (e) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Eroare necunoscută');

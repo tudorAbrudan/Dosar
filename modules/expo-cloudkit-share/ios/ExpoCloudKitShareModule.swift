@@ -454,23 +454,10 @@ public class ExpoCloudKitShareModule: Module {
       return ["subscribed": true]
     }
 
-    // ─── stopSharing ─────────────────────────────────────────────────────
-    // Owner side: șterge CKShare-ul zonei → participanții pierd accesul
-    // (forward-only). Datele rămân la owner.
-    AsyncFunction("stopSharing") { (zoneName: String) async throws -> [String: Any] in
-      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
-      let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
-      let (_, deleteResults) = try await self.container.privateCloudDatabase.modifyRecords(
-        saving: [], deleting: [shareID]
-      )
-      for (_, r) in deleteResults { _ = try r.get() }
-      return ["revoked": true]
-    }
-
     // ─── deleteZone ──────────────────────────────────────────────────────
     // Owner side: șterge zona cu tot ce mai are în ea (CKShare, recorduri, CKAsset-uri).
-    // Închiderea unei partajări după „Șterge și la ei". Participanții văd zona în
-    // `deletedZones`, la fel ca la `stopSharing`.
+    // Închiderea unei partajări șterse „și la ei" sau oprite. Participanții văd zona
+    // în `deletedZones` și își păstrează copia.
     AsyncFunction("deleteZone") { (zoneName: String) async throws -> [String: Any] in
       let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
       let (_, deleteResults) = try await self.container.privateCloudDatabase.modifyRecordZones(
@@ -485,8 +472,7 @@ public class ExpoCloudKitShareModule: Module {
     // din `sharedCloudDatabase` e respinsă de CloudKit („Zone delete not
     // allowed") — mecanismul corect e ștergerea recordului CKShare din shared
     // DB, pe care CloudKit îl interpretează ca auto-eliminare a participantului
-    // (owner-ul și restul participanților rămân neafectați). Owner-ul rulează
-    // simetricul pe `privateCloudDatabase` (`stopSharing` mai sus).
+    // (owner-ul și restul participanților rămân neafectați).
     AsyncFunction("leaveShare") { (options: [String: Any]) async throws -> [String: Any] in
       guard let zoneName = options["zoneName"] as? String else {
         throw makeError(15, "zoneName obligatoriu")
@@ -499,6 +485,38 @@ public class ExpoCloudKitShareModule: Module {
       )
       for (_, r) in deleteResults { _ = try r.get() }
       return ["left": true]
+    }
+
+    // ─── fetchShareParticipants ──────────────────────────────────────────
+    // Owner side: participanții CKShare-ului zonei, fără owner. Un participant
+    // care iese (`leaveShare`) e scos de CloudKit: dispare din listă sau rămâne cu
+    // `removed` — JS tratează ambele ca „a confirmat". Semnături verificate în
+    // CKShareParticipant.h / CKUserIdentity.h din SDK (`role`, `acceptanceStatus`,
+    // `userIdentity.userRecordID` opțional). Share-ul lipsă (oprit din foaia de
+    // sistem) → eroarea „share-missing".
+    AsyncFunction("fetchShareParticipants") { (zoneName: String) async throws -> [[String: Any]] in
+      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
+      let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
+      let record: CKRecord
+      do {
+        record = try await self.container.privateCloudDatabase.record(for: shareID)
+      } catch let error as CKError where error.code == .unknownItem {
+        throw makeError(17, "share-missing")
+      }
+      guard let share = record as? CKShare else {
+        throw makeError(17, "share-missing")
+      }
+      return share.participants.compactMap { participant in
+        if participant.role == .owner { return nil }
+        var out: [String: Any] = ["status": Self.acceptanceStatusString(participant.acceptanceStatus)]
+        if let id = participant.userIdentity.userRecordID?.recordName {
+          out["id"] = id
+        }
+        if let name = Self.formatUserIdentity(participant.userIdentity) {
+          out["name"] = name
+        }
+        return out
+      }
     }
   }
 
@@ -633,6 +651,16 @@ public class ExpoCloudKitShareModule: Module {
     case .restricted: return "restricted"
     case .couldNotDetermine: return "couldNotDetermine"
     case .temporarilyUnavailable: return "temporarilyUnavailable"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private static func acceptanceStatusString(_ status: CKShare.ParticipantAcceptanceStatus) -> String {
+    switch status {
+    case .pending: return "pending"
+    case .accepted: return "accepted"
+    case .removed: return "removed"
+    case .unknown: return "unknown"
     @unknown default: return "unknown"
     }
   }

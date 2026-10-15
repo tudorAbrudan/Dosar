@@ -72,6 +72,10 @@ const ENTRIES = {
     sharing: { required: false },
     // Starea ștergerii „și la ei" + curățarea copiei la participant (orchestrat de cloudShare).
     shareDeletion: { required: false },
+    // Închiderea partajărilor cu confirmări + ieșirea participantului (orchestrat de cloudShare).
+    shareClosing: { required: false },
+    // Acces lazy la modulul nativ CloudKit (modul frunză).
+    cloudKitNative: { required: false },
     // Reset intern al registrului de partajare după restaurare / ștergere totală.
     shareRegistryReset: { required: false },
     // Tipuri partajabile + numele zonelor CloudKit (modul frunză).

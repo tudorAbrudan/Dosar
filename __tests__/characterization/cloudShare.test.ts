@@ -28,7 +28,8 @@ const mockNative = {
   listSharedZones: jest.fn(),
   acceptShareURL: jest.fn(),
   fetchShareInfo: jest.fn(),
-  stopSharing: jest.fn(),
+  fetchShareParticipants: jest.fn(),
+  deleteZone: jest.fn(),
   fetchZoneChanges: jest.fn(),
   fetchDatabaseChanges: jest.fn(),
   pushRecords: jest.fn(),
@@ -45,6 +46,7 @@ let testDb: TestDb;
 let sharing: typeof import('@/services/sharing');
 let cloudShare: typeof import('@/services/cloudShare');
 let documents: typeof import('@/services/documents');
+let importState: typeof import('@/services/importState');
 let AsyncStorage: { setItem: jest.Mock; getItem: jest.Mock };
 
 beforeAll(() => {
@@ -55,6 +57,7 @@ beforeAll(() => {
     sharing = require('@/services/sharing');
     cloudShare = require('@/services/cloudShare');
     documents = require('@/services/documents');
+    importState = require('@/services/importState');
     AsyncStorage = require('@react-native-async-storage/async-storage').default;
   });
 });
@@ -84,7 +87,8 @@ beforeEach(() => {
   mockNative.fetchShareInfo.mockResolvedValue({});
   mockNative.subscribeDatabase.mockResolvedValue({ subscribed: true });
   mockNative.pushRecords.mockResolvedValue({ succeeded: {}, failed: {} });
-  mockNative.stopSharing.mockResolvedValue({ revoked: true });
+  mockNative.fetchShareParticipants.mockResolvedValue([{ id: 'user-ana', status: 'accepted' }]);
+  mockNative.deleteZone.mockResolvedValue({ deleted: true });
   mockNative.fetchDatabaseChanges.mockResolvedValue({
     changedZones: [],
     deletedZones: [],
@@ -405,7 +409,7 @@ describe('pushLocalChange — Faza 1: doar owner scrie', () => {
     expect(await sharing.getPendingSharePushes()).toHaveLength(0);
   });
 
-  it("'delete' pe entitate owner apelează revokeEntityShare (stopSharing), nu push de delete brut", async () => {
+  it("'delete' pe entitate owner oprește partajarea (semnal pe rădăcină), nu push de delete brut", async () => {
     insertVehicle('veh-6');
     insertSharedEntity({
       zoneName: 'entity_vehicle_veh-6',
@@ -416,8 +420,20 @@ describe('pushLocalChange — Faza 1: doar owner scrie', () => {
 
     await cloudShare.afterEntityMutation('vehicle', 'veh-6', 'delete');
 
-    expect(mockNative.stopSharing).toHaveBeenCalledWith('entity_vehicle_veh-6');
-    expect(mockNative.pushRecords).not.toHaveBeenCalled();
+    await importState.waitForShareSyncIdle();
+
+    expect(mockNative.pushRecords).toHaveBeenCalledTimes(1);
+    const { records, deletions } = mockNative.pushRecords.mock.calls[0][0];
+    expect(deletions).toEqual([]);
+    expect(records).toEqual([
+      {
+        recordName: 'veh-6',
+        recordType: 'vehicle',
+        fields: { share_state: 'stopped' },
+        mustExist: true,
+      },
+    ]);
+    expect(mockNative.deleteZone).not.toHaveBeenCalled();
     expect(await sharing.getShareForEntity('vehicle', 'veh-6')).toBeNull();
   });
 
@@ -522,7 +538,7 @@ describe('pushLocalChange — Faza 2: participant readwrite push-back', () => {
     await cloudShare.pushLocalChange('vehicles', 'veh-del', 'delete');
 
     expect(mockNative.pushRecords).not.toHaveBeenCalled();
-    expect(mockNative.stopSharing).not.toHaveBeenCalled();
+    expect(mockNative.deleteZone).not.toHaveBeenCalled();
     expect(await sharing.getPendingSharePushes()).toHaveLength(0);
   });
 
