@@ -3,6 +3,8 @@ name: backup-guardian
 description: >
   Auditează și păstrează în sincron backup-ul local (ZIP) și cloud (iCloud).
   Activare: "Verifică backup-ul", "Auditează backup", "Sincronizează backup pentru [feature]".
+  Mod secundar „Verifică textele backup-ului": confruntă fiecare text vizibil din zona
+  backup / restaurare / partajare cu comportamentul real din cod (read-only).
   Invocat AUTOMAT de feature-implementer și db-migrator după orice modificare de schemă SQLite
   sau adăugare de cale fișier nouă. Raportează discrepanțele și propune patch-uri concrete.
 ---
@@ -93,7 +95,19 @@ Aceste tabele sunt excluse intenționat. Dacă audit-ul le marchează lipsă, ig
 - `cloud_state` — state device-specific (`device_id`, hash-uri locale)
 - `pending_uploads` — coadă tranzitorie; restore-ul o golește la final
 - `chat_threads`, `chat_messages` — istoricul chatbot e ephemeral, NU se păstrează (privacy)
+- `shared_entities`, `cloud_records`, `pending_share_pushes` — registrul CloudKit de partajare e device-specific (zone, rol, token-uri). Consecință de urmărit în UI: rândurile entității (inclusiv cele *primite* prin partajare) intră în backup, dar legătura de sync nu — după restore pe alt device sunt copii locale fără sync.
 - Tabelele tehnice fără date utilizator (ex. cache OCR temporar, dacă apar în viitor)
+
+Sursa de adevăr pentru excluderi e `EXCLUDED_TABLES` din `scripts/backup-audit.js`; dacă lista de aici diferă, actualizeaz-o.
+
+## Mod „Verifică textele backup-ului" (audit copy vs cod)
+
+Read-only. Activat când se cere verificarea textelor sau ca pas într-un audit UX (skill-ul `ux-audit`).
+
+1. **Inventar:** extrage toate textele vizibile (inclusiv titlurile/mesajele din `Alert.alert`, etichetele de status, hint-urile) din: `components/settings/BackupSection.tsx`, handler-ele de export/import/ștergere din `app/(tabs)/setari.tsx`, `app/cloud-backup.tsx` + `components/cloud/*`, `components/CloudBackupBanner.tsx`, `components/CloudPasswordModal.tsx`, `components/CloudRestoreProgress.tsx`, `components/onboarding/*Backup*`, `app/partajare.tsx`, `hooks/useSharingSync.ts`, și secțiunile despre backup din `services/appKnowledge.ts` (chatbot-ul repetă aceleași promisiuni).
+2. **Confruntare:** pentru fiecare afirmație găsește implementarea (`services/backup.ts`, `services/cloudSync.ts`, `services/cloudCrypto.ts`, `services/sharing.ts`, `hooks/useCloudBackup.ts`) și dă verdict ADEVĂRAT / FALS / PARȚIAL / NEVERIFICABIL cu dovadă `fișier:linie`.
+3. **Puncte care se strică des:** momentul real al upload-ului (fișiere imediat vs manifest doar la background); „Sincronizat" afișat cu modificări locale încă neurcate; semantica restaurării (ZIP = merge cu deduplicare, iCloud = înlocuire totală); ce NU intră în backup (setări, secure-store, modele AI, registrul de partajare); ce acoperă criptarea; stare citită din closure după `await` (alerta de succes poate minți).
+4. **Raport:** tabel `# | text | unde | verdict | dovadă | reformulare propusă`, apoi „Comportamente cu risc" (bug-uri reale, nu doar text). Nu propune redesign — doar adevărul textelor.
 
 Toate celelalte tabele (`persons`, `vehicles`, `documents`, `fuel_records`, `vehicle_maintenance_tasks`, `entity_order`, etc.) **TREBUIE** să fie în backup.
 

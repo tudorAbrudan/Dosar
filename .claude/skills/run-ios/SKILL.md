@@ -35,6 +35,8 @@ Config: `.mcp.json` (XcodeBuildMCP fixat la o versiune) + `.xcodebuildmcp/config
   xcrun simctl openurl booted "com.ax.documente://cropper?uri=<file-uri-encodat>&requestId=x"
   ```
 - **Deep-link-urile `com.ax.documente://entitati/<id>` nu navighează în dev client** — navighează prin `snapshot_ui` + `tap`.
+- **Derularea sare la capătul listei** (`swipe` și `idb ui swipe` lasă inerție pe ScrollView): ia `frame.y` din `idb ui describe-all`, fă swipe lent (`--duration 5 --delta 2`) și re-citește poziția. Rândurile fără `accessibilityRole` nu apar ca ținte în `snapshot_ui` — tap pe coordonate cu `idb ui tap`.
+- **Mărimea textului:** verifică `xcrun simctl ui <udid> content_size` înainte de capturi; la o mărime „accessibility-*" layout-ul nu e reprezentativ. După ce o schimbi, relansează aplicația (layout-ul vechi rămâne în cache).
 - **Date de test:** inserează direct în `<container>/Documents/SQLite/documente.db` (vehicles / documents / document_entities) și **șterge-le la final**.
 - **Simulator agățat** (launch/listapps nu răspund după un boot întrerupt): `xcrun simctl shutdown all`, apoi `killall -9 com.apple.CoreSimulator.CoreSimulatorService`, apoi build_run_sim din nou.
 - **Erori de linker / `.pcm` la build:** secvența de cleanup din `.claude/lessons/2026-04-22-ios-linker-pcm.md` (Clean Build Folder nu ajunge).

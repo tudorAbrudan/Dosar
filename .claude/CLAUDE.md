@@ -95,11 +95,11 @@ Ce n-ai putut verifica: „NU am verificat X pentru că Y" — niciodată „gat
 | `feature-implementer` | „Implementează task [ID]" | feature din `../PLAN.md`: plan → cod → verificare |
 | `db-migrator` | „Migrează [tabel]" | schemă SQLite + tipuri; prezintă planul și așteaptă aprobare |
 | `screen-builder` | „Construiește ecranul [nume]" | ecran nou conform design system |
-| `backup-guardian` | „Verifică backup-ul" | sincronizează backup ZIP + iCloud cu schema |
+| `backup-guardian` | „Verifică backup-ul" / „Verifică textele backup-ului" | sincronizează backup ZIP + iCloud cu schema; al doilea mod: textele UI vs comportamentul real |
 | `form-consistency-guard` | „Auditează formularele" | FormPageScreen vs FormSheetModal; doar raportează |
 | `ios-compliance` | „App Store review" | privacy manifest, NSUsageDescription, entitlements; doar raportează |
 
-Skill-uri: `/release` (bump + commit; doar la cerere), `run-ios` (simulator + verificare UI prin XcodeBuildMCP), `backup-audit`. Review/securitate: built-in `/code-review`, `/security-review`, plugin-ul claude-security.
+Skill-uri: `/release` (bump + commit; doar la cerere), `run-ios` (simulator + verificare UI prin XcodeBuildMCP), `backup-audit`, `ux-audit` (analiză UX pe o zonă: capturi + accesibilitate + texte vs cod → propuneri; fără implementare). Review/securitate: built-in `/code-review`, `/security-review`, plugin-ul claude-security.
 
 ## Reguli (`.claude/rules/`, încărcate după calea fișierului atins)
 
