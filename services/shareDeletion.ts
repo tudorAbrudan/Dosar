@@ -1,7 +1,7 @@
 /**
  * Ștergerea unei entități partajate „și la ei": starea din registru, golirea zonei
- * la owner și curățarea copiei la participant. Orchestrarea CloudKit (push, sync,
- * închiderea zonei) e în `cloudShare.ts`.
+ * la owner și curățarea copiei la participant. Orchestrarea CloudKit e în
+ * `cloudShare.ts` (push, sync) și `shareClosing.ts` (închiderea zonei, ieșirea).
  * Spec: ../docs/superpowers/specs/2026-10-15-delete-shared-entity-design.md
  *
  * Owner: zona se golește (rădăcina întâi), partajarea rămâne deschisă
@@ -20,43 +20,13 @@ import {
   deleteVehicle,
 } from './entities';
 import { emit } from './events';
-import { enqueueSharePush, getCloudRecordsByPrefix, mapSharedEntity } from './sharing';
-import type { SharedEntity, SharedEntityRow } from './sharing';
+import { enqueueSharePush, getCloudRecordsByPrefix, selectShares } from './sharing';
+import type { SharedEntity } from './sharing';
 import { shareEntityTable, type ShareableEntityType } from './shareZones';
-
-export const SHARE_TEARDOWN_GRACE_DAYS = 30;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-async function selectShares(where: string, params: string[] = []): Promise<SharedEntity[]> {
-  const rows = await db.getAllAsync<SharedEntityRow>(
-    `SELECT * FROM shared_entities WHERE ${where} ORDER BY created_at DESC`,
-    params
-  );
-  return rows.map(mapSharedEntity);
-}
 
 /** Toate partajările nerevocate, inclusiv cele în curs de ștergere. */
 export function getUnrevokedShares(): Promise<SharedEntity[]> {
   return selectShares('revoked_at IS NULL');
-}
-
-const OWNER_TEARDOWN_SQL =
-  "role = 'owner' AND delete_requested_at IS NOT NULL AND revoked_at IS NULL";
-
-/** Owner: partajările golite după „Șterge și la ei", încă neînchise. */
-export function getShareTeardowns(): Promise<SharedEntity[]> {
-  return selectShares(OWNER_TEARDOWN_SQL);
-}
-
-export async function getShareTeardown(zoneName: string): Promise<SharedEntity | null> {
-  const [share] = await selectShares(`zone_name = ? AND ${OWNER_TEARDOWN_SQL}`, [zoneName]);
-  return share ?? null;
-}
-
-/** Când se închide zona: la SHARE_TEARDOWN_GRACE_DAYS de la confirmarea ștergerii pe server. */
-export function teardownClosesAt(share: SharedEntity): Date | null {
-  if (!share.delete_sent_at) return null;
-  return new Date(new Date(share.delete_sent_at).getTime() + SHARE_TEARDOWN_GRACE_DAYS * DAY_MS);
 }
 
 /**

@@ -1,6 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import type * as CloudKitShareModule from '@/modules/expo-cloudkit-share/src';
 import type { DocumentEntityLink, EntityType } from '@/types';
 
 import {
@@ -34,7 +33,6 @@ import {
   ENTITY_SYNC_FIELDS,
   bumpSharePushAttempt,
   deleteCloudRecord,
-  deleteCloudRecordsForZone,
   deleteSharePush,
   enqueueSharePush,
   getCloudRecord,
@@ -58,18 +56,19 @@ import {
 } from './sharing';
 import { SHAREABLE_ENTITY_TYPES, parseZoneName, shareEntityTable, zoneNameFor } from './shareZones';
 import {
-  deleteSharePushesForZone,
   enqueueZoneTeardown,
-  getOwnerDeletedShares,
-  getShareTeardown,
-  getShareTeardowns,
   getUnrevokedShares,
   markOwnerDeleted,
-  markOwnerDeletionSeen,
   markShareDeleteSent,
-  purgeOwnerDeletedEntity,
-  teardownClosesAt,
 } from './shareDeletion';
+import {
+  closeExpiredTeardowns,
+  closeShareTeardown,
+  getShareTeardown,
+  leaveZone,
+  processOwnerDeletions,
+} from './shareClosing';
+import { isZoneGoneError, native } from './cloudKitNative';
 import type {
   PendingSharePush,
   PushScope,
@@ -89,17 +88,6 @@ import type {
  * reală = TestFlight pe două telefoane.
  * Vezi docs/superpowers/plans/2026-07-27-cloudkit-bidirectional-sharing.md.
  */
-
-// Import lazy al modulului nativ: ecranul de UI se randează în simulator chiar
-// dacă modulul nu e încă linkat (înainte de prebuild). Apelurile eșuează grațios.
-/* eslint-disable @typescript-eslint/no-var-requires */
-let nativeModule: typeof CloudKitShareModule | null = null;
-function native(): typeof CloudKitShareModule {
-  if (!nativeModule) {
-    nativeModule = require('@/modules/expo-cloudkit-share/src') as typeof CloudKitShareModule;
-  }
-  return nativeModule;
-}
 
 // Tabel SQLite → tip de entitate, inversul lui `shareEntityTable` (sursa unică: shareZones).
 const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = Object.fromEntries(
@@ -319,18 +307,6 @@ export async function leaveEntityShare(entityType: EntityType, entityId: string)
   await leaveZone(share);
 }
 
-async function leaveZone(share: SharedEntity): Promise<void> {
-  try {
-    await native().leaveShare({ zoneName: share.zone_name, ownerName: share.owner_name });
-  } catch (e) {
-    // Zona/share-ul poate fi deja dispărut (owner a revocat între timp) —
-    // scopul e local, nu rămânem blocați cu un rând agățat.
-    if (!isZoneGoneError(e)) throw e;
-  }
-  await revokeShare(share.zone_name);
-  await deleteCloudRecordsForZone(share.zone_name);
-}
-
 /**
  * Owner, „Șterge și la ei": golește zona (rădăcina întâi) și o lasă deschisă, ca
  * participanții să afle de ștergere la sync. Se apelează ÎNAINTE de ștergerea
@@ -349,65 +325,6 @@ export async function deleteEntityShareEverywhere(
       console.warn('[cloudShare] golirea zonei eșuată:', e instanceof Error ? e.message : e);
     })
   );
-}
-
-/**
- * Owner: închide o partajare golită — șterge zona cu tot ce a rămas în ea. Cine n-a
- * sincronizat până acum își păstrează copia (vede doar că zona a dispărut).
- */
-export async function closeShareTeardown(zoneName: string): Promise<void> {
-  try {
-    await native().deleteZone(zoneName);
-  } catch (e) {
-    if (!isZoneGoneError(e)) throw e;
-  }
-  await deleteSharePushesForZone(zoneName);
-  await deleteCloudRecordsForZone(zoneName);
-  await revokeShare(zoneName);
-}
-
-async function closeExpiredTeardowns(): Promise<void> {
-  for (const share of await getShareTeardowns()) {
-    const closesAt = teardownClosesAt(share);
-    if (!closesAt || closesAt.getTime() > Date.now()) continue;
-    try {
-      await closeShareTeardown(share.zone_name);
-    } catch (e) {
-      await markZoneSyncError(share.zone_name, e instanceof Error ? e.message : String(e));
-    }
-  }
-}
-
-/**
- * Participant: curăță copia entităților șterse de owner (reluat până vede userul
- * mesajul — o restaurare între timp le-ar readuce) și iese din partajările ale
- * căror mesaje au fost văzute (reluat până reușește).
- */
-async function processOwnerDeletions(): Promise<void> {
-  for (const share of await getOwnerDeletedShares()) {
-    try {
-      if (!share.owner_deleted_seen_at) await purgeOwnerDeletedEntity(share);
-      else await leaveZone(share);
-    } catch (e) {
-      console.warn('[cloudShare] ștergere owner neaplicată:', e instanceof Error ? e.message : e);
-    }
-  }
-}
-
-/** Participant: userul a văzut mesajul despre ștergere → iese din partajare. */
-export async function acknowledgeOwnerDeletion(zoneName: string): Promise<void> {
-  await markOwnerDeletionSeen(zoneName);
-  const share = (await getOwnerDeletedShares()).find(s => s.zone_name === zoneName);
-  if (!share) return;
-  await leaveZone(share).catch(() => {
-    // Offline: `processOwnerDeletions` reîncearcă la următorul sync.
-  });
-}
-
-/** True dacă eroarea CloudKit înseamnă „zona nu (mai) există pe server". */
-function isZoneGoneError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e);
-  return /zone does not exist|zone not found|zonenotfound/i.test(msg);
 }
 
 /** Traduce erorile CloudKit brute în mesaje RO, user-friendly, pentru UI. */

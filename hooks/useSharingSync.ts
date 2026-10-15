@@ -2,12 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, InteractionManager, type AppStateStatus } from 'react-native';
 import { router } from 'expo-router';
 
-import {
-  acknowledgeOwnerDeletion,
-  syncSharedEntities,
-  takeReceivedShareNotices,
-} from '@/services/cloudShare';
+import { syncSharedEntities, takeReceivedShareNotices } from '@/services/cloudShare';
 import { on } from '@/services/events';
+import { acknowledgeOwnerDeletion } from '@/services/shareClosing';
 import { getUnseenOwnerDeletions } from '@/services/shareDeletion';
 import { ENTITY_TYPE_LABELS } from '@/types';
 

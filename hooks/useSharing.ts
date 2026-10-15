@@ -4,10 +4,9 @@ import type { EntityType } from '@/types';
 import { getSharedEntities } from '@/services/sharing';
 import type { SharedEntity, SharePermission } from '@/services/sharing';
 import { on } from '@/services/events';
-import { getShareTeardowns } from '@/services/shareDeletion';
+import { closeShareTeardown, getShareTeardowns } from '@/services/shareClosing';
 import {
   acceptShareByURL,
-  closeShareTeardown,
   friendlyCloudKitMessage,
   getShareDiagnostics,
   isCloudKitAvailable,

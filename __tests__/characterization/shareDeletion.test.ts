@@ -42,6 +42,7 @@ let testDb: TestDb;
 let sharing: typeof import('@/services/sharing');
 let cloudShare: typeof import('@/services/cloudShare');
 let shareDeletion: typeof import('@/services/shareDeletion');
+let shareClosing: typeof import('@/services/shareClosing');
 let entities: typeof import('@/services/entities');
 let importState: typeof import('@/services/importState');
 let registryReset: typeof import('@/services/shareRegistryReset');
@@ -55,6 +56,7 @@ beforeAll(() => {
     sharing = require('@/services/sharing');
     cloudShare = require('@/services/cloudShare');
     shareDeletion = require('@/services/shareDeletion');
+    shareClosing = require('@/services/shareClosing');
     entities = require('@/services/entities');
     importState = require('@/services/importState');
     registryReset = require('@/services/shareRegistryReset');
@@ -249,7 +251,7 @@ describe('owner — „Șterge și la ei"', () => {
     expect(exists('documents', 'doc-1')).toBe(true);
     expect(await sharing.getShareForEntity('vehicle', 'veh-1')).toBeNull();
     expect(await sharing.getSharedEntities()).toHaveLength(0);
-    expect(await shareDeletion.getShareTeardowns()).toHaveLength(1);
+    expect(await shareClosing.getShareTeardowns()).toHaveLength(1);
   });
 
   it('fără confirmare de la server, termenul de închidere nu începe', async () => {
@@ -467,7 +469,7 @@ describe('participant — owner-ul a șters entitatea', () => {
     await cloudShare.syncSharedEntities();
 
     mockNative.leaveShare.mockRejectedValueOnce(new Error('offline'));
-    await cloudShare.acknowledgeOwnerDeletion(PARTICIPANT_ZONE);
+    await shareClosing.acknowledgeOwnerDeletion(PARTICIPANT_ZONE);
 
     expect(await shareDeletion.getUnseenOwnerDeletions()).toHaveLength(0);
     expect(shareRow(PARTICIPANT_ZONE).revoked_at).toBeNull();

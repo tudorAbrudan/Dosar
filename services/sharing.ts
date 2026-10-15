@@ -496,6 +496,15 @@ export async function getSharedEntities(includeRevoked = false): Promise<SharedE
   return rows.map(mapSharedEntity);
 }
 
+/** Rândurile din registru care îndeplinesc o condiție fixă din cod (cu parametri `?`). */
+export async function selectShares(where: string, params: string[] = []): Promise<SharedEntity[]> {
+  const rows = await db.getAllAsync<SharedEntityRow>(
+    `SELECT * FROM shared_entities WHERE ${where} ORDER BY created_at DESC`,
+    params
+  );
+  return rows.map(mapSharedEntity);
+}
+
 export async function getShareForEntity(
   entityType: EntityType,
   entityId: string
