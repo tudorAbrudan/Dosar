@@ -865,6 +865,16 @@ safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_display_name TEXT')
 // eticheta de tip („Vehicul"), niciodată numele entității.
 safeAlterTable('ALTER TABLE shared_entities ADD COLUMN share_title TEXT');
 
+// Migrare: ștergerea unei entități partajate „și la ei" (spec 2026-10-15).
+// Owner: delete_requested_at = zona se golește, partajarea rămâne deschisă;
+// delete_sent_at = ștergerea rădăcinii a ajuns pe server (de aici curg cele 30 de
+// zile până la închiderea zonei). Participant: owner_deleted_at = am primit
+// ștergerea și am curățat copia; owner_deleted_seen_at = userul a văzut mesajul.
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN delete_requested_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN delete_sent_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_deleted_at TEXT');
+safeAlterTable('ALTER TABLE shared_entities ADD COLUMN owner_deleted_seen_at TEXT');
+
 // Migrare: marchează mesajele care sunt de fapt erori afișate în conversație.
 // Erorile se persistă ca mesaje `assistant` (ca să nu rămână două mesaje `user`
 // consecutive, pe care template-ele stricte le resping), dar NU trebuie trimise

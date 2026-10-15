@@ -27,6 +27,9 @@ export const SHARE_ENTITY_MISSING_ERROR =
  * 3. Partajările proprii a căror entitate lipsește primesc o eroare vizibilă; nu se
  *    revocă automat (restaurarea nu face nimic ireversibil în rețea). Când entitatea
  *    e din nou pe telefon (restaurare după „Șterge toate datele"), eroarea dispare.
+ * 4. Zonele proprii în curs de golire („Șterge și la ei") își păstrează ștergerile
+ *    din coadă, chiar dacă documentele există local (owner-ul le păstrează): userul
+ *    a cerut explicit golirea zonei. Ele nu primesc eroarea de la pasul 3.
  *
  * Zonele proprii NU se resetează: fără `cloud_records`, un pull ar rescrie
  * `file_path` la documentele proprii spre copii din `shared/…`.
@@ -38,7 +41,8 @@ export async function resetShareStateAfterWipe(): Promise<void> {
     entity_type: string;
     entity_id: string;
   }>(
-    'SELECT zone_name, role, entity_type, entity_id FROM shared_entities WHERE revoked_at IS NULL'
+    `SELECT zone_name, role, entity_type, entity_id FROM shared_entities
+     WHERE revoked_at IS NULL AND delete_requested_at IS NULL`
   );
 
   for (const s of shares) {
@@ -74,11 +78,20 @@ export async function resetShareStateAfterWipe(): Promise<void> {
     op: string;
     kind: string;
   }>('SELECT id, zone_name, record_name, op, kind FROM pending_share_pushes');
+  const teardownZones = new Set(
+    (
+      await db.getAllAsync<{ zone_name: string }>(
+        `SELECT zone_name FROM shared_entities
+         WHERE revoked_at IS NULL AND delete_requested_at IS NOT NULL`
+      )
+    ).map(r => r.zone_name)
+  );
   for (const row of pending) {
     if (row.op !== 'delete') {
       await db.runAsync('DELETE FROM pending_share_pushes WHERE id = ?', [row.id]);
       continue;
     }
+    if (teardownZones.has(row.zone_name)) continue;
     let table: string | undefined = 'documents';
     if (row.kind === 'entity') {
       const parsed = parseZoneName(row.zone_name);

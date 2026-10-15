@@ -17,6 +17,7 @@ import { dark, light, onPrimary, primary, statusColors } from '@/theme/colors';
 import { useEntities } from '@/hooks/useEntities';
 import { useSharing } from '@/hooks/useSharing';
 import { OrphanedSharesCard } from '@/components/sharing/OrphanedSharesCard';
+import { TeardownSharesCard } from '@/components/sharing/TeardownSharesCard';
 import { ENTITY_TYPE_EMOJI, ENTITY_TYPE_LABELS } from '@/types';
 import type { EntityType } from '@/types';
 import type { SharedEntity, SharePermission } from '@/services/sharing';
@@ -58,6 +59,7 @@ export default function PartajareScreen() {
   } = useEntities();
   const {
     shares,
+    teardowns,
     available,
     diagnostics,
     loading,
@@ -65,6 +67,7 @@ export default function PartajareScreen() {
     share,
     revoke,
     leave,
+    closeTeardown,
     sync,
     acceptByURL,
   } = useSharing();
@@ -164,6 +167,24 @@ export default function PartajareScreen() {
       [
         { text: 'Anulează', style: 'cancel' },
         { text: 'Revocă', style: 'destructive', onPress: () => void revoke(row.type, row.id) },
+      ]
+    );
+  };
+
+  const onCloseTeardown = (s: SharedEntity, name: string) => {
+    Alert.alert(
+      'Oprești partajarea acum?',
+      `Cine n-a deschis aplicația de când ai șters „${name}" își păstrează copia.`,
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Oprește',
+          style: 'destructive',
+          onPress: () =>
+            void closeTeardown(s.zone_name).catch(e => {
+              Alert.alert('Partajare', friendlyCloudKitMessage(e));
+            }),
+        },
       ]
     );
   };
@@ -314,6 +335,8 @@ export default function PartajareScreen() {
           shares={orphanedShares}
           onRevoke={(s, name) => onRevoke({ type: s.entity_type, id: s.entity_id, name })}
         />
+
+        <TeardownSharesCard shares={teardowns} onCloseNow={onCloseTeardown} />
 
         {/* Partajat cu mine */}
         <View style={styles.sectionRow}>

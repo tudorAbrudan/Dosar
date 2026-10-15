@@ -70,6 +70,8 @@ const ENTRIES = {
     settings: { required: true, keywords: ['setări'] },
     shareIntentIngest: { required: true, keywords: ['Share', 'altă aplicație'] },
     sharing: { required: false },
+    // Starea ștergerii „și la ei" + curățarea copiei la participant (orchestrat de cloudShare).
+    shareDeletion: { required: false },
     // Reset intern al registrului de partajare după restaurare / ștergere totală.
     shareRegistryReset: { required: false },
     // Tipuri partajabile + numele zonelor CloudKit (modul frunză).

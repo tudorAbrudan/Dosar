@@ -65,7 +65,7 @@ function normalizeOcrPrefix(text: string | null | undefined): string {
  * și pentru a documenta explicit care coloane legacy există în schemă.
  */
 // check-hardcoded-entities-disable-next-cluster
-const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
+export const LEGACY_ENTITY_COLUMN: Record<EntityType, string | null> = {
   person: 'person_id',
   vehicle: 'vehicle_id',
   property: 'property_id',

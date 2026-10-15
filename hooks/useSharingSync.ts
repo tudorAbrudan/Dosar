@@ -2,8 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, InteractionManager, type AppStateStatus } from 'react-native';
 import { router } from 'expo-router';
 
-import { syncSharedEntities, takeReceivedShareNotices } from '@/services/cloudShare';
+import {
+  acknowledgeOwnerDeletion,
+  syncSharedEntities,
+  takeReceivedShareNotices,
+} from '@/services/cloudShare';
 import { on } from '@/services/events';
+import { getUnseenOwnerDeletions } from '@/services/shareDeletion';
 import { ENTITY_TYPE_LABELS } from '@/types';
 
 /**
@@ -55,6 +60,39 @@ async function announceReceivedShares(): Promise<void> {
   }
 }
 
+// Zonele al căror mesaj de ștergere e deja pe ecran: un sync nou (revenire din
+// fundal, silent push) nu-l mai afișează a doua oară până nu apasă userul OK.
+const deletionNoticesOnScreen = new Set<string>();
+
+/**
+ * Anunță entitățile primite pe care owner-ul le-a șters „și la ei". Copia e deja
+ * curățată la sync; OK-ul confirmă că userul a văzut mesajul și abia atunci aplicația
+ * iese din partajare. Mesajul rămâne în așteptare până la OK, inclusiv după repornire.
+ */
+async function announceOwnerDeletions(): Promise<void> {
+  for (const s of await getUnseenOwnerDeletions()) {
+    if (deletionNoticesOnScreen.has(s.zone_name)) continue;
+    deletionNoticesOnScreen.add(s.zone_name);
+    const name = s.share_title ?? ENTITY_TYPE_LABELS[s.entity_type];
+    const who = s.owner_display_name ?? 'Persoana care a partajat-o';
+    Alert.alert(
+      `„${name}" a fost ștearsă`,
+      `${who} a șters-o, așa că a dispărut și de pe telefonul tău, împreună cu documentele primite prin partajare.`,
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            void acknowledgeOwnerDeletion(s.zone_name)
+              .catch(() => {})
+              .finally(() => deletionNoticesOnScreen.delete(s.zone_name));
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  }
+}
+
 export function useSharingSync() {
   const mountedRef = useRef(true);
   const inFlightRef = useRef(false);
@@ -68,6 +106,7 @@ export function useSharingSync() {
     try {
       await syncSharedEntities();
       await announceReceivedShares();
+      await announceOwnerDeletions();
       if (mountedRef.current) setError(null);
     } catch (e) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Eroare necunoscută');

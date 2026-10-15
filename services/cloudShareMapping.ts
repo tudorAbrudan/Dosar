@@ -19,6 +19,8 @@ export interface PushRecord {
   recordType: string;
   fields: Record<string, string>;
   files?: PushFile[];
+  /** Doar actualizare, fără creare (vezi `mustExist` în modulul nativ). */
+  mustExist?: boolean;
 }
 
 export interface PushBundle {

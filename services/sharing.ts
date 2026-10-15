@@ -264,6 +264,14 @@ export interface SharedEntity {
   /** Diagnostics — ultimul pull reușit / ultima eroare de sync (SharingBetaSection/partajare.tsx). */
   last_synced_at?: string;
   last_sync_error?: string;
+  /** Owner: „Șterge și la ei" cerut — zona se golește, partajarea rămâne deschisă. */
+  delete_requested_at?: string;
+  /** Owner: ștergerea rădăcinii a ajuns pe server; de aici curge termenul de închidere. */
+  delete_sent_at?: string;
+  /** Participant: owner-ul a șters entitatea, copia locală a fost curățată. */
+  owner_deleted_at?: string;
+  /** Participant: userul a văzut mesajul despre ștergere. */
+  owner_deleted_seen_at?: string;
 }
 
 export interface CloudRecordRef {
@@ -278,7 +286,7 @@ export interface CloudRecordRef {
   file_hash?: string;
 }
 
-interface SharedEntityRow {
+export interface SharedEntityRow {
   id: string;
   entity_type: string;
   entity_id: string;
@@ -294,6 +302,10 @@ interface SharedEntityRow {
   change_token: string | null;
   last_synced_at: string | null;
   last_sync_error: string | null;
+  delete_requested_at: string | null;
+  delete_sent_at: string | null;
+  owner_deleted_at: string | null;
+  owner_deleted_seen_at: string | null;
 }
 
 interface CloudRecordRow {
@@ -308,7 +320,7 @@ interface CloudRecordRow {
   file_hash: string | null;
 }
 
-function mapSharedEntity(r: SharedEntityRow): SharedEntity {
+export function mapSharedEntity(r: SharedEntityRow): SharedEntity {
   return {
     id: r.id,
     entity_type: r.entity_type as EntityType,
@@ -324,6 +336,10 @@ function mapSharedEntity(r: SharedEntityRow): SharedEntity {
     revoked_at: r.revoked_at ?? undefined,
     last_synced_at: r.last_synced_at ?? undefined,
     last_sync_error: r.last_sync_error ?? undefined,
+    delete_requested_at: r.delete_requested_at ?? undefined,
+    delete_sent_at: r.delete_sent_at ?? undefined,
+    owner_deleted_at: r.owner_deleted_at ?? undefined,
+    owner_deleted_seen_at: r.owner_deleted_seen_at ?? undefined,
   };
 }
 
@@ -377,7 +393,11 @@ export async function recordShare(params: {
        owner_name = excluded.owner_name,
        owner_display_name = COALESCE(excluded.owner_display_name, shared_entities.owner_display_name),
        share_title = COALESCE(excluded.share_title, shared_entities.share_title),
-       revoked_at = NULL`,
+       revoked_at = NULL,
+       delete_requested_at = NULL,
+       delete_sent_at = NULL,
+       owner_deleted_at = NULL,
+       owner_deleted_seen_at = NULL`,
     [
       id,
       params.entityType,
@@ -421,11 +441,24 @@ export async function recordShare(params: {
         change_token: null,
         last_synced_at: null,
         last_sync_error: null,
+        delete_requested_at: null,
+        delete_sent_at: null,
+        owner_deleted_at: null,
+        owner_deleted_seen_at: null,
       });
 }
 
+/**
+ * Partajare activă: nerevocată și nici în curs de ștergere (owner care a ales
+ * „Șterge și la ei", participant la care owner-ul a șters entitatea). Rândurile în
+ * curs de ștergere nu mai primesc push-uri, nu se mai sincronizează și nu mai fac
+ * entitatea să pară partajată — le citește doar `services/shareDeletion.ts`.
+ */
+export const ACTIVE_SHARE_SQL =
+  'revoked_at IS NULL AND delete_requested_at IS NULL AND owner_deleted_at IS NULL';
+
 export async function getSharedEntities(includeRevoked = false): Promise<SharedEntity[]> {
-  const where = includeRevoked ? '' : 'WHERE revoked_at IS NULL';
+  const where = includeRevoked ? '' : `WHERE ${ACTIVE_SHARE_SQL}`;
   const rows = await db.getAllAsync<SharedEntityRow>(
     `SELECT * FROM shared_entities ${where} ORDER BY created_at DESC`
   );
@@ -438,7 +471,7 @@ export async function getShareForEntity(
 ): Promise<SharedEntity | null> {
   const row = await db.getFirstAsync<SharedEntityRow>(
     `SELECT * FROM shared_entities
-     WHERE entity_type = ? AND entity_id = ? AND revoked_at IS NULL
+     WHERE entity_type = ? AND entity_id = ? AND ${ACTIVE_SHARE_SQL}
      LIMIT 1`,
     [entityType, entityId]
   );
@@ -659,7 +692,8 @@ export async function getZonesForDocument(documentId: string): Promise<SharedEnt
     `SELECT se.* FROM shared_entities se
        JOIN document_entities de
          ON de.entity_type = se.entity_type AND de.entity_id = se.entity_id
-     WHERE de.document_id = ? AND se.revoked_at IS NULL`,
+     WHERE de.document_id = ? AND se.revoked_at IS NULL
+       AND se.delete_requested_at IS NULL AND se.owner_deleted_at IS NULL`,
     [documentId]
   );
   // Dedup pe zone_name (un doc legat de aceeași entitate de mai multe ori).
