@@ -500,6 +500,38 @@ public class ExpoCloudKitShareModule: Module {
       for (_, r) in deleteResults { _ = try r.get() }
       return ["left": true]
     }
+
+    // ─── fetchShareParticipants ──────────────────────────────────────────
+    // Owner side: participanții CKShare-ului zonei, fără owner. Un participant
+    // care iese (`leaveShare`) e scos de CloudKit: dispare din listă sau rămâne cu
+    // `removed` — JS tratează ambele ca „a confirmat". Semnături verificate în
+    // CKShareParticipant.h / CKUserIdentity.h din SDK (`role`, `acceptanceStatus`,
+    // `userIdentity.userRecordID` opțional). Share-ul lipsă (oprit din foaia de
+    // sistem) → eroarea „share-missing".
+    AsyncFunction("fetchShareParticipants") { (zoneName: String) async throws -> [[String: Any]] in
+      let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
+      let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
+      let record: CKRecord
+      do {
+        record = try await self.container.privateCloudDatabase.record(for: shareID)
+      } catch let error as CKError where error.code == .unknownItem {
+        throw makeError(17, "share-missing")
+      }
+      guard let share = record as? CKShare else {
+        throw makeError(17, "share-missing")
+      }
+      return share.participants.compactMap { participant in
+        if participant.role == .owner { return nil }
+        var out: [String: Any] = ["status": Self.acceptanceStatusString(participant.acceptanceStatus)]
+        if let id = participant.userIdentity.userRecordID?.recordName {
+          out["id"] = id
+        }
+        if let name = Self.formatUserIdentity(participant.userIdentity) {
+          out["name"] = name
+        }
+        return out
+      }
+    }
   }
 
   // MARK: - pushRecords helper
@@ -633,6 +665,16 @@ public class ExpoCloudKitShareModule: Module {
     case .restricted: return "restricted"
     case .couldNotDetermine: return "couldNotDetermine"
     case .temporarilyUnavailable: return "temporarilyUnavailable"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private static func acceptanceStatusString(_ status: CKShare.ParticipantAcceptanceStatus) -> String {
+    switch status {
+    case .pending: return "pending"
+    case .accepted: return "accepted"
+    case .removed: return "removed"
+    case .unknown: return "unknown"
     @unknown default: return "unknown"
     }
   }

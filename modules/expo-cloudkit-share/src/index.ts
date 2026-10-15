@@ -96,6 +96,17 @@ export interface LeaveShareOptions {
   ownerName?: string;
 }
 
+export type ShareParticipantStatus = 'pending' | 'accepted' | 'removed' | 'unknown';
+
+/** Un participant al CKShare-ului unei zone proprii (owner-ul nu apare). */
+export interface ShareParticipant {
+  /** `userIdentity.userRecordID.recordName` — lipsește dacă CloudKit nu-l dă. */
+  id?: string;
+  /** Nume afișabil, dacă participantul e descoperibil. */
+  name?: string;
+  status: ShareParticipantStatus;
+}
+
 /** Fișier atașat unui record (devine CKAsset). */
 export interface PushFile {
   key: string;
@@ -300,6 +311,15 @@ export function deleteZone(zoneName: string): Promise<{ deleted: boolean }> {
 export function fetchShareInfo(options: FetchShareInfoOptions): Promise<ShareInfo> {
   if (!options.zoneName) throw new Error('fetchShareInfo: zoneName obligatoriu');
   return NativeModule.fetchShareInfo(options);
+}
+
+/**
+ * Owner: participanții CKShare-ului zonei. Cine a ieșit (`leaveShare`) lipsește sau
+ * are `removed`. Share-ul șters (oprit din foaia de sistem) → eroare „share-missing".
+ */
+export function fetchShareParticipants(zoneName: string): Promise<ShareParticipant[]> {
+  if (!zoneName) throw new Error('fetchShareParticipants: zoneName obligatoriu');
+  return NativeModule.fetchShareParticipants(zoneName);
 }
 
 /** Participant: renunță la accesul propriu (owner-ul și ceilalți participanți nu sunt afectați). */
