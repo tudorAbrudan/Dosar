@@ -29,7 +29,8 @@ import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useEntityReadOnly } from '@/hooks/useShareReadOnly';
 import { ReadOnlyShareBanner } from '@/components/ReadOnlyShareBanner';
 import { getShareForEntity } from '@/services/sharing';
-import { leaveEntityShare } from '@/services/cloudShare';
+import type { SharedEntity } from '@/services/sharing';
+import { deleteEntityShareEverywhere, leaveEntityShare } from '@/services/cloudShare';
 import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleLegalStatus } from '@/components/VehicleLegalStatus';
@@ -232,38 +233,62 @@ export default function EntityDetailScreen() {
     loadDocs(entityKind, id as string);
   }
 
-  const handleDelete = () => {
+  const deleteThisEntity = async () => {
+    if (entityKind === 'person_id') await deletePerson(id!);
+    else if (entityKind === 'property_id') await deleteProperty(id!);
+    else if (entityKind === 'vehicle_id') await deleteVehicle(id!);
+    else if (entityKind === 'animal_id') await deleteAnimal(id!);
+    else if (entityKind === 'company_id') await deleteCompany(id!);
+    else await deleteCard(id!);
+  };
+
+  const runDelete = async (share: SharedEntity | null, forEveryone: boolean) => {
+    try {
+      const entityType = ENTITY_KIND_TO_TYPE[entityKind];
+      // Înaintea ștergerii locale: odată golită zona, ștergerea nu mai revocă partajarea.
+      if (forEveryone) await deleteEntityShareEverywhere(entityType, id!);
+      await deleteThisEntity();
+      // Entitate primită prin partajare (drept de editare, altfel butonul
+      // e blocat mai sus) — curăță bookkeeping-ul de sharing, altfel
+      // rândul rămâne agățat în „Partajat cu mine" fără entitate locală.
+      if (share?.role === 'participant') {
+        await leaveEntityShare(entityType, id!).catch(() => {});
+      }
+      router.back();
+    } catch (e) {
+      Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut șterge');
+    }
+  };
+
+  const handleDelete = async () => {
     if (isReadOnly) {
       Alert.alert('Doar citire', 'Entitatea e partajată cu tine ca doar-citire — nu poți șterge.');
       return;
     }
+    const share = await getShareForEntity(ENTITY_KIND_TO_TYPE[entityKind], id!).catch(() => null);
+    if (share?.role === 'owner') {
+      Alert.alert(
+        `Ștergi „${entityName}"?`,
+        `Documentele legate rămân la tine.\n\n„${entityName}" e partajată. „Șterge și la ei" o scoate și de pe telefoanele celorlalți, împreună cu documentele primite prin ea.`,
+        [
+          { text: 'Anulează', style: 'cancel' },
+          {
+            text: 'Șterge doar la mine',
+            style: 'destructive',
+            onPress: () => void runDelete(share, false),
+          },
+          {
+            text: 'Șterge și la ei',
+            style: 'destructive',
+            onPress: () => void runDelete(share, true),
+          },
+        ]
+      );
+      return;
+    }
     Alert.alert('Ștergere', `Ștergi „${entityName}"? Documentele legate nu vor fi șterse.`, [
       { text: 'Anulează', style: 'cancel' },
-      {
-        text: 'Șterge',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const entityType = ENTITY_KIND_TO_TYPE[entityKind];
-            const share = await getShareForEntity(entityType, id!);
-            if (entityKind === 'person_id') await deletePerson(id!);
-            else if (entityKind === 'property_id') await deleteProperty(id!);
-            else if (entityKind === 'vehicle_id') await deleteVehicle(id!);
-            else if (entityKind === 'animal_id') await deleteAnimal(id!);
-            else if (entityKind === 'company_id') await deleteCompany(id!);
-            else await deleteCard(id!);
-            // Entitate primită prin partajare (drept de editare, altfel butonul
-            // e blocat mai sus) — curăță bookkeeping-ul de sharing, altfel
-            // rândul rămâne agățat în „Partajat cu mine" fără entitate locală.
-            if (share?.role === 'participant') {
-              await leaveEntityShare(entityType, id!).catch(() => {});
-            }
-            router.back();
-          } catch (e) {
-            Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut șterge');
-          }
-        },
-      },
+      { text: 'Șterge', style: 'destructive', onPress: () => void runDelete(share, false) },
     ]);
   };
 
