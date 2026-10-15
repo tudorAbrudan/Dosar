@@ -648,6 +648,73 @@ describe('pullOwnedChanges — Faza 2: owner-ul trage editările participantului
   });
 });
 
+describe('pullOwnedChanges — ecoul propriilor ștergeri', () => {
+  function ownZoneReturns(deletedRecordNames: string[]): void {
+    mockNative.fetchDatabaseChanges.mockImplementation(
+      async (opts: { scope: 'shared' | 'private' }) =>
+        opts.scope === 'private'
+          ? {
+              changedZones: [{ zoneName: 'entity_vehicle_veh-11', ownerName: null }],
+              deletedZones: [],
+              newToken: 'db-priv-11',
+            }
+          : { changedZones: [], deletedZones: [], newToken: null }
+    );
+    mockNative.fetchZoneChanges.mockResolvedValueOnce({
+      records: [],
+      deletedRecordNames,
+      newToken: 'zone-11-token',
+    });
+  }
+
+  beforeEach(() => {
+    insertVehicle('veh-11', { name: 'Logan' });
+    insertSharedEntity({
+      zoneName: 'entity_vehicle_veh-11',
+      entityType: 'vehicle',
+      entityId: 'veh-11',
+      role: 'owner',
+      permission: 'readwrite',
+    });
+  });
+
+  it('documentul dezlegat de owner din entitatea partajată nu se șterge de pe telefonul owner-ului', async () => {
+    // Dezlegarea a trimis un tombstone; push-ul reușit a scos rândul din cloud_records.
+    insertDocument('doc-11', { note: 'al meu' });
+    testDb._raw
+      .prepare(`INSERT INTO persons (id, name, created_at) VALUES (?, ?, ?)`)
+      .run('per-11', 'Ana', '2026-07-01T00:00:00Z');
+    linkDocumentEntity('link-11', 'doc-11', 'person', 'per-11');
+    ownZoneReturns(['doc-11']);
+
+    await cloudShare.syncSharedEntities();
+
+    expect(
+      await db.getFirstAsync('SELECT id FROM documents WHERE id = ?', ['doc-11'])
+    ).not.toBeNull();
+    expect(
+      await db.getFirstAsync('SELECT id FROM document_entities WHERE id = ?', ['link-11'])
+    ).not.toBeNull();
+  });
+
+  it('un document șters de participant (încă în evidența owner-ului) se șterge și la owner', async () => {
+    insertDocument('doc-12');
+    linkDocumentEntity('link-12', 'doc-12', 'vehicle', 'veh-11');
+    insertCloudRecord({
+      zoneName: 'entity_vehicle_veh-11',
+      recordName: 'doc-12',
+      recordType: 'document',
+      localTable: 'documents',
+      localId: 'doc-12',
+    });
+    ownZoneReturns(['doc-12']);
+
+    await cloudShare.syncSharedEntities();
+
+    expect(await db.getFirstAsync('SELECT id FROM documents WHERE id = ?', ['doc-12'])).toBeNull();
+  });
+});
+
 describe('applyFetchedRecords — supresie ecou (decizia 4/9, generalizată)', () => {
   it('nu suprascrie o editare locală mai nouă cu propriul ecou (changeTag identic)', async () => {
     insertDocument('doc-echo', { type: 'talon', note: 'nota noua locala' });

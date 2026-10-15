@@ -1198,10 +1198,17 @@ async function applyPageRow(share: SharedEntity, rec: FetchedRecord): Promise<vo
 /**
  * Un document poate fi legat de DOUĂ entități partajate (zone diferite) — se
  * șterge local doar când dispare din ULTIMA zonă (`getZonesForDocument`).
+ *
+ * Owner-ul își trage propria zonă, iar CloudKit întoarce și ștergerile făcute de
+ * el (dezlegare de document, tip devenit medical). Push-ul reușit scoate rândul
+ * din `cloud_records`, deci o ștergere fără evidență e propriul ecou: aplicată,
+ * ar șterge documentul de pe telefonul owner-ului. Cele făcute de un participant
+ * readwrite au încă evidență și se aplică.
  */
 async function applyDeletions(share: SharedEntity, deletedRecordNames: string[]): Promise<void> {
   for (const recordName of deletedRecordNames) {
     if (recordName === share.entity_id) continue; // zone-root — revocarea reală vine prin deletedZones, nu de aici
+    if (share.role === 'owner' && !(await getCloudRecord(share.zone_name, recordName))) continue;
 
     // Pagină ștearsă la owner (eliminare de pagină sau reordonare): dispare
     // singură, fără să atingă documentul-părinte.
