@@ -1,7 +1,4 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import Colors from '@/constants/Colors';
-import { primary, statusColors } from '@/theme/colors';
+import { primary } from '@/theme/colors';
 import { iconColors } from '@/theme/iconColors';
 import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
@@ -19,7 +16,6 @@ export function PrivacyGdprSection({
   onShowTerms,
   onDeleteAllData,
 }: PrivacyGdprSectionProps) {
-  const C = Colors[scheme];
   return (
     <SectionCard title="Date și confidențialitate" scheme={scheme}>
       <InfoRow
@@ -39,47 +35,16 @@ export function PrivacyGdprSection({
         onPress={onShowTerms}
         scheme={scheme}
       />
-      <View style={styles.rowLast}>
-        <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: iconColors.pink.bg }]}>
-            <Ionicons name="trash-outline" size={18} color={iconColors.pink.fg} />
-          </View>
-          <Text style={[styles.rowLabel, { color: statusColors.critical }]}>
-            Șterge toate datele
-          </Text>
-        </View>
-        <Pressable
-          onPress={onDeleteAllData}
-          hitSlop={8}
-          accessibilityLabel="Șterge toate datele"
-        >
-          <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-        </Pressable>
-      </View>
+      {/* Tot rândul e apăsabil (înainte doar săgeata); confirmarea e în handler. */}
+      <InfoRow
+        icon="trash-outline"
+        iconBg={iconColors.pink.bg}
+        iconColor={iconColors.pink.fg}
+        label="Șterge toate datele"
+        destructive
+        onPress={onDeleteAllData}
+        scheme={scheme}
+      />
     </SectionCard>
   );
 }
-
-const styles = StyleSheet.create({
-  rowLast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 13,
-  },
-  rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  rowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  rowLabel: { fontSize: 15, fontWeight: '500' },
-});

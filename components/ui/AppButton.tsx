@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   Text,
   StyleSheet,
@@ -9,9 +10,11 @@ import {
 } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { onPrimary, statusColors } from '@/theme/colors';
 import { radius } from '@/theme/layout';
 
-type Variant = 'primary' | 'secondary' | 'outline';
+/** `danger` = contur roșu, pentru acțiuni care șterg ceva. */
+type Variant = 'primary' | 'secondary' | 'outline' | 'danger';
 
 interface AppButtonProps {
   title: string;
@@ -21,6 +24,9 @@ interface AppButtonProps {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
+  /** Rotiță în locul iconiței; butonul nu mai răspunde cât rulează. */
+  loading?: boolean;
+  accessibilityLabel?: string;
 }
 
 export function AppButton({
@@ -31,6 +37,8 @@ export function AppButton({
   style,
   textStyle,
   icon,
+  loading,
+  accessibilityLabel,
 }: AppButtonProps) {
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const C = Colors[scheme];
@@ -38,37 +46,37 @@ export function AppButton({
   const isPrimary = variant === 'primary';
   const isSecondary = variant === 'secondary';
   const isOutline = variant === 'outline';
+  const isDanger = variant === 'danger';
+  const fg = isPrimary ? onPrimary : isDanger ? statusColors.critical : C.primary;
 
   return (
     <Pressable
-      disabled={disabled}
+      disabled={disabled || loading}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       style={({ pressed }) => [
         styles.base,
-        isPrimary && { backgroundColor: disabled ? C.border : C.primary },
+        isPrimary && { backgroundColor: C.primary },
         isSecondary && { backgroundColor: C.primaryMuted },
         isOutline && {
           backgroundColor: 'transparent',
           borderWidth: 1.5,
           borderColor: C.primary,
         },
+        isDanger && {
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderColor: statusColors.critical,
+        },
         pressed && !disabled && { opacity: 0.88 },
-        disabled && { opacity: 0.5 },
+        disabled && { opacity: 0.4 },
         style,
       ]}
     >
-      {icon}
-      <Text
-        style={[
-          styles.label,
-          isPrimary && styles.labelOnPrimary,
-          (isSecondary || isOutline) && { color: C.primary },
-          isOutline && { fontWeight: '600' },
-          textStyle,
-        ]}
-      >
-        {title}
-      </Text>
+      {loading ? <ActivityIndicator size="small" color={fg} /> : icon}
+      <Text style={[styles.label, { color: fg }, textStyle]}>{title}</Text>
     </Pressable>
   );
 }
@@ -87,8 +95,5 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  labelOnPrimary: {
-    color: '#ffffff',
   },
 });

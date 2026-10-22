@@ -3,8 +3,7 @@ import { InfoRow } from './InfoRow';
 import { SectionCard } from './SectionCard';
 import { iconColors } from '@/theme/iconColors';
 
-const APP_STORE_REVIEW_URL =
-  'itms-apps://itunes.apple.com/app/id6760576986?action=write-review';
+const APP_STORE_REVIEW_URL = 'itms-apps://itunes.apple.com/app/id6760576986?action=write-review';
 
 interface ContactSectionProps {
   contactEmail: string;
@@ -48,7 +47,6 @@ export function ContactSection({
         label="Evaluează aplicația"
         sub="Ne ajuți cu o recenzie pe App Store"
         onPress={() => Linking.openURL(APP_STORE_REVIEW_URL)}
-        isLast
         scheme={scheme}
       />
     </SectionCard>
