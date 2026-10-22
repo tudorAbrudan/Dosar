@@ -1,9 +1,9 @@
-import { View, Text, Switch, TextInput, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { TextInput, StyleSheet } from 'react-native';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
 import { iconColors } from '@/theme/iconColors';
 import { SectionCard } from './SectionCard';
+import { InfoRow } from './InfoRow';
 
 interface NotificariSectionProps {
   notifDays: number;
@@ -15,6 +15,7 @@ interface NotificariSectionProps {
   onShowOrphansToggle: (value: boolean) => void;
 }
 
+/** Secțiunea Notificări — avertizări de expirare și sugestiile de pe Acasă. Pliabilă. */
 export function NotificariSection({
   notifDays,
   pushEnabled,
@@ -26,87 +27,51 @@ export function NotificariSection({
 }: NotificariSectionProps) {
   const C = Colors[scheme];
   return (
-    <SectionCard title="Notificări" scheme={scheme}>
-      <View style={[styles.row, { borderBottomColor: C.border }]}>
-        <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: iconColors.info.bg }]}>
-            <Ionicons name="time-outline" size={18} color={iconColors.info.fg} />
-          </View>
-          <Text style={[styles.rowLabel, { color: C.text }]}>Zile înainte de expirare</Text>
-        </View>
-        <TextInput
-          style={[
-            styles.inputSmall,
-            { color: C.text, borderColor: C.border, backgroundColor: C.background },
-          ]}
-          value={String(notifDays)}
-          onChangeText={onNotifDaysChange}
-          keyboardType="number-pad"
-          maxLength={2}
-          placeholderTextColor={C.textSecondary}
-        />
-      </View>
-      <View style={[styles.row, { borderBottomColor: C.border }]}>
-        <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: iconColors.primary.bg }]}>
-            <Ionicons name="notifications-outline" size={18} color={primary} />
-          </View>
-          <Text style={[styles.rowLabel, { color: C.text }]}>Notificări de expirare</Text>
-        </View>
-        <Switch
-          value={pushEnabled}
-          onValueChange={onPushToggle}
-          trackColor={{ false: C.border, true: primary }}
-          thumbColor="#fff"
-        />
-      </View>
-      <View style={styles.rowLast}>
-        <View style={styles.rowLeft}>
-          <View style={[styles.rowIcon, { backgroundColor: iconColors.warning.bg }]}>
-            <Ionicons name="checkmark-done-outline" size={18} color={iconColors.warning.fg} />
-          </View>
-          <Text style={[styles.rowLabel, { color: C.text }]}>Sugestii pe Acasă</Text>
-        </View>
-        <Switch
-          value={showOrphans}
-          onValueChange={onShowOrphansToggle}
-          trackColor={{ false: C.border, true: primary }}
-          thumbColor="#fff"
-        />
-      </View>
+    <SectionCard title="Notificări" scheme={scheme} collapsible>
+      <InfoRow
+        icon="time-outline"
+        iconBg={iconColors.info.bg}
+        iconColor={iconColors.info.fg}
+        label="Zile înainte de expirare"
+        right={
+          <TextInput
+            style={[
+              styles.inputSmall,
+              { color: C.text, borderColor: C.border, backgroundColor: C.background },
+            ]}
+            value={String(notifDays)}
+            onChangeText={onNotifDaysChange}
+            keyboardType="number-pad"
+            maxLength={2}
+            placeholderTextColor={C.textSecondary}
+            accessibilityLabel="Zile înainte de expirare"
+          />
+        }
+        scheme={scheme}
+      />
+      <InfoRow
+        icon="notifications-outline"
+        iconBg={iconColors.primary.bg}
+        iconColor={primary}
+        label="Notificări de expirare"
+        switchValue={pushEnabled}
+        onSwitchChange={onPushToggle}
+        scheme={scheme}
+      />
+      <InfoRow
+        icon="checkmark-done-outline"
+        iconBg={iconColors.warning.bg}
+        iconColor={iconColors.warning.fg}
+        label="Sugestii pe Acasă"
+        switchValue={showOrphans}
+        onSwitchChange={onShowOrphansToggle}
+        scheme={scheme}
+      />
     </SectionCard>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowLast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 13,
-  },
-  rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  rowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  rowLabel: { fontSize: 15, fontWeight: '500' },
   inputSmall: {
     borderWidth: 1,
     borderRadius: 8,

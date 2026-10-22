@@ -18,7 +18,6 @@ export function SharingBetaSection({ scheme, onOpenSharing }: SharingBetaSection
         label="Partajare entități"
         sub="Partajează o entitate cu familia prin iCloud"
         onPress={onOpenSharing}
-        isLast
         scheme={scheme}
       />
     </SectionCard>

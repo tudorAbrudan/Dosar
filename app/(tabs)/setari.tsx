@@ -196,9 +196,6 @@ export default function SetariScreen() {
   const [backupImporting, setBackupImporting] = useState(false);
   const [filesRepairing, setFilesRepairing] = useState(false);
   const backupHealth = useBackupHealth();
-  const [entitiesCollapsed, setEntitiesCollapsed] = useState(true);
-  const [docTypesCollapsed, setDocTypesCollapsed] = useState(true);
-  const [aspectCollapsed, setAspectCollapsed] = useState(true);
   const [lastCrash, setLastCrash] = useState<NativeCrashReport | null>(null);
   const router = useRouter();
 
@@ -1165,13 +1162,7 @@ export default function SetariScreen() {
           onRepairFiles={handleRepairFiles}
         />
 
-        <AspectSection
-          themePref={themePref}
-          collapsed={aspectCollapsed}
-          scheme={scheme}
-          onToggleCollapsed={() => setAspectCollapsed(v => !v)}
-          onSelectPref={setThemePref}
-        />
+        <AspectSection themePref={themePref} scheme={scheme} onSelectPref={setThemePref} />
 
         <NotificariSection
           notifDays={notifDays}
@@ -1185,19 +1176,15 @@ export default function SetariScreen() {
 
         <VizibilitateEntitatiSection
           visibleEntityTypes={visibleEntityTypes}
-          collapsed={entitiesCollapsed}
           scheme={scheme}
-          onToggleCollapsed={() => setEntitiesCollapsed(v => !v)}
           onToggleEntityType={handleToggleEntityType}
         />
 
         <VizibilitateDocTypesSection
           visibleDocTypes={visibleDocTypes}
           customTypes={customTypes}
-          collapsed={docTypesCollapsed}
           newTypeName={newTypeName}
           scheme={scheme}
-          onToggleCollapsed={() => setDocTypesCollapsed(v => !v)}
           onToggleDocType={handleToggleDocType}
           onChangeNewTypeName={setNewTypeName}
           onAddCustomType={handleAddCustomType}

@@ -18,7 +18,6 @@ export function OnboardingSection({ scheme, onResetOnboarding }: OnboardingSecti
         label="Reluare onboarding"
         sub="Resetează vizibilitatea tipurilor de documente la valorile implicite"
         onPress={onResetOnboarding}
-        isLast
         scheme={scheme}
       />
     </SectionCard>
