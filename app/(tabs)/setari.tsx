@@ -43,6 +43,7 @@ import { BackupSection } from '@/components/settings/BackupSection';
 import { SharingBetaSection } from '@/components/settings/SharingBetaSection';
 import { AiConfigModal } from '@/components/settings/AiConfigModal';
 import { useModelDownload } from '@/hooks/useModelDownload';
+import { useBackupHealth } from '@/hooks/useBackupHealth';
 import AppLockPinModal from '@/components/AppLockPinModal';
 import { primary, statusColors } from '@/theme/colors';
 import * as settings from '@/services/settings';
@@ -194,7 +195,7 @@ export default function SetariScreen() {
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
   const [filesRepairing, setFilesRepairing] = useState(false);
-  const [backupCollapsed, setBackupCollapsed] = useState(true);
+  const backupHealth = useBackupHealth();
   const [entitiesCollapsed, setEntitiesCollapsed] = useState(true);
   const [docTypesCollapsed, setDocTypesCollapsed] = useState(true);
   const [aspectCollapsed, setAspectCollapsed] = useState(true);
@@ -361,7 +362,7 @@ export default function SetariScreen() {
         'Backup mare',
         `Backup-ul are aproximativ ${formatBytes(estimated)}. Exportul manual încarcă toate ` +
           'fișierele în memorie și pe biblioteci mari se poate opri neașteptat. Pentru biblioteci ' +
-          'mari îți recomandăm backup-ul în iCloud (Setări → Backup iCloud). Continui exportul manual?',
+          'mari îți recomandăm backup-ul în iCloud (Backup și restaurare → iCloud Backup). Continui exportul manual?',
         [
           { text: 'Anulează', style: 'cancel' },
           { text: 'Continuă oricum', onPress: () => void runExportBackup() },
@@ -1149,6 +1150,21 @@ export default function SetariScreen() {
           }}
         />
 
+        <BackupSection
+          cloudStatus={backupHealth.status}
+          lastBackupAt={backupHealth.lastBackupAt}
+          statusLoading={backupHealth.loading}
+          statusError={backupHealth.error}
+          exporting={backupExporting}
+          importing={backupImporting}
+          repairing={filesRepairing}
+          scheme={scheme}
+          onOpenCloudBackup={() => router.push('/cloud-backup')}
+          onExport={handleExportBackup}
+          onImport={handleImportBackup}
+          onRepairFiles={handleRepairFiles}
+        />
+
         <AspectSection
           themePref={themePref}
           collapsed={aspectCollapsed}
@@ -1186,19 +1202,6 @@ export default function SetariScreen() {
           onChangeNewTypeName={setNewTypeName}
           onAddCustomType={handleAddCustomType}
           onDeleteCustomType={handleDeleteCustomType}
-        />
-
-        <BackupSection
-          collapsed={backupCollapsed}
-          exporting={backupExporting}
-          importing={backupImporting}
-          repairing={filesRepairing}
-          scheme={scheme}
-          onToggleCollapsed={() => setBackupCollapsed(v => !v)}
-          onOpenCloudBackup={() => router.push('/cloud-backup')}
-          onExport={handleExportBackup}
-          onImport={handleImportBackup}
-          onRepairFiles={handleRepairFiles}
         />
 
         <SharingBetaSection scheme={scheme} onOpenSharing={() => router.push('/partajare')} />
