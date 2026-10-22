@@ -221,6 +221,7 @@ Pentru task-urile cu prag pe luni, utilizatorul poate activa toggle-ul „Adaug�
     body: `Aplicația poate salva automat copii ale documentelor în iCloud Drive-ul personal al utilizatorului (folderul „Dosar" vizibil și în Files app). Datele sunt în iCloud-ul lui, nu trec printr-un server al nostru.
 
 - **Activare:** Setări → „iCloud Backup" → comutator „Backup automat iCloud", sau direct în Onboarding (pasul „Backup automat").
+- **Starea dintr-o privire:** în Setări → „Backup și restaurare", rândul „iCloud Backup" arată dacă backup-ul e activ (cu data ultimului backup de pe acest telefon), oprit sau blocat (iCloud inaccesibil, parolă de criptare necesară).
 - **Cum funcționează:** la salvarea unui document nou, fișierul e urcat imediat printr-o coadă cu retry. La trecerea aplicației în background, dacă au existat modificări, manifestul (DB) e urcat. Periodic (săptămânal default; configurabil zilnic / la 3 zile / săptămânal / lunar / off), se face un snapshot stamped și se aplică retenție (default 4 snapshots păstrate).
 - **Restore pe device nou:** instalează Dosar pe noul iPhone cu același Apple ID. La onboarding, app-ul detectează backup-ul existent și propune restaurarea. Toate documentele și fișierele revin în câteva minute.
 - **Detectare cross-device:** la deschiderea aplicației, dacă pe iCloud există un manifest mai nou decât cel local (modificat pe alt device), apare un banner pe Home: „Backup mai nou pe iCloud". Banner-ul poate fi închis (ignorat).
