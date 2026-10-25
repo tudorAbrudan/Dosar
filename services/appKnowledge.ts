@@ -205,6 +205,15 @@ Pentru task-urile cu prag pe luni, utilizatorul poate activa toggle-ul „Adaug�
     body: `În dosarul unei entități (persoană, vehicul, proprietate, card, animal, firmă) poți alege ordinea în care apar documentele. Navigare: Entități → deschide entitatea → secțiunea „Documente legate" → „Ordonează" → ține apăsat pe un document și trage-l în noua poziție → „Salvează". Ordinea e personală pe fiecare entitate (același document poate avea poziții diferite în entități diferite) și se păstrează în backup. Documentele adăugate ulterior apar primele. Butonul „Ordonează" apare doar când sunt cel puțin 2 documente și entitatea nu e partajată doar pentru citire.`,
   },
   {
+    title: `Căutare documente și situația unei entități`,
+    keywords: ['caut', 'gases', 'gasi', 'unde e', 'unde am', 'situati', 'valabil', 'lipse'],
+    body: `**Căutare documente:** în ecranul Documente, bara de căutare găsește un document după nume, entitatea legată, notă, câmpurile completate (ex. asigurator, nr. poliță, nr. înmatriculare) și textul citit din poză (OCR). Diacriticele și majusculele nu contează; mai multe cuvinte trebuie să apară toate în același document; numerele se găsesc și fără spații („B123ABC" găsește „B 123 ABC"). Sub fiecare rezultat apare fragmentul în care s-a găsit textul. Notele private nu se caută niciodată; la documentele medicale se caută doar numele și nota.
+
+**Situația unei entități:** pe ecranul unei persoane, proprietăți, card, animal sau firme, cardul „SITUAȚIE" arată, ordonat după urgență: ce document a expirat, ce expiră în următoarele 30 de zile, ce document esențial lipsește (ex. buletinul unei persoane — doar dacă tipul e activ în Setări) și până când e valabil restul. Atingerea unui rând deschide documentul; „Lipsește · Adaugă" deschide adăugarea cu tipul deja ales. La vehicule, același lucru îl arată bara de status de sus.
+
+**Situație documente în context:** primești starea fiecărui tip de document per entitate, cu zilele deja calculate. Pentru întrebări de valabilitate („mai e valabil pașaportul?", „ce acte îi lipsesc lui X?") răspunde din ea și nu recalcula zilele.`,
+  },
+  {
     title: `Partajarea entităților cu familia`,
     keywords: ['partaj', 'famili', 'revoc', 'renunt', 'si la ei', 'confirm', 'oprit'],
     body: `O persoană, un vehicul, o proprietate, un animal sau o firmă se pot partaja cu altcineva prin iCloud (fără server al nostru). Documentele medicale, notele private și cardurile nu se partajează. Navigare: Setări → „Partajare (Beta)" → „Partajare entități" → „Partajează" lângă entitate → „Doar citire" sau „Poate edita" → trimiți linkul. Cine primește linkul îl deschide sau îl lipește la „+ Am un link". „Revocă" oprește partajarea: ceilalți păstrează ce au primit deja, nu mai primesc actualizări și văd un mesaj la deschiderea aplicației („copia rămâne la tine"); când apasă OK, ies din partajare. „Renunță" (pe o entitate primită) te scoate din partajare.

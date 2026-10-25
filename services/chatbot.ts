@@ -10,8 +10,10 @@ import {
 // vezi `.claude/rules/ai-privacy.md`.
 import { getDocumentsForAI } from './documents';
 import { getCustomTypes } from './customTypes';
-import { getDocumentLabel } from '@/types';
-import type { DocumentType, Document, Vehicle, CustomDocumentType } from '@/types';
+import { getVisibleDocTypes } from './settings';
+import { buildSituationSection, type SituationEntity } from './entitySummary';
+import { ALL_ENTITY_TYPES, getDocumentLabel } from '@/types';
+import type { DocumentType, Document, EntityType, Vehicle, CustomDocumentType } from '@/types';
 import { buildAppKnowledge } from './appKnowledge';
 import { sendAiRequest, getAiConfig } from './aiProvider';
 import type { AiMessage } from './aiProvider';
@@ -516,6 +518,13 @@ const REMOTE_LIMITS = {
  */
 const FULL_OCR_DOC_BUDGET = 8;
 
+/**
+ * Partea din plafonul de caractere (`maxDocChars`, doar local) pe care o poate
+ * lua „Situație documente". O linie de fișă e mult mai densă decât un document
+ * cu OCR, dar fără limită, la multe entități, ar împinge afară documentele.
+ */
+const SITUATION_SHARE = 0.3;
+
 // Limite pentru model local pe device (context util ~8K tokeni — n_ctx pe GPU
 // e plafonat de memoria Metal a A15, vezi localModel.ts). buildAppKnowledge()
 // e deja ~3K tokeni fix; peste el vine contextText (entități + max 6 documente).
@@ -797,17 +806,27 @@ async function buildContext(
   docMap: Map<string, string>;
   tasks: TaskRequirement[];
 }> {
-  const [persons, properties, vehicles, cards, animals, companies, documents, customTypes] =
-    await Promise.all([
-      getPersons(),
-      getProperties(),
-      getVehicles(),
-      getCards(),
-      getAnimals(),
-      getCompanies(),
-      getDocumentsForAI(),
-      getCustomTypes(),
-    ]);
+  const [
+    persons,
+    properties,
+    vehicles,
+    cards,
+    animals,
+    companies,
+    documents,
+    customTypes,
+    visibleDocTypes,
+  ] = await Promise.all([
+    getPersons(),
+    getProperties(),
+    getVehicles(),
+    getCards(),
+    getAnimals(),
+    getCompanies(),
+    getDocumentsForAI(),
+    getCustomTypes(),
+    getVisibleDocTypes(),
+  ]);
 
   const noData =
     !persons.length &&
@@ -1035,6 +1054,51 @@ async function buildContext(
         .join(', ')}`
     );
 
+  // ── Situație documente (fișa entităților) ──────────────────────────────────
+  // „Mai e valabil pașaportul?" are răspuns chiar dacă documentul a căzut din
+  // lista de mai jos (plafonul `maxDocs`), cu zilele deja calculate. Cu
+  // @mențiune: doar entitățile menționate. Pe model local, fișa consumă din
+  // același plafon de caractere ca documentele.
+  const docsByEntity = new Map<string, Document[]>();
+  for (const doc of documents) {
+    for (const entityId of new Set(docEntityIds(doc))) {
+      docsByEntity.set(entityId, [...(docsByEntity.get(entityId) ?? []), doc]);
+    }
+  }
+  // Record exhaustiv: un EntityType nou dă eroare de compilare aici, nu
+  // dispare în tăcere din fișă.
+  // check-hardcoded-entities-disable-next-cluster
+  const entitiesByType: Record<EntityType, { id: string; name: string }[]> = {
+    person: persons,
+    vehicle: vehicles,
+    property: properties,
+    card: cards.map(c => ({ id: c.id, name: c.nickname })),
+    animal: animals,
+    company: companies,
+    // Dosarul medical nu ajunge la asistentul general (vezi getDocumentsForAI).
+    medical_record: [],
+  };
+  const allSituationEntities: SituationEntity[] = ALL_ENTITY_TYPES.flatMap(type =>
+    entitiesByType[type].map(e => ({
+      id: e.id,
+      type,
+      tag: `[ENT:${e.name}|${type}|${e.id}]`,
+      documents: docsByEntity.get(e.id) ?? [],
+    }))
+  );
+  const mentionedSituation = allSituationEntities.filter(e => allMentionedIds.has(e.id));
+  const situation = buildSituationSection({
+    entities: mentionedSituation.length > 0 ? mentionedSituation : allSituationEntities,
+    visibleDocTypes,
+    customTypes,
+    maxChars:
+      limits.maxDocChars !== undefined
+        ? Math.floor(limits.maxDocChars * SITUATION_SHARE)
+        : undefined,
+  });
+  if (situation.text) lines.push(`\n${situation.text}`);
+  let docCharsUsed = situation.chars;
+
   // Notă de filtrare/trunchere (ajută AI-ul să înțeleagă că nu vede tot).
   // Emisă ori de câte ori lista e incompletă — inclusiv fără filtru, când
   // maxDocs a tăiat-o (altfel, pe model local cu maxDocsFull=6, AI-ul răspunde
@@ -1053,7 +1117,6 @@ async function buildContext(
     lines.push('(niciun document relevant găsit)');
   }
 
-  let docCharsUsed = 0;
   let omittedDocs = 0;
   for (const doc of filteredDocs) {
     // OCR limit per document:

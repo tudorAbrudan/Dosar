@@ -36,6 +36,7 @@ import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleLegalStatus } from '@/components/VehicleLegalStatus';
 import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
 import { PersonContactCard } from '@/components/entity/PersonContactCard';
+import { EntitySummaryCard } from '@/components/entity/EntitySummaryCard';
 import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
 import { DocumentRow } from '@/components/entity/DocumentRow';
 import { ReorderDocumentsModal } from '@/components/entity/ReorderDocumentsModal';
@@ -529,6 +530,17 @@ export default function EntityDetailScreen() {
               />
             );
           })()}
+
+        {/* La prima încărcare lista e goală: fără card, altfel apare „Lipsește" o clipă. */}
+        {!isVehicle && id && (!loading || documents.length > 0) && (
+          <EntitySummaryCard
+            entityType={ENTITY_KIND_TO_TYPE[entityKind]}
+            entityId={id}
+            documents={documents}
+            customTypes={customTypes}
+            readOnly={isReadOnly}
+          />
+        )}
 
         {isVehicle && <EntityStatusBar items={vehicleStatus.items} />}
         {isVehicle && (

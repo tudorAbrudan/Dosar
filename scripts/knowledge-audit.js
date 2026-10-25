@@ -45,6 +45,8 @@ const ENTRIES = {
     cloudShareMapping: { required: false },
     customTypes: { required: true, keywords: ['tip personalizat', 'custom'] },
     documentScanner: { required: true, keywords: ['scanare', 'cameră'] },
+    documentSearch: { required: true, keywords: ['Căutare documente', 'textul citit'] },
+    entitySummary: { required: true, keywords: ['SITUAȚIE', 'Situație documente'] },
     documents: { required: true, keywords: ['document', 'adaugă'] },
     entities: { required: true, keywords: ['entități', 'entitate'] },
     expiry: { required: true, keywords: ['expir'] },

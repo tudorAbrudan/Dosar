@@ -28,10 +28,15 @@ import type { DocumentType } from '@/types';
 import type { Document } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { useFilteredDocTypes } from '@/hooks/useFilteredDocTypes';
+import {
+  buildSearchIndex,
+  buildSnippet,
+  matchesQuery,
+  parseSearchQuery,
+} from '@/services/documentSearch';
+import { EXPIRING_SOON_DAYS } from '@/services/expiry';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const EXPIRING_DAYS = 30;
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -150,6 +155,17 @@ export default function DocumenteListScreen() {
     }
   }, [entityOptions, filterEntity]);
 
+  // ── Search ───────────────────────────────────────────────────────────────────
+  const searchIndex = useMemo(
+    () =>
+      buildSearchIndex(documents, doc => ({
+        label: getDocumentLabel(doc, customTypes),
+        entityName: getEntityName(doc),
+      })),
+    [documents, customTypes, personMap, vehicleMap, propertyMap, cardMap, animalMap]
+  );
+  const searchQueryParsed = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
+
   // ── Filtering ────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = documents;
@@ -160,17 +176,15 @@ export default function DocumenteListScreen() {
           (d as unknown as Record<string, string | undefined>)[filterEntity.kind] ===
           filterEntity.id
       );
-    if (onlyExpiring) list = list.filter(d => isExpiringSoon(d, EXPIRING_DAYS));
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      list = list.filter(
-        d =>
-          getDocumentLabel(d, customTypes).toLowerCase().includes(q) ||
-          (d.note?.toLowerCase().includes(q) ?? false)
-      );
+    if (onlyExpiring) list = list.filter(d => isExpiringSoon(d, EXPIRING_SOON_DAYS));
+    if (searchQueryParsed) {
+      list = list.filter(d => {
+        const entry = searchIndex.get(d.id);
+        return entry ? matchesQuery(entry, searchQueryParsed) : false;
+      });
     }
     return list;
-  }, [documents, filterType, filterEntity, onlyExpiring, searchQuery]);
+  }, [documents, filterType, filterEntity, onlyExpiring, searchIndex, searchQueryParsed]);
 
   const handleDelete = (doc: Document) => {
     Alert.alert('Ștergere', `Ștergi documentul „${getDocumentLabel(doc, customTypes)}"?`, [
@@ -191,25 +205,36 @@ export default function DocumenteListScreen() {
   };
 
   const isFiltered =
-    filterType !== 'toate' ||
-    filterEntity !== null ||
-    onlyExpiring ||
-    searchQuery.trim().length > 0;
+    filterType !== 'toate' || filterEntity !== null || onlyExpiring || searchQueryParsed !== null;
 
   // ── Render item ──────────────────────────────────────────────────────────────
   const renderItem = useCallback(
-    ({ item: doc }: { item: Document }) => (
-      <DocumentListCard
-        doc={doc}
-        entityName={getEntityName(doc)}
-        entityKind={getEntityKind(doc)}
-        label={getDocumentLabel(doc, customTypes)}
-        scheme={scheme}
-        onPress={() => router.push(`/(tabs)/documente/${doc.id}`)}
-        onLongPress={() => handleDelete(doc)}
-      />
-    ),
-    [scheme, personMap, vehicleMap, propertyMap, cardMap, animalMap, customTypes]
+    ({ item: doc }: { item: Document }) => {
+      const entry = searchQueryParsed ? searchIndex.get(doc.id) : undefined;
+      return (
+        <DocumentListCard
+          doc={doc}
+          entityName={getEntityName(doc)}
+          entityKind={getEntityKind(doc)}
+          label={getDocumentLabel(doc, customTypes)}
+          scheme={scheme}
+          snippet={entry && searchQueryParsed ? buildSnippet(entry, searchQueryParsed) : null}
+          onPress={() => router.push(`/(tabs)/documente/${doc.id}`)}
+          onLongPress={() => handleDelete(doc)}
+        />
+      );
+    },
+    [
+      scheme,
+      personMap,
+      vehicleMap,
+      propertyMap,
+      cardMap,
+      animalMap,
+      customTypes,
+      searchIndex,
+      searchQueryParsed,
+    ]
   );
 
   const keyExtractor = useCallback((doc: Document) => doc.id, []);
@@ -235,12 +260,14 @@ export default function DocumenteListScreen() {
         <Ionicons name="search" size={20} color={C.textSecondary} style={styles.searchIcon} />
         <TextInput
           style={[styles.searchInput, { color: C.text }]}
-          placeholder="Caută după tip, notă..."
+          placeholder="Caută în nume, text sau număr…"
           placeholderTextColor={C.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
           returnKeyType="search"
           clearButtonMode="while-editing"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
       </RNView>
 
