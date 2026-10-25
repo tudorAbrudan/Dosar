@@ -10,7 +10,7 @@ import type { Ionicons } from '@expo/vector-icons';
 
 import { iconColors } from '@/theme/iconColors';
 import { resolveItpExpiry } from './vehicleStatus';
-import type { Document, DocumentType } from '@/types';
+import type { Document, DocumentType, EntityType } from '@/types';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -66,6 +66,15 @@ const PERSON_CHECKS: AlertCheck[] = [
     palette: iconColors.info,
   },
 ];
+
+/**
+ * Documentele „esențiale" per tip de entitate — sursa unică pentru sugestiile
+ * din Home și pentru „lipsește" din fișa entității (`entitySummary.ts`).
+ */
+export const ESSENTIAL_DOC_TYPES: Partial<Record<EntityType, DocumentType[]>> = {
+  vehicle: VEHICLE_CHECKS.map(c => c.docType),
+  person: PERSON_CHECKS.map(c => c.docType),
+};
 
 const MAX_ALERTS = 3;
 

@@ -1,5 +1,8 @@
 export const STALE_EXPIRED_DAYS = 30;
 
+/** Pragul „Expiră curând" din lista de documente și din fișa entității. */
+export const EXPIRING_SOON_DAYS = 30;
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function atMidnight(d: Date): number {

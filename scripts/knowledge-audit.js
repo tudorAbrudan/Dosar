@@ -38,6 +38,8 @@ const ENTRIES = {
     aiProvider: { required: true, keywords: ['Asistent AI', 'provider'] },
     appKnowledge: { required: false },
     backup: { required: true, keywords: ['backup', 'export'] },
+    // Helper intern: „Înapoi” revine pe ecranul sursă (vezi cross-tab-back-audit).
+    backNavigation: { required: false },
     calendar: { required: true, keywords: ['calendar', 'expirare'] },
     chatbot: { required: true, keywords: ['chatbot', 'Întreabă'] },
     cloudSync: { required: true, keywords: ['iCloud', 'cloud'] },
@@ -45,6 +47,8 @@ const ENTRIES = {
     cloudShareMapping: { required: false },
     customTypes: { required: true, keywords: ['tip personalizat', 'custom'] },
     documentScanner: { required: true, keywords: ['scanare', 'cameră'] },
+    documentSearch: { required: true, keywords: ['Căutare documente', 'textul citit'] },
+    entitySummary: { required: true, keywords: ['SITUAȚIE', 'Situație documente'] },
     documents: { required: true, keywords: ['document', 'adaugă'] },
     entities: { required: true, keywords: ['entități', 'entitate'] },
     expiry: { required: true, keywords: ['expir'] },

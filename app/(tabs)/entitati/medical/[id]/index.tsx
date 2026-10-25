@@ -105,9 +105,7 @@ export default function MedicalRecordDetail() {
   const [editEmergencyPhone, setEditEmergencyPhone] = useState('');
 
   // Persoana legată de dosar
-  const linkedPerson = record?.person_id
-    ? persons.find(p => p.id === record.person_id)
-    : undefined;
+  const linkedPerson = record?.person_id ? persons.find(p => p.id === record.person_id) : undefined;
 
   // ── Asociere documente medicale existente care nu sunt încă „atașate" la
   //    dosar prin entity_links. Acoperă scenariul: ai documente medicale
@@ -185,7 +183,15 @@ export default function MedicalRecordDetail() {
     } finally {
       setEditSaving(false);
     }
-  }, [record, editName, editBloodGroup, editAllergies, editEmergencyName, editEmergencyPhone, refresh]);
+  }, [
+    record,
+    editName,
+    editBloodGroup,
+    editAllergies,
+    editEmergencyName,
+    editEmergencyPhone,
+    refresh,
+  ]);
 
   const handleDelete = useCallback(() => {
     if (!record) return;
@@ -289,8 +295,17 @@ export default function MedicalRecordDetail() {
       ) : (
         <View style={{ flex: 1 }}>
           {/* ── Patient info header (colapsabil) ── */}
-          {(linkedPerson || record.blood_group || record.allergies || record.emergency_contact_name || record.emergency_contact_phone) ? (
-            <View style={[styles.patientHeader, { backgroundColor: palette.surface, borderBottomColor: palette.border }]}>
+          {linkedPerson ||
+          record.blood_group ||
+          record.allergies ||
+          record.emergency_contact_name ||
+          record.emergency_contact_phone ? (
+            <View
+              style={[
+                styles.patientHeader,
+                { backgroundColor: palette.surface, borderBottomColor: palette.border },
+              ]}
+            >
               {/* Rând compact, mereu vizibil: persoană + grupă + buton extindere */}
               <View style={styles.patientCompactRow}>
                 {linkedPerson ? (
@@ -300,14 +315,17 @@ export default function MedicalRecordDetail() {
                     accessibilityLabel={`Navighează la persoana ${linkedPerson.name}`}
                   >
                     <Ionicons name="person-outline" size={15} color={palette.textSecondary} />
-                    <Text style={[styles.patientPersonName, { color: palette.text }]} numberOfLines={1}>
+                    <Text
+                      style={[styles.patientPersonName, { color: palette.text }]}
+                      numberOfLines={1}
+                    >
                       {linkedPerson.name}
                       {(() => {
                         if (!linkedPerson.date_of_birth) return null;
                         try {
                           const ageYears = Math.floor(
                             (Date.now() - new Date(linkedPerson.date_of_birth).getTime()) /
-                            (365.25 * 24 * 3600 * 1000)
+                              (365.25 * 24 * 3600 * 1000)
                           );
                           if (isNaN(ageYears) || ageYears < 0) return null;
                           return ` · ${ageYears} ani`;
@@ -318,26 +336,42 @@ export default function MedicalRecordDetail() {
                     </Text>
                   </Pressable>
                 ) : (
-                  <Text style={[styles.patientPersonName, { color: palette.text }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.patientPersonName, { color: palette.text }]}
+                    numberOfLines={1}
+                  >
                     Date pacient
                   </Text>
                 )}
                 {record.blood_group ? (
-                  <View style={[styles.bloodGroupBadge, { backgroundColor: `${primary}22`, borderColor: `${primary}66` }]}>
-                    <Text style={[styles.bloodGroupText, { color: primary }]}>{record.blood_group}</Text>
+                  <View
+                    style={[
+                      styles.bloodGroupBadge,
+                      { backgroundColor: `${primary}22`, borderColor: `${primary}66` },
+                    ]}
+                  >
+                    <Text style={[styles.bloodGroupText, { color: primary }]}>
+                      {record.blood_group}
+                    </Text>
                   </View>
                 ) : null}
                 {/* Indicator de alergii vizibil și colapsat (siguranță) */}
                 {record.allergies && !patientExpanded ? (
                   <Ionicons name="warning" size={16} color={statusColors.warning} />
                 ) : null}
-                {(record.allergies || record.emergency_contact_name || record.emergency_contact_phone) ? (
+                {record.allergies ||
+                record.emergency_contact_name ||
+                record.emergency_contact_phone ? (
                   <Pressable
                     onPress={() => setPatientExpanded(v => !v)}
                     hitSlop={10}
                     style={styles.patientToggle}
                     accessibilityRole="button"
-                    accessibilityLabel={patientExpanded ? 'Ascunde detaliile pacientului' : 'Arată detaliile pacientului'}
+                    accessibilityLabel={
+                      patientExpanded
+                        ? 'Ascunde detaliile pacientului'
+                        : 'Arată detaliile pacientului'
+                    }
                   >
                     <Ionicons
                       name={patientExpanded ? 'chevron-up' : 'chevron-down'}
@@ -352,25 +386,45 @@ export default function MedicalRecordDetail() {
               {patientExpanded ? (
                 <View style={styles.patientExpanded}>
                   {record.allergies ? (
-                    <View style={[styles.allergiesCard, { backgroundColor: statusColors.warningSurface, borderLeftColor: statusColors.warning }]}>
+                    <View
+                      style={[
+                        styles.allergiesCard,
+                        {
+                          backgroundColor: statusColors.warningSurface,
+                          borderLeftColor: statusColors.warning,
+                        },
+                      ]}
+                    >
                       <Ionicons name="warning-outline" size={16} color={statusColors.warning} />
                       <View style={{ flex: 1, marginLeft: 8 }}>
-                        <Text style={[styles.allergiesLabel, { color: statusColors.warning }]}>Alergii</Text>
-                        <Text style={[styles.allergiesText, { color: palette.text }]}>{record.allergies}</Text>
+                        <Text style={[styles.allergiesLabel, { color: statusColors.warning }]}>
+                          Alergii
+                        </Text>
+                        <Text style={[styles.allergiesText, { color: palette.text }]}>
+                          {record.allergies}
+                        </Text>
                       </View>
                     </View>
                   ) : null}
-                  {(record.emergency_contact_name || record.emergency_contact_phone) ? (
+                  {record.emergency_contact_name || record.emergency_contact_phone ? (
                     <View style={styles.patientInfoRow}>
                       <Ionicons name="call-outline" size={15} color={palette.textSecondary} />
                       <View style={{ marginLeft: 6, flex: 1 }}>
-                        <Text style={[styles.patientInfoLabel, { color: palette.textSecondary }]}>Contact urgență</Text>
+                        <Text style={[styles.patientInfoLabel, { color: palette.textSecondary }]}>
+                          Contact urgență
+                        </Text>
                         {record.emergency_contact_name ? (
-                          <Text style={[styles.emergencyName, { color: palette.text }]}>{record.emergency_contact_name}</Text>
+                          <Text style={[styles.emergencyName, { color: palette.text }]}>
+                            {record.emergency_contact_name}
+                          </Text>
                         ) : null}
                         {record.emergency_contact_phone ? (
-                          <Pressable onPress={() => Linking.openURL(`tel:${record.emergency_contact_phone}`)}>
-                            <Text style={[styles.emergencyPhone, { color: primary }]}>{record.emergency_contact_phone}</Text>
+                          <Pressable
+                            onPress={() => Linking.openURL(`tel:${record.emergency_contact_phone}`)}
+                          >
+                            <Text style={[styles.emergencyPhone, { color: primary }]}>
+                              {record.emergency_contact_phone}
+                            </Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -399,7 +453,12 @@ export default function MedicalRecordDetail() {
               onPress: () =>
                 router.push({
                   pathname: '/(tabs)/documente/add',
-                  params: { medical_record_id: record.id, restrict_to: 'medical' },
+                  params: {
+                    medical_record_id: record.id,
+                    restrict_to: 'medical',
+                    from: 'medical',
+                    entityId: record.id,
+                  },
                 }),
             },
             {
@@ -531,12 +590,21 @@ export default function MedicalRecordDetail() {
             onChangeText={setEditBloodGroup}
             placeholder="ex. A pozitiv, 0 negativ"
             placeholderTextColor={palette.textSecondary}
-            style={[styles.formInput, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+            style={[
+              styles.formInput,
+              {
+                color: palette.text,
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+              },
+            ]}
             editable={!editSaving}
           />
         </View>
         <View>
-          <Text style={[styles.formLabel, { color: palette.text }]}>Alergii cunoscute (opțional)</Text>
+          <Text style={[styles.formLabel, { color: palette.text }]}>
+            Alergii cunoscute (opțional)
+          </Text>
           <TextInput
             value={editAllergies}
             onChangeText={setEditAllergies}
@@ -544,30 +612,56 @@ export default function MedicalRecordDetail() {
             placeholderTextColor={palette.textSecondary}
             multiline
             numberOfLines={2}
-            style={[styles.formInput, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface, minHeight: 60 }]}
+            style={[
+              styles.formInput,
+              {
+                color: palette.text,
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                minHeight: 60,
+              },
+            ]}
             editable={!editSaving}
           />
         </View>
         <View>
-          <Text style={[styles.formLabel, { color: palette.text }]}>Contact urgență — Nume (opțional)</Text>
+          <Text style={[styles.formLabel, { color: palette.text }]}>
+            Contact urgență — Nume (opțional)
+          </Text>
           <TextInput
             value={editEmergencyName}
             onChangeText={setEditEmergencyName}
             placeholder="Nume"
             placeholderTextColor={palette.textSecondary}
-            style={[styles.formInput, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+            style={[
+              styles.formInput,
+              {
+                color: palette.text,
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+              },
+            ]}
             editable={!editSaving}
           />
         </View>
         <View>
-          <Text style={[styles.formLabel, { color: palette.text }]}>Contact urgență — Telefon (opțional)</Text>
+          <Text style={[styles.formLabel, { color: palette.text }]}>
+            Contact urgență — Telefon (opțional)
+          </Text>
           <TextInput
             value={editEmergencyPhone}
             onChangeText={setEditEmergencyPhone}
             placeholder="Telefon"
             placeholderTextColor={palette.textSecondary}
             keyboardType="phone-pad"
-            style={[styles.formInput, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]}
+            style={[
+              styles.formInput,
+              {
+                color: palette.text,
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+              },
+            ]}
             editable={!editSaving}
           />
         </View>

@@ -16,6 +16,8 @@ type Props = {
   saveLabel?: string;
   /** Override pentru butonul stâng din header. Default: „Înapoi" → router.back(). */
   headerLeft?: ReactNode;
+  /** Acțiunea butonului „Înapoi" implicit (ex. revenire pe alt tab). Default: router.back(). */
+  onBack?: () => void;
   headerRight?: ReactNode;
   scrollContentStyle?: ViewStyle;
   /** Comportament dismiss tastatură la scroll. Default: niciunul. */
@@ -25,9 +27,9 @@ type Props = {
   children: ReactNode;
 };
 
-function DefaultBack() {
+function DefaultBack({ onBack }: { onBack?: () => void }) {
   return (
-    <Pressable onPress={() => router.back()} style={{ paddingRight: 8 }} hitSlop={8}>
+    <Pressable onPress={onBack ?? (() => router.back())} style={{ paddingRight: 8 }} hitSlop={8}>
       <Text style={{ color: primary, fontSize: 16 }}>Înapoi</Text>
     </Pressable>
   );
@@ -40,6 +42,7 @@ export function FormPageScreen({
   saveDisabled = false,
   saveLabel = 'Salvează',
   headerLeft,
+  onBack,
   headerRight,
   scrollContentStyle,
   keyboardDismissMode,
@@ -54,7 +57,7 @@ export function FormPageScreen({
       <Stack.Screen
         options={{
           title,
-          headerLeft: () => headerLeft ?? <DefaultBack />,
+          headerLeft: () => headerLeft ?? <DefaultBack onBack={onBack} />,
           headerRight: headerRight ? () => headerRight : undefined,
         }}
       />

@@ -97,6 +97,7 @@ function RootLayoutNav() {
       if (typeof data?.url === 'string') {
         Linking.openURL(data.url);
       } else if (typeof data?.documentId === 'string') {
+        // cross-tab-back-audit-ignore: tap pe notificare, fără ecran sursă
         router.push(`/(tabs)/documente/${data.documentId}`);
       }
     });
@@ -122,6 +123,7 @@ function RootLayoutNav() {
   useEffect(() => {
     if (!hasShareIntent || onboardingDone !== true || appLock.locked) return;
     if (pathname.endsWith('/documente/add')) return;
+    // cross-tab-back-audit-ignore: share din altă aplicație, fără ecran sursă
     router.push('/(tabs)/documente/add');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasShareIntent, onboardingDone, appLock.locked, pathname]);
@@ -130,6 +132,7 @@ function RootLayoutNav() {
   useEffect(() => {
     const handleURL = (url: string) => {
       const docId = parseDeepLink(url);
+      // cross-tab-back-audit-ignore: deep link, fără ecran sursă
       if (docId) router.push(`/(tabs)/documente/${docId}`);
     };
 

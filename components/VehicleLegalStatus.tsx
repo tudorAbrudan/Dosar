@@ -53,7 +53,12 @@ export const VehicleLegalStatus = memo(function VehicleLegalStatus({
                 onPress={() =>
                   router.push({
                     pathname: '/(tabs)/documente/add',
-                    params: { vehicle_id: vehicleId, type: o.key },
+                    params: {
+                      vehicle_id: vehicleId,
+                      type: o.key,
+                      from: 'entity',
+                      entityId: vehicleId,
+                    },
                   })
                 }
                 style={[styles.row, { backgroundColor: palette.card }]}

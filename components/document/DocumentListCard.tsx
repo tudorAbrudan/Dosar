@@ -14,6 +14,8 @@ import { DOC_ICON } from '@/theme/docTypeIcons';
 import { iconColors } from '@/theme/iconColors';
 import { MEDICAL_DOC_TYPES, type Document } from '@/types';
 import { getDocumentIdentifier, formatDocDateRoShort } from '@/services/documentIdentifier';
+import type { SearchSnippet } from '@/services/documentSearch';
+import { EXPIRING_SOON_DAYS } from '@/services/expiry';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -36,7 +38,7 @@ function getExpiryInfo(doc: Document): { label: string; bg: string; fg: string }
     // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
     return { label: 'Expirat', bg: statusColors.critical, fg: '#fff' };
   }
-  if (daysLeft <= 30) {
+  if (daysLeft <= EXPIRING_SOON_DAYS) {
     // eslint-disable-next-line local-rules/no-hardcoded-hex-colors
     return { label: `${daysLeft}z`, bg: statusColors.warning, fg: '#fff' };
   }
@@ -51,6 +53,8 @@ interface DocumentListCardProps {
   entityKind: string | null;
   label: string;
   scheme: 'light' | 'dark';
+  /** Fragmentul găsit de căutare; înlocuiește subtitlul cât timp se caută. */
+  snippet?: SearchSnippet | null;
   onPress: () => void;
   onLongPress: () => void;
 }
@@ -61,6 +65,7 @@ export function DocumentListCard({
   entityKind,
   label,
   scheme,
+  snippet,
   onPress,
   onLongPress,
 }: DocumentListCardProps) {
@@ -80,7 +85,9 @@ export function DocumentListCard({
   const isMedical = (MEDICAL_DOC_TYPES as ReadonlySet<string>).has(doc.type);
   const subtitle =
     identifier ??
-    (isMedical ? formatDocDateRoShort(doc.issue_date) : (doc.note ?? formatDocDateRoShort(doc.issue_date)));
+    (isMedical
+      ? formatDocDateRoShort(doc.issue_date)
+      : (doc.note ?? formatDocDateRoShort(doc.issue_date)));
 
   return (
     <Pressable
@@ -116,7 +123,15 @@ export function DocumentListCard({
           </View>
         )}
 
-        {subtitle ? (
+        {snippet ? (
+          <Text style={[styles.snippet, { color: C.textSecondary }]} numberOfLines={2}>
+            {snippet.text.slice(0, snippet.matchStart)}
+            <Text style={[styles.snippetMatch, { color: C.text }]}>
+              {snippet.text.slice(snippet.matchStart, snippet.matchEnd)}
+            </Text>
+            {snippet.text.slice(snippet.matchEnd)}
+          </Text>
+        ) : subtitle ? (
           <Text style={[styles.note, { color: C.textSecondary }]} numberOfLines={1}>
             {subtitle}
           </Text>
@@ -167,6 +182,8 @@ const styles = StyleSheet.create({
   entityIcon: { marginTop: 1 },
   entityText: { fontSize: 12, lineHeight: 17, flex: 1 },
   note: { fontSize: 12, lineHeight: 17, fontStyle: 'italic' },
+  snippet: { fontSize: 12, lineHeight: 17 },
+  snippetMatch: { fontWeight: '700' },
   right: { alignItems: 'flex-end', justifyContent: 'center', marginLeft: 8, gap: 4, flexShrink: 0 },
   expiryBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   expiryText: { fontSize: 11, fontWeight: '600', lineHeight: 15 },

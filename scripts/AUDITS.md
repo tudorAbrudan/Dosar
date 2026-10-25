@@ -19,6 +19,7 @@ Origini și detalii: header-ul fiecărui script. Regresie nouă → audit nou (v
 | `double-modal-audit.js` | warn | warn | Flag fișiere TSX care randează ≥2 componente Modal-like cu `visible={...}` ca siblings în aceeași componentă React. |
 | `alert-modal-race-audit.js` | strict | strict | Flag pattern-ul: `Alert.alert(..., [{ onPress: () => setXxxVisible(true) }])` — adică un buton de Alert care încearcă să prezinte imediat un `<Modal>`. |
 | `sheet-header-audit.js` | strict | strict | Flag header-uri de modal/sheet construite de mână, cu butoane-text „Anulează" / „Salvează" / „Aplică" / „Confirmă" în JSX. |
+| `cross-tab-back-audit.js` | strict | strict | Orice `router.push` / `replace` / `navigate` către un ecran din stack-ul Documente (`/(tabs)/documente/[id]`, `/(tabs)/documente/${id}`, `/(tabs)/documente/add`) făcut din AFARA tabului Documente trebuie să trimită `f… |
 | `cropper-flow-audit.js` | strict | strict | Invariant: orice ecran care lasă utilizatorul să aleagă o imagine din Galerie sau Din Fișiere trebuie să o treacă prin ecranul /cropper (`cropImage` din `services/cropperBridge.ts`) înainte de a o salva ca pagină de d… |
 | `entity-doc-links-audit.js` | strict | strict | Flag query-urile care caută documentele unei entități DOAR prin coloana legacy `documents.<tip>_id`, fără să se uite și în junction table-ul `document_entities`. |
 | `cloudkit-field-names-audit.js` | strict | strict | Flag numele de câmp / tip de record CloudKit construite DIN DATE (template literal cu interpolare) în layer-ul de partajare. |

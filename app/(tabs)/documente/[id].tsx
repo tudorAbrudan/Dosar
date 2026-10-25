@@ -3,6 +3,7 @@ import { StyleSheet, ScrollView, Alert, Pressable, Linking, Platform } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
+import { navigateBackToSource } from '@/services/backNavigation';
 import { useTheme } from '@react-navigation/native';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
@@ -896,7 +897,7 @@ export default function DocumentDetailScreen() {
         onPress: async () => {
           await deleteDocument(doc.id);
           scheduleExpirationReminders().catch(() => {});
-          router.back();
+          handleBack();
         },
       },
     ]);
@@ -1005,30 +1006,8 @@ export default function DocumentDetailScreen() {
   }
 
   function handleBack() {
-    if (from === 'home') {
-      // Resetăm stack-ul documente la index, apoi trecem pe home tab.
-      // Ambele navigate sunt batched de React Navigation → fără flash.
-      router.navigate('/(tabs)/documente');
-      router.navigate('/(tabs)');
-    } else if (from === 'entity' && entityId) {
-      // La fel: curățăm stack-ul documente, apoi mergem la entitate.
-      router.navigate('/(tabs)/documente');
-      router.navigate(`/(tabs)/entitati/${entityId}`);
-    } else if (from === 'medical' && entityId) {
-      router.navigate('/(tabs)/documente');
-      router.navigate(`/(tabs)/entitati/medical/${entityId}?tab=documente`);
-    } else if (from === 'medical-chat' && entityId) {
-      router.navigate('/(tabs)/documente');
-      router.navigate(`/(tabs)/entitati/medical/${entityId}?tab=chat`);
-    } else if (from === 'expirari') {
-      router.navigate('/(tabs)/documente');
-      router.navigate('/(tabs)/expirari');
-    } else if (from === 'chat') {
-      router.navigate('/(tabs)/documente');
-      router.navigate('/(tabs)/chat');
-    } else {
-      router.canGoBack() ? router.back() : router.navigate('/(tabs)/documente');
-    }
+    if (navigateBackToSource(from, entityId)) return;
+    router.canGoBack() ? router.back() : router.navigate('/(tabs)/documente');
   }
 
   if (loading || !doc) {

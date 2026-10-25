@@ -36,6 +36,7 @@ import { EntityStatusBar } from '@/components/EntityStatusBar';
 import { VehicleLegalStatus } from '@/components/VehicleLegalStatus';
 import { VehicleParallaxHero, MAX_HERO_HEIGHT } from '@/components/VehicleParallaxHero';
 import { PersonContactCard } from '@/components/entity/PersonContactCard';
+import { EntitySummaryCard } from '@/components/entity/EntitySummaryCard';
 import { LinkDocumentModal } from '@/components/entity/LinkDocumentModal';
 import { DocumentRow } from '@/components/entity/DocumentRow';
 import { ReorderDocumentsModal } from '@/components/entity/ReorderDocumentsModal';
@@ -199,9 +200,20 @@ export default function EntityDetailScreen() {
     }, [id, entityKind, entityName])
   );
 
-  const refresh = () => {
-    refreshEntities();
-    if (id && entityName) loadDocs(entityKind, id);
+  // Spinner-ul doar la tragerea în jos. Legat de `loading`, pornea și la fiecare
+  // revenire pe ecran (useFocusEffect → loadDocs), iar iOS lăsa apoi un spațiu gol
+  // deasupra conținutului (2026-10-25).
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshEntities(),
+        id && entityName ? loadDocs(entityKind, id) : Promise.resolve(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   async function openLinkDoc() {
@@ -507,7 +519,7 @@ export default function EntityDetailScreen() {
           isVehicle && vehicle?.photo_uri ? { paddingTop: MAX_HERO_HEIGHT + 8 } : null,
         ]}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.primary} />
         }
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
@@ -529,6 +541,17 @@ export default function EntityDetailScreen() {
               />
             );
           })()}
+
+        {/* La prima încărcare lista e goală: fără card, altfel apare „Lipsește" o clipă. */}
+        {!isVehicle && id && (!loading || documents.length > 0) && (
+          <EntitySummaryCard
+            entityType={ENTITY_KIND_TO_TYPE[entityKind]}
+            entityId={id}
+            documents={documents}
+            customTypes={customTypes}
+            readOnly={isReadOnly}
+          />
+        )}
 
         {isVehicle && <EntityStatusBar items={vehicleStatus.items} />}
         {isVehicle && (
@@ -663,7 +686,10 @@ export default function EntityDetailScreen() {
             icon: 'add-circle-outline',
             label: 'Adaugă doc',
             onPress: () =>
-              router.push({ pathname: '/(tabs)/documente/add', params: { [entityKind]: id } }),
+              router.push({
+                pathname: '/(tabs)/documente/add',
+                params: { [entityKind]: id, from: 'entity', entityId: id },
+              }),
             disabled: isReadOnly,
           },
           {

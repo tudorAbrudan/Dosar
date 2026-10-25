@@ -11,7 +11,7 @@
  * Un răspuns greșit al modelului rămâne posibil; un context INCAPABIL să conțină
  * răspunsul nu mai trebuie să fie.
  */
-import { computeLocalLimits } from '@/services/chatbot';
+import { computeLocalLimits, fitKnowledgeIntoLimits } from '@/services/chatbot';
 
 describe('computeLocalLimits — dimensionare după fereastra modelului', () => {
   it('rămâne la plafonul istoric pentru ferestre mici (≤8192)', () => {
@@ -81,5 +81,39 @@ describe('computeLocalLimits — dimensionare după fereastra modelului', () => 
     const l = computeLocalLimits(16384);
     const perDocChars = l.maxDocChars! / l.maxDocsFiltered;
     expect(perDocChars).toBeGreaterThan(1100);
+  });
+});
+
+describe('plafonul dur de caractere', () => {
+  it('există și pe ferestrele mici (8K), nu doar peste', () => {
+    // Fără el, „Situație documente" și manualul peste rezervă n-aveau limită pe 8K.
+    expect(computeLocalLimits(8192).maxDocChars).toBe((8192 - 4000) * 2.5);
+    expect(computeLocalLimits(null).maxDocChars).toBe((8192 - 4000) * 2.5);
+  });
+});
+
+describe('fitKnowledgeIntoLimits — manualul aplicației peste rezervă', () => {
+  const local = computeLocalLimits(16384);
+
+  it('nu schimbă nimic cât manualul încape în rezervă (1500 de tokeni)', () => {
+    expect(fitKnowledgeIntoLimits(local, 3000)).toEqual(local);
+  });
+
+  it('scade surplusul din bugetul documentelor', () => {
+    // ~6000 de caractere: întrebare care atinge mai multe secțiuni (măsurat 2026-10-25).
+    const fitted = fitKnowledgeIntoLimits(local, 6000);
+    expect(fitted.maxDocChars).toBe(local.maxDocChars! - (6000 - 1500 * 2.5));
+  });
+
+  it('nu coboară sub zero și nu atinge remote (fără plafon)', () => {
+    expect(fitKnowledgeIntoLimits(computeLocalLimits(8192), 1e6).maxDocChars).toBe(0);
+    const remote = {
+      maxDocsFull: 80,
+      maxDocsFiltered: 40,
+      noteLimit: 500,
+      ocrLimit: 1000,
+      ocrLimitFull: 6000,
+    };
+    expect(fitKnowledgeIntoLimits(remote, 1e6)).toBe(remote);
   });
 });

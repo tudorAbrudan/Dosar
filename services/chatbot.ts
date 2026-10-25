@@ -10,8 +10,10 @@ import {
 // vezi `.claude/rules/ai-privacy.md`.
 import { getDocumentsForAI } from './documents';
 import { getCustomTypes } from './customTypes';
-import { getDocumentLabel } from '@/types';
-import type { DocumentType, Document, Vehicle, CustomDocumentType } from '@/types';
+import { getVisibleDocTypes } from './settings';
+import { buildSituationSection, type SituationEntity } from './entitySummary';
+import { ALL_ENTITY_TYPES, getDocumentLabel } from '@/types';
+import type { DocumentType, Document, EntityType, Vehicle, CustomDocumentType } from '@/types';
 import { buildAppKnowledge } from './appKnowledge';
 import { sendAiRequest, getAiConfig } from './aiProvider';
 import type { AiMessage } from './aiProvider';
@@ -516,6 +518,13 @@ const REMOTE_LIMITS = {
  */
 const FULL_OCR_DOC_BUDGET = 8;
 
+/**
+ * Partea din plafonul de caractere (`maxDocChars`, doar local) pe care o poate
+ * lua „Situație documente". O linie de fișă e mult mai densă decât un document
+ * cu OCR, dar fără limită, la multe entități, ar împinge afară documentele.
+ */
+const SITUATION_SHARE = 0.3;
+
 // Limite pentru model local pe device (context util ~8K tokeni — n_ctx pe GPU
 // e plafonat de memoria Metal a A15, vezi localModel.ts). buildAppKnowledge()
 // e deja ~3K tokeni fix; peste el vine contextText (entități + max 6 documente).
@@ -553,8 +562,16 @@ const EST_TOKENS_PER_DOC = 600;
  *
  * 1500 appKnowledge (worst case) + 1200 entități/reguli de task + 1300 răspuns
  * (n_predict 500) și marjă = 4000.
+ *
+ * REMĂSURAT (2026-10-25): cifrele de mai sus s-au luat fără lista tipurilor de
+ * documente — interpolarea ei era scăpată cu `\` din 3.14.0, deci modelul primea
+ * textul literal. Cu lista: ~1090 de tokeni la o întrebare simplă, ~2400 la una
+ * care atinge mai multe secțiuni. Ce trece peste `KNOWLEDGE_RESERVED_TOKENS` se
+ * scade din bugetul documentelor (`fitKnowledgeIntoLimits`).
  */
 const LOCAL_RESERVED_TOKENS = 4000;
+/** Partea din rezervă pentru manualul aplicației (`buildAppKnowledge`). */
+const KNOWLEDGE_RESERVED_TOKENS = 1500;
 /** Caractere per token, estimare conservatoare pentru română cu diacritice. */
 const CHARS_PER_TOKEN = 2.5;
 /**
@@ -612,7 +629,15 @@ const LOCAL_MIN_DOCS = 6;
  * LOCAL_RESERVED_TOKENS ↑ — nu reveni la plafonul fix.
  */
 export function computeLocalLimits(nCtx: number | null): ContextLimits {
-  if (!nCtx || nCtx <= 8192) return LOCAL_LIMITS;
+  // Și fereastra mică are plafon dur de caractere: fără el, secțiunile fără un
+  // număr fix de rânduri („Situație documente") și manualul peste rezervă n-ar
+  // avea nicio limită pe modelele de 8K.
+  if (!nCtx || nCtx <= 8192) {
+    return {
+      ...LOCAL_LIMITS,
+      maxDocChars: Math.floor((8192 - LOCAL_RESERVED_TOKENS) * CHARS_PER_TOKEN),
+    };
+  }
   const budget = nCtx - LOCAL_RESERVED_TOKENS;
   const maxDocs = Math.max(
     LOCAL_MIN_DOCS,
@@ -629,6 +654,22 @@ export function computeLocalLimits(nCtx: number | null): ContextLimits {
     ocrLimitFull: LOCAL_LIMITS.ocrLimitFull,
     maxDocChars: Math.floor(budget * CHARS_PER_TOKEN),
   };
+}
+
+/**
+ * Scade din bugetul documentelor ce depășește rezerva pentru manualul
+ * aplicației. O întrebare care atinge mai multe secțiuni (ex. carduri + partajare)
+ * aduce ~6000 de caractere de manual, peste cei 1500 de tokeni rezervați — fără
+ * ajustare, depășirea ar ajunge în „Context is full". Fără plafon (remote): neschimbat.
+ */
+export function fitKnowledgeIntoLimits(
+  limits: ContextLimits,
+  knowledgeChars: number
+): ContextLimits {
+  if (limits.maxDocChars === undefined) return limits;
+  const overflow = Math.ceil(knowledgeChars - KNOWLEDGE_RESERVED_TOKENS * CHARS_PER_TOKEN);
+  if (overflow <= 0) return limits;
+  return { ...limits, maxDocChars: Math.max(0, limits.maxDocChars - overflow) };
 }
 
 // Sumarizare per vehicul: dacă 5+ vehicule și user nu a @menționat unul anume,
@@ -797,17 +838,27 @@ async function buildContext(
   docMap: Map<string, string>;
   tasks: TaskRequirement[];
 }> {
-  const [persons, properties, vehicles, cards, animals, companies, documents, customTypes] =
-    await Promise.all([
-      getPersons(),
-      getProperties(),
-      getVehicles(),
-      getCards(),
-      getAnimals(),
-      getCompanies(),
-      getDocumentsForAI(),
-      getCustomTypes(),
-    ]);
+  const [
+    persons,
+    properties,
+    vehicles,
+    cards,
+    animals,
+    companies,
+    documents,
+    customTypes,
+    visibleDocTypes,
+  ] = await Promise.all([
+    getPersons(),
+    getProperties(),
+    getVehicles(),
+    getCards(),
+    getAnimals(),
+    getCompanies(),
+    getDocumentsForAI(),
+    getCustomTypes(),
+    getVisibleDocTypes(),
+  ]);
 
   const noData =
     !persons.length &&
@@ -1035,6 +1086,51 @@ async function buildContext(
         .join(', ')}`
     );
 
+  // ── Situație documente (fișa entităților) ──────────────────────────────────
+  // „Mai e valabil pașaportul?" are răspuns chiar dacă documentul a căzut din
+  // lista de mai jos (plafonul `maxDocs`), cu zilele deja calculate. Cu
+  // @mențiune: doar entitățile menționate. Pe model local, fișa consumă din
+  // același plafon de caractere ca documentele.
+  const docsByEntity = new Map<string, Document[]>();
+  for (const doc of documents) {
+    for (const entityId of new Set(docEntityIds(doc))) {
+      docsByEntity.set(entityId, [...(docsByEntity.get(entityId) ?? []), doc]);
+    }
+  }
+  // Record exhaustiv: un EntityType nou dă eroare de compilare aici, nu
+  // dispare în tăcere din fișă.
+  // check-hardcoded-entities-disable-next-cluster
+  const entitiesByType: Record<EntityType, { id: string; name: string }[]> = {
+    person: persons,
+    vehicle: vehicles,
+    property: properties,
+    card: cards.map(c => ({ id: c.id, name: c.nickname })),
+    animal: animals,
+    company: companies,
+    // Dosarul medical nu ajunge la asistentul general (vezi getDocumentsForAI).
+    medical_record: [],
+  };
+  const allSituationEntities: SituationEntity[] = ALL_ENTITY_TYPES.flatMap(type =>
+    entitiesByType[type].map(e => ({
+      id: e.id,
+      type,
+      tag: `[ENT:${e.name}|${type}|${e.id}]`,
+      documents: docsByEntity.get(e.id) ?? [],
+    }))
+  );
+  const mentionedSituation = allSituationEntities.filter(e => allMentionedIds.has(e.id));
+  const situation = buildSituationSection({
+    entities: mentionedSituation.length > 0 ? mentionedSituation : allSituationEntities,
+    visibleDocTypes,
+    customTypes,
+    maxChars:
+      limits.maxDocChars !== undefined
+        ? Math.floor(limits.maxDocChars * SITUATION_SHARE)
+        : undefined,
+  });
+  if (situation.text) lines.push(`\n${situation.text}`);
+  let docCharsUsed = situation.chars;
+
   // Notă de filtrare/trunchere (ajută AI-ul să înțeleagă că nu vede tot).
   // Emisă ori de câte ori lista e incompletă — inclusiv fără filtru, când
   // maxDocs a tăiat-o (altfel, pe model local cu maxDocsFull=6, AI-ul răspunde
@@ -1053,7 +1149,6 @@ async function buildContext(
     lines.push('(niciun document relevant găsit)');
   }
 
-  let docCharsUsed = 0;
   let omittedDocs = 0;
   for (const doc of filteredDocs) {
     // OCR limit per document:
@@ -1292,7 +1387,12 @@ export async function sendMessage(userMessage: string, rawHistory: ChatMessage[]
     if (deterministic) return deterministic;
   }
 
-  const { contextText, docMap, tasks } = await buildContext(userMessage, history, limits);
+  const knowledge = buildAppKnowledge(cleanForIntent);
+  const { contextText, docMap, tasks } = await buildContext(
+    userMessage,
+    history,
+    fitKnowledgeIntoLimits(limits, knowledge.length)
+  );
 
   // Regulă suplimentară când userul cere date pentru un task specific:
   // răspunsul trebuie să folosească EXCLUSIV valorile reale din metadata și
@@ -1320,7 +1420,7 @@ Userul a cerut datele pentru: ${tasks.map(t => t.label).join(', ')}.
     day: 'numeric',
   });
 
-  const systemPrompt = `${buildAppKnowledge(cleanForIntent)}
+  const systemPrompt = `${knowledge}
 
 Data curentă: ${today}. Folosește-o pentru a calcula vârste, expirări și „câte zile până la…". NU calcula o vârstă sau o durată dacă data de referință (ex. data nașterii) NU apare în datele de mai jos — în acest caz spune că informația lipsește, nu o inventa.
 

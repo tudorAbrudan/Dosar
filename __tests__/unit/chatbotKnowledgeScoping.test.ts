@@ -40,6 +40,15 @@ describe('buildAppKnowledge — secțiuni la cerere', () => {
     }
   });
 
+  it('nucleul conține lista tipurilor de documente, nu textul șablonului', () => {
+    // Din 3.14.0 până la 2026-10-25 interpolarea era scăpată (`\${...}`) și
+    // modelul primea literal „${buildDocTypesList()}" în loc de listă.
+    const k = buildAppKnowledge('salut');
+    expect(k).toContain('Pașaport');
+    expect(k).toContain('Tip personalizat');
+    expect(k).not.toContain('${');
+  });
+
   it('funcționează fără diacritice', () => {
     expect(buildAppKnowledge('cum fac backup')).toContain('iCloud');
   });
