@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StyleSheet, Alert, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -80,7 +79,6 @@ export default function EditDocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
   const scheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
-  const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const {
     companies,
@@ -905,7 +903,6 @@ export default function EditDocumentScreen() {
         saving={saving}
         saveDisabled={isReadOnly}
         scrollContentStyle={styles.content}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >

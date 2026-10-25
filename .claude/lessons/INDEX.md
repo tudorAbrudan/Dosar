@@ -4,6 +4,7 @@ Cronologic, descrescător. Front-matter pe fiecare fișier: `date`, `tags`, `tri
 
 | Data | Subiect | Tags |
 |---|---|---|
+| 2026-10-25 | [`KeyboardAvoidingView` + offset ghicit = câmpul rămâne sub tastatură](2026-10-25-keyboard-avoiding-offset.md) | react-native, ios, keyboard, layout, ux, regression |
 | 2026-10-15 | [Pull-ul propriei zone întoarce și propriile ștergeri](2026-10-15-own-zone-echo-deletions.md) | cloudkit, sharing, sync, echo, deletion, data-loss |
 | 2026-10-14 | [Restaurarea păstrează ID-urile; registrele externe referă rândurile prin ID](2026-10-14-restore-keeps-ids.md) | backup, restore, cloudkit, sharing, ids, testing |
 | 2026-10-14 | [Acțiunile din hook-uri întorc rezultatul; UI-ul nu citește starea după `await`](2026-10-14-hook-action-returns-result.md) | react, hooks, async, state, backup, regression |

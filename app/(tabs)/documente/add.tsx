@@ -1,10 +1,9 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { StyleSheet, Pressable, Alert, Platform, InteractionManager } from 'react-native';
+import { StyleSheet, Pressable, Alert, InteractionManager } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useShareIntentContext } from 'expo-share-intent';
 import type { ShareIntentFile } from 'expo-share-intent';
-import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -147,7 +146,6 @@ export default function AddDocumentScreen() {
     medicalRecords,
     resolveEntityName,
   } = useEntities();
-  const headerHeight = useHeaderHeight();
   const { customTypes } = useCustomTypes();
   const { visibleEntityTypes } = useVisibilitySettings();
   const { autoActivatedType, setAutoActivatedType, activateIfNeeded } = useAutoActivateDocType();
@@ -1407,7 +1405,6 @@ export default function AddDocumentScreen() {
         saving={loading}
         saveDisabled={!canSave}
         scrollContentStyle={styles.scrollContent}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >

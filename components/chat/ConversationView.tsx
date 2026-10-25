@@ -1,9 +1,8 @@
 import { useRef, useState } from 'react';
+import { KeyboardSafeView } from '@/components/ui/KeyboardSafeView';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -150,10 +149,7 @@ export function ConversationView({
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardSafeView style={[styles.container, { backgroundColor: colors.background }]}>
       <View
         style={[
           styles.convHeader,
@@ -295,7 +291,7 @@ export function ConversationView({
           <Text style={styles.sendButtonText}>Trimite</Text>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

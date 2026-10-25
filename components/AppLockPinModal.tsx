@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { KeyboardSafeView } from '@/components/ui/KeyboardSafeView';
 import { Modal, View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -64,7 +65,7 @@ export default function AppLockPinModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <View style={styles.overlay}>
+      <KeyboardSafeView style={styles.overlay}>
         <View style={[styles.box, { backgroundColor: C.card }]}>
           <Text style={[styles.title, { color: C.text }]}>Setare PIN blocare</Text>
           <Text style={[styles.hint, { color: C.textSecondary }]}>Alege un PIN de 4–8 cifre.</Text>
@@ -106,7 +107,7 @@ export default function AppLockPinModal({
             </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardSafeView>
     </Modal>
   );
 }

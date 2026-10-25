@@ -1,14 +1,7 @@
 import { useState } from 'react';
-import {
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Alert,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { StyleSheet, ScrollView, Pressable, Alert, Keyboard } from 'react-native';
 import { router } from 'expo-router';
+import { KeyboardSafeView } from '@/components/ui/KeyboardSafeView';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { primary, light, dark } from '@/theme/colors';
@@ -77,10 +70,7 @@ export default function WizardMasinaScreen() {
 
   return (
     <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView style={styles.flex}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.content}
@@ -155,7 +145,7 @@ export default function WizardMasinaScreen() {
             </Text>
           </Pressable>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Pressable>
   );
 }

@@ -1,19 +1,12 @@
 // app/components/ui/FormPageScreen.tsx
 import { ReactNode } from 'react';
-import {
-  Text,
-  Pressable,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  ViewStyle,
-} from 'react-native';
+import { Text, Pressable, ScrollView, StyleSheet, ViewStyle } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { primary } from '@/theme/colors';
 import { BottomActionBar } from './BottomActionBar';
+import { KeyboardSafeView } from './KeyboardSafeView';
 
 type Props = {
   title: string;
@@ -25,8 +18,6 @@ type Props = {
   headerLeft?: ReactNode;
   headerRight?: ReactNode;
   scrollContentStyle?: ViewStyle;
-  /** iOS: offset pentru KeyboardAvoidingView (ex. înălțimea headerului). */
-  keyboardVerticalOffset?: number;
   /** Comportament dismiss tastatură la scroll. Default: niciunul. */
   keyboardDismissMode?: 'none' | 'on-drag' | 'interactive';
   /** iOS: ajustează automat insets-urile când apare tastatura. */
@@ -51,7 +42,6 @@ export function FormPageScreen({
   headerLeft,
   headerRight,
   scrollContentStyle,
-  keyboardVerticalOffset,
   keyboardDismissMode,
   automaticallyAdjustKeyboardInsets,
   children,
@@ -68,11 +58,7 @@ export function FormPageScreen({
           headerRight: headerRight ? () => headerRight : undefined,
         }}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={keyboardVerticalOffset}
-        style={[styles.flex, { backgroundColor: C.background }]}
-      >
+      <KeyboardSafeView style={{ backgroundColor: C.background }}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={[styles.content, scrollContentStyle]}
@@ -90,7 +76,7 @@ export function FormPageScreen({
           disabled={saveDisabled}
           safeArea
         />
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </>
   );
 }

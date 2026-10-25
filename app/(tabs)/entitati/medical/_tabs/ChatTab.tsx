@@ -1,14 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import {
-  View,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { View, TextInput, Pressable, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -23,7 +14,7 @@ import { useAiStatus } from '@/hooks/useAiStatus';
 import { AiStatusBanner } from '@/components/chat/AiStatusBanner';
 import { on as subscribe } from '@/services/events';
 import { useRouter } from 'expo-router';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { KeyboardSafeView } from '@/components/ui/KeyboardSafeView';
 import type { MedicalRecord } from '@/types';
 
 interface Props {
@@ -37,8 +28,6 @@ const SUGGESTIONS = [
 ];
 
 export function ChatTab({ record }: Props) {
-  // Ecranul trăiește sub app/(tabs)/, deci hook-ul are întotdeauna context.
-  const tabBarHeight = useBottomTabBarHeight();
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
   const router = useRouter();
@@ -173,17 +162,7 @@ export function ChatTab({ record }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      // Înălțimea REALĂ a tab bar-ului, nu o valoare ghicită. Ecranul se termină
-      // deasupra tab bar-ului, iar tastatura se măsoară de la marginea de jos a
-      // ecranului — deci offsetul trebuie să fie exact acea diferență. Cu valoarea
-      // fixă de dinainte (120, mai mare decât tab bar-ul real de ~83pt), câmpul
-      // cobora prea jos și butonul „trimite" rămânea pe jumătate sub tastatură.
-      // Raportat pe device 2026-09-04.
-      keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
-    >
+    <KeyboardSafeView>
       <AiStatusBanner
         unavailableReason={aiStatus.unavailableReason}
         label={aiStatus.label}
@@ -282,7 +261,7 @@ export function ChatTab({ record }: Props) {
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

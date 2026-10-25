@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KeyboardSafeView } from '@/components/ui/KeyboardSafeView';
 import {
   ActivityIndicator,
   Modal,
@@ -114,7 +115,7 @@ export function CloudPasswordModal({ visible, mode, onSubmit, onCancel, onDismis
       }}
       onDismiss={onDismissed}
     >
-      <View style={[styles.backdrop, { backgroundColor: `${palette.text}80` }]}>
+      <KeyboardSafeView style={[styles.backdrop, { backgroundColor: `${palette.text}80` }]}>
         <View style={[styles.card, { backgroundColor: palette.card }]}>
           <Text style={[styles.title, { color: palette.text }]}>{TITLES[mode]}</Text>
           <Text style={[styles.subtitle, { color: palette.textSecondary }]}>{SUBTITLES[mode]}</Text>
@@ -222,7 +223,7 @@ export function CloudPasswordModal({ visible, mode, onSubmit, onCancel, onDismis
             </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardSafeView>
     </Modal>
   );
 }

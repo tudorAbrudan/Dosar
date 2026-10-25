@@ -1,14 +1,6 @@
 import { useState } from 'react';
-import {
-  StyleSheet,
-  Pressable,
-  Alert,
-  Platform,
-  ActivityIndicator,
-  ScrollView,
-} from 'react-native';
+import { StyleSheet, Pressable, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
 import { Text, View, ThemedTextInput } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -47,7 +39,6 @@ export default function AddEntityScreen() {
     key: t,
     label: ENTITY_TYPE_LABELS[t],
   }));
-  const headerHeight = useHeaderHeight();
 
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
@@ -191,7 +182,6 @@ export default function AddEntityScreen() {
       onSave={handleSubmit}
       saving={loading}
       scrollContentStyle={styles.inner}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
     >
       {!isCard && (
         <>
