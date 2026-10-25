@@ -316,7 +316,7 @@ export function buildAppKnowledge(question?: string): string {
 **Entități:** Persoane, Vehicule, Proprietăți, Carduri bancare (fără CVV), Animale, Firme/PFA.
 
 **Tipuri de documente:**
-\${buildDocTypesList()}
+${buildDocTypesList()}
 
 **Funcții:** scanner nativ multi-pagină + OCR on-device, notificări expirare, remindere în calendar iOS, backup automat în iCloud + export manual ZIP, blocare Face ID/PIN, detecție automată duplicate, câmp „Notă privată" per document pentru date sensibile (CVV/PIN/parole) care NU ajunge niciodată la AI, reminder mentenanță vehicule (km sau timp) cu sincronizare calendar, secțiune „De completat" pe Home cu sugestii pentru date incomplete, primire fișiere prin Share sheet iOS (din Photos/Files/Safari alegi Share → Dosar și poza sau PDF-ul ajunge direct în ecranul Adaugă document).`;
 

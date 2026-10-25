@@ -38,6 +38,8 @@ const ENTRIES = {
     aiProvider: { required: true, keywords: ['Asistent AI', 'provider'] },
     appKnowledge: { required: false },
     backup: { required: true, keywords: ['backup', 'export'] },
+    // Helper intern: „Înapoi” revine pe ecranul sursă (vezi cross-tab-back-audit).
+    backNavigation: { required: false },
     calendar: { required: true, keywords: ['calendar', 'expirare'] },
     chatbot: { required: true, keywords: ['chatbot', 'Întreabă'] },
     cloudSync: { required: true, keywords: ['iCloud', 'cloud'] },

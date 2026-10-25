@@ -64,7 +64,7 @@ export function EntitySummaryCard({
     } else {
       router.push({
         pathname: '/(tabs)/documente/add',
-        params: { [`${entityType}_id`]: entityId, type: item.type },
+        params: { [`${entityType}_id`]: entityId, type: item.type, from: 'entity', entityId },
       });
     }
   };

@@ -30,6 +30,7 @@ export default function TabLayout() {
       lastResponse.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER &&
       data?.documentId
     ) {
+      // cross-tab-back-audit-ignore: tap pe notificare, fără ecran sursă
       router.push(`/(tabs)/documente/${data.documentId}`);
     }
   }, [lastResponse, router]);

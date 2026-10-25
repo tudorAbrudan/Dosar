@@ -319,7 +319,9 @@ export default function HomeScreen() {
               variant="primary"
               style={styles.actionBtn}
               icon={<Ionicons name="document-text-outline" size={18} color="#fff" />}
-              onPress={() => router.push('/(tabs)/documente/add')}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/documente/add', params: { from: 'home' } })
+              }
             />
           </RNView>
         </SurfaceCard>
@@ -345,7 +347,10 @@ export default function HomeScreen() {
                 <Pressable
                   style={[styles.alertBtn, { borderColor: C.primary }]}
                   onPress={() =>
-                    router.push({ pathname: '/(tabs)/documente/add', params: alert.navigate })
+                    router.push({
+                      pathname: '/(tabs)/documente/add',
+                      params: { ...alert.navigate, from: 'home' },
+                    })
                   }
                 >
                   <RNText style={[styles.alertBtnText, { color: C.primary }]}>
@@ -602,7 +607,9 @@ export default function HomeScreen() {
               title="Adaugă document"
               variant="primary"
               style={styles.emptyBtn}
-              onPress={() => router.push('/(tabs)/documente/add')}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/documente/add', params: { from: 'home' } })
+              }
             />
           </RNView>
         )}

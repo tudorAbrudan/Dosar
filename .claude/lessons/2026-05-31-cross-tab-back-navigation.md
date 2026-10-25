@@ -27,9 +27,9 @@ Dacă call-site-ul **nu trimite `from`/`entityId`**, codul cade pe fallback → 
 
 ## Regulă
 
-**Orice `router.push` către `/(tabs)/documente/[id]` din afara tabului Documente trebuie să trimită `from` + `entityId`.**
+**Orice `router.push` către `/(tabs)/documente/[id]` sau `/(tabs)/documente/add` din afara tabului Documente trebuie să trimită `from` + `entityId`.**
 
-Valori `from` acceptate de `handleBack` (vezi `app/(tabs)/documente/[id].tsx:959-984`):
+Valori `from` acceptate de `navigateBackToSource` (`services/backNavigation.ts`, folosit de detaliu — „Înapoi" și după ștergere — și de adăugare — „Înapoi" și după salvare):
 
 | `from` | Source screen | `entityId` necesar? |
 |---|---|---|
@@ -57,7 +57,7 @@ router.push(`/(tabs)/documente/${docId}`);
 ```
 
 Excepții acceptate (intenționat fără `from`):
-- Push notification handler (`_layout.tsx`, `(tabs)/_layout.tsx`) — cold start, nu există source screen.
+- Push notification handler, share intent, deep link (`_layout.tsx`, `(tabs)/_layout.tsx`) — nu există source screen; marcate cu `// cross-tab-back-audit-ignore: <motiv>`.
 - `DuplicateGroupsCard.onOpenDocument` în `documente/[id].tsx` — navigare în același tab, fallback `router.back()` funcționează.
 - `documente/add.tsx` redirect către doc creat — flow de creare, nu există source entity de revenit.
 
@@ -74,6 +74,6 @@ grep -rn "documente/\${" app/ components/ | grep -v "from:"
 ```
 Orice rezultat care nu e în lista de excepții = bug de cross-tab navigation.
 
-## Audit script (candidat)
+## Audit script
 
-Pattern detectabil automat: `router.push.*documente/\$\{[^}]+\}` în fișiere care **nu** sunt sub `app/(tabs)/documente/`. Dacă acel call nu are obiect `params` cu `from`, semnal warning. Candidat real pentru `scripts/cross-tab-doc-push-audit.js` dacă se repetă regresia.
+Regresia s-a repetat la adăugare (2026-10-25: „Adaugă doc" din ecranul entității, sugestiile din Home, statusul legal al vehiculului — „Înapoi" și salvarea duceau în tabul Acte). De atunci, `scripts/cross-tab-back-audit.js --strict` (în `npm run audit` și pre-commit) verifică orice `router.push/replace/navigate` spre stack-ul Documente din afara tabului: fără `from` → eșec.

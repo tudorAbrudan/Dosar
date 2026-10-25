@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { StyleSheet, Pressable, Alert, InteractionManager } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { navigateBackToSource } from '@/services/backNavigation';
 import { useIsFocused } from '@react-navigation/native';
 import { useShareIntentContext } from 'expo-share-intent';
 import type { ShareIntentFile } from 'expo-share-intent';
@@ -134,6 +135,9 @@ export default function AddDocumentScreen() {
     restrict_to?: string;
     type?: string;
     entityType?: string;
+    /** Ecranul sursă, pentru „Înapoi" și după salvare — vezi services/backNavigation.ts. */
+    from?: string;
+    entityId?: string;
   }>();
   const { createDocument, refresh } = useDocuments();
   const {
@@ -1269,7 +1273,11 @@ export default function AddDocumentScreen() {
       scheduleExpirationReminders().catch(() => {});
 
       const finalExpiry = expiryDateRef.current.trim();
-      const navigateBack = () => router.replace('/(tabs)/documente');
+      const navigateBack = () => {
+        if (!navigateBackToSource(params.from, params.entityId)) {
+          router.replace('/(tabs)/documente');
+        }
+      };
       const finishOrPromptCoverage = async () => {
         try {
           const vId = entityLinks.find(l => l.entityType === 'vehicle')?.entityId;
@@ -1296,7 +1304,11 @@ export default function AddDocumentScreen() {
                   InteractionManager.runAfterInteractions(() => {
                     router.replace({
                       pathname: '/(tabs)/documente/add',
-                      params: { vehicle_id: vId, type: first.key },
+                      params: {
+                        vehicle_id: vId,
+                        type: first.key,
+                        ...(params.from ? { from: params.from, entityId: params.entityId } : {}),
+                      },
                     });
                   });
                 },
@@ -1401,6 +1413,7 @@ export default function AddDocumentScreen() {
     <>
       <FormPageScreen
         title="Adaugă document"
+        onBack={() => navigateBackToSource(params.from, params.entityId) || router.back()}
         onSave={handleSubmit}
         saving={loading}
         saveDisabled={!canSave}

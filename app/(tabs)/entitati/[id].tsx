@@ -200,9 +200,20 @@ export default function EntityDetailScreen() {
     }, [id, entityKind, entityName])
   );
 
-  const refresh = () => {
-    refreshEntities();
-    if (id && entityName) loadDocs(entityKind, id);
+  // Spinner-ul doar la tragerea în jos. Legat de `loading`, pornea și la fiecare
+  // revenire pe ecran (useFocusEffect → loadDocs), iar iOS lăsa apoi un spațiu gol
+  // deasupra conținutului (2026-10-25).
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshEntities(),
+        id && entityName ? loadDocs(entityKind, id) : Promise.resolve(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   async function openLinkDoc() {
@@ -508,7 +519,7 @@ export default function EntityDetailScreen() {
           isVehicle && vehicle?.photo_uri ? { paddingTop: MAX_HERO_HEIGHT + 8 } : null,
         ]}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.primary} />
         }
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
@@ -675,7 +686,10 @@ export default function EntityDetailScreen() {
             icon: 'add-circle-outline',
             label: 'Adaugă doc',
             onPress: () =>
-              router.push({ pathname: '/(tabs)/documente/add', params: { [entityKind]: id } }),
+              router.push({
+                pathname: '/(tabs)/documente/add',
+                params: { [entityKind]: id, from: 'entity', entityId: id },
+              }),
             disabled: isReadOnly,
           },
           {

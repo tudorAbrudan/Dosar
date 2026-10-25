@@ -562,8 +562,16 @@ const EST_TOKENS_PER_DOC = 600;
  *
  * 1500 appKnowledge (worst case) + 1200 entități/reguli de task + 1300 răspuns
  * (n_predict 500) și marjă = 4000.
+ *
+ * REMĂSURAT (2026-10-25): cifrele de mai sus s-au luat fără lista tipurilor de
+ * documente — interpolarea ei era scăpată cu `\` din 3.14.0, deci modelul primea
+ * textul literal. Cu lista: ~1090 de tokeni la o întrebare simplă, ~2400 la una
+ * care atinge mai multe secțiuni. Ce trece peste `KNOWLEDGE_RESERVED_TOKENS` se
+ * scade din bugetul documentelor (`fitKnowledgeIntoLimits`).
  */
 const LOCAL_RESERVED_TOKENS = 4000;
+/** Partea din rezervă pentru manualul aplicației (`buildAppKnowledge`). */
+const KNOWLEDGE_RESERVED_TOKENS = 1500;
 /** Caractere per token, estimare conservatoare pentru română cu diacritice. */
 const CHARS_PER_TOKEN = 2.5;
 /**
@@ -621,7 +629,15 @@ const LOCAL_MIN_DOCS = 6;
  * LOCAL_RESERVED_TOKENS ↑ — nu reveni la plafonul fix.
  */
 export function computeLocalLimits(nCtx: number | null): ContextLimits {
-  if (!nCtx || nCtx <= 8192) return LOCAL_LIMITS;
+  // Și fereastra mică are plafon dur de caractere: fără el, secțiunile fără un
+  // număr fix de rânduri („Situație documente") și manualul peste rezervă n-ar
+  // avea nicio limită pe modelele de 8K.
+  if (!nCtx || nCtx <= 8192) {
+    return {
+      ...LOCAL_LIMITS,
+      maxDocChars: Math.floor((8192 - LOCAL_RESERVED_TOKENS) * CHARS_PER_TOKEN),
+    };
+  }
   const budget = nCtx - LOCAL_RESERVED_TOKENS;
   const maxDocs = Math.max(
     LOCAL_MIN_DOCS,
@@ -638,6 +654,22 @@ export function computeLocalLimits(nCtx: number | null): ContextLimits {
     ocrLimitFull: LOCAL_LIMITS.ocrLimitFull,
     maxDocChars: Math.floor(budget * CHARS_PER_TOKEN),
   };
+}
+
+/**
+ * Scade din bugetul documentelor ce depășește rezerva pentru manualul
+ * aplicației. O întrebare care atinge mai multe secțiuni (ex. carduri + partajare)
+ * aduce ~6000 de caractere de manual, peste cei 1500 de tokeni rezervați — fără
+ * ajustare, depășirea ar ajunge în „Context is full". Fără plafon (remote): neschimbat.
+ */
+export function fitKnowledgeIntoLimits(
+  limits: ContextLimits,
+  knowledgeChars: number
+): ContextLimits {
+  if (limits.maxDocChars === undefined) return limits;
+  const overflow = Math.ceil(knowledgeChars - KNOWLEDGE_RESERVED_TOKENS * CHARS_PER_TOKEN);
+  if (overflow <= 0) return limits;
+  return { ...limits, maxDocChars: Math.max(0, limits.maxDocChars - overflow) };
 }
 
 // Sumarizare per vehicul: dacă 5+ vehicule și user nu a @menționat unul anume,
@@ -1355,7 +1387,12 @@ export async function sendMessage(userMessage: string, rawHistory: ChatMessage[]
     if (deterministic) return deterministic;
   }
 
-  const { contextText, docMap, tasks } = await buildContext(userMessage, history, limits);
+  const knowledge = buildAppKnowledge(cleanForIntent);
+  const { contextText, docMap, tasks } = await buildContext(
+    userMessage,
+    history,
+    fitKnowledgeIntoLimits(limits, knowledge.length)
+  );
 
   // Regulă suplimentară când userul cere date pentru un task specific:
   // răspunsul trebuie să folosească EXCLUSIV valorile reale din metadata și
@@ -1383,7 +1420,7 @@ Userul a cerut datele pentru: ${tasks.map(t => t.label).join(', ')}.
     day: 'numeric',
   });
 
-  const systemPrompt = `${buildAppKnowledge(cleanForIntent)}
+  const systemPrompt = `${knowledge}
 
 Data curentă: ${today}. Folosește-o pentru a calcula vârste, expirări și „câte zile până la…". NU calcula o vârstă sau o durată dacă data de referință (ex. data nașterii) NU apare în datele de mai jos — în acest caz spune că informația lipsește, nu o inventa.
 
