@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Linking, Platform, StyleSheet } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { Tabs, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { scheduleExpirationReminders } from '@/services/notifications';
+import { INSURANCE_OFFER_ACTION, scheduleExpirationReminders } from '@/services/notifications';
 import { radius } from '@/theme/layout';
 
 export default function TabLayout() {
@@ -21,12 +21,15 @@ export default function TabLayout() {
     scheduleExpirationReminders().catch(() => {});
   }, []);
 
+  // Singurul handler pentru tap pe notificare (pornire la rece și din fundal).
   useEffect(() => {
-    const data = lastResponse?.notification.request.content.data as
-      | { documentId?: string }
+    if (!lastResponse) return;
+    const data = lastResponse.notification.request.content.data as
+      | { documentId?: string; offerUrl?: string }
       | undefined;
-    if (
-      lastResponse &&
+    if (lastResponse.actionIdentifier === INSURANCE_OFFER_ACTION && data?.offerUrl) {
+      Linking.openURL(data.offerUrl).catch(() => undefined);
+    } else if (
       lastResponse.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER &&
       data?.documentId
     ) {

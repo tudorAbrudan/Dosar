@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
-import { StyleSheet, ScrollView, Alert, Pressable, Linking, Platform } from 'react-native';
+import { StyleSheet, ScrollView, Alert, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
@@ -16,6 +16,7 @@ import { Text, View } from '@/components/Themed';
 import { DocumentPhotoSection } from '@/components/DocumentPhotoSection';
 import type { PhotoPage } from '@/components/DocumentPhotoSection';
 import { BottomActionBar } from '@/components/BottomActionBar';
+import { InsuranceOfferButton } from '@/components/InsuranceOfferButton';
 import { DocumentDetailCard } from '@/components/DocumentDetailCard';
 import { DocumentDetailRow } from '@/components/DocumentDetailRow';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -1327,21 +1328,7 @@ export default function DocumentDetailScreen() {
           </Pressable>
         )}
 
-        {(doc.type === 'rca' || doc.type === 'itp') && (
-          <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
-            <Text style={styles.asigaBtnText}>🛡 RCA ieftină → asigra.ro</Text>
-          </Pressable>
-        )}
-        {doc.type === 'casco' && (
-          <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
-            <Text style={styles.asigaBtnText}>🛡 CASCO ieftine → asigra.ro</Text>
-          </Pressable>
-        )}
-        {doc.type === 'pad' && (
-          <Pressable style={styles.asigraBtn} onPress={() => Linking.openURL('https://asigra.ro')}>
-            <Text style={styles.asigaBtnText}>🏠 PAD ieftină → asigra.ro</Text>
-          </Pressable>
-        )}
+        <InsuranceOfferButton docType={doc.type} placement="document" />
       </ScrollView>
 
       <BottomActionBar
@@ -1427,15 +1414,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   calendarBtnLabel: { fontSize: 13, fontWeight: '600' },
-  asigraBtn: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: primary,
-  },
-  asigaBtnText: { color: primary, fontSize: 14, fontWeight: '600' },
   aiSection: { marginVertical: 12, padding: 14, borderRadius: 10, borderWidth: 1 },
   aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   aiSectionTitle: { fontSize: 14, fontWeight: '700' },

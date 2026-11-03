@@ -33,6 +33,7 @@ import type { Document } from '@/types';
 import { useVisibilitySettings } from '@/hooks/useVisibilitySettings';
 import { findFileDuplicates, backfillFileHashes, deleteDocument } from '@/services/documents';
 import { buildHomeAlerts } from '@/services/homeAlerts';
+import { InsuranceOfferButton } from '@/components/InsuranceOfferButton';
 import { getDismissedExpiryDocumentIds } from '@/services/reminders';
 import { resolveDocumentEntityName } from '@/services/documentEntityName';
 import { isStaleExpired } from '@/services/expiry';
@@ -341,9 +342,16 @@ export default function HomeScreen() {
                 <RNView style={[styles.alertIcon, { backgroundColor: alert.iconBg }]}>
                   <Ionicons name={alert.icon} size={18} color={alert.iconColor} />
                 </RNView>
-                <RNText style={[styles.alertText, { color: C.text }]} numberOfLines={2}>
-                  {alert.message}
-                </RNText>
+                <RNView style={styles.alertBody}>
+                  <RNText style={[styles.alertText, { color: C.text }]} numberOfLines={2}>
+                    {alert.message}
+                  </RNText>
+                  <InsuranceOfferButton
+                    docType={alert.navigate.type}
+                    placement="home"
+                    variant="link"
+                  />
+                </RNView>
                 <Pressable
                   style={[styles.alertBtn, { borderColor: C.primary }]}
                   onPress={() =>
@@ -709,7 +717,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  alertText: { flex: 1, fontSize: 14, lineHeight: 19 },
+  alertBody: { flex: 1 },
+  alertText: { fontSize: 14, lineHeight: 19 },
   alertBtn: {
     borderWidth: 1.5,
     borderRadius: radius.pill,

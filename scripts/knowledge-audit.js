@@ -37,6 +37,7 @@ const ENTRIES = {
     aiOcrMapper: { required: true, keywords: ['OCR', 'AI'] },
     aiProvider: { required: true, keywords: ['Asistent AI', 'provider'] },
     appKnowledge: { required: false },
+    insuranceOffers: { required: true, keywords: ['asigra.ro'] },
     backup: { required: true, keywords: ['backup', 'export'] },
     // Helper intern: „Înapoi” revine pe ecranul sursă (vezi cross-tab-back-audit).
     backNavigation: { required: false },

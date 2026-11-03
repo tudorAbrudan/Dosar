@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useColorScheme } from '@/components/useColorScheme';
 import { statusColors, light, dark } from '@/theme/colors';
+import { InsuranceOfferButton } from '@/components/InsuranceOfferButton';
 import type { LegalObligation } from '@/services/vehicleStatus';
 
 function colorFor(status: LegalObligation['status']): string {
@@ -47,29 +48,32 @@ export const VehicleLegalStatus = memo(function VehicleLegalStatus({
             const c = colorFor(o.status);
             const actionable = o.status === 'missing' || o.status === 'expired';
             return (
-              <Pressable
-                key={o.key}
-                disabled={!actionable}
-                onPress={() =>
-                  router.push({
-                    pathname: '/(tabs)/documente/add',
-                    params: {
-                      vehicle_id: vehicleId,
-                      type: o.key,
-                      from: 'entity',
-                      entityId: vehicleId,
-                    },
-                  })
-                }
-                style={[styles.row, { backgroundColor: palette.card }]}
-              >
-                <View style={[styles.dot, { backgroundColor: c }]} />
-                <Text style={[styles.label, { color: palette.text }]}>{o.label}</Text>
-                <Text style={[styles.status, { color: c }]}>{textFor(o)}</Text>
-                {actionable ? (
-                  <Ionicons name="add-circle-outline" size={18} color={palette.textSecondary} />
-                ) : null}
-              </Pressable>
+              <View key={o.key} style={[styles.card, { backgroundColor: palette.card }]}>
+                <Pressable
+                  disabled={!actionable}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(tabs)/documente/add',
+                      params: {
+                        vehicle_id: vehicleId,
+                        type: o.key,
+                        from: 'entity',
+                        entityId: vehicleId,
+                      },
+                    })
+                  }
+                  style={styles.cardRow}
+                >
+                  <View style={[styles.dot, { backgroundColor: c }]} />
+                  <Text style={[styles.label, { color: palette.text }]}>{o.label}</Text>
+                  <Text style={[styles.status, { color: c }]}>{textFor(o)}</Text>
+                  {actionable ? (
+                    <Ionicons name="add-circle-outline" size={18} color={palette.textSecondary} />
+                  ) : null}
+                </Pressable>
+                {/* RCA lipsă / expirat / pe ducă → oferta de reînnoire. */}
+                <InsuranceOfferButton docType={o.key} placement="vehicul" variant="link" />
+              </View>
             );
           })
       )}
@@ -89,6 +93,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
   },
+  card: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   label: { fontSize: 15, fontWeight: '600', flex: 1 },
   status: { fontSize: 14, fontWeight: '600' },

@@ -2,9 +2,8 @@ import { ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import * as Notifications from 'expo-notifications';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AppState,
   Linking,
@@ -81,7 +80,6 @@ function RootLayoutNav() {
   const router = useRouter();
   const pathname = usePathname();
   const { isReady: shareReady, hasShareIntent } = useShareIntentContext();
-  const notifListener = useRef<Notifications.EventSubscription | null>(null);
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const reviewPrompt = useReviewPrompt();
@@ -90,21 +88,6 @@ function RootLayoutNav() {
 
   const showReviewModal =
     reviewPrompt.visible && onboardingDone === true && !appLock.locked && !updateInfo;
-
-  useEffect(() => {
-    notifListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      const data = response.notification.request.content.data as Record<string, unknown>;
-      if (typeof data?.url === 'string') {
-        Linking.openURL(data.url);
-      } else if (typeof data?.documentId === 'string') {
-        // cross-tab-back-audit-ignore: tap pe notificare, fără ecran sursă
-        router.push(`/(tabs)/documente/${data.documentId}`);
-      }
-    });
-    return () => {
-      notifListener.current?.remove();
-    };
-  }, []);
 
   // Share din alte aplicații: iOS 27 nu mai livrează URL-ul cu cheia (vezi
   // shareIntentFallback) → cerem datele extensiei direct la pornire și la fiecare

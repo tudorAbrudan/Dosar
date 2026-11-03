@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { DOCUMENT_TYPE_LABELS } from '@/types';
 import type { DocumentType, VehicleMaintenanceTask } from '@/types';
 import { APP_STORE_URL, SITE_URL } from '@/constants/AppLinks';
+import { getInsuranceOfferUrl } from './insuranceOffers';
 
 // expo-calendar necesită build nativ (expo prebuild + expo run:ios).
 // Importăm cu require pentru a nu crăpa app-ul dacă modulul nativ nu e linkat.
@@ -15,15 +16,6 @@ const CalendarModule = (() => {
 })();
 
 const REMINDER_DAYS_BEFORE = 14;
-
-const ASIGRA_URL = 'https://asigra.ro';
-
-/** Tipuri pentru care afișăm link-ul asigra.ro */
-const ASIGRA_TYPES: Partial<Record<DocumentType, string>> = {
-  rca: ASIGRA_URL,
-  casco: ASIGRA_URL,
-  itp: ASIGRA_URL,
-};
 
 async function getDefaultCalendarId(): Promise<string | null> {
   if (!CalendarModule) return null;
@@ -65,7 +57,7 @@ export interface CalendarEventOptions {
 
 /**
  * Adaugă un eveniment în calendar cu reminder cu 14 zile înainte de expirare.
- * Pentru RCA și ITP include link asigra.ro în descriere.
+ * Pentru asigurări (RCA, CASCO, PAD) include linkul de ofertă asigra.ro în descriere.
  * Returnează ID-ul evenimentului sau null dacă calendarul nu e disponibil.
  */
 export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promise<string | null> {
@@ -80,14 +72,14 @@ export async function addExpiryCalendarEvent(opts: CalendarEventOptions): Promis
       ? `Expiră ${typeLabel} – ${opts.entityName}`
       : `Expiră ${typeLabel}`;
 
-    const asigraUrl = ASIGRA_TYPES[opts.docType];
+    const offerUrl = getInsuranceOfferUrl(opts.docType, 'calendar');
     const deepLink = opts.documentId ? `acte:///documente/${opts.documentId}` : null;
     const noteLines = [
       `Tip: ${typeLabel}`,
       opts.entityName ? `Entitate: ${opts.entityName}` : null,
       `Expiră: ${opts.expiryDate}`,
       opts.note ? `Notă: ${opts.note}` : null,
-      asigraUrl ? `Compară oferte: ${asigraUrl}` : null,
+      offerUrl ? `Compară oferte: ${offerUrl}` : null,
       deepLink ? `Deschide în Acte: ${deepLink}` : null,
       'Adăugat de Acte – Documente Personale · https://tudorabrudan.github.io/Dosar/',
     ]
@@ -136,14 +128,14 @@ export async function updateExpiryCalendarEvent(
       ? `Expiră ${typeLabel} – ${opts.entityName}`
       : `Expiră ${typeLabel}`;
 
-    const asigraUrl = ASIGRA_TYPES[opts.docType];
+    const offerUrl = getInsuranceOfferUrl(opts.docType, 'calendar');
     const deepLink = opts.documentId ? `acte:///documente/${opts.documentId}` : null;
     const notes = [
       `Tip: ${typeLabel}`,
       opts.entityName ? `Entitate: ${opts.entityName}` : null,
       `Expiră: ${opts.expiryDate}`,
       opts.note ? `Notă: ${opts.note}` : null,
-      asigraUrl ? `Compară oferte: ${asigraUrl}` : null,
+      offerUrl ? `Compară oferte: ${offerUrl}` : null,
       deepLink ? `Deschide în Acte: ${deepLink}` : null,
       'Adăugat de Acte – Documente Personale · https://tudorabrudan.github.io/Dosar/',
     ]

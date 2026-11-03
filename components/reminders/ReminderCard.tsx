@@ -17,6 +17,8 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
 import { getDocumentLabel } from '@/types';
 import { resolveDocumentEntityName } from '@/services/documentEntityName';
+import { isInsuranceOfferDue } from '@/services/insuranceOffers';
+import { InsuranceOfferButton } from '@/components/InsuranceOfferButton';
 import type { Reminder } from '@/types';
 
 interface ReminderCardProps {
@@ -33,12 +35,9 @@ function getDaysUntil(date: string): number {
 
 function getStatusBadge(reminderDate: string): { label: string; bg: string; fg: string } {
   const days = getDaysUntil(reminderDate);
-  if (days < 0)
-    return { label: 'Expirat', bg: statusColors.critical, fg: onPrimary };
-  if (days === 0)
-    return { label: 'Astăzi', bg: statusColors.critical, fg: onPrimary };
-  if (days <= 30)
-    return { label: `${days}z`, bg: statusColors.warning, fg: onPrimary };
+  if (days < 0) return { label: 'Expirat', bg: statusColors.critical, fg: onPrimary };
+  if (days === 0) return { label: 'Astăzi', bg: statusColors.critical, fg: onPrimary };
+  if (days <= 30) return { label: `${days}z`, bg: statusColors.warning, fg: onPrimary };
   const label = new Date(reminderDate).toLocaleDateString('ro-RO', {
     month: 'short',
     year: 'numeric',
@@ -54,7 +53,7 @@ export function ReminderCard({ reminder, onPress }: ReminderCardProps) {
   const { customTypes } = useCustomTypes();
 
   const document = reminder.document_id
-    ? documents.find(d => d.id === reminder.document_id) ?? null
+    ? (documents.find(d => d.id === reminder.document_id) ?? null)
     : null;
 
   const isMedical = reminder.source_type === 'medical_ai';
@@ -106,6 +105,10 @@ export function ReminderCard({ reminder, onPress }: ReminderCardProps) {
 
   // ── Status badge ──────────────────────────────────────────────────────────
   const badge = getStatusBadge(reminder.reminder_date);
+  // Asigurare aproape de expirare → oferta de reînnoire sub titlu (componenta
+  // nu randează nimic pentru tipurile fără ofertă).
+  const showOffer =
+    !isMedical && document !== null && isInsuranceOfferDue(getDaysUntil(reminder.reminder_date));
 
   // ── Border color (mirrors getExpiryBorderColor from expirari.tsx) ─────────
   const borderColor = badge.bg;
@@ -115,14 +118,22 @@ export function ReminderCard({ reminder, onPress }: ReminderCardProps) {
       onPress={() => onPress?.(reminder)}
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: palette.card, shadowColor: palette.cardShadow, borderLeftColor: borderColor },
+        {
+          backgroundColor: palette.card,
+          shadowColor: palette.cardShadow,
+          borderLeftColor: borderColor,
+        },
         pressed && styles.cardPressed,
       ]}
       android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: false }}
     >
       {/* Left: type icon */}
       <View style={[styles.iconWrap, { backgroundColor: iconBg }]}>
-        <Ionicons name={iconName as React.ComponentProps<typeof Ionicons>['name']} size={22} color={iconColor} />
+        <Ionicons
+          name={iconName as React.ComponentProps<typeof Ionicons>['name']}
+          size={22}
+          color={iconColor}
+        />
       </View>
 
       {/* Middle: text */}
@@ -134,6 +145,9 @@ export function ReminderCard({ reminder, onPress }: ReminderCardProps) {
           <Text style={[styles.cardSub, { color: palette.textSecondary }]} numberOfLines={1}>
             {subtitle}
           </Text>
+        ) : null}
+        {showOffer && document ? (
+          <InsuranceOfferButton docType={document.type} placement="expirari" variant="link" />
         ) : null}
       </View>
 

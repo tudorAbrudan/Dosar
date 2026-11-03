@@ -24,6 +24,7 @@ import {
   formatTaskRequirementSpec,
   type TaskRequirement,
 } from './taskRequirements';
+import { getInsuranceOfferUrl } from './insuranceOffers';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -1398,6 +1399,15 @@ export async function sendMessage(userMessage: string, rawHistory: ChatMessage[]
   // răspunsul trebuie să folosească EXCLUSIV valorile reale din metadata și
   // să marcheze explicit câmpurile lipsă — niciodată să nu inventeze valori
   // plauzibile (ex. cilindree pentru o marcă cunoscută).
+  // Task de asigurare (RCA / CASCO) → la final, linkul de ofertă cu datele gata.
+  const offerLines = tasks
+    .map(t => {
+      const url = getInsuranceOfferUrl(t.id as DocumentType, 'asistent');
+      return url
+        ? `\n- Încheie cu o singură linie: „Cu datele de mai sus poți cere oferta pe asigra.ro: ${url}"`
+        : '';
+    })
+    .join('');
   const taskRule =
     tasks.length > 0
       ? `
@@ -1411,7 +1421,7 @@ Userul a cerut datele pentru: ${tasks.map(t => t.label).join(', ')}.
 - Dacă o persoană din cele cerute nu are documentul sursă vizibil în context, spune explicit că lipsește pentru ea — nu o omite tăcut din răspuns.
 - Dacă valoarea NU există în metadata documentului sursă → scrie EXPLICIT „lipsește din [tip document] — completează manual" SAU caută în OCR (\`OCR: ...\`) dacă apare ca text.
 - INTERZIS: să inventezi valori plauzibile pentru marca/modelul respectiv (cilindree, putere, MMA etc.) chiar dacă „știi" specificațiile tipice. Răspunsul reflectă DOAR datele utilizatorului.
-- La final, dacă există ≥1 câmp lipsă, sugerează: „Pentru completare, editează [DOC:...|...] din Acte și adaugă câmpurile lipsă."`
+- La final, dacă există ≥1 câmp lipsă, sugerează: „Pentru completare, editează [DOC:...|...] din Acte și adaugă câmpurile lipsă."${offerLines}`
       : '';
 
   const today = new Date().toLocaleDateString('ro-RO', {

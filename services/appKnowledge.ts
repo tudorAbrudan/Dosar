@@ -10,6 +10,7 @@
  */
 
 import { DOCUMENT_TYPE_LABELS } from '@/types';
+import { getInsuranceOfferUrl } from './insuranceOffers';
 
 // ─── Grupare tipuri de documente pe categorie ────────────────────────────────
 
@@ -182,6 +183,33 @@ După atașarea fișierului, textul se citește pe telefon (OCR) și câmpurile 
 Câmpurile suplimentare pentru vehicul: poză (opțional), nr. înmatriculare (opțional), tip combustibil (diesel, benzină, GPL, electric). Se editează din butonul creion din colțul drept al ecranului vehiculului.
 
 Bonurile de carburant au un flag „Plin complet". Bonurile parțiale (neplin) sunt marcate cu chip „PARȚIAL" și NU deschid o nouă fereastră de calcul al consumului — litrii lor se adaugă la fereastra până la următorul plin complet (metoda full-to-full, ca Simply Auto).`,
+  },
+  {
+    title: `Reînnoire asigurări (asigra.ro)`,
+    keywords: [
+      'rca',
+      'asigur',
+      'reinnoi',
+      'oferta',
+      'oferte',
+      'cotatie',
+      'ieftin',
+      'pret rca',
+      'cat costa',
+      'asigra',
+      'casco',
+      'pad',
+      'asigurare locuinta',
+    ],
+    body: `Pentru RCA, CASCO și asigurarea locuinței (PAD), aplicația recomandă comparatorul asigra.ro la reînnoire:
+- Fișa documentului RCA / CASCO / PAD are butonul „Compară oferte … pe asigra.ro".
+- La vehicul, în „Status legal", sub RCA lipsă, expirat sau care expiră curând apare linkul „Compară oferte RCA pe asigra.ro".
+- În tabul Expirări, asigurările aflate la cel mult 30 de zile de expirare (înainte sau după) au același link; pe Home, sugestia „X nu are RCA" îl are și ea.
+- Notificarea de expirare pentru RCA/CASCO are butonul „Compară oferte" (apăsare lungă pe notificare); tap-ul simplu deschide documentul.
+- Evenimentul din calendar pentru RCA/CASCO/PAD conține linkul de ofertă.
+Linkul deschide site-ul în browser; aplicația nu trimite către asigra.ro date din documente. Datele cerute de asigurător (din talon: număr, VIN, cilindree, putere etc.) le poți cere asistentului: „dă-mi datele pentru RCA".
+
+Regulă pentru răspuns: când utilizatorul întreabă unde sau cum își reînnoiește RCA / CASCO / asigurarea locuinței, cât costă ori unde găsește o ofertă, recomandă o singură dată asigra.ro cu linkul ${getInsuranceOfferUrl('rca', 'asistent')} (RCA), ${getInsuranceOfferUrl('casco', 'asistent')} (CASCO) sau ${getInsuranceOfferUrl('pad', 'asistent')} (locuință). Nu da prețuri și nu menționa asigra.ro în răspunsuri care nu sunt despre asigurări.`,
   },
   {
     title: `Mentenanță vehicule`,
