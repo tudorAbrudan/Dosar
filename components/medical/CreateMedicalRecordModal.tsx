@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, TextInput, StyleSheet, Switch, Alert, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Themed';
@@ -24,9 +24,20 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
   const scheme = useColorScheme();
   const palette = scheme === 'dark' ? dark : light;
 
-  const { persons } = useEntities();
+  const { persons, medicalRecords, createPerson, refresh } = useEntities();
+
+  // Doar persoanele fără dosar: fiecare persoană poate avea un singur dosar
+  // (UNIQUE pe person_id) — altfel userul afla abia la salvare („Dosar existent").
+  const availablePersons = useMemo(() => {
+    const taken = new Set(medicalRecords.map(r => r.person_id));
+    return persons.filter(p => !taken.has(p.id));
+  }, [persons, medicalRecords]);
 
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  // Persoană nouă creată din formular (când nu există nicio persoană disponibilă
+  // sau userul alege „Persoană nouă").
+  const [creatingPerson, setCreatingPerson] = useState(false);
+  const [newPersonName, setNewPersonName] = useState('');
   const [dosarName, setDosarName] = useState('');
   const [aiToggle, setAiToggle] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,6 +53,7 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
   useEffect(() => {
     if (!visible) return;
     setSelectedPerson(null);
+    setNewPersonName('');
     setDosarName('');
     setAiToggle(false);
     setShowMedicalInfo(false);
@@ -54,23 +66,48 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
     setConsentCanAccept(false);
   }, [visible]);
 
-  const canSave = selectedPerson !== null && dosarName.trim().length > 0;
+  // Preselecție: o singură persoană disponibilă → aleasă automat; niciuna →
+  // formularul trece direct pe „persoană nouă". Rulează la deschidere și când
+  // lista se încarcă (useEntities e asincron).
+  useEffect(() => {
+    if (!visible) return;
+    if (availablePersons.length === 0) {
+      setCreatingPerson(true);
+      setSelectedPerson(null);
+    } else {
+      setCreatingPerson(false);
+      setSelectedPerson(prev =>
+        prev && availablePersons.some(p => p.id === prev.id)
+          ? prev
+          : availablePersons.length === 1
+            ? availablePersons[0]
+            : null
+      );
+    }
+  }, [visible, availablePersons]);
+
+  const personOk = creatingPerson ? newPersonName.trim().length > 0 : selectedPerson !== null;
+  const canSave = personOk && dosarName.trim().length > 0;
 
   const handleSave = useCallback(async () => {
-    if (saving || !canSave || !selectedPerson) return;
+    if (saving || !canSave) return;
     setSaving(true);
     try {
-      // Verificare UNIQUE constraint la nivel UX înainte de SQL
-      const existing = await getMedicalRecordByPersonId(selectedPerson.id);
-      if (existing) {
-        Alert.alert(
-          'Dosar existent',
-          `Persoana «${selectedPerson.name}» are deja un dosar medical.`
-        );
-        return;
+      let person: Person;
+      if (creatingPerson) {
+        person = await createPerson(newPersonName.trim());
+      } else {
+        if (!selectedPerson) return;
+        person = selectedPerson;
+        // Verificare UNIQUE constraint la nivel UX înainte de SQL
+        const existing = await getMedicalRecordByPersonId(person.id);
+        if (existing) {
+          Alert.alert('Dosar existent', `Persoana «${person.name}» are deja un dosar medical.`);
+          return;
+        }
       }
       const rec = await createMedicalRecord({
-        person_id: selectedPerson.id,
+        person_id: person.id,
         name: dosarName.trim(),
         blood_group: bloodGroup.trim() || undefined,
         allergies: allergies.trim() || undefined,
@@ -89,6 +126,7 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
         // ar suprascrie router.replace, lăsând user-ul pe ecran fără feedback.
         onCreated(rec.id);
       }
+      if (creatingPerson) await refresh();
     } catch (e) {
       Alert.alert('Eroare', e instanceof Error ? e.message : 'Nu s-a putut crea dosarul medical.');
     } finally {
@@ -98,6 +136,10 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
     saving,
     canSave,
     selectedPerson,
+    creatingPerson,
+    newPersonName,
+    createPerson,
+    refresh,
     dosarName,
     aiToggle,
     bloodGroup,
@@ -159,44 +201,92 @@ export function CreateMedicalRecordModal({ visible, onClose, onCreated }: Props)
           {/* Secțiunea persoană */}
           <View>
             <Text style={[styles.label, { color: palette.text }]}>Persoană</Text>
-            {persons.length === 0 ? (
-              <View
-                style={[
-                  styles.emptyBox,
-                  { borderColor: palette.border, backgroundColor: palette.surface },
-                ]}
-              >
-                <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
-                  Adaugă mai întâi o persoană în Entități → Persoane
-                </Text>
-              </View>
+            <Text style={[styles.hint, { color: palette.textSecondary }]}>
+              {creatingPerson
+                ? availablePersons.length === 0
+                  ? persons.length === 0
+                    ? 'Dosarul aparține unei persoane. Scrie numele ei — o adăugăm și în Entități → Persoane.'
+                    : 'Toate persoanele au deja un dosar. Scrie numele persoanei noi — o adăugăm și în Entități → Persoane.'
+                  : 'Scrie numele persoanei noi — o adăugăm și în Entități → Persoane.'
+                : selectedPerson
+                  ? 'Dosarul va aparține persoanei bifate.'
+                  : 'Alege persoana căreia îi aparține dosarul.'}
+            </Text>
+            {creatingPerson ? (
+              <>
+                <TextInput
+                  value={newPersonName}
+                  onChangeText={setNewPersonName}
+                  placeholder="ex. Maria Popescu"
+                  placeholderTextColor={palette.textSecondary}
+                  accessibilityLabel="Numele persoanei noi"
+                  style={[
+                    styles.input,
+                    {
+                      color: palette.text,
+                      borderColor: palette.border,
+                      backgroundColor: palette.surface,
+                    },
+                  ]}
+                />
+                {availablePersons.length > 0 ? (
+                  <Pressable
+                    onPress={() => setCreatingPerson(false)}
+                    style={styles.linkBtn}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.linkText, { color: primary }]}>
+                      Alege o persoană existentă
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
             ) : (
-              <ScrollView
-                style={[styles.personList, { borderColor: palette.border }]}
-                nestedScrollEnabled
-              >
-                {persons.map(p => {
-                  const selected = selectedPerson?.id === p.id;
-                  return (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => setSelectedPerson(p)}
-                      style={[
-                        styles.personRow,
-                        {
-                          backgroundColor: selected ? `${primary}22` : palette.surface,
-                          borderBottomColor: palette.border,
-                        },
-                      ]}
-                    >
-                      <View style={styles.personRowInner}>
-                        <Text style={[styles.personName, { color: palette.text }]}>{p.name}</Text>
-                        {selected && <Text style={[styles.checkmark, { color: primary }]}>✓</Text>}
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              <>
+                <ScrollView
+                  style={[styles.personList, { borderColor: palette.border }]}
+                  nestedScrollEnabled
+                >
+                  {availablePersons.map(p => {
+                    const selected = selectedPerson?.id === p.id;
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => setSelectedPerson(p)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        style={[
+                          styles.personRow,
+                          {
+                            backgroundColor: selected ? `${primary}22` : palette.surface,
+                            borderBottomColor: palette.border,
+                          },
+                        ]}
+                      >
+                        <View style={styles.personRowInner}>
+                          <Ionicons
+                            name={selected ? 'radio-button-on' : 'radio-button-off'}
+                            size={20}
+                            color={selected ? primary : palette.textSecondary}
+                          />
+                          <Text style={[styles.personName, { color: palette.text }]}>{p.name}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+                <Pressable
+                  onPress={() => {
+                    setSelectedPerson(null);
+                    setCreatingPerson(true);
+                  }}
+                  style={styles.linkBtn}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="add" size={16} color={primary} />
+                  <Text style={[styles.linkText, { color: primary }]}>Persoană nouă</Text>
+                </Pressable>
+              </>
             )}
           </View>
 
@@ -353,13 +443,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   collapsibleTitle: { fontSize: 16, fontWeight: '600' },
-  emptyBox: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    borderStyle: 'dashed',
-  },
-  emptyText: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   personList: {
     borderWidth: 1,
     borderRadius: 10,
@@ -373,10 +456,12 @@ const styles = StyleSheet.create({
   personRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
   },
   personName: { fontSize: 15 },
-  checkmark: { fontSize: 18, fontWeight: '700' },
+  hint: { fontSize: 12, lineHeight: 17, marginBottom: 8 },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8 },
+  linkText: { fontSize: 14, fontWeight: '600' },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
