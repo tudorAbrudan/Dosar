@@ -1000,8 +1000,11 @@ async function applyManifestBody(
         `INSERT INTO medical_record
           (id, person_id, name, ai_consent_at, ai_consent_version, encryption_key_ref,
            blood_group, allergies, emergency_contact_name, emergency_contact_phone,
+           current_medications, chronic_conditions, medical_devices, pregnancy_status,
+           height_cm, weight_kg, family_doctor_name, family_doctor_phone, health_insurance,
+           organ_donor, tetanus_vaccine_date, medical_directives, emergency_notes,
            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            person_id = excluded.person_id,
            name = excluded.name,
@@ -1012,6 +1015,19 @@ async function applyManifestBody(
            allergies = excluded.allergies,
            emergency_contact_name = excluded.emergency_contact_name,
            emergency_contact_phone = excluded.emergency_contact_phone,
+           current_medications = excluded.current_medications,
+           chronic_conditions = excluded.chronic_conditions,
+           medical_devices = excluded.medical_devices,
+           pregnancy_status = excluded.pregnancy_status,
+           height_cm = excluded.height_cm,
+           weight_kg = excluded.weight_kg,
+           family_doctor_name = excluded.family_doctor_name,
+           family_doctor_phone = excluded.family_doctor_phone,
+           health_insurance = excluded.health_insurance,
+           organ_donor = excluded.organ_donor,
+           tetanus_vaccine_date = excluded.tetanus_vaccine_date,
+           medical_directives = excluded.medical_directives,
+           emergency_notes = excluded.emergency_notes,
            created_at = excluded.created_at,
            updated_at = excluded.updated_at`,
         [
@@ -1025,6 +1041,19 @@ async function applyManifestBody(
           (r.allergies as string | null) ?? null,
           (r.emergency_contact_name as string | null) ?? null,
           (r.emergency_contact_phone as string | null) ?? null,
+          (r.current_medications as string | null) ?? null,
+          (r.chronic_conditions as string | null) ?? null,
+          (r.medical_devices as string | null) ?? null,
+          (r.pregnancy_status as string | null) ?? null,
+          (r.height_cm as string | null) ?? null,
+          (r.weight_kg as string | null) ?? null,
+          (r.family_doctor_name as string | null) ?? null,
+          (r.family_doctor_phone as string | null) ?? null,
+          (r.health_insurance as string | null) ?? null,
+          (r.organ_donor as string | null) ?? null,
+          (r.tetanus_vaccine_date as string | null) ?? null,
+          (r.medical_directives as string | null) ?? null,
+          (r.emergency_notes as string | null) ?? null,
           r.created_at as string,
           r.updated_at as string,
         ]

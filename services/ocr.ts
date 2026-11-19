@@ -676,13 +676,16 @@ export function detectDocumentType(text: string): DocumentType | null {
   if (/scrisoare medical[aă]/.test(t)) return 'scrisoare_medicala';
   if (/bilet de externare|bilet externare|epicriz[aă]/.test(t)) return 'bilet_externare';
   if (/bilet de trimitere|bilet trimitere/.test(t)) return 'bilet_trimitere';
-  if (/fi[sș][aă] de consulta[tț]ie|fi[sș][aă] consulta[tț]ie/.test(t))
-    return 'fisa_consultatie';
+  if (/fi[sș][aă] de consulta[tț]ie|fi[sș][aă] consulta[tț]ie/.test(t)) return 'fisa_consultatie';
   if (/re[tț]et[aă] medical[aă]|prescrip[tț]ie medical[aă]|rp\/?\s*medicament/.test(t))
     return 'reteta_medicala';
   // Imagistică: RMN/CT/ecografie/radiografie + secțiunea „Concluzie" sau
   // „Descriere" + medic radiolog. Indicatorii sunt cumulativi.
-  if (/(rmn|ct|computer tomograf|tomografie|ecografie|ecografic|radiografie|mamografie|scintigrafie)/.test(t)) {
+  if (
+    /(rmn|ct|computer tomograf|tomografie|ecografie|ecografic|radiografie|mamografie|scintigrafie)/.test(
+      t
+    )
+  ) {
     if (/concluzie|descriere|radiolog|imagistic[aă]/.test(t)) return 'imagistica';
   }
   // Analize: indicatori clari + valori cu unități + referință.
@@ -691,7 +694,11 @@ export function detectDocumentType(text: string): DocumentType | null {
       t
     )
   ) {
-    if (/valori? de referin[tț][aă]|interval (de )?referin[tț][aă]|limit[aă] (laboratorului|normal[aă])/.test(t))
+    if (
+      /valori? de referin[tț][aă]|interval (de )?referin[tț][aă]|limit[aă] (laboratorului|normal[aă])/.test(
+        t
+      )
+    )
       return 'analize_medicale';
   }
   // Vaccin uman: separat de vaccin_animal. „Vaccin"/„Vaccinare" + nume vaccin

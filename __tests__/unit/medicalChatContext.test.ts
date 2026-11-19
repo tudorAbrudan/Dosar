@@ -44,6 +44,26 @@ describe('buildContextString — profil dosar', () => {
     expect(out).toContain('Ana');
   });
 
+  it('include câmpurile de profil de urgență (medicamente, afecțiuni, medic etc.)', () => {
+    const out = buildContextString({
+      ...empty,
+      record: {
+        current_medications: 'Sintrom 4 mg',
+        chronic_conditions: 'epilepsie',
+        medical_devices: 'pacemaker',
+        height_cm: '178',
+        family_doctor_name: 'Dr. Pop',
+        tetanus_vaccine_date: '2021-05',
+      } as never,
+    });
+    expect(out).toContain('- Medicamente curente: Sintrom 4 mg');
+    expect(out).toContain('- Afecțiuni cronice: epilepsie');
+    expect(out).toContain('- Implanturi / dispozitive: pacemaker');
+    expect(out).toContain('- Înălțime: 178 cm');
+    expect(out).toContain('- Medic de familie: Dr. Pop');
+    expect(out).toContain('- Ultimul vaccin antitetanic: 2021-05');
+  });
+
   it('nu emite secțiunea când profilul e gol', () => {
     expect(buildContextString({ ...empty, record: {} as never })).not.toContain('PROFIL DOSAR');
   });

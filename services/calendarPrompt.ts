@@ -6,10 +6,7 @@
  */
 import { Alert } from 'react-native';
 
-import {
-  addEventToCalendar,
-  addExpiryCalendarEvent,
-} from './calendar';
+import { addEventToCalendar, addExpiryCalendarEvent } from './calendar';
 import { setDocumentCalendarEventId } from './documents';
 import type { DocumentType } from '@/types';
 
@@ -104,25 +101,21 @@ export function promptAddEventReminder(opts: EventPromptOptions): void {
     opts.onDone();
     return;
   }
-  Alert.alert(
-    'Adaugă în calendar?',
-    `Vrei reminder pentru evenimentul din ${opts.eventDate}?`,
-    [
-      { text: 'Nu', style: 'cancel', onPress: opts.onDone },
-      {
-        text: 'Adaugă',
-        onPress: async () => {
-          const id = await addEventToCalendar({
-            title: opts.title,
-            eventDate: opts.eventDate,
-            venue: opts.venue,
-            note: opts.note,
-            documentId: opts.documentId,
-          });
-          if (id) await setDocumentCalendarEventId(opts.documentId, id);
-          opts.onDone();
-        },
+  Alert.alert('Adaugă în calendar?', `Vrei reminder pentru evenimentul din ${opts.eventDate}?`, [
+    { text: 'Nu', style: 'cancel', onPress: opts.onDone },
+    {
+      text: 'Adaugă',
+      onPress: async () => {
+        const id = await addEventToCalendar({
+          title: opts.title,
+          eventDate: opts.eventDate,
+          venue: opts.venue,
+          note: opts.note,
+          documentId: opts.documentId,
+        });
+        if (id) await setDocumentCalendarEventId(opts.documentId, id);
+        opts.onDone();
       },
-    ]
-  );
+    },
+  ]);
 }

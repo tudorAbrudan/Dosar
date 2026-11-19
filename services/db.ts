@@ -627,6 +627,22 @@ safeAlterTable('ALTER TABLE fuel_records ADD COLUMN is_full INTEGER NOT NULL DEF
 // Migrare: adaugă station la fuel_records (text liber: brand + adresă, ex. "OMV Cluj-Napoca, Calea Turzii")
 safeAlterTable('ALTER TABLE fuel_records ADD COLUMN station TEXT');
 
+// Profil de urgență al dosarului medical (medicamente, afecțiuni, implanturi, medic etc.).
+// Toate TEXT nullable, completate manual de user.
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN current_medications TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN chronic_conditions TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN medical_devices TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN pregnancy_status TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN height_cm TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN weight_kg TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN family_doctor_name TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN family_doctor_phone TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN health_insurance TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN organ_donor TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN tetanus_vaccine_date TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN medical_directives TEXT');
+safeAlterTable('ALTER TABLE medical_record ADD COLUMN emergency_notes TEXT');
+
 // Index pentru filtrări/agregări după benzinărie (LIKE / substring)
 try {
   db.execSync('CREATE INDEX IF NOT EXISTS idx_fuel_records_station ON fuel_records(station)');

@@ -34,6 +34,14 @@ import {
   setPendingReminders,
 } from '@/services/documents';
 import { MedicalRemindersModal } from '@/components/medical/MedicalRemindersModal';
+import {
+  MedicalProfileInputs,
+  MedicalProfileDetails,
+  profileDraftFromRecord,
+  profilePatchFromDraft,
+  hasProfileData,
+  type MedicalProfileDraft,
+} from '@/components/medical/MedicalProfileFields';
 import { db } from '@/services/db';
 import { MEDICAL_DOC_TYPES, DOCUMENT_TYPE_LABELS, getDocumentLabel } from '@/types';
 import { useCustomTypes } from '@/hooks/useCustomTypes';
@@ -103,6 +111,7 @@ export default function MedicalRecordDetail() {
   const [editAllergies, setEditAllergies] = useState('');
   const [editEmergencyName, setEditEmergencyName] = useState('');
   const [editEmergencyPhone, setEditEmergencyPhone] = useState('');
+  const [editProfile, setEditProfile] = useState<MedicalProfileDraft | null>(null);
 
   // Persoana legată de dosar
   const linkedPerson = record?.person_id ? persons.find(p => p.id === record.person_id) : undefined;
@@ -158,6 +167,7 @@ export default function MedicalRecordDetail() {
     setEditAllergies(record.allergies ?? '');
     setEditEmergencyName(record.emergency_contact_name ?? '');
     setEditEmergencyPhone(record.emergency_contact_phone ?? '');
+    setEditProfile(profileDraftFromRecord(record));
     setEditVisible(true);
   }, [record]);
 
@@ -175,6 +185,7 @@ export default function MedicalRecordDetail() {
         allergies: editAllergies.trim() || null,
         emergency_contact_name: editEmergencyName.trim() || null,
         emergency_contact_phone: editEmergencyPhone.trim() || null,
+        ...(editProfile ? profilePatchFromDraft(editProfile) : {}),
       });
       await refresh();
       setEditVisible(false);
@@ -190,6 +201,7 @@ export default function MedicalRecordDetail() {
     editAllergies,
     editEmergencyName,
     editEmergencyPhone,
+    editProfile,
     refresh,
   ]);
 
@@ -299,7 +311,8 @@ export default function MedicalRecordDetail() {
           record.blood_group ||
           record.allergies ||
           record.emergency_contact_name ||
-          record.emergency_contact_phone ? (
+          record.emergency_contact_phone ||
+          hasProfileData(record) ? (
             <View
               style={[
                 styles.patientHeader,
@@ -361,7 +374,8 @@ export default function MedicalRecordDetail() {
                 ) : null}
                 {record.allergies ||
                 record.emergency_contact_name ||
-                record.emergency_contact_phone ? (
+                record.emergency_contact_phone ||
+                hasProfileData(record) ? (
                   <Pressable
                     onPress={() => setPatientExpanded(v => !v)}
                     hitSlop={10}
@@ -384,7 +398,10 @@ export default function MedicalRecordDetail() {
 
               {/* Detalii extinse: alergii + contact urgență */}
               {patientExpanded ? (
-                <View style={styles.patientExpanded}>
+                <ScrollView
+                  style={styles.patientExpandedScroll}
+                  contentContainerStyle={styles.patientExpanded}
+                >
                   {record.allergies ? (
                     <View
                       style={[
@@ -430,7 +447,8 @@ export default function MedicalRecordDetail() {
                       </View>
                     </View>
                   ) : null}
-                </View>
+                  <MedicalProfileDetails record={record} />
+                </ScrollView>
               ) : null}
             </View>
           ) : null}
@@ -665,6 +683,15 @@ export default function MedicalRecordDetail() {
             editable={!editSaving}
           />
         </View>
+        {editProfile ? (
+          <MedicalProfileInputs
+            draft={editProfile}
+            onChange={(key, value) =>
+              setEditProfile(prev => (prev ? { ...prev, [key]: value } : prev))
+            }
+            editable={!editSaving}
+          />
+        ) : null}
       </FormSheetModal>
 
       {/* ── Pending reminders modal (D13) ── */}
@@ -786,6 +813,10 @@ const styles = StyleSheet.create({
   patientExpanded: {
     gap: 8,
     marginTop: 8,
+    paddingBottom: 8,
+  },
+  patientExpandedScroll: {
+    maxHeight: 360,
   },
   patientPersonRow: {
     flexDirection: 'row',

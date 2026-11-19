@@ -51,12 +51,17 @@ export async function createMedicalReminder(input: {
   await db.runAsync(
     `INSERT INTO reminders (id, source_type, document_id, person_id, label, reminder_date, calendar_event_id, origin, created_at)
      VALUES (?, 'medical_ai', ?, ?, ?, ?, ?, 'ai', ?)`,
-    [id, input.documentId, input.personId, input.label, input.reminderDate, input.calendarEventId ?? null, now]
+    [
+      id,
+      input.documentId,
+      input.personId,
+      input.label,
+      input.reminderDate,
+      input.calendarEventId ?? null,
+      now,
+    ]
   );
-  const row = await db.getFirstAsync<ReminderRow>(
-    'SELECT * FROM reminders WHERE id = ?',
-    [id]
-  );
+  const row = await db.getFirstAsync<ReminderRow>('SELECT * FROM reminders WHERE id = ?', [id]);
   if (!row) throw new Error('Reminder creat dar nu poate fi citit');
   emit('reminders:changed');
   return rowToReminder(row);
@@ -111,17 +116,15 @@ export async function getDismissedExpiryDocumentIds(): Promise<Set<string>> {
 }
 
 export async function dismissReminder(id: string): Promise<void> {
-  const row = await db.getFirstAsync<ReminderRow>(
-    'SELECT * FROM reminders WHERE id = ?', [id]
-  );
+  const row = await db.getFirstAsync<ReminderRow>('SELECT * FROM reminders WHERE id = ?', [id]);
   if (!row) return;
   if (row.calendar_event_id) {
     await deleteCalendarEvent(row.calendar_event_id);
   }
-  await db.runAsync(
-    'UPDATE reminders SET dismissed_at = ? WHERE id = ?',
-    [new Date().toISOString(), id]
-  );
+  await db.runAsync('UPDATE reminders SET dismissed_at = ? WHERE id = ?', [
+    new Date().toISOString(),
+    id,
+  ]);
   emit('reminders:changed');
 }
 
@@ -148,9 +151,13 @@ export async function syncDocumentExpiryReminder(doc: Document): Promise<void> {
          person_id = ?, vehicle_id = ?, property_id = ?, animal_id = ?, card_id = ?
        WHERE id = ?`,
       [
-        doc.expiry_date, label,
-        doc.person_id ?? null, doc.vehicle_id ?? null, doc.property_id ?? null,
-        doc.animal_id ?? null, doc.card_id ?? null,
+        doc.expiry_date,
+        label,
+        doc.person_id ?? null,
+        doc.vehicle_id ?? null,
+        doc.property_id ?? null,
+        doc.animal_id ?? null,
+        doc.card_id ?? null,
         existing.id,
       ]
     );
@@ -162,10 +169,16 @@ export async function syncDocumentExpiryReminder(doc: Document): Promise<void> {
          label, reminder_date, origin, created_at
        ) VALUES (?, 'document_expiry', ?, ?, ?, ?, ?, ?, ?, ?, 'derived', ?)`,
       [
-        id, doc.id,
-        doc.person_id ?? null, doc.vehicle_id ?? null, doc.property_id ?? null,
-        doc.animal_id ?? null, doc.card_id ?? null,
-        label, doc.expiry_date, now,
+        id,
+        doc.id,
+        doc.person_id ?? null,
+        doc.vehicle_id ?? null,
+        doc.property_id ?? null,
+        doc.animal_id ?? null,
+        doc.card_id ?? null,
+        label,
+        doc.expiry_date,
+        now,
       ]
     );
   }
@@ -194,9 +207,14 @@ export async function deleteRemindersByDocument(documentId: string): Promise<voi
 
 export async function backfillDocumentExpiryReminders(): Promise<number> {
   const docsWithExpiry = await db.getAllAsync<{
-    id: string; type: string; expiry_date: string;
-    person_id: string | null; vehicle_id: string | null;
-    property_id: string | null; animal_id: string | null; card_id: string | null;
+    id: string;
+    type: string;
+    expiry_date: string;
+    person_id: string | null;
+    vehicle_id: string | null;
+    property_id: string | null;
+    animal_id: string | null;
+    card_id: string | null;
   }>(
     `SELECT id, type, expiry_date, person_id, vehicle_id, property_id, animal_id, card_id
      FROM documents
@@ -217,8 +235,16 @@ export async function backfillDocumentExpiryReminders(): Promise<number> {
          label, reminder_date, origin, created_at
        ) VALUES (?, 'document_expiry', ?, ?, ?, ?, ?, ?, ?, ?, 'derived', ?)`,
       [
-        id, doc.id, doc.person_id, doc.vehicle_id, doc.property_id, doc.animal_id, doc.card_id,
-        label, doc.expiry_date, now,
+        id,
+        doc.id,
+        doc.person_id,
+        doc.vehicle_id,
+        doc.property_id,
+        doc.animal_id,
+        doc.card_id,
+        label,
+        doc.expiry_date,
+        now,
       ]
     );
     inserted++;

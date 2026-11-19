@@ -61,6 +61,19 @@ interface MedicalRecordRow {
   allergies: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  current_medications: string | null;
+  chronic_conditions: string | null;
+  medical_devices: string | null;
+  pregnancy_status: string | null;
+  height_cm: string | null;
+  weight_kg: string | null;
+  family_doctor_name: string | null;
+  family_doctor_phone: string | null;
+  health_insurance: string | null;
+  organ_donor: string | null;
+  tetanus_vaccine_date: string | null;
+  medical_directives: string | null;
+  emergency_notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +90,19 @@ function rowToRecord(r: MedicalRecordRow): MedicalRecord {
     allergies: r.allergies ?? undefined,
     emergency_contact_name: r.emergency_contact_name ?? undefined,
     emergency_contact_phone: r.emergency_contact_phone ?? undefined,
+    current_medications: r.current_medications ?? undefined,
+    chronic_conditions: r.chronic_conditions ?? undefined,
+    medical_devices: r.medical_devices ?? undefined,
+    pregnancy_status: r.pregnancy_status ?? undefined,
+    height_cm: r.height_cm ?? undefined,
+    weight_kg: r.weight_kg ?? undefined,
+    family_doctor_name: r.family_doctor_name ?? undefined,
+    family_doctor_phone: r.family_doctor_phone ?? undefined,
+    health_insurance: r.health_insurance ?? undefined,
+    organ_donor: r.organ_donor ?? undefined,
+    tetanus_vaccine_date: r.tetanus_vaccine_date ?? undefined,
+    medical_directives: r.medical_directives ?? undefined,
+    emergency_notes: r.emergency_notes ?? undefined,
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -162,7 +188,41 @@ export interface UpdateMedicalRecordInput {
   allergies?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  current_medications?: string | null;
+  chronic_conditions?: string | null;
+  medical_devices?: string | null;
+  pregnancy_status?: string | null;
+  height_cm?: string | null;
+  weight_kg?: string | null;
+  family_doctor_name?: string | null;
+  family_doctor_phone?: string | null;
+  health_insurance?: string | null;
+  organ_donor?: string | null;
+  tetanus_vaccine_date?: string | null;
+  medical_directives?: string | null;
+  emergency_notes?: string | null;
 }
+
+/** Câmpurile de profil text actualizabile direct (fără logică specială). */
+const PROFILE_COLUMNS = [
+  'blood_group',
+  'allergies',
+  'emergency_contact_name',
+  'emergency_contact_phone',
+  'current_medications',
+  'chronic_conditions',
+  'medical_devices',
+  'pregnancy_status',
+  'height_cm',
+  'weight_kg',
+  'family_doctor_name',
+  'family_doctor_phone',
+  'health_insurance',
+  'organ_donor',
+  'tetanus_vaccine_date',
+  'medical_directives',
+  'emergency_notes',
+] as const;
 
 export async function updateMedicalRecord(
   id: string,
@@ -178,21 +238,12 @@ export async function updateMedicalRecord(
     sets.push('person_id = ?');
     values.push(patch.person_id);
   }
-  if (patch.blood_group !== undefined) {
-    sets.push('blood_group = ?');
-    values.push(patch.blood_group ?? null);
-  }
-  if (patch.allergies !== undefined) {
-    sets.push('allergies = ?');
-    values.push(patch.allergies ?? null);
-  }
-  if (patch.emergency_contact_name !== undefined) {
-    sets.push('emergency_contact_name = ?');
-    values.push(patch.emergency_contact_name ?? null);
-  }
-  if (patch.emergency_contact_phone !== undefined) {
-    sets.push('emergency_contact_phone = ?');
-    values.push(patch.emergency_contact_phone ?? null);
+  for (const col of PROFILE_COLUMNS) {
+    const v = patch[col];
+    if (v !== undefined) {
+      sets.push(`${col} = ?`);
+      values.push(v ?? null);
+    }
   }
   if (sets.length === 0) return;
   const now = new Date().toISOString();

@@ -39,7 +39,7 @@ export type ChunkType = 'ocr' | 'summary';
 export interface ChunkInsert {
   document_id: string;
   medical_record_id: string;
-  chunk_type: ChunkType;    // 'ocr' text brut SAU 'summary' rezumat AI
+  chunk_type: ChunkType; // 'ocr' text brut SAU 'summary' rezumat AI
   chunk_text: string;
 }
 
@@ -202,21 +202,25 @@ export async function rebuildFtsFromExistingData(): Promise<void> {
 
   for (const d of docs) {
     if (d.note && d.note.trim().length > 0) {
-      await insertChunks([{
-        document_id: d.id,
-        medical_record_id: d.mr_id,
-        chunk_type: 'summary',
-        chunk_text: `Rezumat document: ${d.note.trim()}`,
-      }]);
+      await insertChunks([
+        {
+          document_id: d.id,
+          medical_record_id: d.mr_id,
+          chunk_type: 'summary',
+          chunk_text: `Rezumat document: ${d.note.trim()}`,
+        },
+      ]);
     }
     if (d.ocr_text && d.ocr_text.trim().length > 0) {
       const chunks = chunkText(d.ocr_text);
-      await insertChunks(chunks.map(t => ({
-        document_id: d.id,
-        medical_record_id: d.mr_id,
-        chunk_type: 'ocr' as const,
-        chunk_text: t,
-      })));
+      await insertChunks(
+        chunks.map(t => ({
+          document_id: d.id,
+          medical_record_id: d.mr_id,
+          chunk_type: 'ocr' as const,
+          chunk_text: t,
+        }))
+      );
     }
   }
 }

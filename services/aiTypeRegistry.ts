@@ -366,7 +366,15 @@ export const DOC_TYPE_AI_REGISTRY: Partial<Record<DocumentType, AiTypeEntry>> = 
   },
   analize_medicale: {
     label: DOCUMENT_TYPE_LABELS.analize_medicale,
-    aliases: ['analize', 'analize medicale', 'buletin de analiză', 'rezultat laborator', 'Synevo', 'Regina Maria', 'MedLife'],
+    aliases: [
+      'analize',
+      'analize medicale',
+      'buletin de analiză',
+      'rezultat laborator',
+      'Synevo',
+      'Regina Maria',
+      'MedLife',
+    ],
     description:
       'Buletin de analiză medicală (sânge, urină, hormonal, lipidic etc.) de la un laborator. Conține valori cu unități și intervale de referință. Snapshot punctual, NU expiră formal.',
     distinguishingMarks: [

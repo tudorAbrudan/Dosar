@@ -23,7 +23,7 @@ import { getMedicalRecord } from './medicalRecord';
 import { getDocumentById } from './documents';
 import { sendAiRequest } from './aiProvider';
 import { emit } from './events';
-import { getDocumentLabel } from '@/types';
+import { getDocumentLabel, MEDICAL_PROFILE_FIELDS } from '@/types';
 import type { MedicalRecord } from '@/types';
 import { getCustomTypes } from './customTypes';
 import type { CustomDocumentType } from '@/types';
@@ -400,6 +400,10 @@ function buildContextString(ctx: RetrievedContext): string {
       const nume = ctx.record.emergency_contact_name ?? '?';
       const tel = ctx.record.emergency_contact_phone ?? '?';
       profile.push(`- Contact de urgență: ${nume}, ${tel}`);
+    }
+    for (const f of MEDICAL_PROFILE_FIELDS) {
+      const v = ctx.record[f.key];
+      if (v) profile.push(`- ${f.label}: ${v}${f.unit ? ` ${f.unit}` : ''}`);
     }
     if (profile.length > 0) {
       lines.push('=== PROFIL DOSAR ===');

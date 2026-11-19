@@ -318,7 +318,8 @@ Tap pe orice reminder din Expirări te duce la documentul sursă. Pentru a anula
 - Datele medicale sunt stocate local pe device, protejate de App Lock (PIN/biometric) și de criptarea sistemului iOS; backup-ul în cloud poate fi criptat opțional cu parolă. Datele nu ajung la AI fără acordul explicit dat pe fiecare dosar (tab Chat → „Activează AI pentru acest dosar"). Setări → Asistent AI → „Asistent AI pe dosarele medicale" oprește AI-ul pe toate dosarele dintr-un loc.
 - Timeline: grupare după parametru (HDL, TSH etc.), evoluție în timp cu sparkline, drill-down la documentul sursă.
 - Chat AI scoped pe dosar: răspunde cu citații obligatorii ([OBS:id] sau [DOC:tip|id]), niciodată diagnostic clinic.
-- Adăugare document medical: Entități → Dosar medical → tap pe dosar → tab Documente → "+". Picker tipuri restrâns la analize/rețete/etc.`,
+- Adăugare document medical: Entități → Dosar medical → tap pe dosar → tab Documente → "+". Picker tipuri restrâns la analize/rețete/etc.
+- Profil de urgență: în dosar → Editează: grupă sanguină, alergii, contact urgență, medicamente curente, afecțiuni cronice, implanturi/dispozitive, sarcină, înălțime/greutate, medic de familie, asigurare, donator de organe, ultimul vaccin antitetanic, directive medicale, note. Apar în antetul dosarului (săgeata de extindere).`,
   },
 ];
 

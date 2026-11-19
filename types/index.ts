@@ -119,9 +119,140 @@ export interface MedicalRecord {
   allergies?: string;
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
+  current_medications?: string;
+  chronic_conditions?: string;
+  medical_devices?: string;
+  pregnancy_status?: string;
+  height_cm?: string;
+  weight_kg?: string;
+  family_doctor_name?: string;
+  family_doctor_phone?: string;
+  health_insurance?: string;
+  organ_donor?: string;
+  tetanus_vaccine_date?: string;
+  medical_directives?: string;
+  emergency_notes?: string;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Câmpurile de profil de urgență ale dosarului medical (pe lângă grupă, alergii,
+ * contact urgență). Sursă unică pentru formular, afișare și contextul chat-ului medical.
+ * `essential` = informații critice pentru salvatori (afișate primele).
+ */
+export type MedicalProfileField =
+  | 'current_medications'
+  | 'chronic_conditions'
+  | 'medical_devices'
+  | 'pregnancy_status'
+  | 'height_cm'
+  | 'weight_kg'
+  | 'family_doctor_name'
+  | 'family_doctor_phone'
+  | 'health_insurance'
+  | 'organ_donor'
+  | 'tetanus_vaccine_date'
+  | 'medical_directives'
+  | 'emergency_notes';
+
+export interface MedicalProfileFieldDef {
+  key: MedicalProfileField;
+  label: string;
+  placeholder: string;
+  essential: boolean;
+  multiline?: boolean;
+  keyboard?: 'default' | 'phone-pad' | 'decimal-pad' | 'number-pad';
+  /** Sufix afișat după valoare (ex. „cm"). */
+  unit?: string;
+}
+
+export const MEDICAL_PROFILE_FIELDS: readonly MedicalProfileFieldDef[] = [
+  {
+    key: 'current_medications',
+    label: 'Medicamente curente',
+    placeholder: 'ex. Sintrom 4 mg seara, Metformin 1000 mg x2',
+    essential: true,
+    multiline: true,
+  },
+  {
+    key: 'chronic_conditions',
+    label: 'Afecțiuni cronice',
+    placeholder: 'ex. diabet tip 1, epilepsie, astm',
+    essential: true,
+    multiline: true,
+  },
+  {
+    key: 'medical_devices',
+    label: 'Implanturi / dispozitive',
+    placeholder: 'ex. pacemaker, stent, proteză de șold, pompă de insulină',
+    essential: true,
+    multiline: true,
+  },
+  {
+    key: 'pregnancy_status',
+    label: 'Sarcină',
+    placeholder: 'ex. da, săptămâna 24',
+    essential: true,
+  },
+  {
+    key: 'height_cm',
+    label: 'Înălțime',
+    placeholder: 'ex. 178',
+    essential: false,
+    keyboard: 'number-pad',
+    unit: 'cm',
+  },
+  {
+    key: 'weight_kg',
+    label: 'Greutate',
+    placeholder: 'ex. 75',
+    essential: false,
+    keyboard: 'decimal-pad',
+    unit: 'kg',
+  },
+  {
+    key: 'family_doctor_name',
+    label: 'Medic de familie',
+    placeholder: 'Nume medic',
+    essential: false,
+  },
+  {
+    key: 'family_doctor_phone',
+    label: 'Telefon medic de familie',
+    placeholder: 'ex. 0722 123 456',
+    essential: false,
+    keyboard: 'phone-pad',
+  },
+  {
+    key: 'health_insurance',
+    label: 'Asigurare medicală',
+    placeholder: 'ex. CNAS, card sănătate; asigurare privată + nr. poliță',
+    essential: false,
+    multiline: true,
+  },
+  { key: 'organ_donor', label: 'Donator de organe', placeholder: 'ex. da / nu', essential: false },
+  {
+    key: 'tetanus_vaccine_date',
+    label: 'Ultimul vaccin antitetanic',
+    placeholder: 'ex. 2021-05 sau 2021-05-14',
+    essential: false,
+  },
+  {
+    key: 'medical_directives',
+    label: 'Directive medicale',
+    placeholder: 'ex. refuz transfuzii de sânge',
+    essential: false,
+    multiline: true,
+  },
+  {
+    key: 'emergency_notes',
+    label: 'Alte note pentru urgență',
+    placeholder: 'ex. poartă lentile de contact, hipoacuzie',
+    essential: false,
+    multiline: true,
+  },
+];
 
 export type ObservationCategory =
   | 'lipide'

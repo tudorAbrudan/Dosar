@@ -52,7 +52,9 @@ function escapeHtml(s: string): string {
  * base64 inline. Paginile PDF sunt randate la JPEG; imaginile sunt redimensionate
  * la max 1400px lățime și comprimate la 75% calitate.
  */
-async function renderPagesAsHtml(pages: PageRecord[]): Promise<{ html: string[]; failed: boolean }> {
+async function renderPagesAsHtml(
+  pages: PageRecord[]
+): Promise<{ html: string[]; failed: boolean }> {
   const imgTags: string[] = [];
   for (const page of pages) {
     const fileUri = toFileUri(page.file_path);
